@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const hoisted = vi.hoisted(() => ({ instances: [] as any[] }));
 
 // Mock the internal HTTP client class used by SDK BEFORE importing SDK
-vi.mock('../../src/lib/sdk.js', () => {
+vi.mock('../../src/lib/internal-http-client.js', () => {
   const instances = hoisted.instances;
   const MockInternalKuratchi = class {
     cfg: any;
@@ -16,7 +16,7 @@ vi.mock('../../src/lib/sdk.js', () => {
     setSessionBookmark = vi.fn((b?: string) => { this.bookmark = b; });
     constructor(cfg: any) { this.cfg = cfg; instances.push(this); }
   } as any;
-  return { Kuratchi: MockInternalKuratchi, __instances: instances };
+  return { KuratchiHttpClient: MockInternalKuratchi, __instances: instances };
 });
 
 import { Kuratchi } from '../../src/lib/index.js';
@@ -57,16 +57,16 @@ describe('Kuratchi SDK (stateless)', () => {
     expect(res).toEqual({ rows: [] });
   });
 
-  it('db().query constructs a fresh client and runs the query', async () => {
-    const res = await sdk.db({ databaseName: 'db3', apiToken }).query<{ one: number }>('SELECT 1 as one');
+  it('database().query constructs a fresh client and runs the query', async () => {
+    const res = await sdk.database({ databaseName: 'db3', apiToken }).query<{ one: number }>('SELECT 1 as one');
     expect(hoisted.instances).toHaveLength(1);
     const inst = hoisted.instances[0];
     expect(inst.query).toHaveBeenCalledWith('SELECT 1 as one', []);
     expect(res).toEqual({ ok: true });
   });
 
-  it('db({ bookmark }) seeds read-replication session via bookmark header', async () => {
-    const res = await sdk.db({ databaseName: 'db4', apiToken, bookmark: 'bm-123' }).query('SELECT 1');
+  it('database({ bookmark }) seeds read-replication session via bookmark header', async () => {
+    const res = await sdk.database({ databaseName: 'db4', apiToken, bookmark: 'bm-123' }).query('SELECT 1');
     const inst = hoisted.instances[0];
     expect(inst.setSessionBookmark).toHaveBeenCalledWith('bm-123');
     expect(inst.bookmark).toBe('bm-123');

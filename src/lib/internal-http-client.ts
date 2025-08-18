@@ -12,7 +12,12 @@ export interface KuratchiConfig {
     apiToken?: string;
 }
 
-export class Kuratchi {
+/**
+ * INTERNAL: Low-level HTTP client used by the public SDK in `src/lib/kuratchi.ts`.
+ * Not exported from the package entrypoint. Subject to change without notice.
+ * @internal
+ */
+export class KuratchiHttpClient {
     private endpoint: string;
     private token?: string;
     private bookmark?: string; // D1 session bookmark
@@ -22,13 +27,8 @@ export class Kuratchi {
         this.token = config.apiToken;
     }
 
-    // ---- Auth helpers ----
-    setToken(token?: string) {
-        this.token = token;
-    }
-
     withToken(token?: string) {
-        const k = new Kuratchi({
+        const k = new KuratchiHttpClient({
             databaseName: this.getDatabaseNameFromEndpoint(),
             workersSubdomain: this.getSubdomainFromEndpoint(),
             apiToken: token ?? this.token,
@@ -38,16 +38,8 @@ export class Kuratchi {
     }
 
     // ---- Session bookmark helpers ----
-    getSessionBookmark() {
-        return this.bookmark;
-    }
-
     setSessionBookmark(bookmark?: string) {
         this.bookmark = bookmark;
-    }
-
-    resetSession() {
-        this.bookmark = undefined;
     }
 
     private getDatabaseNameFromEndpoint(): string {
@@ -181,7 +173,7 @@ export class Kuratchi {
     /**
      * Execute database migrations using provided files
      */
-    async migrate(migrations: { journal: { entries: any[] }, migrations: Record<string, string> }) {
+    async migrate(migrations: { journal: { entries: any[] }, migrations: Record<string, string | (() => Promise<string>) | { default: string }> }) {
         try {
             const createTableResult: any = await this.exec(
                 'CREATE TABLE IF NOT EXISTS migrations_history (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, created_at INTEGER);'
@@ -198,12 +190,14 @@ export class Kuratchi {
                 if (appliedTags.has(tag)) continue;
 
                 const migrationKey = `m${idx.toString().padStart(4, '0')}`;
-                let migrationSql = migrations.migrations[migrationKey];
-                if (!migrationSql) throw new Error(`Migration SQL not found for ${tag} with key ${migrationKey}`);
-                if (typeof migrationSql === 'function') migrationSql = await migrationSql();
-                if (typeof migrationSql === 'object' && (migrationSql as any).default) migrationSql = (migrationSql as any).default;
+                const raw = migrations.migrations[migrationKey];
+                if (!raw) throw new Error(`Migration SQL not found for ${tag} with key ${migrationKey}`);
+                let migrationText: string;
+                if (typeof raw === 'function') migrationText = await raw();
+                else if (typeof raw === 'object' && (raw as any).default) migrationText = (raw as any).default;
+                else migrationText = raw as string;
 
-                const statements = migrationSql.split('--> statement-breakpoint');
+                const statements = migrationText.split('--> statement-breakpoint');
                 const batchQueries = [] as { query: string; params: any[] }[];
                 for (const statement of statements) {
                     const trimmed = statement.trim();

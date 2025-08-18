@@ -1,4 +1,4 @@
-import { Kuratchi as InternalKuratchi } from './sdk.js';
+import { KuratchiHttpClient as InternalKuratchi } from './internal-http-client.js';
 import { CloudflareClientConfig, PrimaryLocationHint } from './cloudflare';
 export type { PrimaryLocationHint } from './cloudflare.js';
 import { KuratchiProvisioner } from './provisioner';
@@ -84,16 +84,23 @@ export class Kuratchi {
      * Create a stateless, lightweight handle bound to a specific database/token.
      * This only captures config and constructs an internal client per call.
      */
-    db(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
+    database(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
         return {
             query: <T>(sql: string, params: any[] = []) => this.getClient(cfg).query<T>(sql, params),
-            drizzle: () => this.getClient(cfg).getDrizzleProxy(),
+            drizzleProxy: () => this.getDrizzleClient(cfg),
             migrate: (bundle: { journal: MigrationJournal; migrations: Record<string, () => Promise<string>> }) =>
                 this.migrate(cfg, bundle),
             migrateWithLoader: (dir: string, loader: MigrationLoader) => this.migrateWithLoader(cfg, dir, loader),
             migrateAuto: (dirName: string) => this.migrateAuto(cfg, dirName),
             getClient: () => this.getClient(cfg),
         };
+    }
+
+    /**
+     * @deprecated Use database(cfg) instead. Will be removed in a future release.
+     */
+    db(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
+        return this.database(cfg);
     }
 
     /**

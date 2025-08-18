@@ -35,30 +35,30 @@ const sdk = new Kuratchi({
   workersSubdomain: 'your-subdomain.workers.dev',
 });
 
-// Create a per-database handle (token REQUIRED per database)
-const db = sdk.db({
-  databaseName: 'acme-db',
-  apiToken: process.env.WORKER_BEARER_TOKEN!,
-  // optional initial bookmark for read-replication session continuity
-  // bookmark: 'bm-123',
-});
-
 // Provision via SDK (creates DB, deploys default Worker, enables read replication)
 const { database, apiToken } = await sdk.createDatabase('acme-db', { location: 'weur' as const });
 // Keep apiToken secret; use it server-side only.
+
+// Create a per-database handle (token REQUIRED per database)
+const db = sdk.database({
+  databaseName: database.name, // use the name returned from provisioning
+  apiToken,                    // use the Worker bearer token returned above
+  // optional initial bookmark for read-replication session continuity
+  // bookmark: 'bm-123',
+});
 
 // Query
 const result = await db.query('SELECT 1 as one');
 console.log(result.success, result.results);
 
 // Drizzle adapter (sqlite-proxy style)
-const proxy = db.drizzle();
+const proxy = db.drizzleProxy();
 const drizzleClient = drizzle(proxy, { schema }); // uses sqlite-proxy from drizzle
 const rows = await drizzleClient.insert(schema.Users).values({ ...userData, id: crypto.randomUUID() }).returning().get();
 
 // Read-replication sessions: bookmark is auto-captured/updated via headers.
 // To start with a specific bookmark:
-const dbWithSession = sdk.db({ databaseName: 'acme-db', apiToken: process.env.WORKER_BEARER_TOKEN!, bookmark: 'bm-123' });
+const dbWithSession = sdk.database({ databaseName: 'acme-db', apiToken: process.env.WORKER_BEARER_TOKEN!, bookmark: 'bm-123' });
 await dbWithSession.query('SELECT 1');
 
 // Vite/SvelteKit: run migrations from /migrations-<dirName>/
@@ -71,8 +71,8 @@ await db.migrateAuto('client');
 
 ## API Reference (Summary)
 
-### Provisioning via SDK
-`src/lib/sdk.ts`
+### Provisioning (public)
+`src/lib/kuratchi.ts`
 
 ```ts
 // Instantiate SDK
@@ -97,10 +97,10 @@ new Kuratchi({ apiToken, accountId, workersSubdomain, endpointBase? })
 // Per-database operations (token REQUIRED per database)
 sdk.getClient({ databaseName, apiToken, bookmark? })
 sdk.getDrizzleClient({ databaseName, apiToken, bookmark? })
-sdk.db({ databaseName, apiToken, bookmark? }) // -> { query, drizzle, migrate, migrateWithLoader, getClient }
+sdk.database({ databaseName, apiToken, bookmark? }) // -> { query, drizzleProxy, migrate, migrateWithLoader, getClient }
 
 // Vite/SvelteKit one-call migration (uses import.meta.glob)
-sdk.db({ databaseName, apiToken }).migrateAuto(dirName)
+sdk.database({ databaseName, apiToken }).migrateAuto(dirName)
 
 // Migrations (runtime-agnostic loader)
 type MigrationJournal = { entries: { idx: number; tag: string }[] }
@@ -154,7 +154,7 @@ migrations-client/
 Then call:
 
 ```ts
-await sdk.db({ databaseName: 'acme-db', apiToken: WORKER_TOKEN }).migrateAuto('client');
+await sdk.database({ databaseName: 'acme-db', apiToken: WORKER_TOKEN }).migrateAuto('client');
 ```
 
 Under the hood this uses `import.meta.glob` via `src/lib/migrations-vite.ts` to load the journal and SQL lazily.
