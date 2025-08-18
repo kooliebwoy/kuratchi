@@ -91,6 +91,7 @@ export class Kuratchi {
             migrate: (bundle: { journal: MigrationJournal; migrations: Record<string, () => Promise<string>> }) =>
                 this.migrate(cfg, bundle),
             migrateWithLoader: (dir: string, loader: MigrationLoader) => this.migrateWithLoader(cfg, dir, loader),
+            migrateAuto: (dirName: string) => this.migrateAuto(cfg, dirName),
             getClient: () => this.getClient(cfg),
         };
     }
@@ -131,4 +132,33 @@ export class Kuratchi {
     }
 
     // Note: Vite-specific helpers removed to keep the SDK runtime-agnostic and stateless
+
+    /**
+     * Opinionated one-call migration for Vite-based apps (e.g., SvelteKit Workers).
+     * Uses import.meta.glob under the hood via a small helper module. This method
+     * dynamically imports the helper so non-Vite consumers are unaffected.
+     */
+    private async migrateAuto(
+        cfg: { databaseName: string; apiToken: string },
+        dirName: string
+    ) {
+        try {
+            // Dynamic import to avoid bundling Vite-specific code for non-Vite users
+            const mod = await import('./migrations-vite.js');
+            const loadMigrations = (mod as any).loadMigrations as (d: string) => Promise<{
+                journal: MigrationJournal;
+                migrations: Record<string, () => Promise<string>>;
+            }>;
+            if (typeof loadMigrations !== 'function') {
+                throw new Error('loadMigrations() not found in migrations-vite module');
+            }
+            const bundle = await loadMigrations(dirName);
+            return this.migrate(cfg, bundle);
+        } catch (err: any) {
+            const hint = 'This method requires a Vite environment with import.meta.glob support. ' +
+                'If you are not on Vite, use migrateWithLoader() or migrate() with your own bundle.';
+            err.message = `${err.message}\n${hint}`;
+            throw err;
+        }
+    }
 }
