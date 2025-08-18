@@ -1,9 +1,11 @@
 import { defineConfig } from 'vitest/config';
+import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
+  plugins: [sveltekit()],
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['src/tests/**/*.test.ts'],
     environment: 'node',
-    setupFiles: ['tests/setup/test-setup.ts'],
+    setupFiles: ['src/tests/setup/test-setup.ts'],
   },
 });

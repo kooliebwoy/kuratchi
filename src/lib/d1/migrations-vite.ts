@@ -4,7 +4,7 @@
 //   /migrations-<dirName>/<tag>.sql
 //
 // Example usage in app code (SvelteKit on Cloudflare Workers):
-//   await sdk.db({ databaseName, apiToken }).migrateAuto('client')
+//   await sdk.d1.database({ databaseName, apiToken }).migrateAuto('client')
 //
 // Note: This file relies on import.meta.glob which is provided by Vite.
 

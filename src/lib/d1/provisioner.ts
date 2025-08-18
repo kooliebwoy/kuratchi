@@ -1,5 +1,5 @@
-import { CloudflareClient, CloudflareClientConfig, PrimaryLocationHint } from './cloudflare';
-import { DEFAULT_WORKER_SCRIPT } from './worker-template';
+import { CloudflareClient, type CloudflareClientConfig, type PrimaryLocationHint } from '../cloudflare.js';
+import { DEFAULT_WORKER_SCRIPT } from './worker-template.js';
 
 export interface KuratchiProvisionerConfig extends CloudflareClientConfig {}
 
