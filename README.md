@@ -1,10 +1,10 @@
 # Kuratchi
 
-Drizzle-first toolkit for multi-organization Cloudflare D1. Opinionated. Built to prototype with AI and ship fast.
+Auth toolkit for multi-organization with Cloudflare D1. Opinionated. Built to be simple.
 
-- We believe in Drizzle.
-- Optimize for DX over knobs.
-- Stand up org DBs and auth quickly, iterate later.
+- Drizzle-first - This is all I know.
+- Patched together all my favorite things.
+- Stand up org DBs and auth quickly. Think MVP. For prototyping.
 
 ## Install
 
@@ -22,6 +22,7 @@ npm install kuratchi
   - client.migrateAuto(dirName)  // Vite/SvelteKit only
   - kuratchi.d1.migrateWithLoader(db, dir, loader) // non‑Vite
 
+- kuratchi.auth.createOrganization({ organizationName })
 - kuratchi.auth.createUser({ email, password, ... })
 - kuratchi.auth.authenticateUser(email, password)
 - kuratchi.auth.createSession(userId)
@@ -33,12 +34,10 @@ npm install kuratchi
 - kuratchi.auth.verifyEmailToken(token)
 
 ## How we expect you to use it (the flow)
-
-- Provision a per‑org D1
-- Use Drizzle via the sqlite‑proxy
-- Keep per‑DB Worker tokens server‑side
-- Use the Auth module on your org DB
-- Prototype with AI, ship, refine later
+- Provision an admin DB - This is where you'll store orgs and map everything (users, databases, api tokens, etc).
+- Provision a per‑org D1 - This is where you'll store your org's data.
+- Use Drizzle via the sqlite‑proxy to interact with your org DB like a normal drizzle client. You can use query() if you are hard core SQL person.
+- Use the Auth module on your org DB to handle auth at the org level. This will handle users, sessions, etc.
 
 ## Minimal example
 
@@ -57,30 +56,47 @@ const kuratchi = new Kuratchi({
 // 1) Provision org DB (once per org)
 const { database, apiToken } = await kuratchi.d1.createDatabase('acme-org');
 
-// 2) Connect + Drizzle
+// 2) Connect + Migrate
 const db = kuratchi.d1.database({ databaseName: database.name, apiToken });
-const proxy = db.drizzleProxy();
-const orm = drizzle(proxy, { schema });
-
-// 3) Migrate (Vite/SvelteKit projects)
 await db.migrateAuto('org'); // expects migrations-org/ with meta/_journal.json
 
-// 4) Auth on org DB
-const auth = kuratchi.auth.service(orm);
-const user = await auth.createUser({ email: 'a@b.co', password: 'secret' });
-await auth.authenticateUser('a@b.co', 'secret');
-const cookie = await auth.createSession(user.id);
-await auth.validateSessionToken(cookie);
+// 3) Drizzle
+const proxy = db.drizzleProxy();
+const orm = drizzle(proxy, { schema }); // this is using the drizzle sqlite proxy
+
+## Multi-org example
+
+// Create an organization - automatically provisions a database
+const organization = kuratchi.auth.createOrganization({ organizationName: 'org-name' });
+
+// Create a user only in the org DB
+const user = await organization.createUser({ email: 'a@b.co', password: 'secret' });
+
+// Authenticate a user
+const userAuthenticated = await organization.authenticateUser(user.id, 'secret');
+
+// Create a session
+const sessionToken = await organization.createSession(userAuthenticated.id);
+
+// Validate a session
+const sessionData = await organization.validateSessionToken(sessionToken);
+
+// Delete a session
+await organization.deleteSession(sessionToken);
+
+// Delete a user
+await organization.deleteUser(user.id);
+
+// Delete an organization
+await kuratchi.auth.deleteOrganization(organization.id);
 ```
 
-## Minimal env
+## Environment variables
 
 - CLOUDFLARE_API_TOKEN
 - CLOUDFLARE_ACCOUNT_ID
 - CLOUDFLARE_WORKERS_SUBDOMAIN
 - KURATCHI_AUTH_SECRET
-
-We keep this README intentionally short. Check the source for details.
 
 ## License
 

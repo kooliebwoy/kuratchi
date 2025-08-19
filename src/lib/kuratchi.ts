@@ -19,9 +19,8 @@ export interface KuratchiOptions {
         origin: string;
         resendAudience?: string;
         authSecret: string;
-        adminDatabaseName: string;
-        adminDatabaseApiToken: string;
-        adminApiToken: string;
+        // Bound D1 database for admin (e.g., platform.env.DB)
+        adminDb: any;
     };
 }
 

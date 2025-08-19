@@ -105,17 +105,17 @@ export class AuthService {
     }
 
     /**
-     * Get all users with their associated sites
-     * @returns Array of users with sites
+     * Get all users
+     * @returns Array of users
      */
     async getUsers(): Promise<any[]> {
         return this.db.select().from(this.schema.Users).all();
     }
 
     /**
-     * Get a specific user by ID with their associated sites
+     * Get a specific user by ID
      * @param id - User ID
-     * @returns User with sites or undefined
+     * @returns User or undefined
      */
     async getUser(id: string): Promise<any | undefined> {
         return this.db.select().from(this.schema.Users).where(eq(this.schema.Users.id, id)).get();
@@ -245,15 +245,6 @@ export class AuthService {
     }
 
     /**
-     * Get activities for a specific site
-     * @param siteId - Site ID
-     * @returns Array of activities for the site
-     */
-    async getSiteActivity(siteId: string): Promise<any[]> {
-        return this.db.select().from(this.schema.Activity).where(eq(this.schema.Activity.siteId, siteId)).all();
-    }
-
-    /**
      * Get paginated activities with search and filter options
      * @param limit - Number of items per page
      * @param page - Page number
@@ -282,14 +273,6 @@ export class AuthService {
                 User: {
                     columns: {
                         password_hash: false,
-                    }
-                },
-                Site: {
-                    columns: {
-                        id: true,
-                        name: true,
-                        projectName: true,
-                        domain: true
                     }
                 }
             },
@@ -331,10 +314,7 @@ export class AuthService {
      * @returns User if authentication successful, null otherwise
      */
     async authenticateUser(email: string, password: string): Promise<any | null> {
-        console.log('[AuthService.authenticateUser] Authenticating user:', email);
         const user = await this.getUserByEmail(email);
-
-        console.log('[AuthService.authenticateUser] User found:', user);
         
         if (!user || !user.password_hash) {
             return null;
@@ -342,8 +322,6 @@ export class AuthService {
 
         const pepper = this.env.KURATCHI_AUTH_SECRET; // use local key as pepper
         const isValidPassword = await comparePassword(password, user.password_hash, pepper);
-
-        console.log('[AuthService.authenticateUser] Password is valid:', isValidPassword);
         
         if (!isValidPassword) {
             return null;
@@ -408,22 +386,7 @@ export class AuthService {
             .returning()
             .all();
     }
-
-    /**
-     * Get all session IDs for a user efficiently using the session index
-     * @param userId - User ID
-     * @returns Array of session IDs
-     */
-    private async getUserSessionIds(userId: string): Promise<string[]> {
-        const rows = await this.db.select()
-            .from(this.schema.Sessions)
-            .where(eq(this.schema.Sessions.userId, userId))
-            .all();
-        // NOTE: sessionToken now stores the hash; returning hashes here is not useful to callers.
-        // This method remains for compatibility but should not be used for plaintext operations.
-        return rows.map((r: any) => r.sessionToken);
-    }
-
+    
     /**
      * Unified session creation/refresh method - the single source of truth
      * @param sessionId - Optional existing session ID (for refresh), generates new if not provided

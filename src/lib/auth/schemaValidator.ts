@@ -1,8 +1,9 @@
 // Lightweight schema contract validation for admin and organization databases
 // Expects a D1 client that implements query(sql: string, params?: any[]): Promise<{ success: boolean; results: any[] }>
+import type { QueryResult } from '../d1/internal-http-client.js';
 
 export type D1LikeClient = {
-  query: (sql: string, params?: any[]) => Promise<{ success: boolean; results: any[] }>
+  query: (sql: string, params?: any[]) => Promise<QueryResult<any>>
 }
 
 async function getColumns(client: D1LikeClient, table: string): Promise<Set<string>> {
