@@ -32,6 +32,17 @@ export const PasswordResetTokens = sqliteTable('passwordResetTokens', {
     ...timestamps
 });
 
+// Magic link tokens (DB-backed)
+export const MagicLinkTokens = sqliteTable('magicLinkTokens', {
+    id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    email: text("email").notNull(),
+    redirectTo: text("redirectTo"),
+    consumed_at: integer("consumed_at", { mode: "timestamp_ms" }),
+    expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+    ...timestamps
+});
+
 // Email verification tokens (DB-backed)
 export const EmailVerificationTokens = sqliteTable('emailVerificationToken', {
     id: text("id").primaryKey(),
@@ -81,6 +92,21 @@ export const Sessions = sqliteTable('session', {
         .notNull()
         .references(() => Users.id, { onDelete: "cascade" }),
     expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+    ...timestamps
+});
+
+// OAuth accounts (per provider)
+export const OAuthAccounts = sqliteTable('oauthAccounts', {
+    id: text("id").primaryKey(),
+    userId: text("userId").references(() => Users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId").notNull(),
+    access_token: text("access_token"),
+    refresh_token: text("refresh_token"),
+    expires_at: integer("expires_at", { mode: "timestamp_ms" }),
+    scope: text("scope"),
+    token_type: text("token_type"),
+    id_token: text("id_token"),
     ...timestamps
 });
 
@@ -157,6 +183,8 @@ export const dbApiTokensRelations = relations(DBApiTokens, ({ one }) => ({
 export type User = InferSelectModel<typeof Users>;
 export type Session = InferSelectModel<typeof Sessions>;
 export type PasswordResetToken = InferSelectModel<typeof PasswordResetTokens>;
+export type MagicLinkToken = InferSelectModel<typeof MagicLinkTokens>;
+export type OAuthAccount = InferSelectModel<typeof OAuthAccounts>;
 export type OrganizationUser = InferSelectModel<typeof OrganizationUsers>;
 export type Organization = InferSelectModel<typeof Organizations>;
 export type Activity = InferSelectModel<typeof Activity>;
@@ -169,6 +197,8 @@ export const adminSchema = {
     Organizations,
     Sessions,
     PasswordResetTokens,
+    MagicLinkTokens,
+    OAuthAccounts,
     EmailVerificationTokens,
     OrganizationUsers,
     Activity,

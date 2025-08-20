@@ -8,12 +8,8 @@ export function generateSessionToken(): string {
 	// Create a random array of 20 bytes (160 bits)
 	const bytes = new Uint8Array(20);
 	crypto.getRandomValues(bytes);
-	
-	// Convert to base64 and remove any special chars that might cause issues in URLs or cookies
-	return btoa(String.fromCharCode(...bytes))
-		.replace(/\+/g, '-')
-		.replace(/\//g, '_')
-		.replace(/=/g, '');
+	// Return URL-safe base64
+	return toBase64Url(bytes);
 }
 
 /**
@@ -176,20 +172,33 @@ export const hashToken = async (password: string): Promise<string> => {
 // Opaque session cookie envelope
 // ==============================
 
-// Minimal base64url helpers
-const toBase64Url = (buf: ArrayBuffer | Uint8Array) => {
-    const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-    let binary = "";
+// Base64url helpers (Node + Workers compatible)
+const _toBytes = (input: string | ArrayBuffer | Uint8Array) =>
+    typeof input === 'string' ? new TextEncoder().encode(input) : (input instanceof Uint8Array ? input : new Uint8Array(input));
+
+const _bytesToBase64 = (bytes: Uint8Array) => {
+    if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+    let binary = '';
     for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    // @ts-ignore
+    return btoa(binary);
 };
 
-const fromBase64Url = (b64url: string): Uint8Array => {
-    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64url.length / 4) * 4, '=');
+const _base64ToBytes = (b64: string) => {
+    if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(b64, 'base64'));
+    // @ts-ignore
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
+};
+
+const toBase64Url = (buf: ArrayBuffer | Uint8Array | string) =>
+    _bytesToBase64(_toBytes(buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+const fromBase64Url = (b64url: string): Uint8Array => {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64url.length / 4) * 4, '=');
+    return _base64ToBytes(b64);
 };
 
 // Derive an AES-GCM key directly from a secret string (32 bytes via SHA-256)

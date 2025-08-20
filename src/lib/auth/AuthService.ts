@@ -1,7 +1,8 @@
 import { eq, desc, asc, like, count, and, or } from "drizzle-orm";
 import { DrizzleD1Database } from "drizzle-orm/d1";
 import { comparePassword, hashPassword, generateSessionToken, hashToken, buildSessionCookie, parseSessionCookie } from "./utils.js";
-import { ResendService } from "./ResendService.js";
+import { EmailService } from "../email/EmailService.js";
+import { OrgService } from "../org/OrgService.js";
 import type { D1Database } from "@cloudflare/workers-types";
 
 // Session data built from DB on demand
@@ -44,9 +45,11 @@ interface Env {
 
 export class AuthService {
     private db: DrizzleD1Database<any>;
-    private env: Env; // Store env for ResendService creation
-    private resendService: ResendService;
+    private env: Env; // Store env for EmailService creation
+    
+    private emailService: EmailService;
     private schema: any;
+    private orgService: OrgService;
     
     /**
      * Creates an instance of AuthService that works with either D1 or Durable Object databases
@@ -61,8 +64,10 @@ export class AuthService {
     ) {
         this.db = db;
         this.env = env;
-        this.resendService = new ResendService(env); // Initialize ResendService for all email operations
+        this.emailService = new EmailService(env as any); // Centralized templated email sender
         this.schema = schema;
+        // Initialize OrgService to encapsulate roles and activity operations
+        this.orgService = new OrgService(db, env, schema);
     }
 
     /**
@@ -154,7 +159,8 @@ export class AuthService {
      * @returns Array of deleted users
      */
     async deleteUsers(): Promise<any[]> {
-        return this.db.delete(this.schema.Users).returning().all();
+        const rows = await this.db.delete(this.schema.Users).returning().all();
+        return rows as any[];
     }
 
     /**
@@ -172,21 +178,18 @@ export class AuthService {
      * @param roleData - Role data to insert (must include name and description)
      * @returns The created role
      */
+    // DEPRECATED: use OrgService.createRole()
     async createRole(roleData: any): Promise<any | undefined> {
-        return this.db.insert(this.schema.Roles).values({ 
-            ...roleData, 
-            id: crypto.randomUUID(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        }).returning().get();
+        return this.orgService.createRole(roleData);
     }
 
     /**
      * Get all roles
      * @returns Array of roles
      */
+    // DEPRECATED: use OrgService.getRoles()
     async getRoles(): Promise<any[]> {
-        return this.db.select().from(this.schema.Roles).all();
+        return this.orgService.getRoles();
     }
 
     /**
@@ -194,9 +197,9 @@ export class AuthService {
      * @param id - Role ID
      * @returns Role or undefined
      */
+    // DEPRECATED: use OrgService.getRole()
     async getRole(id: string): Promise<any | undefined> {
-        const result = await this.db.select().from(this.schema.Roles).where(eq(this.schema.Roles.id, id)).get();
-        return result;
+        return this.orgService.getRole(id);
     }
 
     /**
@@ -205,8 +208,9 @@ export class AuthService {
      * @param roleData - Partial role data to update
      * @returns Updated role
      */
+    // DEPRECATED: use OrgService.updateRole()
     async updateRole(id: string, roleData: Partial<any>): Promise<any | undefined> {
-        return this.db.update(this.schema.Roles).set({ ...roleData, updated_at: Date.now().toString() }).where(eq(this.schema.Roles.id, id)).returning().get();
+        return this.orgService.updateRole(id, roleData);
     }
 
     /**
@@ -214,8 +218,9 @@ export class AuthService {
      * @param id - Role ID
      * @returns Deleted role
      */
+    // DEPRECATED: use OrgService.deleteRole()
     async deleteRole(id: string): Promise<any | undefined> {
-        return this.db.delete(this.schema.Roles).where(eq(this.schema.Roles.id, id)).returning().get();
+        return this.orgService.deleteRole(id);
     }
 
     // Activity Methods
@@ -224,24 +229,18 @@ export class AuthService {
      * @param activity - Activity data to insert
      * @returns The created activity
      */
+    // DEPRECATED: use OrgService.createActivity()
     async createActivity(activity: any): Promise<any | undefined> {
-        return this.db.insert(this.schema.Activity).values({ 
-            ...activity, 
-            id: crypto.randomUUID(), 
-            created_at: new Date().toISOString(), 
-            updated_at: new Date().toISOString() 
-        }).returning().get();
+        return this.orgService.createActivity(activity);
     }
 
     /**
      * Get all activities with user information
      * @returns Array of activities with user data
      */
+    // DEPRECATED: use OrgService.getAllActivity()
     async getAllActivity(): Promise<any[]> {
-        return await this.db.select()
-            .from(this.schema.Activity)
-            .orderBy(desc(this.schema.Activity.created_at))
-            .all();
+        return this.orgService.getAllActivity();
     }
 
     /**
@@ -253,38 +252,9 @@ export class AuthService {
      * @param order - Sort order (asc or desc)
      * @returns Paginated activity data with total count
      */
+    // DEPRECATED: use OrgService.getPaginatedActivity()
     async getPaginatedActivity(limit = 10, page = 1, search = '', filter = '', order: 'asc' | 'desc' = 'desc'): Promise<{ data: any[], total: number }> {
-        // Build optional where clause
-        let whereOptions: any = undefined;
-        if (search && search.trim() !== '') {
-            whereOptions = like(this.schema.Activity.action, `%${search}%`);
-        }
-
-        // Total count
-        const [total] = await (this.db as any)
-            .select({ count: count() })
-            .from(this.schema.Activity)
-            .where(whereOptions as any);
-
-        // Data page
-        const activity = await (this.db as any).query.Activity.findMany({
-            where: whereOptions as any,
-            with: {
-                User: {
-                    columns: {
-                        password_hash: false,
-                    }
-                }
-            },
-            limit: limit,
-            offset: (page - 1) * limit,
-            orderBy: order === 'asc' ? asc(this.schema.Activity.created_at) : desc(this.schema.Activity.created_at)
-        });
-
-        return {
-            data: activity,
-            total: total?.count ?? 0
-        };
+        return this.orgService.getPaginatedActivity(limit, page, search, filter, order);
     }
 
     /**
@@ -432,12 +402,14 @@ export class AuthService {
 
         if (!userId) throw new Error('User ID is required to create or refresh a session');
 
-        // Ensure user exists
+        // Create a new session
         const userData = await this.getUser(userId);
-        if (!userData) throw new Error('User not found when creating/refreshing session');
-
-        // Encode organizationId (or 'admin' for admin sessions) into the session token prefix (no legacy fallbacks)
-        const organizationId = (userData as any).organizationId ?? 'admin';
+        if (!userData) throw new Error('User not found for session creation');
+        // Determine organization prefix for the session cookie
+        const organizationId = (userData as any).organizationId
+            ?? (userData as any).tenantId
+            ?? (userData as any).organization
+            ?? 'admin';
         const prefix = String(organizationId);
         const finalSessionId = `${prefix}.${generateSessionToken()}`;
         const sessionTokenHash = await hashToken(finalSessionId);
@@ -449,7 +421,7 @@ export class AuthService {
             updated_at: now.toISOString(),
             deleted_at: null,
         }).returning().get();
-        // Build opaque cookie: encrypt { organizationId: prefix|admin, tokenHash }
+        // Build opaque cookie envelope from orgId and tokenHash
         const cookie = await buildSessionCookie(this.env.KURATCHI_AUTH_SECRET, prefix as any, sessionTokenHash);
         return cookie;
     }
@@ -577,7 +549,10 @@ export class AuthService {
         const now = new Date();
         return {
             userId: userData.id,
-            organizationId: (userData as any).organizationId || '',
+            organizationId: (userData as any).organizationId
+                ?? (userData as any).tenantId
+                ?? (userData as any).organization
+                ?? '',
             email: userData.email,
             roles,
             isEmailVerified: userData.emailVerified ? true : false,
@@ -589,7 +564,10 @@ export class AuthService {
                 name: userData.name,
                 role: userData.role,
                 organizationSlug: (userData as any).organizationSlug ?? null,
-                organizationId: (userData as any).organizationId ?? null
+                organizationId: (userData as any).organizationId
+                    ?? (userData as any).tenantId
+                    ?? (userData as any).organization
+                    ?? null
             },
             createdAt: now,
             lastAccessedAt: now,
@@ -620,8 +598,8 @@ export class AuthService {
             .delete(this.schema.PasswordResetTokens)
             .where(eq(this.schema.PasswordResetTokens.token, token))
             .returning()
-            .all();
-        return result.length > 0;
+            .all() as any[];
+        return (Array.isArray(result) ? result.length : 0) > 0;
     }
 
     async getPasswordResetToken(token: string) {
@@ -705,7 +683,7 @@ export class AuthService {
      */
     async sendVerificationToken(email: string, emailFrom: string): Promise<{ success: boolean; data?: any; error?: string }> {
         console.log('[AuthService.sendVerificationToken] Starting for email:', email, 'emailFrom:', emailFrom);
-        console.log('[AuthService.sendVerificationToken] ResendService exists:', !!this.resendService);
+        
         console.log('[AuthService.sendVerificationToken] Database exists:', !!this.db);
         
         try {
@@ -746,18 +724,14 @@ export class AuthService {
                 };
             }
 
-            console.log('[AuthService.sendVerificationToken] Calling ResendService.sendVerificationToken with token:', tokenData.token);
-            // Delegate email sending to ResendService
-            const result = await this.resendService.sendVerificationToken(email, tokenData.token, emailFrom);
-            
-            console.log('[AuthService.sendVerificationToken] ResendService result:', {
-                success: result?.success,
-                hasData: !!result?.data,
-                error: result?.error,
-                emailId: result?.data?.emailId
-            });
-            
-            return result;
+            console.log('[AuthService.sendVerificationToken] Sending via EmailService templated email with token:', tokenData.token);
+            const sent = await this.emailService.sendVerification(email, tokenData.token, { from: emailFrom });
+            const emailId = (sent as any)?.id;
+            console.log('[AuthService.sendVerificationToken] EmailService result:', { emailId });
+            return {
+                success: true,
+                data: { message: 'Verification token sent successfully', emailId }
+            };
             
         } catch (error) {
             console.error('[AuthService.sendVerificationToken] EXCEPTION:', error);
@@ -814,6 +788,159 @@ export class AuthService {
         await this.deleteEmailVerificationTokenByEmail(email);
         
         return { success: true, user: updatedUser };
+    }
+
+    // =====================
+    // Magic Link
+    // =====================
+
+    async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) {
+        const now = new Date();
+        const expires = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+        const token = generateSessionToken();
+        const inserted = await this.db
+            .insert(this.schema.MagicLinkTokens)
+            .values({
+                id: crypto.randomUUID(),
+                token,
+                email,
+                redirectTo: redirectTo || null,
+                consumed_at: null,
+                expires,
+                created_at: now.toISOString(),
+                updated_at: now.toISOString(),
+                deleted_at: null
+            })
+            .returning()
+            .get();
+        return { token, expires: inserted?.expires ?? expires, redirectTo: inserted?.redirectTo ?? redirectTo };
+    }
+
+    async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: any; error?: string }> {
+        const row = await this.db
+            .select()
+            .from(this.schema.MagicLinkTokens)
+            .where(eq(this.schema.MagicLinkTokens.token, token))
+            .get();
+        if (!row) return { success: false, error: 'Invalid or expired token' };
+        const now = new Date();
+        const expired = row.expires && new Date(row.expires).getTime() <= now.getTime();
+        if (expired) return { success: false, error: 'Token expired' };
+        if (row.consumed_at) return { success: false, error: 'Token already used' };
+
+        // Mark consumed
+        await this.db.update(this.schema.MagicLinkTokens)
+            .set({ consumed_at: now, updated_at: now.toISOString() })
+            .where(eq(this.schema.MagicLinkTokens.id, row.id))
+            .returning()
+            .get();
+
+        // Ensure user exists
+        let user = await this.getUserByEmail(row.email);
+        if (!user) {
+            user = await this.createUser({ email: row.email, emailVerified: now });
+        } else if (!user.emailVerified) {
+            await this.updateUser(user.id, { emailVerified: now });
+        }
+
+        // Create session cookie
+        const cookie = await this.upsertSession({ userId: user.id });
+        return { success: true, cookie, redirectTo: row.redirectTo || '/', user };
+    }
+
+    async sendMagicLink(email: string, link: string, opts?: { from?: string; subject?: string }) {
+        return this.emailService.sendMagicLink(email, link, opts);
+    }
+
+    // =====================
+    // OAuth
+    // =====================
+    async getOrCreateUserFromOAuth(params: {
+        provider: string;
+        providerAccountId: string;
+        email?: string;
+        name?: string | null;
+        image?: string | null;
+        tokens?: {
+            access_token?: string;
+            refresh_token?: string;
+            expires_at?: number | Date | null;
+            scope?: string | null;
+            token_type?: string | null;
+            id_token?: string | null;
+        };
+    }): Promise<any> {
+        const { provider, providerAccountId, email, name, image, tokens } = params;
+        // Try existing link
+        const existing = await this.db
+            .select()
+            .from(this.schema.OAuthAccounts)
+            .where(and(
+                eq(this.schema.OAuthAccounts.provider, provider),
+                eq(this.schema.OAuthAccounts.providerAccountId, providerAccountId)
+            ))
+            .get();
+        if (existing?.userId) {
+            const u = await this.getUser(existing.userId);
+            if (u) return u;
+        }
+
+        // Find or create user by email
+        let user: any = null;
+        if (email) {
+            user = await this.getUserByEmail(email);
+        }
+        if (!user) {
+            user = await this.createUser({
+                email: email!,
+                name: name ?? null,
+                image: image ?? null,
+                emailVerified: new Date()
+            }, false);
+        }
+
+        // Upsert OAuth account
+        const now = new Date();
+        const expires_at = tokens?.expires_at ? (typeof tokens.expires_at === 'number' ? new Date(tokens.expires_at) : tokens.expires_at) : null;
+        // Try insert; if conflict not supported here, fallback to update
+        try {
+            await this.db.insert(this.schema.OAuthAccounts).values({
+                id: crypto.randomUUID(),
+                userId: user.id,
+                provider,
+                providerAccountId,
+                access_token: tokens?.access_token ?? null,
+                refresh_token: tokens?.refresh_token ?? null,
+                expires_at: expires_at,
+                scope: tokens?.scope ?? null,
+                token_type: tokens?.token_type ?? null,
+                id_token: tokens?.id_token ?? null,
+                created_at: now.toISOString(),
+                updated_at: now.toISOString(),
+                deleted_at: null,
+            }).returning().get();
+        } catch {
+            // Update existing row
+            await this.db.update(this.schema.OAuthAccounts)
+                .set({
+                    userId: user.id,
+                    access_token: tokens?.access_token ?? null,
+                    refresh_token: tokens?.refresh_token ?? null,
+                    expires_at: expires_at,
+                    scope: tokens?.scope ?? null,
+                    token_type: tokens?.token_type ?? null,
+                    id_token: tokens?.id_token ?? null,
+                    updated_at: now.toISOString(),
+                })
+                .where(and(
+                    eq(this.schema.OAuthAccounts.provider, provider),
+                    eq(this.schema.OAuthAccounts.providerAccountId, providerAccountId)
+                ))
+                .returning()
+                .get();
+        }
+
+        return user;
     }
 
 }

@@ -36,8 +36,10 @@ export class CloudflareClient {
             }
         });
         if (!res.ok) {
+            // Read once as text to avoid "Body is unusable" when attempting multiple reads
+            const raw = await res.text();
             let errBody: any = undefined;
-            try { errBody = await res.json(); } catch { errBody = await res.text(); }
+            try { errBody = JSON.parse(raw); } catch { errBody = raw; }
             throw new Error(`Cloudflare API ${res.status} ${res.statusText}: ${typeof errBody === 'string' ? errBody : JSON.stringify(errBody)}`);
         }
         const ct = res.headers.get('content-type') || '';
@@ -137,8 +139,9 @@ export class CloudflareClient {
             body: form
         });
         if (!res.ok) {
+            const raw = await res.text();
             let errBody: any = undefined;
-            try { errBody = await res.json(); } catch { errBody = await res.text(); }
+            try { errBody = JSON.parse(raw); } catch { errBody = raw; }
             throw new Error(`Failed to upload worker: ${typeof errBody === 'string' ? errBody : JSON.stringify(errBody)}`);
         }
         return res.json() as Promise<CloudflareAPIResponse<any>>;

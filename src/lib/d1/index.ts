@@ -39,6 +39,13 @@ export class KuratchiD1 {
     const { database, apiToken } = await this.provisioner.provisionDatabase(databaseName, {
       location: options.location,
     });
+    // Best-effort: wait for the worker HTTP endpoint to become responsive
+    try {
+      const workerName = (database as any)?.name || databaseName;
+      await this.waitForWorkerEndpoint(workerName, apiToken);
+    } catch {
+      // Non-fatal; migrations may still succeed shortly after
+    }
     return { database, apiToken };
   }
 
@@ -119,5 +126,28 @@ export class KuratchiD1 {
       err.message = `${err.message}\n${hint}`;
       throw err;
     }
+  }
+
+  // Ensure Worker endpoint is reachable before attempting migrations
+  private async waitForWorkerEndpoint(databaseName: string, apiToken: string) {
+    const client = this.getClient({ databaseName, apiToken });
+    const deadline = Date.now() + 30_000; // up to 30s
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    while (true) {
+      try {
+        const res: any = await client.query('SELECT 1');
+        // makeRequest returns { success: false, error } on non-2xx; otherwise returns JSON payload
+        if (!res || res.success === false) {
+          if (Date.now() > deadline) break;
+          await sleep(500);
+          continue;
+        }
+        return true;
+      } catch {
+        if (Date.now() > deadline) break;
+        await sleep(500);
+      }
+    }
+    return false;
   }
 }

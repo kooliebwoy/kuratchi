@@ -56,6 +56,17 @@ export const EmailVerificationTokens = sqliteTable('emailVerificationToken', {
     ...timestamps
 });
 
+// Magic link tokens (per-organization)
+export const MagicLinkTokens = sqliteTable('magicLinkTokens', {
+    id: text("id").primaryKey(),
+    token: text("token").notNull(),
+    email: text("email").notNull(),
+    redirectTo: text("redirectTo"),
+    consumed_at: integer("consumed_at", { mode: "timestamp_ms" }),
+    expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+    ...timestamps
+});
+
 // Activity log
 export const Activity = sqliteTable('activity', {
     id: text("id").primaryKey(),
@@ -88,6 +99,21 @@ export const Roles = sqliteTable('roles', {
     ...timestamps
 });
 
+// OAuth accounts (per provider, per-organization)
+export const OAuthAccounts = sqliteTable('oauthAccounts', {
+    id: text("id").primaryKey(),
+    userId: text("userId").references(() => Users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId").notNull(),
+    access_token: text("access_token"),
+    refresh_token: text("refresh_token"),
+    expires_at: integer("expires_at", { mode: "timestamp_ms" }),
+    scope: text("scope"),
+    token_type: text("token_type"),
+    id_token: text("id_token"),
+    ...timestamps
+});
+
 // Relations
 export const UserRelations = relations(Users, ({ many }) => ({
     Sessions: many(Sessions),
@@ -109,9 +135,11 @@ export const organizationSchema = {
     Sessions,
     PasswordResetTokens,
     EmailVerificationTokens,
+    MagicLinkTokens,
     Activity,
     Sites,
     Roles,
+    OAuthAccounts,
     // Relations
     UserRelations,
     SessionRelations,
