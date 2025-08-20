@@ -78,6 +78,35 @@ const orm = drizzle(proxy, { schema }); // this is using the drizzle sqlite prox
 - CLOUDFLARE_WORKERS_SUBDOMAIN
 - KURATCHI_AUTH_SECRET
 
+## CLI (Admin D1 provisioning)
+
+Kuratchi includes a small CLI to create and delete the admin D1 database via Cloudflare.
+
+- __Create__: `kuratchi admin create [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>`
+- __Destroy__: `kuratchi admin destroy --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>`
+- __Env fallbacks__: CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID, CF_API_TOKEN | CLOUDFLARE_API_TOKEN, CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN
+  - __Config discovery__: kuratchi.config.json | kuratchi.config.mjs | kuratchi.config.js | kuratchi.config.example.mjs or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }
+    - Use .mjs/.js to reference `process.env` for secrets. JSON cannot reference env.
+    - You can copy `kuratchi.config.example.mjs` to `kuratchi.config.mjs` as a starting point.
+  - __Defaults__: If `--name` is omitted, the database will be created as `kuratchi-admin`.
+  - __Spinner__: Shows a progress spinner on TTY by default; pass `--no-spinner` to disable. Spinner writes to stderr and will not affect JSON output on stdout.
+
+Examples:
+
+```sh
+# Create admin DB (name defaults to kuratchi-admin)
+kuratchi admin create \
+  --account-id "$CLOUDFLARE_ACCOUNT_ID" \
+  --api-token "$CLOUDFLARE_API_TOKEN" \
+  --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"
+
+# Delete by database UUID
+kuratchi admin destroy \
+  --id <dbuuid> \
+  --account-id "$CF_ACCOUNT_ID" \
+  --api-token "$CF_API_TOKEN"
+```
+
 ## SvelteKit auth quickstart
 
 Kuratchi ships a SvelteKit handle that wires up session cookies, magic link, and Google OAuth endpoints for you.

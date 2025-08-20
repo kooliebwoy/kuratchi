@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+
+// Kuratchi CLI: provision and manage D1 admin databases via Cloudflare
+// Commands:
+//   kuratchi admin create  [--name <db>] --account-id <id> --api-token <token> --workers-subdomain <sub>
+//   kuratchi admin destroy --id <dbuuid> --account-id <id> --api-token <token>
+//
+// Env fallbacks:
+//   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID,
+//   CF_API_TOKEN | CLOUDFLARE_API_TOKEN,
+//   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN
+//
+// Config discovery (optional):
+//   - kuratchi.config.json | kuratchi.config.mjs | kuratchi.config.js
+//   - package.json { "kuratchi": { ... } }
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+function usage() {
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create  [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin destroy --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n\nNotes:\n  - If --name is omitted, the database will be created as 'kuratchi-admin'.\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+}
+
+function parseArgs(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('-')) { out._.push(a); continue; }
+    const next = argv[i + 1];
+    const take = (k) => { out[k] = next; i++; };
+    switch (a) {
+      case '-h': case '--help': out.help = true; break;
+      case '--name': case '-n': take('name'); break;
+      case '--id': case '-i': take('id'); break;
+      case '--account-id': case '-A': take('accountId'); break;
+      case '--api-token': case '-T': take('apiToken'); break;
+      case '--workers-subdomain': case '-S': take('workersSubdomain'); break;
+      case '--no-spinner': out.noSpinner = true; break;
+      // no location/format options in the simplified CLI
+      default:
+        if (a.startsWith('--')) {
+          const [k, v] = a.slice(2).split('=');
+          out[k] = v ?? true;
+        } else {
+          out._.push(a);
+        }
+    }
+  }
+  return out;
+}
+
+function createSpinner(label, enabled = true) {
+  if (!enabled) return { stop: () => {} };
+  const frames = ['-', '\\', '|', '/'];
+  let i = 0;
+  const write = (s) => { try { process.stderr.write(s); } catch {} };
+  let timer;
+  write(`${label} ${frames[0]}`);
+  timer = setInterval(() => {
+    i = (i + 1) % frames.length;
+    write(`\r${label} ${frames[i]}`);
+  }, 100);
+  return {
+    stop: () => {
+      try { clearInterval(timer); } catch {}
+      write(`\r${label} done\n`);
+    }
+  };
+}
+
+async function loadConfig(cwd = process.cwd()) {
+  const pkgPath = path.join(cwd, 'package.json');
+  let pkgCfg = {};
+  try {
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg && typeof pkg.kuratchi === 'object' && pkg.kuratchi) {
+        pkgCfg = pkg.kuratchi;
+      }
+    }
+  } catch {}
+  const candidates = ['kuratchi.config.json', 'kuratchi.config.mjs', 'kuratchi.config.js'];
+  let fileCfg = {};
+  for (const fname of candidates) {
+    const p = path.join(cwd, fname);
+    if (!fs.existsSync(p)) continue;
+    try {
+      if (fname.endsWith('.json')) {
+        fileCfg = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
+      } else {
+        const mod = await import(pathToFileURL(p).href);
+        fileCfg = (mod && (mod.default || mod.config)) || {};
+      }
+      break;
+    } catch {}
+  }
+  return { ...pkgCfg, ...fileCfg };
+}
+
+async function importKuratchiD1() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.join(here, '..', 'dist', 'd1', 'index.js');
+  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
+  // Fallback error with hint
+  throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
+}
+
+function randSuffix(len = 6) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+async function adminCreate(opts) {
+  const cfg = await loadConfig();
+  const accountId = opts.accountId || process.env.CF_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || cfg.accountId;
+  const apiToken = opts.apiToken || process.env.CF_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN || cfg.apiToken;
+  const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
+  if (!accountId || !apiToken || !workersSubdomain) {
+    throw new Error('Missing credentials. Provide --account-id, --api-token, --workers-subdomain or set CF_* or CLOUDFLARE_* equivalents.');
+  }
+  const name = opts.name || 'kuratchi-admin';
+
+  const { KuratchiD1 } = await importKuratchiD1();
+  const d1 = new KuratchiD1({ accountId, apiToken, workersSubdomain });
+  const { database, apiToken: dbToken } = await d1.createDatabase(name);
+  const dbName = database?.name || name;
+  const dbId = database?.uuid || database?.id || null;
+  const endpoint = `https://${dbName}.${workersSubdomain}`;
+  return {
+    ok: true,
+    databaseId: dbId,
+    databaseName: dbName,
+    apiToken: dbToken,
+    workersSubdomain,
+    endpoint,
+  };
+}
+
+async function adminDestroy(opts) {
+  const cfg = await loadConfig();
+  const accountId = opts.accountId || process.env.CF_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || cfg.accountId;
+  const apiToken = opts.apiToken || process.env.CF_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN || cfg.apiToken;
+  if (!accountId || !apiToken) {
+    throw new Error('Missing credentials. Provide --account-id and --api-token or set CF_* or CLOUDFLARE_* equivalents.');
+  }
+  const id = opts.id;
+  if (!id) throw new Error('Provide --id <database uuid>');
+  const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain || 'workers.dev';
+  const { KuratchiD1 } = await importKuratchiD1();
+  const d1 = new KuratchiD1({ accountId, apiToken, workersSubdomain });
+  await d1.deleteDatabase(id);
+  return { ok: true, deletedId: id };
+}
+
+async function main() {
+  const argv = parseArgs(process.argv.slice(2));
+  if (argv.help || argv._.length === 0) {
+    usage();
+    return;
+  }
+  const [scope, cmd] = argv._;
+  try {
+    const spinnerEnabled = !argv.noSpinner && process.stderr.isTTY && !process.env.CI;
+    if (scope === 'admin' && cmd === 'create') {
+      const sp = createSpinner('Creating admin database', spinnerEnabled);
+      let res;
+      try {
+        res = await adminCreate(argv);
+      } finally {
+        sp.stop();
+      }
+      console.log(JSON.stringify(res, null, 2));
+    } else if (scope === 'admin' && cmd === 'destroy') {
+      const sp = createSpinner('Destroying admin database', spinnerEnabled);
+      let res;
+      try {
+        res = await adminDestroy(argv);
+      } finally {
+        sp.stop();
+      }
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      usage();
+      process.exitCode = 2;
+    }
+  } catch (err) {
+    console.error('[kuratchi] Error:', err?.message || err);
+    process.exitCode = 1;
+  }
+}
+
+main();
