@@ -27,16 +27,6 @@ export class KuratchiHttpClient {
         this.token = config.apiToken;
     }
 
-    withToken(token?: string) {
-        const k = new KuratchiHttpClient({
-            databaseName: this.getDatabaseNameFromEndpoint(),
-            workersSubdomain: this.getSubdomainFromEndpoint(),
-            apiToken: token ?? this.token,
-        });
-        k.bookmark = this.bookmark;
-        return k;
-    }
-
     // ---- Session bookmark helpers ----
     setSessionBookmark(bookmark?: string) {
         this.bookmark = bookmark;
@@ -102,12 +92,7 @@ export class KuratchiHttpClient {
     async query<T>(query: string, params: any[] = []): Promise<QueryResult<T>> {
         return this.makeRequest('/api/run', { query, params });
     }
-
-    async queryWithToken<T>(token: string, query: string, params: any[] = []): Promise<QueryResult<T>> {
-        const k = this.withToken(token);
-        return k.query<T>(query, params);
-    }
-
+    
     async exec(query: string): Promise<QueryResult<any>> {
         return this.makeRequest('/api/exec', { query });
     }

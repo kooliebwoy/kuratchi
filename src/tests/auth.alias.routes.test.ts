@@ -5,6 +5,45 @@ import * as authModule from '../lib/auth/kuratchi-auth.js';
 
 function makeAdminDbStub(opts?: { slugToOrgId?: Record<string, string>; singleActiveOrgId?: string; emailToOrgId?: Record<string, string> }) {
   return {
+    // Minimal HTTP-client like interface used by KuratchiAuth schema validation
+    async query(sql: string, params?: any[]) {
+      const sqlStr = String(sql);
+      // Emulate sqlite_master existence checks
+      if (/sqlite_master/i.test(sqlStr)) {
+        return { success: true, results: [{ name: 'exists' }] } as any;
+      }
+      // Emulate PRAGMA table_info(...) returning column names
+      if (/PRAGMA\s+table_info/i.test(sqlStr)) {
+        const cols = [
+          { name: 'id' },
+          { name: 'organizationSlug' },
+          { name: 'email' },
+          { name: 'organizationId' },
+          { name: 'sessionToken' },
+          { name: 'userId' },
+          { name: 'expires' },
+          { name: 'token' },
+          { name: 'databaseId' },
+          { name: 'action' },
+        ];
+        return { success: true, results: cols } as any;
+      }
+      // Email -> org mapping lookup used by route helper
+      if (/from\s+(?:`|"|\b)?organizationUsers(?:`|"|\b)/i.test(sqlStr) && /email/i.test(sqlStr)) {
+        const email = params?.[0];
+        const organizationId = opts?.emailToOrgId?.[String(email)];
+        return { success: true, results: organizationId ? [{ organizationId }] : [] } as any;
+      }
+      return { success: true, results: [] } as any;
+    },
+
+    // Drizzle proxy shape presence check in KuratchiAuth constructor
+    getDrizzleProxy() {
+      return async (_sql: string, _params: any[], _method: string) => {
+        return { rows: [] };
+      };
+    },
+
     prepare(sql: string) {
       const self: any = {
         _sql: sql,

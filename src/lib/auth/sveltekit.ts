@@ -1,47 +1,77 @@
 import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { KuratchiAuth } from './kuratchi-auth.js';
 import { parseSessionCookie } from './utils.js';
+import { KuratchiHttpClient } from '../d1/internal-http-client.js';
 
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
 
 export interface CreateAuthHandleOptions {
   cookieName?: string;
-  // Override how to fetch the admin D1 binding (defaults to event.platform.env.ADMIN_DB)
-  getAdminDb?: (event: RequestEvent) => any;
-  // Override how to read env (defaults to event.platform.env)
-  getEnv?: (event: RequestEvent) => {
-    RESEND_API_KEY: string;
-    EMAIL_FROM: string;
-    ORIGIN: string;
-    RESEND_CLUTCHCMS_AUDIENCE?: string;
-    KURATCHI_AUTH_SECRET: string;
-    CLOUDFLARE_WORKERS_SUBDOMAIN?: string;
-    CLOUDFLARE_ACCOUNT_ID: string;
-    CLOUDFLARE_API_TOKEN: string;
-    GOOGLE_CLIENT_ID?: string;
-    GOOGLE_CLIENT_SECRET?: string;
-    AUTH_WEBHOOK_SECRET?: string;
-  };
+  // Optional override to provide an admin DB client. Can be async.
+  getAdminDb?: (event: RequestEvent) => any | Promise<any>;
+  // Optional override to provide env. Can be async. Defaults to $env/dynamic/private values.
+  getEnv?: (event: RequestEvent) =>
+    | Promise<{
+        RESEND_API_KEY: string;
+        EMAIL_FROM: string;
+        ORIGIN: string;
+        RESEND_CLUTCHCMS_AUDIENCE?: string;
+        KURATCHI_AUTH_SECRET: string;
+        CLOUDFLARE_WORKERS_SUBDOMAIN: string;
+        CLOUDFLARE_ACCOUNT_ID: string;
+        CLOUDFLARE_API_TOKEN: string;
+        GOOGLE_CLIENT_ID?: string;
+        GOOGLE_CLIENT_SECRET?: string;
+        AUTH_WEBHOOK_SECRET?: string;
+        KURATCHI_ADMIN_DB_NAME?: string;
+        KURATCHI_ADMIN_DB_TOKEN?: string;
+      }>
+    | {
+        RESEND_API_KEY: string;
+        EMAIL_FROM: string;
+        ORIGIN: string;
+        RESEND_CLUTCHCMS_AUDIENCE?: string;
+        KURATCHI_AUTH_SECRET: string;
+        CLOUDFLARE_WORKERS_SUBDOMAIN: string;
+        CLOUDFLARE_ACCOUNT_ID: string;
+        CLOUDFLARE_API_TOKEN: string;
+        GOOGLE_CLIENT_ID?: string;
+        GOOGLE_CLIENT_SECRET?: string;
+        AUTH_WEBHOOK_SECRET?: string;
+        KURATCHI_ADMIN_DB_NAME?: string;
+        KURATCHI_ADMIN_DB_TOKEN?: string;
+      };
 }
 
 export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle {
   const cookieName = options.cookieName || KURATCHI_SESSION_COOKIE;
 
-  const getAdminDb = options.getAdminDb || ((event: RequestEvent) => (event.platform as any)?.env?.ADMIN_DB);
-  const getEnv = options.getEnv || ((event: RequestEvent) => {
-    const env = (event.platform as any)?.env || {};
+  const getEnv = options.getEnv || (async (_event: RequestEvent) => {
+    let dynamicEnv: any = undefined;
+    try {
+      const mod: any = await import('$env/dynamic/private');
+      dynamicEnv = mod?.env;
+    } catch {}
+    const env = dynamicEnv || {};
+    const pick = (key: string) => {
+      const v = env?.[key];
+      return v !== undefined && v !== null && String(v).length > 0 ? String(v) : undefined;
+    };
     return {
-      RESEND_API_KEY: env.RESEND_API_KEY,
-      EMAIL_FROM: env.EMAIL_FROM,
-      ORIGIN: env.ORIGIN,
-      RESEND_CLUTCHCMS_AUDIENCE: env.RESEND_CLUTCHCMS_AUDIENCE,
-      KURATCHI_AUTH_SECRET: env.KURATCHI_AUTH_SECRET,
-      CLOUDFLARE_WORKERS_SUBDOMAIN: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-      CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID,
-      CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN,
-      GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
-      AUTH_WEBHOOK_SECRET: env.AUTH_WEBHOOK_SECRET
+      // Prefer new names; keep compatibility fallbacks where applicable
+      RESEND_API_KEY: pick('RESEND_EMAIL_API_KEY') || pick('KURATCHI_RESEND_API_KEY') || pick('RESEND_API_KEY'),
+      EMAIL_FROM: pick('KURATCHI_EMAIL_FROM') || pick('EMAIL_FROM'),
+      ORIGIN: pick('KURATCHI_ORIGIN') || pick('ORIGIN'),
+      RESEND_CLUTCHCMS_AUDIENCE: pick('KURATCHI_RESEND_CLUTCHCMS_AUDIENCE') || pick('RESEND_CLUTCHCMS_AUDIENCE'),
+      KURATCHI_AUTH_SECRET: pick('KURATCHI_AUTH_SECRET')!,
+      CLOUDFLARE_WORKERS_SUBDOMAIN: pick('KURATCHI_CLOUDFLARE_WORKERS_SUBDOMAIN') || pick('CLOUDFLARE_WORKERS_SUBDOMAIN')!,
+      CLOUDFLARE_ACCOUNT_ID: pick('KURATCHI_CLOUDFLARE_ACCOUNT_ID') || pick('CLOUDFLARE_ACCOUNT_ID')!,
+      CLOUDFLARE_API_TOKEN: pick('KURATCHI_CLOUDFLARE_API_TOKEN') || pick('CLOUDFLARE_API_TOKEN')!,
+      GOOGLE_CLIENT_ID: pick('GOOGLE_CLIENT_ID'),
+      GOOGLE_CLIENT_SECRET: pick('GOOGLE_CLIENT_SECRET'),
+      AUTH_WEBHOOK_SECRET: pick('AUTH_WEBHOOK_SECRET'),
+      KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
+      KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN')
     } as any;
   });
 
@@ -118,39 +148,90 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       event.cookies.delete(cookieName, { path: '/' });
     };
 
-    const env = getEnv(event);
-    const adminDb = getAdminDb(event);
+    const url = new URL(event.request.url);
+    const pathname = url.pathname;
 
-    // Helper to build KuratchiAuth
-    const getKuratchi = () => new KuratchiAuth({
-      resendApiKey: env.RESEND_API_KEY,
-      emailFrom: env.EMAIL_FROM,
-      origin: env.ORIGIN,
-      resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
-      authSecret: env.KURATCHI_AUTH_SECRET,
-      workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-      accountId: env.CLOUDFLARE_ACCOUNT_ID,
-      apiToken: env.CLOUDFLARE_API_TOKEN,
-      adminDb
-    });
+    // Resolve env strictly and fail fast on the minimal values needed at this point
+    const env = await getEnv(event as any as RequestEvent) as any;
+    if (!env?.KURATCHI_AUTH_SECRET) {
+      return new Response('[Kuratchi] Missing required environment variables: KURATCHI_AUTH_SECRET', { status: 500 });
+    }
 
-    // Helper: look up organizationId by email in admin DB (raw D1 for compatibility)
+    // Lazily create admin DB and KuratchiAuth only when needed
+    let adminDbInst: any | null = null;
+    const getAdminDbLazy = async (): Promise<any> => {
+      if (adminDbInst) return adminDbInst;
+      if (options.getAdminDb) {
+        adminDbInst = await options.getAdminDb(event as any as RequestEvent);
+      } else {
+        const adminMissing = ['KURATCHI_ADMIN_DB_NAME', 'KURATCHI_ADMIN_DB_TOKEN', 'CLOUDFLARE_WORKERS_SUBDOMAIN'].filter((k) => !env?.[k]);
+        if (adminMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${adminMissing.join(', ')}`);
+        adminDbInst = new KuratchiHttpClient({
+          databaseName: env.KURATCHI_ADMIN_DB_NAME,
+          workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
+          apiToken: env.KURATCHI_ADMIN_DB_TOKEN
+        });
+      }
+      return adminDbInst;
+    };
+
+    let kuratchi: KuratchiAuth | null = null;
+    const getKuratchi = async (): Promise<KuratchiAuth> => {
+      if (kuratchi) return kuratchi;
+      // Validate Cloudflare env required for KuratchiAuth usage
+      const cfMissing = ['CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'].filter((k) => !env?.[k]);
+      if (cfMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${cfMissing.join(', ')}`);
+      const adminDb = await getAdminDbLazy();
+      kuratchi = new KuratchiAuth({
+        resendApiKey: env.RESEND_API_KEY || '',
+        emailFrom: env.EMAIL_FROM || '',
+        origin: env.ORIGIN || '',
+        resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
+        authSecret: env.KURATCHI_AUTH_SECRET,
+        workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
+        accountId: env.CLOUDFLARE_ACCOUNT_ID,
+        apiToken: env.CLOUDFLARE_API_TOKEN,
+        adminDb
+      });
+      (locals as any).kuratchi = kuratchi;
+      return kuratchi;
+    };
+
+    // Helper: look up organizationId by email in admin DB, support multiple shapes
     const findOrganizationIdByEmail = async (email: string): Promise<string | null> => {
       try {
+        const adminDb = await getAdminDbLazy().catch(() => null);
         if (!adminDb) return null;
-        const stmt = adminDb.prepare(
-          'SELECT organizationId FROM organizationUsers WHERE email = ? AND deleted_at IS NULL LIMIT 1'
-        );
-        const row = await stmt.bind(email).get();
-        return (row as any)?.organizationId || null;
+        const sql = 'SELECT organizationId FROM organizationUsers WHERE email = ? AND deleted_at IS NULL LIMIT 1';
+        // D1 binding shape
+        if (typeof adminDb.prepare === 'function') {
+          const prepared = adminDb.prepare(sql).bind(email);
+          const row = typeof prepared.first === 'function'
+            ? await prepared.first()
+            : (typeof prepared.get === 'function'
+                ? await prepared.get()
+                : (() => prepared.all().then((r: any) => (r?.results?.[0] ?? r?.[0] ?? null)))());
+          return (row as any)?.organizationId || null;
+        }
+        // HTTP client shape
+        if (typeof adminDb.query === 'function') {
+          const res = await adminDb.query(sql, [email]);
+          const rows = (res && (res.results ?? res.data)) || [];
+          const row = Array.isArray(rows) ? rows[0] : null;
+          return row?.organizationId || null;
+        }
+        // sqlite-proxy function shape
+        if (typeof adminDb === 'function') {
+          const r = await adminDb(sql, [email], 'get');
+          const rows = (r as any)?.rows ?? [];
+          const row = Array.isArray(rows) ? rows[0] : null;
+          return row?.organizationId || null;
+        }
+        return null;
       } catch {
         return null;
       }
     };
-
-    // Intercept batteries-included /auth routes
-    const url = new URL(event.request.url);
-    const pathname = url.pathname;
 
     // Magic Link: send (/auth/magic/send)
     if (pathname === '/auth/magic/send' && event.request.method.toUpperCase() === 'POST') {
@@ -160,12 +241,14 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         let redirectTo = body?.redirectTo || url.searchParams.get('redirectTo') || '/';
         let orgId = body?.organizationId || url.searchParams.get('org');
 
+        if (!env.RESEND_API_KEY || !env.EMAIL_FROM)
+          return new Response(JSON.stringify({ ok: false, error: 'email_not_configured' }), { status: 500, headers: { 'content-type': 'application/json' } });
+
         if (!email) return new Response(JSON.stringify({ ok: false, error: 'email_required' }), { status: 400, headers: { 'content-type': 'application/json' } });
         if (!orgId) orgId = await findOrganizationIdByEmail(email);
         if (!orgId) return new Response(JSON.stringify({ ok: false, error: 'organization_not_found_for_email' }), { status: 404, headers: { 'content-type': 'application/json' } });
 
-        const kuratchi = getKuratchi();
-        const auth = await kuratchi.forOrganization(orgId);
+        const auth = await (await getKuratchi()).forOrganization(orgId);
         const tokenData = await auth.createMagicLinkToken(email, redirectTo);
         const origin = env.ORIGIN || `${url.protocol}//${url.host}`;
         const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
@@ -182,8 +265,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       const orgId = url.searchParams.get('org') || '';
       if (!token || !orgId) return new Response('Bad Request', { status: 400 });
       try {
-        const kuratchi = getKuratchi();
-        const auth = await kuratchi.forOrganization(orgId);
+        const auth = await (await getKuratchi()).forOrganization(orgId);
         const result = await auth.verifyMagicLink(token);
         if (!result.success || !result.cookie) return new Response('Unauthorized', { status: 401 });
         // 30d cookie expiry
@@ -272,8 +354,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (!orgId) return new Response('organization_not_found_for_email', { status: 404 });
 
         // Link or create user, then create session
-        const kuratchi = getKuratchi();
-        const auth = await kuratchi.forOrganization(orgId);
+        const auth = await (await getKuratchi()).forOrganization(orgId);
         const user = await auth.getOrCreateUserFromOAuth({
           provider: 'google',
           providerAccountId,
@@ -304,19 +385,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         const parsed = await parseSessionCookie(env.KURATCHI_AUTH_SECRET, cookieVal);
         const orgId = parsed?.orgId;
         if (orgId && orgId !== 'admin') {
-          const kuratchi = new KuratchiAuth({
-            resendApiKey: env.RESEND_API_KEY,
-            emailFrom: env.EMAIL_FROM,
-            origin: env.ORIGIN,
-            resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
-            authSecret: env.KURATCHI_AUTH_SECRET,
-            workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-            accountId: env.CLOUDFLARE_ACCOUNT_ID,
-            apiToken: env.CLOUDFLARE_API_TOKEN,
-            adminDb
-          });
-
-          const authService = await kuratchi.forOrganization(orgId);
+          const authService = await (await getKuratchi()).forOrganization(orgId);
           const { sessionData, user } = await authService.validateSessionToken(cookieVal);
           if (sessionData && user) {
             locals.auth = authService;

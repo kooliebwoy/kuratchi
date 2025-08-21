@@ -5,7 +5,7 @@ import { createAuthHandle, type CreateAuthHandleOptions } from './sveltekit.js';
 import { adminSchema } from './adminSchema.js';
 import { organizationSchema } from '../org/organizationSchema.js';
 import { validateAdminSchema, validateOrganizationSchema } from './schemaValidator.js'
-import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
+import { drizzle as drizzleSqliteProxy } from 'drizzle-orm/sqlite-proxy';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 
 interface AuthConfig {
@@ -23,7 +23,7 @@ interface AuthConfig {
 
 export class KuratchiAuth {
     private kuratchiD1: KuratchiD1;
-    private adminDb: DrizzleD1Database<typeof adminSchema>;
+    private adminDb: any;
     private organizationServices: Map<string, AuthService>;
     private config: AuthConfig;
     public signIn: {
@@ -50,17 +50,22 @@ export class KuratchiAuth {
             workersSubdomain: config.workersSubdomain
         });
         
-        // Initialize admin DB (Drizzle over bound D1) for admin operations
-        this.adminDb = drizzle(config.adminDb as any, { schema: adminSchema });
-        // Validate admin DB contract using a lightweight adapter to match D1LikeClient
+        // Initialize admin DB for admin operations
+        const admin = config.adminDb as any;
+        const isKuratchiClient = !!(admin && typeof admin.query === 'function' && (typeof admin.getDrizzleProxy === 'function' || typeof admin.drizzleProxy === 'function'));
+        if (isKuratchiClient) {
+            const proxy = (typeof admin.getDrizzleProxy === 'function') ? admin.getDrizzleProxy() : admin.drizzleProxy();
+            this.adminDb = drizzleSqliteProxy(proxy, { schema: adminSchema });
+        } else {
+            throw new Error('Unsupported adminDb: expected KuratchiHttpClient');
+        }
+
+        // Validate admin DB contract using KuratchiHttpClient adapter
         const adminAdapter = {
             query: async (sql: string, params?: any[]) => {
-                const prepared = (config.adminDb as any).prepare(sql);
-                const stmt = params && params.length ? prepared.bind(...params) : prepared;
-                const res = await stmt.all();
-                // Ensure shape { success, results }
-                const results = (res && 'results' in res) ? (res as any).results : res;
-                return { success: true, results } as any;
+                const res = await admin.query(sql, params || []);
+                const results = (res && (res.results ?? res.data)) ?? [];
+                return { success: res?.success !== false, results } as any;
             }
         };
         void validateAdminSchema(adminAdapter as any);
@@ -73,7 +78,7 @@ export class KuratchiAuth {
             magicLink: {
                 send: async (email: string, options?: { redirectTo?: string; organizationId?: string }) => {
                     const redirectTo = options?.redirectTo;
-                    let orgId = options?.organizationId;
+                    let orgId: string | undefined = options?.organizationId;
                     if (!orgId) orgId = await this.findOrganizationIdByEmail(email);
                     if (!orgId) throw new Error('organization_not_found_for_email');
 
@@ -109,7 +114,7 @@ export class KuratchiAuth {
             };
         }
         
-        private async findOrganizationIdByEmail(email: string): Promise<string | null> {
+        private async findOrganizationIdByEmail(email: string): Promise<string | undefined> {
             try {
                 const mapping = await this.adminDb.query.OrganizationUsers.findFirst({
                     where: and(
@@ -117,9 +122,9 @@ export class KuratchiAuth {
                         isNull(adminSchema.OrganizationUsers.deleted_at)
                     )
                 });
-                return (mapping as any)?.organizationId || null;
+                return (mapping as any)?.organizationId || undefined;
             } catch {
-                return null;
+                return undefined;
             }
         }
     
@@ -160,7 +165,7 @@ export class KuratchiAuth {
                     const t = new Date(exp as any).getTime();
                     return !Number.isNaN(t) ? t > nowMs : true;
                 };
-                const valid = tokenCandidates.find(t => isNotExpired((t as any).expires));
+                const valid = tokenCandidates.find((t: any) => isNotExpired((t as any).expires));
                 if (!valid) {
                     throw new Error(`No valid API token found for organization database ${dbRecord.id}`);
                 }
@@ -176,12 +181,12 @@ export class KuratchiAuth {
                 await validateOrganizationSchema(organizationClient);
 
                 // Get Drizzle proxy with organization schema
-                const drizzleProxy = this.kuratchiD1.getDrizzleClient({
+                const orgDrizzleProxy = this.kuratchiD1.getDrizzleClient({
                     databaseName,
                     apiToken: effectiveToken!
                 });
                 
-                const drizzleDB = drizzle(drizzleProxy as any, { schema: organizationSchema });
+                const drizzleDB = drizzleSqliteProxy(orgDrizzleProxy as any, { schema: organizationSchema });
                 
                 const authService = new AuthService(
                     drizzleDB as any,
@@ -334,23 +339,8 @@ export class KuratchiAuth {
      * Delegates to createAuthHandle() which reads env and ADMIN_DB from event.platform.env by default.
      */
     handle(options: CreateAuthHandleOptions = {}): Handle {
-        const getAdminDb = options.getAdminDb ?? (() => this.config.adminDb);
-        const getEnv = options.getEnv ?? ((event) => {
-            const maybeEnv = (event as any)?.platform?.env || {};
-            return {
-                RESEND_API_KEY: this.config.resendApiKey,
-                EMAIL_FROM: this.config.emailFrom,
-                ORIGIN: this.config.origin,
-                RESEND_CLUTCHCMS_AUDIENCE: this.config.resendAudience,
-                KURATCHI_AUTH_SECRET: this.config.authSecret,
-                CLOUDFLARE_WORKERS_SUBDOMAIN: this.config.workersSubdomain,
-                CLOUDFLARE_ACCOUNT_ID: this.config.accountId,
-                CLOUDFLARE_API_TOKEN: this.config.apiToken,
-                GOOGLE_CLIENT_ID: maybeEnv.GOOGLE_CLIENT_ID,
-                GOOGLE_CLIENT_SECRET: maybeEnv.GOOGLE_CLIENT_SECRET,
-                AUTH_WEBHOOK_SECRET: maybeEnv.AUTH_WEBHOOK_SECRET
-            } as any;
-        });
-        return createAuthHandle({ ...options, getAdminDb, getEnv });
+        // Delegate to createAuthHandle. It will read env via $env/dynamic/private
+        // and build the admin Kuratchi HTTP client from KURATCHI_ADMIN_DB_NAME/TOKEN.
+        return createAuthHandle({ ...options });
     }
 }

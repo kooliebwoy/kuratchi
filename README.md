@@ -107,23 +107,17 @@ kuratchi admin destroy \
   --api-token "$CF_API_TOKEN"
 ```
 
-## SvelteKit auth quickstart
+## SvelteKit auth quickstart (strict env-only)
 
-Kuratchi ships a SvelteKit handle that wires up session cookies, magic link, and Google OAuth endpoints for you.
+Kuratchi ships a SvelteKit handle that wires up session cookies, magic link, and Google OAuth endpoints for you. It is configured strictly via environment variables read from `$env/dynamic/private` — there is no fallback to Workers bindings.
 
 1) hooks.server.ts
 
 ```ts
 import { Kuratchi } from 'kuratchi';
 
-// Defaults expect Cloudflare Workers (ADMIN_DB binding and env on event.platform.env)
+// Strict env-only setup. Reads all required values from $env/dynamic/private
 export const handle = Kuratchi.auth.handle();
-
-// If you need to customize how to read env or the ADMIN_DB binding:
-// export const handle = Kuratchi.auth.handle({
-//   getAdminDb: (event) => (event.platform as any).env.ADMIN_DB,
-//   getEnv: (event) => (event.platform as any).env
-// });
 ```
 
 2) Built-in auth routes (no extra code needed)
@@ -202,8 +196,13 @@ export const POST: RequestHandler = async ({ locals }) => {
 // src/app.d.ts
 declare namespace App {
   interface Locals {
+    // Exposed KuratchiAuth instance for this request
+    kuratchi?: unknown;
+    // Organization-scoped AuthService, set when a valid session is present
     auth: unknown | null;
+    // Current authenticated user (shape depends on your schema)
     user: any | null;
+    // Session data parsed from cookie
     session: any | null;
     setSessionCookie: (value: string, opts?: { expires?: Date }) => void;
     clearSessionCookie: () => void;
@@ -211,11 +210,105 @@ declare namespace App {
 }
 ```
 
-Required env for the SvelteKit handle (usually via Cloudflare Workers bindings):
+### Complete SvelteKit example (copy‑paste)
 
-- RESEND_API_KEY, EMAIL_FROM, ORIGIN, KURATCHI_AUTH_SECRET
-- CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_WORKERS_SUBDOMAIN
-- Optional: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_WEBHOOK_SECRET
+1) .env
+
+```env
+# Core
+KURATCHI_AUTH_SECRET=dev_super_secret
+CLOUDFLARE_WORKERS_SUBDOMAIN=your-workers-subdomain
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_TOKEN=your-api-token
+
+# Admin DB (provision with the CLI)
+KURATCHI_ADMIN_DB_NAME=kuratchi-admin
+KURATCHI_ADMIN_DB_TOKEN=your-admin-db-token
+
+# Email + origin
+RESEND_EMAIL_API_KEY=your-resend-key
+KURATCHI_EMAIL_FROM="Acme <noreply@acme.com>"
+ORIGIN=http://localhost:5173
+
+# Optional: Google OAuth
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+2) src/hooks.server.ts
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+// Strict env-only; reads from $env/dynamic/private
+export const handle = Kuratchi.auth.handle();
+```
+
+3) src/routes/login/+page.svelte
+
+```svelte
+<script lang="ts">
+  export let data;
+</script>
+
+<form method="post">
+  <input name="email" type="email" placeholder="you@example.com" required />
+  <button type="submit">Email me a magic link</button>
+  {#if data?.error}<p style="color:red">{data.error}</p>{/if}
+</form>
+
+<p><a href="/auth/oauth/google/start?redirectTo=/">Continue with Google</a></p>
+```
+
+4) src/routes/login/+page.server.ts
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+export const actions = {
+  default: async ({ request, fetch, url }) => {
+    const form = await request.formData();
+    const email = String(form.get('email') || '').trim();
+    const redirectTo = url.searchParams.get('redirectTo') || '/';
+    const res = await Kuratchi.auth.signIn.magicLink.send(email, { redirectTo, fetch });
+    if (!res.ok) return { error: res.error };
+    return { ok: true };
+  }
+};
+```
+
+5) Optional: use locals in +layout.server.ts
+
+```ts
+import { redirect } from '@sveltejs/kit';
+
+export const load = async ({ locals }) => {
+  if (!locals.user) throw redirect(302, '/login');
+  return { user: locals.user };
+};
+```
+
+Note: The handle lazily initializes its internals. You must set all required env vars before using flows that need them (e.g., admin DB for magic link/org lookup), but not every route touches every service.
+
+Required env for the SvelteKit handle (strict env-only via `$env/dynamic/private`):
+
+- KURATCHI_AUTH_SECRET
+- KURATCHI_ADMIN_DB_NAME
+- KURATCHI_ADMIN_DB_TOKEN
+- CLOUDFLARE_WORKERS_SUBDOMAIN
+- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_API_TOKEN
+
+Email + app origin (required for magic link and OAuth):
+
+- RESEND_EMAIL_API_KEY or RESEND_API_KEY
+- KURATCHI_EMAIL_FROM or EMAIL_FROM
+- ORIGIN
+
+Optional:
+
+- GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+- AUTH_WEBHOOK_SECRET
 
 ### Auth flow overview (quick mental model)
 
@@ -246,7 +339,74 @@ Required env for the SvelteKit handle (usually via Cloudflare Workers bindings):
 
 - Cookies are set `secure: true`; use HTTPS in dev (or a tunnel) to see them in the browser.
 - Google OAuth redirect URI must be `${ORIGIN}/auth/oauth/google/callback` in your Google Console.
-- If your binding is not named `ADMIN_DB`, pass `getAdminDb` to `Kuratchi.auth.handle()`.
+
+### Practical: Using locals.auth and locals.user
+
+The SvelteKit handle sets `locals.user`, `locals.session`, and an organization‑scoped `locals.auth` (an `AuthService`). Here are common patterns:
+
+- Update a profile in a protected page
+
+```ts
+// src/routes/settings/+page.server.ts
+import { redirect } from '@sveltejs/kit';
+
+export const load = async ({ locals }) => {
+  if (!locals.user) throw redirect(302, '/login');
+  return { user: locals.user };
+};
+
+export const actions = {
+  updateProfile: async ({ locals, request }) => {
+    if (!locals.user || !locals.auth) throw redirect(302, '/login');
+    const data = await request.formData();
+    const name = String(data.get('name') ?? '').trim() || null;
+    const firstName = String(data.get('firstName') ?? '').trim() || null;
+    const lastName = String(data.get('lastName') ?? '').trim() || null;
+    await locals.auth.updateUser(locals.user.id, { name, firstName, lastName });
+    return { ok: true };
+  }
+};
+```
+
+- Logout current session (invalidate in DB + clear cookie)
+
+```ts
+// src/routes/logout/+server.ts
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ locals, cookies }) => {
+  const cookie = cookies.get('kuratchi_session'); // default cookie name
+  if (cookie && locals.auth) {
+    await locals.auth.invalidateSession(cookie);
+  }
+  locals.clearSessionCookie();
+  return new Response(null, { status: 303, headers: { Location: '/' } });
+};
+```
+
+- Logout all sessions for the user
+
+```ts
+// src/routes/logout-all/+server.ts
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ locals }) => {
+  if (!locals.user || !locals.auth) return new Response('Unauthorized', { status: 401 });
+  await locals.auth.invalidateAllSessions(locals.user.id);
+  locals.clearSessionCookie();
+  return new Response(null, { status: 303, headers: { Location: '/' } });
+};
+```
+
+- Customize the session cookie name (optional)
+
+```ts
+// src/hooks.server.ts
+import { Kuratchi } from 'kuratchi';
+
+export const handle = Kuratchi.auth.handle({ cookieName: 'my_app_session' });
+// If you change this, also update cookies.get('<name>') in your logout route
+```
 
 ## License
 

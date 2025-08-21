@@ -3,7 +3,22 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			// Exposed KuratchiAuth instance for this request
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			kuratchi?: any;
+			// Organization-scoped AuthService, set when a valid session is present
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			auth: any | null;
+			// Current authenticated user (shape depends on your schema)
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			user: any | null;
+			// Session data parsed from cookie
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			session: any | null;
+			setSessionCookie: (value: string, opts?: { expires?: Date }) => void;
+			clearSessionCookie: () => void;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}
