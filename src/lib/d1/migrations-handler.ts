@@ -1,28 +1,32 @@
-// Vite-only migration loader using absolute root globs.
-// This expects the app to have directories like:
+// Unified migrations handler providing:
+// - Vite-based migration loader (import.meta.glob) via loadMigrations(dirName)
+// - Filesystem-based loader factory via createFsMigrationLoader(root)
+//
+// Expected structure for both modes:
 //   /migrations-<dirName>/meta/_journal.json
 //   /migrations-<dirName>/<tag>.sql
-//
-// Example usage in app code (SvelteKit on Cloudflare Workers):
-//   await sdk.d1.database({ databaseName, apiToken }).migrateAuto('client')
-//
-// Note: This file relies on import.meta.glob which is provided by Vite.
 
 export type MigrationJournal = { entries: { idx: number; tag: string }[] };
 
-const allSqlMigrationModules = import.meta.glob('/migrations-*/*.sql', {
-  query: '?raw',
-  eager: false,
-});
+// ----- Vite-only migration loader -----
+// These globs are only available when bundled under Vite. Safe to define at top-level.
+// Consumers outside Vite should not call loadMigrations().
+const allSqlMigrationModules: Record<string, any> = (import.meta as any).glob
+  ? (import.meta as any).glob('/migrations-*/*.sql', { query: '?raw', eager: false })
+  : {};
 
-const allJournalModules = import.meta.glob('/migrations-*/meta/_journal.json', {
-  eager: true,
-});
+const allJournalModules: Record<string, any> = (import.meta as any).glob
+  ? (import.meta as any).glob('/migrations-*/meta/_journal.json', { eager: true })
+  : {};
 
 export async function loadMigrations(dirName: string): Promise<{
   journal: MigrationJournal;
   migrations: Record<string, () => Promise<string>>;
 }> {
+  if (!(import.meta as any).glob) {
+    throw new Error('loadMigrations() requires Vite (import.meta.glob). Use createFsMigrationLoader() instead.');
+  }
+
   const migrations: Record<string, () => Promise<string>> = {};
   const baseMigrationPath = `/migrations-${dirName}`;
 
@@ -70,4 +74,36 @@ export async function loadMigrations(dirName: string): Promise<{
   }
 
   return { journal, migrations };
+}
+
+// ----- FS-based migration loader -----
+// Creates a loader compatible with KuratchiD1.migrateWithLoader(), reading from a filesystem root.
+export async function createFsMigrationLoader(root: string): Promise<{
+  loadJournal: (dir: string) => Promise<MigrationJournal>;
+  loadSql: (dir: string, tag: string) => Promise<string>;
+}> {
+  // Dynamic imports to avoid bundling fs/path in non-Node environments
+  // @ts-ignore optional Node import
+  const path: any = await import('path');
+  // @ts-ignore optional Node import
+  const fs: any = await import('fs');
+
+  const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
+  const readText = (p: string) => fs.readFileSync(p, 'utf8');
+
+  const loadJournal = async (_dir: string) => {
+    const journalPath = path.join(root, 'meta', '_journal.json');
+    if (!fs.existsSync(journalPath)) throw new Error(`Journal not found at ${journalPath}`);
+    const j = readJson(journalPath);
+    if (!j || !Array.isArray(j.entries)) throw new Error('Invalid journal format');
+    return j as MigrationJournal;
+  };
+
+  const loadSql = async (_dir: string, tag: string) => {
+    const sqlPath = path.join(root, `${tag}.sql`);
+    if (!fs.existsSync(sqlPath)) throw new Error(`SQL not found for tag ${tag} at ${sqlPath}`);
+    return readText(sqlPath);
+  };
+
+  return { loadJournal, loadSql };
 }

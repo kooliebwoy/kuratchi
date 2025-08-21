@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { KuratchiD1 } from '../lib/d1/index.js';
-import { organizationSchema as schema } from '../lib/org/organizationSchema.js';
+import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
+import { organizationSchema as schema } from '../lib/schema/index.js';
 import { AuthService } from '../lib/auth/AuthService.js';
 import { drizzle as createDrizzle } from 'drizzle-orm/sqlite-proxy';
 import { eq } from 'drizzle-orm';

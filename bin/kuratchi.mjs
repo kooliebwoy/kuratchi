@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n  KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n  - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n  - admin migrate first tries Vite-based migrations (migrations-<dir>/), falling back to inline SQL if unavailable.\n  - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n  KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n  - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n  - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then Vite-based migrations (migrations-<dir>/), then inline SQL.\n  - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n  - --migrations-path defaults to ./migrations-<dir> if not provided.\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
 }
 
 function parseArgs(argv) {
@@ -38,6 +38,7 @@ function parseArgs(argv) {
       case '--token': take('token'); break;
       case '--workers-subdomain': case '-S': take('workersSubdomain'); break;
       case '--migrations-dir': take('migrationsDir'); break;
+      case '--migrations-path': take('migrationsPath'); break;
       case '--no-spinner': out.noSpinner = true; break;
       // no location/format options in the simplified CLI
       default:
@@ -119,10 +120,37 @@ async function importInternalHttpClient() {
 // Vite-only migration loader (optional). If missing, we'll fall back to inline SQL.
 async function importMigrationsVite() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const distPath = path.join(here, '..', 'dist', 'd1', 'migrations-vite.js');
+  const distPath = path.join(here, '..', 'dist', 'd1', 'migrations-handler.js');
   if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
   // If the file isn't present in dist, treat as unavailable (no throw here; caller handles fallback)
   return null;
+}
+
+// Filesystem migration loader: reads ./migrations-<dir>/meta/_journal.json and <tag>.sql files
+async function loadMigrationsFromFs(dirName, basePath) {
+  const root = basePath || path.join(process.cwd(), `migrations-${dirName}`);
+  const journalPath = path.join(root, 'meta', '_journal.json');
+  if (!fs.existsSync(journalPath)) return null;
+  let journal;
+  try {
+    journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+  } catch {
+    throw new Error(`Invalid journal JSON at ${journalPath}`);
+  }
+  if (!journal || !Array.isArray(journal.entries)) {
+    throw new Error(`Invalid journal format at ${journalPath}`);
+  }
+  const migrations = {};
+  for (const entry of journal.entries) {
+    const key = `m${String(entry.idx).padStart(4, '0')}`;
+    const sqlFile = path.join(root, `${entry.tag}.sql`);
+    if (!fs.existsSync(sqlFile)) {
+      throw new Error(`SQL file not found for migration tag ${entry.tag} at ${sqlFile}`);
+    }
+    const sqlText = fs.readFileSync(sqlFile, 'utf8');
+    migrations[key] = async () => sqlText;
+  }
+  return { journal, migrations };
 }
 
 function randSuffix(len = 6) {
@@ -181,13 +209,27 @@ async function adminMigrate(opts) {
   const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
   const token = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN;
   const migrationsDir = opts.migrationsDir || 'admin';
+  const migrationsPath = opts.migrationsPath; // optional override
   if (!workersSubdomain) throw new Error('Missing workers subdomain. Provide --workers-subdomain or set CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN or config file.');
   if (!token) throw new Error('Missing admin DB token. Provide --token or set KURATCHI_ADMIN_DB_TOKEN.');
 
   const { KuratchiHttpClient } = await importInternalHttpClient();
   const client = new KuratchiHttpClient({ databaseName: name, workersSubdomain, apiToken: token });
 
-  // Preferred path: attempt to run user-provided migrations via Vite loader
+  // Preferred path: attempt to load migrations from filesystem (local CLI)
+  try {
+    const fsBundle = await loadMigrationsFromFs(migrationsDir, migrationsPath);
+    if (fsBundle) {
+      const ok = await client.migrate(fsBundle);
+      if (ok) {
+        return { ok: true, databaseName: name, workersSubdomain, strategy: 'fs-migrations', dir: migrationsDir, path: migrationsPath || path.join(process.cwd(), `migrations-${migrationsDir}`) };
+      }
+    }
+  } catch (e) {
+    // Ignore and fall back to inline SQL
+  }
+
+  // Secondary path: attempt to run user-provided migrations via Vite loader
   try {
     const mv = await importMigrationsVite();
     if (mv && typeof mv.loadMigrations === 'function') {

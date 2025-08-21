@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { KuratchiD1 } from '../lib/d1/index.js';
-import { adminSchema as schema } from '../lib/auth/adminSchema.js';
+import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
+import { adminSchema as schema } from '../lib/schema/index.js';
 import { drizzle as createDrizzle } from 'drizzle-orm/sqlite-proxy';
 
 // Use SvelteKit static env so it resolves under Vitest + Vite

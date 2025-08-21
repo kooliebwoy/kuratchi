@@ -1,4 +1,4 @@
-import type { Session } from './types.js';
+ 
 
 /**
  * Generate a secure random session token using Web Crypto API
@@ -10,92 +10,6 @@ export function generateSessionToken(): string {
 	crypto.getRandomValues(bytes);
 	// Return URL-safe base64
 	return toBase64Url(bytes);
-}
-
-/**
- * Extract orgId from a sessionId formatted as "<orgId>.<random>".
- * Returns null for admin sessions ("admin.<random>") or when not present.
- */
-export function parseOrgIdFromSessionId(sessionId: string): string | null {
-    if (!sessionId) return null;
-    const dotIndex = sessionId.indexOf('.');
-    if (dotIndex <= 0) return null; // no prefix
-    const prefix = sessionId.slice(0, dotIndex);
-    if (!prefix || prefix === 'admin') return null;
-    return prefix;
-}
-
-/**
- * Create a new session in the database
- * @param token - The session token
- * @param userId - The user ID
- * @returns The created session object
- */
-export async function createSession(token: string, userId: string): Promise<Partial<Session>> {
-	// Hash the token for storage
-	const encoder = new TextEncoder();
-	const data = encoder.encode(token);
-	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-	
-	// Convert the hash to hex string
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const sessionToken = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-	
-	// Create the session with 30 days expiry
-	const expires = new Date();
-	expires.setDate(expires.getDate() + 30);
-	
-	// Current timestamp for created_at and updated_at
-	const now = new Date();
-	
-	const session: Session = {
-		sessionToken,
-		userId,
-		expires,
-		created_at: now.toISOString(),
-		updated_at: now.toISOString(),
-		deleted_at: null
-	};
-	
-	return session;
-}
-
-
-/**
- * Create a session token response for frontend workers to use
- * Backend services should return this data, not set cookies directly
- */
-export function createSessionTokenResponse(token: string, expiresAt: Date, userEmail: string) {
-	// Combine token and userEmail for the cookie value
-	const combinedToken = `${token}:${userEmail}`;
-	
-	return {
-		token: combinedToken,
-		expiresAt,
-		cookieOptions: {
-			httpOnly: true,
-			sameSite: "lax" as const,
-			expires: expiresAt,
-			path: "/"
-		}
-	};
-}
-
-/**
- * Parse a session token from a cookie value
- * Used by backend services to validate tokens sent from frontend
- */
-export function parseSessionToken(cookieValue: string): { token: string; userEmail: string } | null {
-	if (!cookieValue || !cookieValue.includes(':')) {
-		return null;
-	}
-	
-	const [token, userEmail] = cookieValue.split(':', 2);
-	if (!token || !userEmail) {
-		return null;
-	}
-	
-	return { token, userEmail };
 }
 
 // logic to salt, hash, and encrypt a password using WebCrypto API so we can store it in our database
@@ -193,13 +107,19 @@ const _base64ToBytes = (b64: string) => {
     return bytes;
 };
 
-const toBase64Url = (buf: ArrayBuffer | Uint8Array | string) =>
+export const toBase64Url = (buf: ArrayBuffer | Uint8Array | string) =>
     _bytesToBase64(_toBytes(buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 
-const fromBase64Url = (b64url: string): Uint8Array => {
+export const fromBase64Url = (b64url: string): Uint8Array => {
     const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64url.length / 4) * 4, '=');
     return _base64ToBytes(b64);
 };
+
+// Convenience: decode base64url string into UTF-8 text
+export function b64urlDecodeToString(str: string): string {
+    const decoded = fromBase64Url(str);
+    return new TextDecoder().decode(decoded);
+}
 
 // Derive an AES-GCM key directly from a secret string (32 bytes via SHA-256)
 const importAesGcmKey = async (secret: string): Promise<CryptoKey> => {
@@ -243,6 +163,35 @@ export const parseSessionCookie = async (
         const parsed = JSON.parse(json);
         if (!parsed?.o || !parsed?.th) return null;
         return { orgId: parsed.o, tokenHash: parsed.th };
+    } catch {
+        return null;
+    }
+};
+
+// ==============================
+// Additional helpers for OAuth state
+// ==============================
+
+export const importHmacKey = async (secret: string): Promise<CryptoKey> =>
+    crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+
+export const signState = async (secret: string, payload: Record<string, any>): Promise<string> => {
+    const key = await importHmacKey(secret);
+    const json = JSON.stringify(payload);
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(json));
+    return `${toBase64Url(json)}.${toBase64Url(new Uint8Array(sig))}`;
+};
+
+export const verifyState = async (secret: string, state: string): Promise<Record<string, any> | null> => {
+    try {
+        const [p, s] = state.split('.', 2);
+        if (!p || !s) return null;
+        const json = b64urlDecodeToString(p);
+        const key = await importHmacKey(secret);
+        const sigBytes = fromBase64Url(s);
+        const valid = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(json));
+        if (!valid) return null;
+        return JSON.parse(json);
     } catch {
         return null;
     }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Handle } from '@sveltejs/kit';
-import { createAuthHandle } from '../lib/auth/sveltekit.js';
+import { createAuthHandle } from '../lib/auth/kuratchi-auth.js';
 import * as authModule from '../lib/auth/kuratchi-auth.js';
 
 function makeAdminDbStub(opts?: { slugToOrgId?: Record<string, string>; singleActiveOrgId?: string; emailToOrgId?: Record<string, string> }) {

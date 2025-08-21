@@ -1,8 +1,8 @@
-import { KuratchiD1 } from './d1/index.js';
+import { KuratchiD1 } from './d1/kuratchi-d1.js';
 import { KuratchiAuth } from './auth/kuratchi-auth.js';
-import { createAuthHandle, type CreateAuthHandleOptions } from './auth/sveltekit.js';
+import { createAuthHandle, type CreateAuthHandleOptions } from './auth/kuratchi-auth.js';
 import type { Handle } from '@sveltejs/kit';
-export type { PrimaryLocationHint } from './d1/index.js';
+export type { PrimaryLocationHint } from './d1/kuratchi-d1.js';
 
 /**
  * Public options for the Kuratchi SDK

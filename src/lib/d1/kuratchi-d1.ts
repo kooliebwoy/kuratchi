@@ -114,13 +114,13 @@ export class KuratchiD1 {
     dirName: string
   ) {
     try {
-      const mod = await import('./migrations-vite.js');
+      const mod = await import('./migrations-handler.js');
       const loadMigrations = (mod as any).loadMigrations as (d: string) => Promise<{
         journal: MigrationJournal;
         migrations: Record<string, () => Promise<string>>;
       }>;
       if (typeof loadMigrations !== 'function') {
-        throw new Error('loadMigrations() not found in migrations-vite module');
+        throw new Error('loadMigrations() not found in migrations-handler module');
       }
       const bundle = await loadMigrations(dirName);
       return this.migrate(cfg, bundle);
