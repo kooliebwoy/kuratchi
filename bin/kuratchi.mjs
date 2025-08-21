@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create  [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin destroy --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n\nNotes:\n  - If --name is omitted, the database will be created as 'kuratchi-admin'.\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n  KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n  - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n  - admin migrate first tries Vite-based migrations (migrations-<dir>/), falling back to inline SQL if unavailable.\n  - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
 }
 
 function parseArgs(argv) {
@@ -35,7 +35,9 @@ function parseArgs(argv) {
       case '--id': case '-i': take('id'); break;
       case '--account-id': case '-A': take('accountId'); break;
       case '--api-token': case '-T': take('apiToken'); break;
+      case '--token': take('token'); break;
       case '--workers-subdomain': case '-S': take('workersSubdomain'); break;
+      case '--migrations-dir': take('migrationsDir'); break;
       case '--no-spinner': out.noSpinner = true; break;
       // no location/format options in the simplified CLI
       default:
@@ -106,6 +108,23 @@ async function importKuratchiD1() {
   throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
 }
 
+// Internal: import the low-level HTTP client directly from dist to avoid requiring CF account credentials for migrate
+async function importInternalHttpClient() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.join(here, '..', 'dist', 'd1', 'internal-http-client.js');
+  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
+  throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
+}
+
+// Vite-only migration loader (optional). If missing, we'll fall back to inline SQL.
+async function importMigrationsVite() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.join(here, '..', 'dist', 'd1', 'migrations-vite.js');
+  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
+  // If the file isn't present in dist, treat as unavailable (no throw here; caller handles fallback)
+  return null;
+}
+
 function randSuffix(len = 6) {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
@@ -155,6 +174,199 @@ async function adminDestroy(opts) {
   return { ok: true, deletedId: id };
 }
 
+// Create admin tables/indexes if they do not exist
+async function adminMigrate(opts) {
+  const cfg = await loadConfig();
+  const name = opts.name || 'kuratchi-admin';
+  const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
+  const token = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN;
+  const migrationsDir = opts.migrationsDir || 'admin';
+  if (!workersSubdomain) throw new Error('Missing workers subdomain. Provide --workers-subdomain or set CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN or config file.');
+  if (!token) throw new Error('Missing admin DB token. Provide --token or set KURATCHI_ADMIN_DB_TOKEN.');
+
+  const { KuratchiHttpClient } = await importInternalHttpClient();
+  const client = new KuratchiHttpClient({ databaseName: name, workersSubdomain, apiToken: token });
+
+  // Preferred path: attempt to run user-provided migrations via Vite loader
+  try {
+    const mv = await importMigrationsVite();
+    if (mv && typeof mv.loadMigrations === 'function') {
+      const bundle = await mv.loadMigrations(migrationsDir);
+      const ok = await client.migrate(bundle);
+      if (ok) {
+        return { ok: true, databaseName: name, workersSubdomain, strategy: 'vite-migrations', dir: migrationsDir };
+      }
+      // If migrate returned falsy, proceed to fallback
+    }
+  } catch (e) {
+    // Ignore and fall back to inline SQL
+  }
+
+  const stmts = [
+    // users
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT NOT NULL PRIMARY KEY,
+      name TEXT,
+      firstName TEXT,
+      lastName TEXT,
+      phone TEXT,
+      email TEXT NOT NULL UNIQUE,
+      emailVerified INTEGER,
+      image TEXT,
+      status INTEGER,
+      role TEXT,
+      password_hash TEXT,
+      accessAttempts INTEGER,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // passwordResetTokens
+    `CREATE TABLE IF NOT EXISTS passwordResetTokens (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      email TEXT NOT NULL,
+      expires INTEGER NOT NULL,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // magicLinkTokens
+    `CREATE TABLE IF NOT EXISTS magicLinkTokens (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      redirectTo TEXT,
+      consumed_at INTEGER,
+      expires INTEGER NOT NULL,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // emailVerificationToken
+    `CREATE TABLE IF NOT EXISTS emailVerificationToken (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      email TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      expires INTEGER NOT NULL,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // organizationUsers
+    `CREATE TABLE IF NOT EXISTS organizationUsers (
+      id TEXT NOT NULL PRIMARY KEY,
+      email TEXT,
+      organizationId TEXT,
+      organizationSlug TEXT,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // organizations
+    `CREATE TABLE IF NOT EXISTS organizations (
+      id TEXT NOT NULL PRIMARY KEY,
+      organizationName TEXT,
+      email TEXT UNIQUE,
+      organizationSlug TEXT UNIQUE,
+      notes TEXT,
+      stripeCustomerId TEXT,
+      stripeSubscriptionId TEXT,
+      status TEXT,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // activity
+    `CREATE TABLE IF NOT EXISTS activity (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      action TEXT NOT NULL,
+      data TEXT DEFAULT (json_object()),
+      status INTEGER,
+      ip TEXT,
+      userAgent TEXT,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // session
+    `CREATE TABLE IF NOT EXISTS session (
+      sessionToken TEXT NOT NULL PRIMARY KEY,
+      userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires INTEGER NOT NULL,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // oauthAccounts
+    `CREATE TABLE IF NOT EXISTS oauthAccounts (
+      id TEXT PRIMARY KEY,
+      userId TEXT REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      providerAccountId TEXT NOT NULL,
+      access_token TEXT,
+      refresh_token TEXT,
+      expires_at INTEGER,
+      scope TEXT,
+      token_type TEXT,
+      id_token TEXT,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+
+    // databases
+    `CREATE TABLE IF NOT EXISTS databases (
+      id TEXT NOT NULL PRIMARY KEY,
+      name TEXT,
+      dbuuid TEXT UNIQUE,
+      isArchived INTEGER,
+      isActive INTEGER,
+      lastBackup INTEGER,
+      schemaVersion INTEGER DEFAULT 1,
+      needsSchemaUpdate INTEGER DEFAULT 0,
+      lastSchemaSync INTEGER,
+      organizationId TEXT REFERENCES organizations(id),
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS dbuuid_idx ON databases(dbuuid);`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS name_idx ON databases(name);`,
+
+    // dbApiTokens
+    `CREATE TABLE IF NOT EXISTS dbApiTokens (
+      id TEXT NOT NULL PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      name TEXT,
+      databaseId TEXT REFERENCES databases(id),
+      expires INTEGER,
+      revoked INTEGER,
+      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
+      deleted_at TEXT
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS token_idx ON dbApiTokens(token);`
+  ];
+
+  const batch = stmts.map((query) => ({ query, params: [] }));
+  const result = await client.batch(batch);
+  if (!result || result.success === false) {
+    throw new Error(result?.error || 'Migration batch failed');
+  }
+  return { ok: true, databaseName: name, workersSubdomain, executed: stmts.length, strategy: 'inline-sql' };
+}
+
 async function main() {
   const argv = parseArgs(process.argv.slice(2));
   if (argv.help || argv._.length === 0) {
@@ -169,6 +381,15 @@ async function main() {
       let res;
       try {
         res = await adminCreate(argv);
+      } finally {
+        sp.stop();
+      }
+      console.log(JSON.stringify(res, null, 2));
+    } else if (scope === 'admin' && cmd === 'migrate') {
+      const sp = createSpinner('Migrating admin schema', spinnerEnabled);
+      let res;
+      try {
+        res = await adminMigrate(argv);
       } finally {
         sp.stop();
       }

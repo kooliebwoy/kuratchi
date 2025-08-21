@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { relations, sql, type InferSelectModel } from "drizzle-orm";
 import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
 
 // columns helpers
@@ -76,17 +76,6 @@ export const Activity = sqliteTable('activity', {
     status: integer('status', { mode: 'boolean' }),
     ip: text("ip"),
     userAgent: text("userAgent"),
-    siteId: text("siteId"), // For site-specific activities
-    ...timestamps
-});
-
-// Sites (if organization has multiple sites)
-export const Sites = sqliteTable('sites', {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    projectName: text("projectName"),
-    domain: text("domain"),
-    status: integer('status', { mode: 'boolean' }),
     ...timestamps
 });
 
@@ -125,8 +114,7 @@ export const SessionRelations = relations(Sessions, ({ one }) => ({
 }));
 
 export const ActivityRelations = relations(Activity, ({ one }) => ({
-    User: one(Users, { fields: [Activity.userId], references: [Users.id] }),
-    Site: one(Sites, { fields: [Activity.siteId], references: [Sites.id] })
+    User: one(Users, { fields: [Activity.userId], references: [Users.id] })
 }));
 
 // Export schema for Drizzle
@@ -137,7 +125,6 @@ export const organizationSchema = {
     EmailVerificationTokens,
     MagicLinkTokens,
     Activity,
-    Sites,
     Roles,
     OAuthAccounts,
     // Relations
@@ -145,3 +132,10 @@ export const organizationSchema = {
     SessionRelations,
     ActivityRelations
 };
+
+export type User = InferSelectModel<typeof Users>;
+export type Session = InferSelectModel<typeof Sessions>;
+export type PasswordResetToken = InferSelectModel<typeof PasswordResetTokens>;
+export type MagicLinkToken = InferSelectModel<typeof MagicLinkTokens>;
+export type OAuthAccount = InferSelectModel<typeof OAuthAccounts>;
+export type Activity = InferSelectModel<typeof Activity>;
