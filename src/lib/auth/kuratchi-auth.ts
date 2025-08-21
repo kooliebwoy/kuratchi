@@ -622,31 +622,15 @@ export class KuratchiAuth {
             // 5) Optionally migrate the organization's database schema
             const shouldMigrate = options?.migrate !== false;
             const migrationsDir = options?.migrationsDir || 'org';
-            let migrationStrategy: 'vite' | 'fs' | 'skipped' | 'failed' = 'skipped';
+            let migrationStrategy: 'vite' | 'skipped' | 'failed' = 'skipped';
             if (shouldMigrate) {
                 try {
-                    // Prefer Vite-based loader when available
+                    // Unified runtime path: Vite-based loader only
                     await this.kuratchiD1.database({ databaseName: String(database?.name || dbName), apiToken })
-                        .migrateAuto(migrationsDir);
+                        .migrate(migrationsDir);
                     migrationStrategy = 'vite';
                 } catch {
-                    // Optional secondary path: filesystem loader if a migrationsPath was provided
-                    if (options?.migrationsPath) {
-                        try {
-                            const root = options.migrationsPath;
-                            const mod = await import('../d1/migrations-handler.js');
-                            const createFsMigrationLoader = (mod as any).createFsMigrationLoader as (r: string) => Promise<any>;
-                            if (typeof createFsMigrationLoader !== 'function') throw new Error('createFsMigrationLoader not found');
-                            const loader = await createFsMigrationLoader(root);
-                            await this.kuratchiD1.database({ databaseName: String(database?.name || dbName), apiToken })
-                                .migrateWithLoader(migrationsDir, loader);
-                            migrationStrategy = 'fs';
-                        } catch {
-                            migrationStrategy = 'failed';
-                        }
-                    } else {
-                        migrationStrategy = 'failed';
-                    }
+                    migrationStrategy = 'failed';
                 }
             }
 

@@ -1,0 +1,176 @@
+{
+  "name": "admin",
+  "version": 1,
+  "tables": [
+    {
+      "name": "users",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "name", "type": "text" },
+        { "name": "firstName", "type": "text" },
+        { "name": "lastName", "type": "text" },
+        { "name": "phone", "type": "text" },
+        { "name": "email", "type": "text", "notNull": true, "unique": true },
+        { "name": "emailVerified", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "image", "type": "text" },
+        { "name": "status", "type": "integer", "mode": "boolean" },
+        { "name": "role", "type": "text", "enum": ["superadmin", "owner", "editor", "member"] },
+        { "name": "password_hash", "type": "text" },
+        { "name": "accessAttempts", "type": "integer" },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "passwordResetTokens",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "token", "type": "text", "notNull": true },
+        { "name": "email", "type": "text", "notNull": true },
+        { "name": "expires", "type": "integer", "mode": "timestamp_ms", "notNull": true },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "magicLinkTokens",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "token", "type": "text", "notNull": true, "unique": true },
+        { "name": "email", "type": "text", "notNull": true },
+        { "name": "redirectTo", "type": "text" },
+        { "name": "consumed_at", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "expires", "type": "integer", "mode": "timestamp_ms", "notNull": true },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "emailVerificationToken",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "token", "type": "text", "notNull": true },
+        { "name": "email", "type": "text", "notNull": true },
+        { "name": "userId", "type": "text", "notNull": true },
+        { "name": "expires", "type": "integer", "mode": "timestamp_ms", "notNull": true },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "organizationUsers",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "email", "type": "text" },
+        { "name": "organizationId", "type": "text" },
+        { "name": "organizationSlug", "type": "text" },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "organizations",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "organizationName", "type": "text" },
+        { "name": "email", "type": "text", "unique": true },
+        { "name": "organizationSlug", "type": "text", "unique": true },
+        { "name": "notes", "type": "text" },
+        { "name": "stripeCustomerId", "type": "text" },
+        { "name": "stripeSubscriptionId", "type": "text" },
+        { "name": "status", "type": "text", "enum": ["active", "inactive", "lead"] },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "activity",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "userId", "type": "text" },
+        { "name": "action", "type": "text", "notNull": true },
+        { "name": "data", "type": "json", "default": { "kind": "raw", "sql": "(json_object())" } },
+        { "name": "status", "type": "integer", "mode": "boolean" },
+        { "name": "ip", "type": "text" },
+        { "name": "userAgent", "type": "text" },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "session",
+      "columns": [
+        { "name": "sessionToken", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "userId", "type": "text", "notNull": true, "references": { "table": "users", "column": "id", "onDelete": "cascade" } },
+        { "name": "expires", "type": "integer", "mode": "timestamp_ms", "notNull": true },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "oauthAccounts",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true },
+        { "name": "userId", "type": "text", "references": { "table": "users", "column": "id", "onDelete": "cascade" } },
+        { "name": "provider", "type": "text", "notNull": true },
+        { "name": "providerAccountId", "type": "text", "notNull": true },
+        { "name": "access_token", "type": "text" },
+        { "name": "refresh_token", "type": "text" },
+        { "name": "expires_at", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "scope", "type": "text" },
+        { "name": "token_type", "type": "text" },
+        { "name": "id_token", "type": "text" },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "databases",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "name", "type": "text", "unique": true },
+        { "name": "dbuuid", "type": "text", "unique": true },
+        { "name": "isArchived", "type": "integer", "mode": "boolean" },
+        { "name": "isActive", "type": "integer", "mode": "boolean" },
+        { "name": "lastBackup", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "schemaVersion", "type": "integer", "default": { "kind": "value", "value": 1 } },
+        { "name": "needsSchemaUpdate", "type": "integer", "mode": "boolean", "default": { "kind": "value", "value": 0 } },
+        { "name": "lastSchemaSync", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "organizationId", "type": "text", "references": { "table": "organizations", "column": "id" } },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ],
+      "indexes": [
+        { "name": "dbuuid_idx", "columns": ["dbuuid"], "unique": true },
+        { "name": "name_idx", "columns": ["name"], "unique": true }
+      ]
+    },
+    {
+      "name": "dbApiTokens",
+      "columns": [
+        { "name": "id", "type": "text", "primaryKey": true, "notNull": true },
+        { "name": "token", "type": "text", "notNull": true, "unique": true },
+        { "name": "name", "type": "text" },
+        { "name": "databaseId", "type": "text", "references": { "table": "databases", "column": "id" } },
+        { "name": "expires", "type": "integer", "mode": "timestamp_ms" },
+        { "name": "revoked", "type": "integer", "mode": "boolean" },
+        { "name": "updated_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "created_at", "type": "text", "default": { "kind": "raw", "sql": "(CURRENT_TIMESTAMP)" } },
+        { "name": "deleted_at", "type": "text" }
+      ],
+      "indexes": [
+        { "name": "token_idx", "columns": ["token"], "unique": true }
+      ]
+    }
+  ]
+}

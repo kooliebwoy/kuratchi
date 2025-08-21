@@ -17,10 +17,6 @@ export type MigrationBundle = {
   journal: MigrationJournal;
   migrations: Record<string, string | (() => Promise<string>)>;
 };
-export interface MigrationLoader {
-  loadJournal(dir: string): Promise<MigrationJournal>;
-  loadSql(dir: string, tag: string): Promise<string>;
-}
 
 export class KuratchiD1 {
   private provisioner: KuratchiProvisioner;
@@ -75,15 +71,12 @@ export class KuratchiD1 {
     return {
       query: <T>(sql: string, params: any[] = []) => this.getClient(cfg).query<T>(sql, params),
       drizzleProxy: () => this.getDrizzleClient(cfg),
-      migrate: (bundle: { journal: MigrationJournal; migrations: Record<string, () => Promise<string>> }) =>
-        this.migrate(cfg, bundle),
-      migrateWithLoader: (dir: string, loader: MigrationLoader) => this.migrateWithLoader(cfg, dir, loader),
-      migrateAuto: (dirName: string) => this.migrateAuto(cfg, dirName),
+      migrate: (dirName: string) => this.migrateVite(cfg, dirName),
       getClient: () => this.getClient(cfg),
     };
   }
 
-  async migrate(
+  private async applyBundle(
     cfg: { databaseName: string; apiToken: string },
     bundle: { journal: { entries: any[] }, migrations: Record<string, string | (() => Promise<string>)> }
   ) {
@@ -95,21 +88,7 @@ export class KuratchiD1 {
     return client.migrate({ journal: bundle.journal, migrations: normalized as any });
   }
 
-  async migrateWithLoader(
-    cfg: { databaseName: string; apiToken: string },
-    dir: string,
-    loader: MigrationLoader
-  ) {
-    const journal = await loader.loadJournal(dir);
-    const migrations: Record<string, () => Promise<string>> = {};
-    for (const entry of journal.entries) {
-      const key = `m${String(entry.idx).padStart(4, '0')}`;
-      migrations[key] = () => loader.loadSql(dir, entry.tag);
-    }
-    return this.migrate(cfg, { journal, migrations });
-  }
-
-  private async migrateAuto(
+  private async migrateVite(
     cfg: { databaseName: string; apiToken: string },
     dirName: string
   ) {
@@ -123,10 +102,9 @@ export class KuratchiD1 {
         throw new Error('loadMigrations() not found in migrations-handler module');
       }
       const bundle = await loadMigrations(dirName);
-      return this.migrate(cfg, bundle);
+      return this.applyBundle(cfg, bundle);
     } catch (err: any) {
-      const hint = 'This method requires a Vite environment with import.meta.glob support. ' +
-        'If you are not on Vite, use migrateWithLoader() or migrate() with your own bundle.';
+      const hint = 'This method requires a Vite environment with import.meta.glob support.';
       err.message = `${err.message}\n${hint}`;
       throw err;
     }

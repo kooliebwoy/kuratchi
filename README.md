@@ -97,7 +97,7 @@ const { database, apiToken } = await kuratchi.d1.createDatabase('acme-org');
 
 // 2) Connect + Migrate
 const db = kuratchi.d1.database({ databaseName: database.name, apiToken });
-await db.migrateAuto('org'); // expects migrations-org/ with meta/_journal.json
+await db.migrate('org'); // expects migrations-org/ with meta/_journal.json (Vite runtime)
 
 // 3) Drizzle
 const proxy = db.drizzleProxy();
@@ -124,8 +124,14 @@ const orm = drizzle(proxy, { schema }); // this is using the drizzle sqlite prox
 Kuratchi includes a small CLI to create and delete the admin D1 database via Cloudflare.
 
 - __Create__: `kuratchi admin create [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>`
+- __Migrate__: `kuratchi admin migrate [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-json-file <path>] [--no-spinner]`
+  - Strategy order: filesystem bundle (`./migrations-<dir>`), then JSON-schema initial bundle.
+  - Defaults: `--migrations-dir admin` (expects `migrations-admin/`).
+- __Generate migrations__: `kuratchi admin generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]`
+  - Generates `<out-dir>/<tag>.sql` and updates `<out-dir>/meta/_journal.json`. If `--from-schema-json-file` provided, emits a diff; otherwise an initial bundle.
+  - Requires build artifacts (run `npm run build` first) because the CLI imports `dist/orm/index.js`.
 - __Destroy__: `kuratchi admin destroy --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>`
-- __Env fallbacks__: CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID, CF_API_TOKEN | CLOUDFLARE_API_TOKEN, CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN
+- __Env fallbacks__: CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID, CF_API_TOKEN | CLOUDFLARE_API_TOKEN, CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN, KURATCHI_ADMIN_DB_TOKEN (for `admin migrate`)
   - __Config discovery__: kuratchi.config.json | kuratchi.config.mjs | kuratchi.config.js | kuratchi.config.example.mjs or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }
     - Use .mjs/.js to reference `process.env` for secrets. JSON cannot reference env.
     - You can copy `kuratchi.config.example.mjs` to `kuratchi.config.mjs` as a starting point.
@@ -147,6 +153,88 @@ kuratchi admin destroy \
   --account-id "$CF_ACCOUNT_ID" \
   --api-token "$CF_API_TOKEN"
 ```
+
+### Migration examples
+
+```sh
+# Apply admin migrations (prefers local FS bundle in ./migrations-admin)
+kuratchi admin migrate \
+  --name kuratchi-admin \
+  --token "$KURATCHI_ADMIN_DB_TOKEN" \
+  --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"
+
+# Generate an initial migration bundle from JSON schema
+# (Default schema discovery: ./schema-json/admin.json or ./src/lib/schema-json/admin.json)
+npm run build
+kuratchi admin generate-migrations \
+  --schema-json-file ./src/lib/schema-json/admin.json \
+  --out-dir ./migrations-admin \
+  --tag initial
+
+# Generate an incremental diff between two schema JSON files
+npm run build
+kuratchi admin generate-migrations \
+  --from-schema-json-file ./schema-json/admin.v1.json \
+  --schema-json-file ./schema-json/admin.v2.json \
+  --out-dir ./migrations-admin \
+  --tag add_status_column
+```
+
+## JSON-schema ORM migrations
+
+Kuratchi ships a minimal JSON-schema ORM to define SQLite schemas and generate SQL.
+
+- Files: `src/lib/orm/json-schema.ts`, `src/lib/orm/sqlite-generator.ts`, `src/lib/orm/diff.ts`, `src/lib/orm/migrator.ts` (internal; used by the CLI and SDK).
+
+### Migration bundle layout
+
+```
+migrations-<dir>/
+  meta/_journal.json     # { entries: [{ idx: number, tag: string }, ...] }
+  <tag>.sql              # One file per journal entry
+```
+
+### Generate migrations from JSON schema (CLI)
+
+- Initial bundle: `kuratchi admin generate-migrations --schema-json-file ./schema-json/admin.json --out-dir ./migrations-admin --tag initial`
+- Incremental diff: add `--from-schema-json-file ./schema-json/admin.prev.json`
+- For organization DBs, use a different out dir: `--out-dir ./migrations-org` and point `--schema-json-file` to your org schema JSON.
+
+### Batteries-included migrations (one-liner)
+
+Most apps only need a single call at runtime:
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
+const db = kuratchi.d1.database({ databaseName, apiToken: dbToken });
+
+await db.migrate('admin'); // or 'org' → applies your local bundle
+```
+
+If you define your schema using Kuratchi's JSON‑schema format, you do not need to hand‑write SQL. Use the CLI to generate a bundle when needed. For the admin DB specifically, `kuratchi admin migrate` will automatically generate an initial bundle from your JSON schema if none exists.
+
+Note: The JSON‑schema ORM is for schema definition and generating migration SQL/bundles. It is not a query builder. Use Drizzle (sqlite‑proxy) or raw SQL for queries.
+
+### Apply migrations at runtime
+
+Kuratchi uses Vite's `import.meta.glob` to discover local migration bundles (see `src/lib/d1/migrations-handler.ts`). Use `migrate(dirName)` from a Vite runtime (e.g., SvelteKit):
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
+const db = kuratchi.d1.database({ databaseName, apiToken: dbToken });
+await db.migrate('admin'); // or 'org' → expects ./migrations-org/
+```
+
+### Limitations and notes
+
+- Not a query ORM: no runtime models or query builder. Use Drizzle (`drizzle-orm/sqlite-proxy`) or raw SQL for queries.
+- Diff generator is additive-only (new tables, columns, indexes). Drops/renames/alter type are not auto-generated.
+- Adding NOT NULL columns without a DEFAULT will emit a warning; applying may fail if existing rows violate constraints.
+- Run `npm run build` before using `admin generate-migrations` (the CLI imports compiled files from `dist/`).
 
 ## SvelteKit auth quickstart (strict env-only)
 

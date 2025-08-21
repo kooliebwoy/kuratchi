@@ -18,8 +18,64 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// Generate migration SQL and journal from a JSON schema, optionally diffing against a "from" schema
+async function adminGenerateMigrations(opts) {
+  const outDir = opts.outDir || path.join(process.cwd(), 'migrations-admin');
+  const tag = opts.tag || `m_${Date.now()}`;
+  let schemaPath = opts.schemaJsonFile || path.join(process.cwd(), 'schema-json', 'admin.json');
+  if (!fs.existsSync(schemaPath)) {
+    const alt = path.join(process.cwd(), 'src', 'lib', 'schema-json', 'admin.json');
+    if (fs.existsSync(alt)) schemaPath = alt;
+  }
+  if (!fs.existsSync(schemaPath)) throw new Error('Provide --schema-json-file or place admin.json under ./schema-json/ or ./src/lib/schema-json/.');
+
+  const orm = await importOrm();
+  if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
+
+  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
+  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
+
+  const toSchema = readJson(schemaPath);
+  let sql = '';
+  let warnings = [];
+
+  if (opts.fromSchemaJsonFile) {
+    const fromSchema = readJson(opts.fromSchemaJsonFile);
+    const diff = orm.buildDiffSql(fromSchema, toSchema);
+    sql = diff.sql;
+    warnings = diff.warnings || [];
+  } else {
+    sql = orm.buildInitialSql(toSchema);
+  }
+
+  if (!sql || !sql.trim()) {
+    return { ok: true, outDir, tag, skipped: true, reason: 'No statements generated', warnings };
+  }
+
+  // Ensure paths
+  ensureDir(outDir);
+  ensureDir(path.join(outDir, 'meta'));
+
+  // Write SQL file
+  const sqlFile = path.join(outDir, `${tag}.sql`);
+  fs.writeFileSync(sqlFile, sql, 'utf8');
+
+  // Update or create journal
+  const journalPath = path.join(outDir, 'meta', '_journal.json');
+  let journal = { entries: [] };
+  if (fs.existsSync(journalPath)) {
+    try { journal = readJson(journalPath); } catch { journal = { entries: [] }; }
+  }
+  const nextIdx = (journal.entries?.[journal.entries.length - 1]?.idx || 0) + 1;
+  const next = { idx: nextIdx, tag };
+  journal.entries = [...(journal.entries || []), next];
+  fs.writeFileSync(journalPath, JSON.stringify(journal, null, 2), 'utf8');
+
+  return { ok: true, outDir, tag, sqlFile, journalPath, warnings };
+}
+
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n\nZero-config:\n  Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n  CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n  KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n  - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n  - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then Vite-based migrations (migrations-<dir>/), then inline SQL.\n  - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n  - --migrations-path defaults to ./migrations-<dir> if not provided.\n  - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-json-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then JSON schema (via --schema-json-file or ./schema-json/admin.json or ./src/lib/schema-json/admin.json).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json. If --from-schema-json-file is provided, generates a diff; otherwise creates an initial migration.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
 }
 
 function parseArgs(argv) {
@@ -39,6 +95,10 @@ function parseArgs(argv) {
       case '--workers-subdomain': case '-S': take('workersSubdomain'); break;
       case '--migrations-dir': take('migrationsDir'); break;
       case '--migrations-path': take('migrationsPath'); break;
+      case '--schema-json-file': take('schemaJsonFile'); break;
+      case '--from-schema-json-file': take('fromSchemaJsonFile'); break;
+      case '--out-dir': take('outDir'); break;
+      case '--tag': take('tag'); break;
       case '--no-spinner': out.noSpinner = true; break;
       // no location/format options in the simplified CLI
       default:
@@ -117,12 +177,20 @@ async function importInternalHttpClient() {
   throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
 }
 
-// Vite-only migration loader (optional). If missing, we'll fall back to inline SQL.
-async function importMigrationsVite() {
+
+// Optional: import the JSON-schema migrator utilities from dist
+async function importOrmMigrator() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const distPath = path.join(here, '..', 'dist', 'd1', 'migrations-handler.js');
+  const distPath = path.join(here, '..', 'dist', 'orm', 'migrator.js');
   if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
-  // If the file isn't present in dist, treat as unavailable (no throw here; caller handles fallback)
+  return null;
+}
+
+// Optional: import full ORM index (includes diff utilities)
+async function importOrm() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.join(here, '..', 'dist', 'orm', 'index.js');
+  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
   return null;
 }
 
@@ -226,187 +294,35 @@ async function adminMigrate(opts) {
       }
     }
   } catch (e) {
-    // Ignore and fall back to inline SQL
+    // Ignore and continue to next strategy
   }
 
-  // Secondary path: attempt to run user-provided migrations via Vite loader
+  // Tertiary path: attempt JSON-schema-based migration (single initial bundle)
   try {
-    const mv = await importMigrationsVite();
-    if (mv && typeof mv.loadMigrations === 'function') {
-      const bundle = await mv.loadMigrations(migrationsDir);
-      const ok = await client.migrate(bundle);
-      if (ok) {
-        return { ok: true, databaseName: name, workersSubdomain, strategy: 'vite-migrations', dir: migrationsDir };
+    const om = await importOrmMigrator();
+    if (om && typeof om.generateInitialMigrationBundle === 'function') {
+      let schemaFile = null;
+      const candidates = [];
+      if (opts.schemaJsonFile) candidates.push(opts.schemaJsonFile);
+      candidates.push(path.join(process.cwd(), 'schema-json', 'admin.json'));
+      candidates.push(path.join(process.cwd(), 'src', 'lib', 'schema-json', 'admin.json'));
+      for (const cand of candidates) {
+        if (cand && fs.existsSync(cand)) { schemaFile = cand; break; }
       }
-      // If migrate returned falsy, proceed to fallback
+      if (schemaFile) {
+        const raw = fs.readFileSync(schemaFile, 'utf8');
+        const schema = JSON.parse(raw);
+        const bundle = om.generateInitialMigrationBundle(schema, { tag: 'initial' });
+        const ok = await client.migrate(bundle);
+        if (ok) {
+          return { ok: true, databaseName: name, workersSubdomain, strategy: 'json-schema', schemaFile };
+        }
+      }
     }
   } catch (e) {
-    // Ignore and fall back to inline SQL
+    // Ignore and continue
   }
-
-  const stmts = [
-    // users
-    `CREATE TABLE IF NOT EXISTS users (
-      id TEXT NOT NULL PRIMARY KEY,
-      name TEXT,
-      firstName TEXT,
-      lastName TEXT,
-      phone TEXT,
-      email TEXT NOT NULL UNIQUE,
-      emailVerified INTEGER,
-      image TEXT,
-      status INTEGER,
-      role TEXT,
-      password_hash TEXT,
-      accessAttempts INTEGER,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // passwordResetTokens
-    `CREATE TABLE IF NOT EXISTS passwordResetTokens (
-      id TEXT PRIMARY KEY,
-      token TEXT NOT NULL,
-      email TEXT NOT NULL,
-      expires INTEGER NOT NULL,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // magicLinkTokens
-    `CREATE TABLE IF NOT EXISTS magicLinkTokens (
-      id TEXT PRIMARY KEY,
-      token TEXT NOT NULL UNIQUE,
-      email TEXT NOT NULL,
-      redirectTo TEXT,
-      consumed_at INTEGER,
-      expires INTEGER NOT NULL,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // emailVerificationToken
-    `CREATE TABLE IF NOT EXISTS emailVerificationToken (
-      id TEXT PRIMARY KEY,
-      token TEXT NOT NULL,
-      email TEXT NOT NULL,
-      userId TEXT NOT NULL,
-      expires INTEGER NOT NULL,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // organizationUsers
-    `CREATE TABLE IF NOT EXISTS organizationUsers (
-      id TEXT NOT NULL PRIMARY KEY,
-      email TEXT,
-      organizationId TEXT,
-      organizationSlug TEXT,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // organizations
-    `CREATE TABLE IF NOT EXISTS organizations (
-      id TEXT NOT NULL PRIMARY KEY,
-      organizationName TEXT,
-      email TEXT UNIQUE,
-      organizationSlug TEXT UNIQUE,
-      notes TEXT,
-      stripeCustomerId TEXT,
-      stripeSubscriptionId TEXT,
-      status TEXT,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // activity
-    `CREATE TABLE IF NOT EXISTS activity (
-      id TEXT PRIMARY KEY,
-      userId TEXT,
-      action TEXT NOT NULL,
-      data TEXT DEFAULT (json_object()),
-      status INTEGER,
-      ip TEXT,
-      userAgent TEXT,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // session
-    `CREATE TABLE IF NOT EXISTS session (
-      sessionToken TEXT NOT NULL PRIMARY KEY,
-      userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      expires INTEGER NOT NULL,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // oauthAccounts
-    `CREATE TABLE IF NOT EXISTS oauthAccounts (
-      id TEXT PRIMARY KEY,
-      userId TEXT REFERENCES users(id) ON DELETE CASCADE,
-      provider TEXT NOT NULL,
-      providerAccountId TEXT NOT NULL,
-      access_token TEXT,
-      refresh_token TEXT,
-      expires_at INTEGER,
-      scope TEXT,
-      token_type TEXT,
-      id_token TEXT,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-
-    // databases
-    `CREATE TABLE IF NOT EXISTS databases (
-      id TEXT NOT NULL PRIMARY KEY,
-      name TEXT,
-      dbuuid TEXT UNIQUE,
-      isArchived INTEGER,
-      isActive INTEGER,
-      lastBackup INTEGER,
-      schemaVersion INTEGER DEFAULT 1,
-      needsSchemaUpdate INTEGER DEFAULT 0,
-      lastSchemaSync INTEGER,
-      organizationId TEXT REFERENCES organizations(id),
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS dbuuid_idx ON databases(dbuuid);`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS name_idx ON databases(name);`,
-
-    // dbApiTokens
-    `CREATE TABLE IF NOT EXISTS dbApiTokens (
-      id TEXT NOT NULL PRIMARY KEY,
-      token TEXT NOT NULL UNIQUE,
-      name TEXT,
-      databaseId TEXT REFERENCES databases(id),
-      expires INTEGER,
-      revoked INTEGER,
-      updated_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      created_at TEXT DEFAULT (CURRENT_TIMESTAMP),
-      deleted_at TEXT
-    );`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS token_idx ON dbApiTokens(token);`
-  ];
-
-  const batch = stmts.map((query) => ({ query, params: [] }));
-  const result = await client.batch(batch);
-  if (!result || result.success === false) {
-    throw new Error(result?.error || 'Migration batch failed');
-  }
-  return { ok: true, databaseName: name, workersSubdomain, executed: stmts.length, strategy: 'inline-sql' };
+  throw new Error('No migrations found. Provide a local filesystem bundle or a JSON schema file to generate an initial bundle.');
 }
 
 async function main() {
@@ -444,6 +360,10 @@ async function main() {
       } finally {
         sp.stop();
       }
+      console.log(JSON.stringify(res, null, 2));
+    } else if (scope === 'admin' && cmd === 'generate-migrations') {
+      // No spinner for generation; it's instant and local
+      const res = await adminGenerateMigrations(argv);
       console.log(JSON.stringify(res, null, 2));
     } else {
       usage();

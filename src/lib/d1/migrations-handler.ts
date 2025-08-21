@@ -1,6 +1,6 @@
-// Unified migrations handler providing:
+// Migration loader utilities:
 // - Vite-based migration loader (import.meta.glob) via loadMigrations(dirName)
-// - Filesystem-based loader factory via createFsMigrationLoader(root)
+// - Filesystem-based loader factory via createFsMigrationLoader(root) for Node/CLI usage
 //
 // Expected structure for both modes:
 //   /migrations-<dirName>/meta/_journal.json
@@ -24,7 +24,7 @@ export async function loadMigrations(dirName: string): Promise<{
   migrations: Record<string, () => Promise<string>>;
 }> {
   if (!(import.meta as any).glob) {
-    throw new Error('loadMigrations() requires Vite (import.meta.glob). Use createFsMigrationLoader() instead.');
+    throw new Error('loadMigrations() requires Vite (import.meta.glob). In Node/CLI, load migrations from the filesystem bundle.');
   }
 
   const migrations: Record<string, () => Promise<string>> = {};
@@ -77,7 +77,7 @@ export async function loadMigrations(dirName: string): Promise<{
 }
 
 // ----- FS-based migration loader -----
-// Creates a loader compatible with KuratchiD1.migrateWithLoader(), reading from a filesystem root.
+// Creates a loader compatible with the migration bundle shape expected by the HTTP client/CLI.
 export async function createFsMigrationLoader(root: string): Promise<{
   loadJournal: (dir: string) => Promise<MigrationJournal>;
   loadSql: (dir: string, tag: string) => Promise<string>;
