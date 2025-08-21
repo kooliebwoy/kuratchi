@@ -110,5 +110,16 @@ export class Kuratchi {
             };
         }
     }
-}
 
+    // Redact secrets and internals on logs
+    toJSON() {
+        return {
+            d1: '[api]',
+            auth: '[api]'
+        } as any;
+    }
+
+    [Symbol.for('nodejs.util.inspect.custom')]() {
+        return this.toJSON();
+    }
+}

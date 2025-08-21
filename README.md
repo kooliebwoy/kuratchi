@@ -14,30 +14,64 @@ npm install kuratchi
 
 ## API surface (short)
 
-- kuratchi.d1.createDatabase(name, opts?) → { database, apiToken }
-- kuratchi.d1.deleteDatabase(databaseId)
-- kuratchi.d1.database({ databaseName, apiToken, bookmark? }) → client
-  - client.query(sql, params?)
-  - client.drizzleProxy()
-  - client.migrateAuto(dirName)  // Vite/SvelteKit only
-  - kuratchi.d1.migrateWithLoader(db, dir, loader) // non‑Vite
+### SvelteKit‑first (recommended)
 
-- kuratchi.auth.createOrganization({ organizationName }) → { id, ... }
-- kuratchi.auth.deleteOrganization(organizationId)
-- kuratchi.auth.forOrganization(organizationId) → orgAuth
-  - orgAuth.createUser({ email, password, ... })
-  - orgAuth.authenticateUser(email, password)
-  - orgAuth.createSession(userId)
-  - orgAuth.validateSessionToken(cookie)
-  - orgAuth.deleteUser(userId)
-  - orgAuth.requestPasswordReset(email)
-  - orgAuth.resetPassword(token, newPassword)
-  - orgAuth.sendEmailVerification(userId)
-  - orgAuth.verifyEmailToken(token)
+- Kuratchi.auth.handle({ getAdminDb?, getEnv?, cookieName? })
+  - Wires built‑in `/auth/*` routes and sets `locals`
+  - Requires the Kuratchi admin HTTP client shape for the admin DB (query; drizzleProxy optional)
+- After the handle runs on each request:
+  - `locals.kuratchi`: admin/org operations (create/list/delete orgs)
+  - `locals.auth`: org‑scoped AuthService (create user, sessions, etc.)
+  - `locals.user`, `locals.session`: current authenticated user/session
+- Convenience client calls built on the routes:
+  - `Kuratchi.auth.signIn.magicLink.send(email, { organizationId?, redirectTo?, fetch? })`
+  - `Kuratchi.auth.signIn.oauth.google.startUrl({ organizationId, redirectTo? })`
 
-- Kuratchi.auth.handle({ getAdminDb?, getEnv?, cookieName? }) // SvelteKit handle
-- Kuratchi.auth.signIn.magicLink.send(email, { organizationId?, redirectTo?, fetch? })
-- Kuratchi.auth.signIn.oauth.google.startUrl({ organizationId, redirectTo? })
+Quick examples
+
+```ts
+// src/hooks.server.ts
+import { Kuratchi } from 'kuratchi';
+export const handle = Kuratchi.auth.handle();
+```
+
+```ts
+// create an organization from a protected route action
+export const actions = {
+  createOrg: async ({ locals, request }) => {
+    const data = await request.formData();
+    const organizationName = String(data.get('name') || '').trim();
+    if (!locals.kuratchi) return { error: 'not_initialized' };
+    const org = await locals.kuratchi.createOrganization({ organizationName });
+    return { ok: true, org };
+  }
+};
+```
+
+```ts
+// use the org‑scoped auth service
+export const actions = {
+  invite: async ({ locals, request }) => {
+    if (!locals.auth) return { error: 'unauthorized' };
+    const data = await request.formData();
+    const email = String(data.get('email') || '').trim();
+    await locals.auth.sendMagicLink(email, 'https://your.app/auth/magic/callback');
+    return { ok: true };
+  }
+};
+```
+
+### Advanced (non‑SvelteKit scripts)
+
+If you need to provision outside of SvelteKit (e.g., a Node script), you can instantiate:
+
+```ts
+import { Kuratchi } from 'kuratchi';
+const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain, /* optional: auth */ });
+
+await kuratchi.d1.createDatabase('org‑db');
+// If constructed with `auth`, you can also call kuratchi.auth.createOrganization(...)
+```
 
 ## How we expect you to use it (the flow)
 - Provision an admin DB - This is where you'll store orgs and map everything (users, databases, api tokens, etc).
@@ -73,10 +107,17 @@ const orm = drizzle(proxy, { schema }); // this is using the drizzle sqlite prox
 
 ## Environment variables
 
-- CLOUDFLARE_API_TOKEN
-- CLOUDFLARE_ACCOUNT_ID
-- CLOUDFLARE_WORKERS_SUBDOMAIN
 - KURATCHI_AUTH_SECRET
+- CLOUDFLARE_WORKERS_SUBDOMAIN
+- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_API_TOKEN
+
+- KURATCHI_ADMIN_DB_NAME
+- KURATCHI_ADMIN_DB_TOKEN
+
+- ORIGIN
+- RESEND_API_KEY or RESEND_EMAIL_API_KEY
+- EMAIL_FROM or KURATCHI_EMAIL_FROM
 
 ## CLI (Admin D1 provisioning)
 
@@ -109,7 +150,7 @@ kuratchi admin destroy \
 
 ## SvelteKit auth quickstart (strict env-only)
 
-Kuratchi ships a SvelteKit handle that wires up session cookies, magic link, and Google OAuth endpoints for you. It is configured strictly via environment variables read from `$env/dynamic/private` — there is no fallback to Workers bindings.
+Kuratchi ships a SvelteKit handle that wires up session cookies, magic link, and Google OAuth endpoints for you. It is configured strictly via environment variables read from `$env/dynamic/private` — there is no fallback to Workers bindings. The admin DB is accessed via the Kuratchi admin HTTP client only (`KURATCHI_ADMIN_DB_NAME`/`KURATCHI_ADMIN_DB_TOKEN` + `CLOUDFLARE_WORKERS_SUBDOMAIN`).
 
 1) hooks.server.ts
 
@@ -177,6 +218,7 @@ Notes:
   - Magic link: org is resolved by the user's email via the admin DB mapping (`organizationUsers`). If no mapping exists, respond with 404; the separate sign-up flow handles creating users/org membership.
   - OAuth (Google): org is resolved at the callback using the email from Google userinfo. The start route does not require `org`. If no mapping exists, fail the request.
   - Optional override: append `?org=<id-or-slug>` (and/or `?redirectTo=/path`) if you want to force a specific org and bypass email-based resolution.
+  - Admin DB support: only the Kuratchi admin HTTP client is supported; Workers D1 bindings and sqlite‑proxy function shapes are not supported for the admin DB.
 
 6) Logout
 
@@ -288,7 +330,7 @@ export const load = async ({ locals }) => {
 };
 ```
 
-Note: The handle lazily initializes its internals. You must set all required env vars before using flows that need them (e.g., admin DB for magic link/org lookup), but not every route touches every service.
+Note: The handle lazily initializes its internals. You must set all required env vars before using flows that need them (e.g., admin DB for magic link/org lookup), but not every route touches every service. The admin DB is connected using the Kuratchi admin HTTP client; Workers D1 bindings are not supported.
 
 Required env for the SvelteKit handle (strict env-only via `$env/dynamic/private`):
 

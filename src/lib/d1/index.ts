@@ -33,6 +33,10 @@ export class KuratchiD1 {
       endpointBase: config.endpointBase,
     });
     this.workersSubdomain = config.workersSubdomain;
+    // Hide internal provisioner from logs
+    try {
+      Object.defineProperty(this, 'provisioner', { enumerable: false, configurable: false, writable: true });
+    } catch {}
   }
 
   async createDatabase(databaseName: string, options: { location?: PrimaryLocationHint } = {}) {
@@ -149,5 +153,17 @@ export class KuratchiD1 {
       }
     }
     return false;
+  }
+
+  // Redact internals on logs
+  toJSON() {
+    return {
+      database: '[api]',
+      migrate: '[api]'
+    } as any;
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')]() {
+    return this.toJSON();
   }
 }

@@ -25,6 +25,11 @@ export class KuratchiHttpClient {
     constructor(config: KuratchiConfig) {
         this.endpoint = `https://${config.databaseName}.${config.workersSubdomain}`;
         this.token = config.apiToken;
+        // Prevent accidental exposure in console.log / util.inspect
+        try {
+            Object.defineProperty(this, 'token', { enumerable: false, configurable: false, writable: true });
+            Object.defineProperty(this, 'bookmark', { enumerable: false, configurable: false, writable: true });
+        } catch {}
     }
 
     // ---- Session bookmark helpers ----
@@ -208,4 +213,17 @@ export class KuratchiHttpClient {
             return false;
         }
     }
+
+  // Redact internals on logs
+  toJSON() {
+    return {
+      endpoint: this.endpoint,
+      query: '[function]',
+      raw: '[function]'
+    } as any;
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')]() {
+    return this.toJSON();
+  }
 }

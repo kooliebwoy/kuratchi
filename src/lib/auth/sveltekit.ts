@@ -2,45 +2,45 @@ import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { KuratchiAuth } from './kuratchi-auth.js';
 import { parseSessionCookie } from './utils.js';
 import { KuratchiHttpClient } from '../d1/internal-http-client.js';
+import type { QueryResult } from '../d1/internal-http-client.js';
+import { Kuratchi } from '../kuratchi.js';
 
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
+
+// Utility to allow sync or async returns
+type MaybePromise<T> = T | Promise<T>;
+
+// Supported admin DB (Kuratchi admin CLI HTTP client)
+type KuratchiHttpLike = {
+  query: (sql: string, params?: any[]) => Promise<QueryResult<any>>;
+  getDrizzleProxy?: () => any;
+  drizzleProxy?: () => any;
+};
+export type AdminDbLike = KuratchiHttpLike;
+
+// Env shape consumed by the auth handle
+export type AuthHandleEnv = {
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  ORIGIN?: string;
+  RESEND_CLUTCHCMS_AUDIENCE?: string;
+  KURATCHI_AUTH_SECRET: string;
+  CLOUDFLARE_WORKERS_SUBDOMAIN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  AUTH_WEBHOOK_SECRET?: string;
+  KURATCHI_ADMIN_DB_NAME?: string;
+  KURATCHI_ADMIN_DB_TOKEN?: string;
+};
 
 export interface CreateAuthHandleOptions {
   cookieName?: string;
   // Optional override to provide an admin DB client. Can be async.
-  getAdminDb?: (event: RequestEvent) => any | Promise<any>;
+  getAdminDb?: (event: RequestEvent) => MaybePromise<AdminDbLike>;
   // Optional override to provide env. Can be async. Defaults to $env/dynamic/private values.
-  getEnv?: (event: RequestEvent) =>
-    | Promise<{
-        RESEND_API_KEY: string;
-        EMAIL_FROM: string;
-        ORIGIN: string;
-        RESEND_CLUTCHCMS_AUDIENCE?: string;
-        KURATCHI_AUTH_SECRET: string;
-        CLOUDFLARE_WORKERS_SUBDOMAIN: string;
-        CLOUDFLARE_ACCOUNT_ID: string;
-        CLOUDFLARE_API_TOKEN: string;
-        GOOGLE_CLIENT_ID?: string;
-        GOOGLE_CLIENT_SECRET?: string;
-        AUTH_WEBHOOK_SECRET?: string;
-        KURATCHI_ADMIN_DB_NAME?: string;
-        KURATCHI_ADMIN_DB_TOKEN?: string;
-      }>
-    | {
-        RESEND_API_KEY: string;
-        EMAIL_FROM: string;
-        ORIGIN: string;
-        RESEND_CLUTCHCMS_AUDIENCE?: string;
-        KURATCHI_AUTH_SECRET: string;
-        CLOUDFLARE_WORKERS_SUBDOMAIN: string;
-        CLOUDFLARE_ACCOUNT_ID: string;
-        CLOUDFLARE_API_TOKEN: string;
-        GOOGLE_CLIENT_ID?: string;
-        GOOGLE_CLIENT_SECRET?: string;
-        AUTH_WEBHOOK_SECRET?: string;
-        KURATCHI_ADMIN_DB_NAME?: string;
-        KURATCHI_ADMIN_DB_TOKEN?: string;
-      };
+  getEnv?: (event: RequestEvent) => MaybePromise<AuthHandleEnv>;
 }
 
 export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle {
@@ -130,11 +130,14 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
   return async ({ event, resolve }) => {
     // Initialize locals defaults and helpers
     const locals: any = event.locals;
-    locals.auth = null;
-    locals.user = null;
-    locals.session = null;
+    // Single namespace only
+    if (!locals.kuratchi) locals.kuratchi = {};
+    // Initialize only user/session placeholders; leave auth alone (will be provided by SDK)
+    if (typeof locals.kuratchi.user === 'undefined') locals.kuratchi.user = null;
+    if (typeof locals.kuratchi.session === 'undefined') locals.kuratchi.session = null;
 
-    locals.setSessionCookie = (value: string, opts?: { expires?: Date }) => {
+    // Cookie helpers live under kuratchi
+    locals.kuratchi.setSessionCookie = (value: string, opts?: { expires?: Date }) => {
       const expires = opts?.expires;
       event.cookies.set(cookieName, value, {
         httpOnly: true,
@@ -144,9 +147,10 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         ...(expires ? { expires } : {})
       });
     };
-    locals.clearSessionCookie = () => {
+    locals.kuratchi.clearSessionCookie = () => {
       event.cookies.delete(cookieName, { path: '/' });
     };
+    // No top-level mirrors; use locals.kuratchi only
 
     const url = new URL(event.request.url);
     const pathname = url.pathname;
@@ -175,59 +179,50 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       return adminDbInst;
     };
 
-    let kuratchi: KuratchiAuth | null = null;
-    const getKuratchi = async (): Promise<KuratchiAuth> => {
-      if (kuratchi) return kuratchi;
+    let sdk: Kuratchi | null = null;
+    const getKuratchi = async (): Promise<Kuratchi> => {
+      if (sdk) return sdk;
       // Validate Cloudflare env required for KuratchiAuth usage
       const cfMissing = ['CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'].filter((k) => !env?.[k]);
       if (cfMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${cfMissing.join(', ')}`);
       const adminDb = await getAdminDbLazy();
-      kuratchi = new KuratchiAuth({
-        resendApiKey: env.RESEND_API_KEY || '',
-        emailFrom: env.EMAIL_FROM || '',
-        origin: env.ORIGIN || '',
-        resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
-        authSecret: env.KURATCHI_AUTH_SECRET,
-        workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-        accountId: env.CLOUDFLARE_ACCOUNT_ID,
+      sdk = new Kuratchi({
         apiToken: env.CLOUDFLARE_API_TOKEN,
-        adminDb
+        accountId: env.CLOUDFLARE_ACCOUNT_ID,
+        workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
+        auth: {
+          resendApiKey: env.RESEND_API_KEY || '',
+          emailFrom: env.EMAIL_FROM || '',
+          origin: env.ORIGIN || '',
+          resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
+          authSecret: env.KURATCHI_AUTH_SECRET,
+          adminDb
+        }
       });
-      (locals as any).kuratchi = kuratchi;
-      return kuratchi;
+      // Expose the SDK instance under locals.kuratchi, preserving existing helpers
+      Object.assign(locals.kuratchi, sdk);
+      return sdk;
     };
 
-    // Helper: look up organizationId by email in admin DB, support multiple shapes
+    // Ensure SDK is attached so locals.kuratchi.auth/d1 are available
+    await getKuratchi();
+
+    // Helper to get the Auth API (narrowed to KuratchiAuth)
+    const getAuthApi = async (): Promise<KuratchiAuth> => {
+      const k = await getKuratchi();
+      return k.auth as KuratchiAuth;
+    };
+
+    // Helper: look up organizationId by email in admin DB (Kuratchi HTTP client only)
     const findOrganizationIdByEmail = async (email: string): Promise<string | null> => {
       try {
         const adminDb = await getAdminDbLazy().catch(() => null);
-        if (!adminDb) return null;
+        if (!adminDb || typeof (adminDb as any).query !== 'function') return null;
         const sql = 'SELECT organizationId FROM organizationUsers WHERE email = ? AND deleted_at IS NULL LIMIT 1';
-        // D1 binding shape
-        if (typeof adminDb.prepare === 'function') {
-          const prepared = adminDb.prepare(sql).bind(email);
-          const row = typeof prepared.first === 'function'
-            ? await prepared.first()
-            : (typeof prepared.get === 'function'
-                ? await prepared.get()
-                : (() => prepared.all().then((r: any) => (r?.results?.[0] ?? r?.[0] ?? null)))());
-          return (row as any)?.organizationId || null;
-        }
-        // HTTP client shape
-        if (typeof adminDb.query === 'function') {
-          const res = await adminDb.query(sql, [email]);
-          const rows = (res && (res.results ?? res.data)) || [];
-          const row = Array.isArray(rows) ? rows[0] : null;
-          return row?.organizationId || null;
-        }
-        // sqlite-proxy function shape
-        if (typeof adminDb === 'function') {
-          const r = await adminDb(sql, [email], 'get');
-          const rows = (r as any)?.rows ?? [];
-          const row = Array.isArray(rows) ? rows[0] : null;
-          return row?.organizationId || null;
-        }
-        return null;
+        const res = await (adminDb as KuratchiHttpLike).query(sql, [email]);
+        const rows = (res && (res.results ?? res.data)) || [];
+        const row = Array.isArray(rows) ? rows[0] : null;
+        return row?.organizationId || null;
       } catch {
         return null;
       }
@@ -248,7 +243,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (!orgId) orgId = await findOrganizationIdByEmail(email);
         if (!orgId) return new Response(JSON.stringify({ ok: false, error: 'organization_not_found_for_email' }), { status: 404, headers: { 'content-type': 'application/json' } });
 
-        const auth = await (await getKuratchi()).forOrganization(orgId);
+        const auth = await (await getAuthApi()).forOrganization(orgId);
         const tokenData = await auth.createMagicLinkToken(email, redirectTo);
         const origin = env.ORIGIN || `${url.protocol}//${url.host}`;
         const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
@@ -265,12 +260,12 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       const orgId = url.searchParams.get('org') || '';
       if (!token || !orgId) return new Response('Bad Request', { status: 400 });
       try {
-        const auth = await (await getKuratchi()).forOrganization(orgId);
+        const auth = await (await getAuthApi()).forOrganization(orgId);
         const result = await auth.verifyMagicLink(token);
         if (!result.success || !result.cookie) return new Response('Unauthorized', { status: 401 });
         // 30d cookie expiry
         const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        locals.setSessionCookie(result.cookie, { expires });
+        locals.kuratchi.setSessionCookie(result.cookie, { expires });
         const dest = result.redirectTo || url.searchParams.get('redirectTo') || '/';
         return new Response(null, { status: 303, headers: { Location: dest } });
       } catch (e) {
@@ -354,7 +349,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (!orgId) return new Response('organization_not_found_for_email', { status: 404 });
 
         // Link or create user, then create session
-        const auth = await (await getKuratchi()).forOrganization(orgId);
+        const auth = await (await getAuthApi()).forOrganization(orgId);
         const user = await auth.getOrCreateUserFromOAuth({
           provider: 'google',
           providerAccountId,
@@ -372,7 +367,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         });
         const cookie = await auth.upsertSession({ userId: user.id });
         const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        locals.setSessionCookie(cookie, { expires });
+        locals.kuratchi.setSessionCookie(cookie, { expires });
         return new Response(null, { status: 303, headers: { Location: redirectTo || '/' } });
       } catch (e: any) {
         return new Response(`OAuth callback error: ${e?.message || String(e)}`, { status: 500 });
@@ -385,20 +380,26 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         const parsed = await parseSessionCookie(env.KURATCHI_AUTH_SECRET, cookieVal);
         const orgId = parsed?.orgId;
         if (orgId && orgId !== 'admin') {
-          const authService = await (await getKuratchi()).forOrganization(orgId);
+          const authService = await (await getAuthApi()).forOrganization(orgId);
           const { sessionData, user } = await authService.validateSessionToken(cookieVal);
           if (sessionData && user) {
-            locals.auth = authService;
-            locals.user = user;
-            locals.session = sessionData;
+            // Expose current org-scoped AuthService under kuratchi.auth.org
+            if (!locals.kuratchi.auth) {
+              // ensure sdk/auth is initialized and attached
+              await getKuratchi();
+            }
+            (locals.kuratchi as any).auth = await getAuthApi();
+            (locals.kuratchi as any).auth.org = authService;
+            locals.kuratchi.user = user;
+            locals.kuratchi.session = sessionData;
           } else {
             // Session invalid or expired
-            locals.clearSessionCookie();
+            locals.kuratchi.clearSessionCookie();
           }
         }
       } catch (e) {
         // On any parsing/validation error, clear cookie silently
-        locals.clearSessionCookie();
+        locals.kuratchi.clearSessionCookie();
       }
     }
 

@@ -41,6 +41,10 @@ export class KuratchiAuth {
         config: AuthConfig
     ) {
         this.config = config;
+        // Prevent accidental exposure of secrets via console.log / util.inspect
+        try {
+            Object.defineProperty(this, 'config', { enumerable: false, configurable: false, writable: true });
+        } catch {}
         this.organizationServices = new Map();
         
         // Initialize KuratchiD1 instance
@@ -101,6 +105,23 @@ export class KuratchiAuth {
                 }
             }
         };
+        }
+
+        // Node.js inspect and JSON serialization redaction
+        toJSON() {
+            return {
+                signIn: '[api]',
+                // expose minimal safe surface
+                forOrganization: '[function]',
+                createOrganization: '[function]',
+                listOrganizations: '[function]',
+                getOrganization: '[function]',
+                deleteOrganization: '[function]'
+            } as any;
+        }
+
+        [Symbol.for('nodejs.util.inspect.custom')]() {
+            return this.toJSON();
         }
     
         private buildEnv(adminClient: any) {
