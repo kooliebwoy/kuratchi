@@ -12,6 +12,39 @@ Auth toolkit for multi-organization with Cloudflare D1. Opinionated. Built to be
 npm install kuratchi
 ```
 
+## Quickstart: ORM + migrations (batteries-included)
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+const kuratchi = new Kuratchi({
+  apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  workersSubdomain: process.env.CLOUDFLARE_WORKERS_SUBDOMAIN!,
+});
+
+// Connect to an existing D1 database
+const db = kuratchi.d1.database({ databaseName: 'acme-org', apiToken: process.env.ORG_DB_TOKEN! });
+
+// 1) Apply migrations from your local bundle (expects ./migrations-org/)
+await db.migrate('org');
+
+// 2) Use the minimal runtime ORM (no Drizzle required)
+const org = db.client({ schema: 'organization' });
+await org.users.insert({ id: 'u1', email: 'a@acme.com' });
+const res = await org.users.findMany({
+  where: { email: { like: '%@acme.com' } },
+  orderBy: [{ email: 'asc' }],
+  limit: 10,
+});
+if (!res.success) throw new Error(res.error);
+console.log(res.data);
+```
+
+Notes:
+- `db.migrate('org')` requires a Vite runtime (e.g., SvelteKit) and a `migrations-org/` folder with `meta/_journal.json`.
+- For the admin DB, you can also apply migrations via CLI: `kuratchi admin migrate --token "$KURATCHI_ADMIN_DB_TOKEN" --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"`.
+
 ## API surface (short)
 
 ### SvelteKit‑first (recommended)
@@ -104,6 +137,39 @@ const proxy = db.drizzleProxy();
 const orm = drizzle(proxy, { schema }); // this is using the drizzle sqlite proxy
 
 > Note: Kuratchi is SvelteKit + Cloudflare Workers first. Use the SvelteKit handle and built-in `/auth/*` routes below. Programmatic non-SvelteKit usage may be documented later.
+
+### Query without Drizzle (runtime ORM, experimental)
+
+```ts
+import { Kuratchi } from 'kuratchi';
+
+const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
+
+// A) Top-level sugar (recommended):
+//    Bind directly without calling database(). Returns property-based client.
+const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' });
+await admin.users.insert({ id: 'u1', email: 'a@acme.com' });
+const first = await admin.users.findFirst({ where: { email: { like: '%@acme.com' } } });
+if (!first.success) throw new Error(first.error);
+console.log(first.data);
+
+// B) db.client() (typed by known schemas):
+const db = kuratchi.d1.database({ databaseName, apiToken });
+const org = db.client({ schema: 'organization' });
+await org.session.delete({ sessionToken: 'deadbeef' });
+
+// C) db.client() dynamic fallback (no schema):
+const dyn = db.client();
+await dyn.users.update({ id: 'u1' }, { email: 'new@acme.com' });
+const count = await dyn.users.count({ email: { like: '%@acme.com' } });
+
+// D) Custom JSON schema:
+//    If you have a JSON schema object (shape compatible with Kuratchi's DatabaseSchema),
+//    you can type the client by it without Drizzle.
+const schema = { tables: [/* ... */] } as any; // minimal shape: { tables: [{ name: string, ... }] }
+const custom = db.client({ schema });
+await custom.users.insert({ id: 'u2', email: 'b@acme.com' });
+```
 
 ## Environment variables
 

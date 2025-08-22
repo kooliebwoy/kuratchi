@@ -188,6 +188,7 @@ export type OAuthAccount = InferSelectModel<typeof OAuthAccounts>;
 export type OrganizationUser = InferSelectModel<typeof OrganizationUsers>;
 export type Organization = InferSelectModel<typeof Organizations>;
 export type Activity = InferSelectModel<typeof Activity>;
+export type EmailVerificationToken = InferSelectModel<typeof EmailVerificationTokens>;
 export type Database = InferSelectModel<typeof Databases>;
 export type DBApiToken = InferSelectModel<typeof DBApiTokens>;
 

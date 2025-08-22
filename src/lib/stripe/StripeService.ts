@@ -1,8 +1,7 @@
 import Stripe from 'stripe';
-import { eq } from 'drizzle-orm';
-import { DrizzleD1Database } from 'drizzle-orm/d1';
 import { subscriptionToBilling } from './utils.js';
 import type { OrganizationBilling } from './types.js';
+import type { TableApi } from '../orm/runtime.js';
 
 interface Env {
   ADMIN_DB: any;
@@ -40,14 +39,12 @@ export interface CheckoutSessionOptions {
  */
 export class StripeService {
   private stripe: Stripe;
-  private db: DrizzleD1Database<any>;
+  private client: Record<string, TableApi>;
   private env: Env;
-  private schema: any;
 
-  constructor(db: DrizzleD1Database<any>, env: Env, schema: any) {
-    this.db = db;
+  constructor(client: Record<string, TableApi>, env: Env) {
+    this.client = client;
     this.env = env;
-    this.schema = schema;
     this.stripe = new Stripe(env.STRIPE_SECRET_KEY, {
       apiVersion: '2024-06-20',
       typescript: true,
@@ -62,12 +59,9 @@ export class StripeService {
     customer: Stripe.Customer;
     subscription?: Stripe.Subscription;
   }> {
-    // Get organization from our database
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, options.organizationId))
-      .get();
+    // Get organization from our database (runtime ORM)
+    const orgRes = await this.client.organizations.findFirst({ where: { id: options.organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization) {
       throw new Error('Organization not found');
@@ -88,13 +82,10 @@ export class StripeService {
       });
 
       // Update organization with Stripe customer ID
-      await this.db
-        .update(this.schema.Organizations)
-        .set({ 
-          stripeCustomerId: customer.id,
-          updated_at: new Date().toISOString()
-        })
-        .where(eq(this.schema.Organizations.id, options.organizationId));
+      await this.client.organizations.update(
+        { id: options.organizationId },
+        { stripeCustomerId: customer.id, updated_at: new Date().toISOString() }
+      );
     }
 
     let subscription: Stripe.Subscription | undefined;
@@ -113,11 +104,8 @@ export class StripeService {
    * Get organization with billing information from our database
    */
   async getOrganizationWithBilling(organizationId: string): Promise<any> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization) {
       return null;
@@ -154,11 +142,8 @@ export class StripeService {
     priceId: string,
     trialDays?: number
   ): Promise<Stripe.Subscription> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeCustomerId) {
       throw new Error('Organization must have Stripe customer setup first');
@@ -183,13 +168,10 @@ export class StripeService {
     const subscription = await this.stripe.subscriptions.create(subscriptionData);
 
     // Update organization with subscription ID
-    await this.db
-      .update(this.schema.Organizations)
-      .set({ 
-        stripeSubscriptionId: subscription.id,
-        updated_at: new Date().toISOString()
-      })
-      .where(eq(this.schema.Organizations.id, organizationId));
+    await this.client.organizations.update(
+      { id: organizationId },
+      { stripeSubscriptionId: subscription.id, updated_at: new Date().toISOString() }
+    );
 
     return subscription;
   }
@@ -198,11 +180,8 @@ export class StripeService {
    * Create checkout session for organization billing
    */
   async createCheckoutSession(options: CheckoutSessionOptions): Promise<Stripe.Checkout.Session> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, options.organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: options.organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization) {
       throw new Error('Organization not found');
@@ -247,11 +226,8 @@ export class StripeService {
    * Create billing portal session for organization
    */
   async createBillingPortalSession(organizationId: string, returnUrl: string): Promise<Stripe.BillingPortal.Session> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeCustomerId) {
       throw new Error('Organization must have Stripe customer setup first');
@@ -267,11 +243,8 @@ export class StripeService {
    * Cancel organization subscription
    */
   async cancelOrganizationSubscription(organizationId: string, immediately = false): Promise<Stripe.Subscription> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeSubscriptionId) {
       throw new Error('Organization subscription not found');
@@ -281,13 +254,10 @@ export class StripeService {
     if (immediately) {
       subscription = await this.stripe.subscriptions.cancel(organization.stripeSubscriptionId);
       // Clear subscription ID from our database
-      await this.db
-        .update(this.schema.Organizations)
-        .set({ 
-          stripeSubscriptionId: null,
-          updated_at: new Date().toISOString()
-        })
-        .where(eq(this.schema.Organizations.id, organizationId));
+      await this.client.organizations.update(
+        { id: organizationId },
+        { stripeSubscriptionId: null as any, updated_at: new Date().toISOString() }
+      );
     } else {
       subscription = await this.stripe.subscriptions.update(organization.stripeSubscriptionId, {
         cancel_at_period_end: true,
@@ -305,11 +275,8 @@ export class StripeService {
     priceId: string,
     prorationBehavior: Stripe.SubscriptionUpdateParams.ProrationBehavior = 'create_prorations'
   ): Promise<Stripe.Subscription> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeSubscriptionId) {
       throw new Error('Organization subscription not found');
@@ -358,11 +325,8 @@ export class StripeService {
     organization: any;
     billing: OrganizationBilling | null;
   }> {
-    const organization = await this.db
-      .select()
-      .from(this.schema.Organizations)
-      .where(eq(this.schema.Organizations.id, organizationId))
-      .get();
+    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const organization = (orgRes as any)?.data;
 
     if (!organization) {
       return { organization: null, billing: null } as any;
@@ -425,15 +389,15 @@ export class StripeService {
         if (organizationId) {
           try {
             if (event.type === 'customer.subscription.deleted') {
-              await this.db
-                .update(this.schema.Organizations)
-                .set({ stripeSubscriptionId: null, updated_at: new Date().toISOString() })
-                .where(eq(this.schema.Organizations.id, organizationId));
+              await this.client.organizations.update(
+                { id: organizationId },
+                { stripeSubscriptionId: null as any, updated_at: new Date().toISOString() }
+              );
             } else {
-              await this.db
-                .update(this.schema.Organizations)
-                .set({ stripeSubscriptionId: subscription.id, updated_at: new Date().toISOString() })
-                .where(eq(this.schema.Organizations.id, organizationId));
+              await this.client.organizations.update(
+                { id: organizationId },
+                { stripeSubscriptionId: subscription.id, updated_at: new Date().toISOString() }
+              );
             }
           } catch (e) {
             console.error('Failed to sync subscription to DB:', e);
@@ -458,14 +422,14 @@ export class StripeService {
             const customerId = (session.customer as string) || undefined;
             const subscriptionId = (session.subscription as string) || undefined;
             if (customerId || subscriptionId) {
-              await this.db
-                .update(this.schema.Organizations)
-                .set({
+              await this.client.organizations.update(
+                { id: organizationId },
+                {
                   stripeCustomerId: customerId ?? undefined,
                   stripeSubscriptionId: subscriptionId ?? undefined,
                   updated_at: new Date().toISOString(),
-                })
-                .where(eq(this.schema.Organizations.id, organizationId));
+                } as any
+              );
             }
           } catch (e) {
             console.error('Failed to persist checkout.session IDs:', e);
@@ -480,10 +444,10 @@ export class StripeService {
         data = { customer };
         if (organizationId) {
           try {
-            await this.db
-              .update(this.schema.Organizations)
-              .set({ stripeCustomerId: customer.id, updated_at: new Date().toISOString() })
-              .where(eq(this.schema.Organizations.id, organizationId));
+            await this.client.organizations.update(
+              { id: organizationId },
+              { stripeCustomerId: customer.id, updated_at: new Date().toISOString() }
+            );
           } catch (e) {
             console.error('Failed to sync customer to DB:', e);
           }

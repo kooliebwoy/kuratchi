@@ -1,8 +1,7 @@
-import { eq, desc, asc, like, count, and, or } from "drizzle-orm";
-import { DrizzleD1Database } from "drizzle-orm/d1";
 import { comparePassword, hashPassword, generateSessionToken, hashToken, buildSessionCookie, parseSessionCookie } from "./utils.js";
 import { EmailService } from "../email/EmailService.js";
 import { OrgService } from "../org/OrgService.js";
+import type { TableApi } from "../orm/runtime.js";
 import type { D1Database } from "@cloudflare/workers-types";
 
 // Session data built from DB on demand
@@ -44,30 +43,26 @@ interface Env {
 }
 
 export class AuthService {
-    private db: DrizzleD1Database<any>;
+    private client: Record<string, TableApi>;
     private env: Env; // Store env for EmailService creation
     
     private emailService: EmailService;
-    private schema: any;
-    private orgService: OrgService;
+    private orgService?: OrgService;
     
     /**
      * Creates an instance of AuthService that works with either D1 or Durable Object databases
-     * @param db - An instance of a Drizzle database (either D1 or Durable Object SQLite)
+     * @param client - A runtime ORM client (property-based API)
      * @param env - Environment variables
-     * @param schema - Database schema (clientSchema for SQLite DO, adminSchema for D1)
      */
     constructor(
-        db: DrizzleD1Database<any>,
+        client: Record<string, TableApi>,
         env: Env,
-        schema: any
     ) {
-        this.db = db;
+        this.client = client;
         this.env = env;
         this.emailService = new EmailService(env as any); // Centralized templated email sender
-        this.schema = schema;
-        // Initialize OrgService to encapsulate roles and activity operations
-        this.orgService = new OrgService(db, env, schema);
+        // Always initialize OrgService with the same runtime client
+        this.orgService = new OrgService(client, env);
     }
 
     /**
@@ -89,11 +84,13 @@ export class AuthService {
         }
 
         // Create user with emailVerified set to null (unverified)
-        const user = await this.db.insert(this.schema.Users).values({ 
-            ...toInsert, 
+        await this.client.users.insert({
+            ...toInsert,
             id: userId,
-            emailVerified: null // Explicitly set email to unverified
-        }).returning().get();
+            emailVerified: null
+        });
+        const created = await this.client.users.findFirst({ where: { id: userId } as any });
+        const user = (created as any)?.data;
         
         // Generate an email verification token
         // const verificationToken = await this.createEmailVerificationToken(userId, userData.email);
@@ -114,7 +111,8 @@ export class AuthService {
      * @returns Array of users
      */
     async getUsers(): Promise<any[]> {
-        return this.db.select().from(this.schema.Users).all();
+        const res = await this.client.users.findMany();
+        return ((res as any).results ?? (res as any).data ?? []) as any[];
     }
 
     /**
@@ -123,7 +121,8 @@ export class AuthService {
      * @returns User or undefined
      */
     async getUser(id: string): Promise<any | undefined> {
-        return this.db.select().from(this.schema.Users).where(eq(this.schema.Users.id, id)).get();
+        const res = await this.client.users.findFirst({ where: { id } as any });
+        return (res as any)?.data;
     }
 
     /**
@@ -133,7 +132,9 @@ export class AuthService {
      * @returns Updated user
      */
     async updateUser(id: string, userData: Partial<any>): Promise<any | undefined> {
-        return this.db.update(this.schema.Users).set({ ...userData, updated_at: Date.now().toString() }).where(eq(this.schema.Users.id, id)).returning().get();
+        await this.client.users.update({ id } as any, { ...userData, updated_at: Date.now().toString() });
+        const res = await this.client.users.findFirst({ where: { id } as any });
+        return (res as any)?.data;
     }
 
     /**
@@ -151,7 +152,8 @@ export class AuthService {
         // invalidate all sessions for this user
         await this.invalidateAllSessions(id);
 
-        return this.db.delete(this.schema.Users).where(eq(this.schema.Users.id, id)).returning().get();
+        await this.client.users.delete({ id } as any);
+        return user as any;
     }
 
     /**
@@ -159,8 +161,9 @@ export class AuthService {
      * @returns Array of deleted users
      */
     async deleteUsers(): Promise<any[]> {
-        const rows = await this.db.delete(this.schema.Users).returning().all();
-        return rows as any[];
+        const before = await this.getUsers();
+        await this.client.users.delete({} as any);
+        return before as any[];
     }
 
     /**
@@ -169,7 +172,8 @@ export class AuthService {
      * @returns User or undefined
      */
     async getUserByEmail(email: string): Promise<any | undefined> {
-        return this.db.select().from(this.schema.Users).where(eq(this.schema.Users.email, email)).get();
+        const res = await this.client.users.findFirst({ where: { email } as any });
+        return (res as any)?.data;
     }
 
     // Role Methods
@@ -180,6 +184,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.createRole()
     async createRole(roleData: any): Promise<any | undefined> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.createRole(roleData);
     }
 
@@ -189,6 +194,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.getRoles()
     async getRoles(): Promise<any[]> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.getRoles();
     }
 
@@ -199,6 +205,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.getRole()
     async getRole(id: string): Promise<any | undefined> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.getRole(id);
     }
 
@@ -210,6 +217,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.updateRole()
     async updateRole(id: string, roleData: Partial<any>): Promise<any | undefined> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.updateRole(id, roleData);
     }
 
@@ -220,6 +228,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.deleteRole()
     async deleteRole(id: string): Promise<any | undefined> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.deleteRole(id);
     }
 
@@ -231,6 +240,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.createActivity()
     async createActivity(activity: any): Promise<any | undefined> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.createActivity(activity);
     }
 
@@ -240,6 +250,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.getAllActivity()
     async getAllActivity(): Promise<any[]> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.getAllActivity();
     }
 
@@ -254,6 +265,7 @@ export class AuthService {
      */
     // DEPRECATED: use OrgService.getPaginatedActivity()
     async getPaginatedActivity(limit = 10, page = 1, search = '', filter = '', order: 'asc' | 'desc' = 'desc'): Promise<{ data: any[], total: number }> {
+        if (!this.orgService) throw new Error('OrgService not configured (runtime client missing)');
         return this.orgService.getPaginatedActivity(limit, page, search, filter, order);
     }
 
@@ -350,11 +362,7 @@ export class AuthService {
         const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionCookie);
         if (!parsed) return;
         const { tokenHash } = parsed;
-        await this.db
-            .delete(this.schema.Sessions)
-            .where(eq(this.schema.Sessions.sessionToken, tokenHash))
-            .returning()
-            .all();
+        await this.client.session.delete({ sessionToken: tokenHash } as any);
     }
     
     /**
@@ -384,19 +392,12 @@ export class AuthService {
             const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionId);
             if (!parsed) throw new Error('Invalid session cookie');
             const { tokenHash } = parsed;
-            const row = await this.db
-                .select()
-                .from(this.schema.Sessions)
-                .where(eq(this.schema.Sessions.sessionToken, tokenHash))
-                .get();
+            const found = await this.client.session.findFirst({ where: { sessionToken: tokenHash } as any });
+            const row = (found as any)?.data;
             if (!row) throw new Error('Session to refresh not found');
             userId = row.userId;
 
-            await this.db.update(this.schema.Sessions)
-                .set({ expires, updated_at: now.toISOString() })
-                .where(eq(this.schema.Sessions.sessionToken, tokenHash))
-                .returning()
-                .get();
+            await this.client.session.update({ sessionToken: tokenHash } as any, { expires, updated_at: now.toISOString() });
             return sessionId; // opaque cookie remains the same
         }
 
@@ -413,14 +414,14 @@ export class AuthService {
         const prefix = String(organizationId);
         const finalSessionId = `${prefix}.${generateSessionToken()}`;
         const sessionTokenHash = await hashToken(finalSessionId);
-        await this.db.insert(this.schema.Sessions).values({
+        await this.client.session.insert({
             sessionToken: sessionTokenHash,
             userId,
             expires,
             created_at: now.toISOString(),
             updated_at: now.toISOString(),
             deleted_at: null,
-        }).returning().get();
+        });
         // Build opaque cookie envelope from orgId and tokenHash
         const cookie = await buildSessionCookie(this.env.KURATCHI_AUTH_SECRET, prefix as any, sessionTokenHash);
         return cookie;
@@ -457,11 +458,8 @@ export class AuthService {
             }
 
             // Count existing sessions for the user
-            const sessions = await this.db
-                .select()
-                .from(this.schema.Sessions)
-                .where(eq(this.schema.Sessions.userId, userId))
-                .all();
+            const sessionRes = await this.client.session.findMany({ where: { userId } as any });
+            const sessions = ((sessionRes as any).results ?? (sessionRes as any).data ?? []) as any[];
 
             if (!Array.isArray(sessions) || sessions.length === 0) {
                 return { success: true, refreshedCount: 0 };
@@ -470,12 +468,7 @@ export class AuthService {
             // Extend TTL for all sessions belonging to this user
             const now = new Date();
             const newExpires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            await this.db
-                .update(this.schema.Sessions)
-                .set({ expires: newExpires, updated_at: now.toISOString() })
-                .where(eq(this.schema.Sessions.userId, userId))
-                .returning()
-                .all();
+            await this.client.session.update({ userId } as any, { expires: newExpires, updated_at: now.toISOString() });
 
             return { success: true, refreshedCount: sessions.length };
         } catch (error) {
@@ -488,11 +481,7 @@ export class AuthService {
      * @param userId - ID of the user whose sessions should be invalidated
      */
     async invalidateAllSessions(userId: string): Promise<void> {
-        await this.db
-            .delete(this.schema.Sessions)
-            .where(eq(this.schema.Sessions.userId, userId))
-            .returning()
-            .all();
+        await this.client.session.delete({ userId } as any);
     }
 
     /**
@@ -505,11 +494,8 @@ export class AuthService {
         const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionCookie);
         if (!parsed) return { sessionData: null, user: null };
         const { tokenHash } = parsed;
-        const sessionRow = await this.db
-            .select()
-            .from(this.schema.Sessions)
-            .where(eq(this.schema.Sessions.sessionToken, tokenHash))
-            .get();
+        const sessionRes = await this.client.session.findFirst({ where: { sessionToken: tokenHash } as any });
+        const sessionRow = (sessionRes as any)?.data;
         if (!sessionRow) return { sessionData: null, user: null };
 
         const now = new Date();
@@ -529,12 +515,7 @@ export class AuthService {
 
         // Extend TTL on access
         const newExpires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        await this.db
-            .update(this.schema.Sessions)
-            .set({ expires: newExpires, updated_at: now.toISOString() })
-            .where(eq(this.schema.Sessions.sessionToken, tokenHash))
-            .returning()
-            .get();
+        await this.client.session.update({ sessionToken: tokenHash } as any, { expires: newExpires, updated_at: now.toISOString() });
 
         // Build SessionData on the fly
         const sessionData = await this.buildSessionData(user.id);
@@ -582,28 +563,31 @@ export class AuthService {
         // Set expiry to 24 hours from now
         expiryDate.setHours(expiryDate.getHours() + 24);
         
-        return await this.db.insert(this.schema.PasswordResetTokens).values({
-            id: crypto.randomUUID(), // Add required id field
+        const id = crypto.randomUUID();
+        const token = crypto.randomUUID();
+        await this.client.passwordResetTokens.insert({
+            id,
             email,
-            token: crypto.randomUUID(),
+            token,
             created_at: now.toISOString(),
             updated_at: now.toISOString(),
             deleted_at: null,
             expires: expiryDate
-        }).returning().get();
+        });
+        const res = await this.client.passwordResetTokens.findFirst({ where: { id } as any });
+        return (res as any)?.data;
     }
 
     async deletePasswordResetToken(token: string) {
-        const result = await this.db
-            .delete(this.schema.PasswordResetTokens)
-            .where(eq(this.schema.PasswordResetTokens.token, token))
-            .returning()
-            .all() as any[];
-        return (Array.isArray(result) ? result.length : 0) > 0;
+        const before = await this.client.passwordResetTokens.findMany({ where: { token } as any });
+        await this.client.passwordResetTokens.delete({ token } as any);
+        const rows = ((before as any).results ?? (before as any).data ?? []) as any[];
+        return rows.length > 0;
     }
 
     async getPasswordResetToken(token: string) {
-        return await this.db.select().from(this.schema.PasswordResetTokens).where(eq(this.schema.PasswordResetTokens.token, token)).all();
+        const res = await this.client.passwordResetTokens.findMany({ where: { token } as any });
+        return ((res as any).results ?? (res as any).data ?? []) as any[];
     }
 
     /**
@@ -621,22 +605,19 @@ export class AuthService {
         // Generate a 6-digit verification token
         const token = Math.floor(100000 + Math.random() * 900000).toString();
 
-        const inserted = await this.db
-            .insert(this.schema.EmailVerificationTokens)
-            .values({
-                id: crypto.randomUUID(),
-                userId,
-                email,
-                token,
-                expires: expiryDate,
-                created_at: now.toISOString(),
-                updated_at: now.toISOString(),
-                deleted_at: null,
-            })
-            .returning()
-            .get();
-
-        return inserted;
+        const id = crypto.randomUUID();
+        await this.client.emailVerificationToken.insert({
+            id,
+            userId,
+            email,
+            token,
+            expires: expiryDate,
+            created_at: now.toISOString(),
+            updated_at: now.toISOString(),
+            deleted_at: null,
+        });
+        const res = await this.client.emailVerificationToken.findFirst({ where: { id } as any });
+        return (res as any)?.data;
     }
 
     /**
@@ -645,11 +626,7 @@ export class AuthService {
      * @returns Whether the token was successfully deleted
      */
     async deleteEmailVerificationTokenByEmail(email: string) {
-        await this.db
-            .delete(this.schema.EmailVerificationTokens)
-            .where(eq(this.schema.EmailVerificationTokens.email, email))
-            .returning()
-            .all();
+        await this.client.emailVerificationToken.delete({ email } as any);
         return true;
     }
 
@@ -660,11 +637,8 @@ export class AuthService {
      */
     async getEmailVerificationTokenByEmail(email: string) {
         // Return the most recent token for this email
-        const tokens = await this.db
-            .select()
-            .from(this.schema.EmailVerificationTokens)
-            .where(eq(this.schema.EmailVerificationTokens.email, email))
-            .all();
+        const res = await this.client.emailVerificationToken.findMany({ where: { email } as any });
+        const tokens = ((res as any).results ?? (res as any).data ?? []) as any[];
         if (!Array.isArray(tokens) || tokens.length === 0) return null as any;
         // Choose the latest by expires
         const latest = tokens.sort((a: any, b: any) => {
@@ -684,12 +658,12 @@ export class AuthService {
     async sendVerificationToken(email: string, emailFrom: string): Promise<{ success: boolean; data?: any; error?: string }> {
         console.log('[AuthService.sendVerificationToken] Starting for email:', email, 'emailFrom:', emailFrom);
         
-        console.log('[AuthService.sendVerificationToken] Database exists:', !!this.db);
+        console.log('[AuthService.sendVerificationToken] Runtime client initialized:', !!this.client);
         
         try {
             console.log('[AuthService.sendVerificationToken] Searching for user in database with email:', email);
             // Find the user by email to get their userId
-            const user = await this.db.select().from(this.schema.Users).where(eq(this.schema.Users.email, email)).get();
+            const user = await this.getUserByEmail(email);
             
             console.log('[AuthService.sendVerificationToken] User lookup result:', {
                 userFound: !!user,
@@ -741,7 +715,7 @@ export class AuthService {
                 error: 'Failed to send verification token'
             };
         }
-    };
+    }
 
     /**
      * Verify a user's email with a verification token
@@ -774,7 +748,7 @@ export class AuthService {
         }
         
         // Find the user and update emailVerified
-        const user = await this.db.select().from(this.schema.Users).where(eq(this.schema.Users.id, verificationToken.userId)).get();
+        const user = await this.getUser(verificationToken.userId);
         
         if (!user) {
             return { success: false, error: 'User not found' };
@@ -790,157 +764,140 @@ export class AuthService {
         return { success: true, user: updatedUser };
     }
 
-    // =====================
-    // Magic Link
-    // =====================
+    
 
-    async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) {
-        const now = new Date();
-        const expires = new Date(now.getTime() + ttlMinutes * 60 * 1000);
-        const token = generateSessionToken();
-        const inserted = await this.db
-            .insert(this.schema.MagicLinkTokens)
-            .values({
-                id: crypto.randomUUID(),
-                token,
-                email,
-                redirectTo: redirectTo || null,
-                consumed_at: null,
-                expires,
-                created_at: now.toISOString(),
+// =====================
+// Magic Link
+// =====================
+
+async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) {
+    const now = new Date();
+    const expires = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+    const token = generateSessionToken();
+    const id = crypto.randomUUID();
+    await this.client.magicLinkTokens.insert({
+        id,
+        token,
+        email,
+        redirectTo: redirectTo || null,
+        consumed_at: null,
+        expires,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+        deleted_at: null
+    });
+    const res = await this.client.magicLinkTokens.findFirst({ where: { id } as any });
+    const row = (res as any)?.data;
+    return { token, expires: row?.expires ?? expires, redirectTo: row?.redirectTo ?? redirectTo };
+}
+
+async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: any; error?: string }> {
+    const found = await this.client.magicLinkTokens.findFirst({ where: { token } as any });
+    const row = (found as any)?.data;
+    if (!row) return { success: false, error: 'Invalid or expired token' };
+    const now = new Date();
+    const expired = row.expires && new Date(row.expires).getTime() <= now.getTime();
+    if (expired) return { success: false, error: 'Token expired' };
+    if (row.consumed_at) return { success: false, error: 'Token already used' };
+
+    // Mark consumed
+    await this.client.magicLinkTokens.update({ id: row.id } as any, { consumed_at: now, updated_at: now.toISOString() });
+
+    // Ensure user exists
+    let user = await this.getUserByEmail(row.email);
+    if (!user) {
+        user = await this.createUser({ email: row.email, emailVerified: now });
+    } else if (!user.emailVerified) {
+        await this.updateUser(user.id, { emailVerified: now });
+    }
+
+    // Create a session and return cookie
+    const cookie = await this.upsertSession({ userId: user.id });
+    return { success: true, cookie, redirectTo: row.redirectTo ?? undefined, user };
+}
+
+async sendMagicLink(email: string, link: string, opts?: { from?: string; subject?: string }) {
+    return this.emailService.sendMagicLink(email, link, opts);
+}
+
+// =====================
+// OAuth
+// =====================
+
+async getOrCreateUserFromOAuth(params: {
+    provider: string;
+    providerAccountId: string;
+    email?: string;
+    name?: string | null;
+    image?: string | null;
+    tokens?: {
+        access_token?: string;
+        refresh_token?: string;
+        expires_at?: number | Date | null;
+        scope?: string | null;
+        token_type?: string | null;
+        id_token?: string | null;
+    };
+}): Promise<any> {
+    const { provider, providerAccountId, email, name, image, tokens } = params;
+    // Try existing link
+    const existing = await (this.client as any).oauthAccounts?.findFirst({ where: { provider, providerAccountId } as any });
+    const existingRow = (existing as any)?.data;
+    if (existingRow?.userId) {
+        const u = await this.getUser(existingRow.userId);
+        if (u) return u;
+    }
+
+    // Find or create user by email
+    let user: any = null;
+    if (email) {
+        user = await this.getUserByEmail(email);
+    }
+    if (!user) {
+        user = await this.createUser({
+            email: email!,
+            name: name ?? null,
+            image: image ?? null,
+            emailVerified: new Date()
+        }, false);
+    }
+
+    // Upsert OAuth account
+    const now = new Date();
+    const expires_at = tokens?.expires_at ? (typeof tokens.expires_at === 'number' ? new Date(tokens.expires_at) : tokens.expires_at) : null;
+
+    if ((this.client as any).oauthAccounts) {
+        const link = await (this.client as any).oauthAccounts.findFirst({ where: { provider, providerAccountId } as any });
+        if ((link as any)?.data) {
+            await (this.client as any).oauthAccounts.update({ provider, providerAccountId } as any, {
+                userId: user.id,
+                access_token: tokens?.access_token ?? null,
+                refresh_token: tokens?.refresh_token ?? null,
+                expires_at,
+                scope: tokens?.scope ?? null,
+                token_type: tokens?.token_type ?? null,
+                id_token: tokens?.id_token ?? null,
                 updated_at: now.toISOString(),
-                deleted_at: null
-            })
-            .returning()
-            .get();
-        return { token, expires: inserted?.expires ?? expires, redirectTo: inserted?.redirectTo ?? redirectTo };
-    }
-
-    async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: any; error?: string }> {
-        const row = await this.db
-            .select()
-            .from(this.schema.MagicLinkTokens)
-            .where(eq(this.schema.MagicLinkTokens.token, token))
-            .get();
-        if (!row) return { success: false, error: 'Invalid or expired token' };
-        const now = new Date();
-        const expired = row.expires && new Date(row.expires).getTime() <= now.getTime();
-        if (expired) return { success: false, error: 'Token expired' };
-        if (row.consumed_at) return { success: false, error: 'Token already used' };
-
-        // Mark consumed
-        await this.db.update(this.schema.MagicLinkTokens)
-            .set({ consumed_at: now, updated_at: now.toISOString() })
-            .where(eq(this.schema.MagicLinkTokens.id, row.id))
-            .returning()
-            .get();
-
-        // Ensure user exists
-        let user = await this.getUserByEmail(row.email);
-        if (!user) {
-            user = await this.createUser({ email: row.email, emailVerified: now });
-        } else if (!user.emailVerified) {
-            await this.updateUser(user.id, { emailVerified: now });
-        }
-
-        // Create session cookie
-        const cookie = await this.upsertSession({ userId: user.id });
-        return { success: true, cookie, redirectTo: row.redirectTo || '/', user };
-    }
-
-    async sendMagicLink(email: string, link: string, opts?: { from?: string; subject?: string }) {
-        return this.emailService.sendMagicLink(email, link, opts);
-    }
-
-    // =====================
-    // OAuth
-    // =====================
-    async getOrCreateUserFromOAuth(params: {
-        provider: string;
-        providerAccountId: string;
-        email?: string;
-        name?: string | null;
-        image?: string | null;
-        tokens?: {
-            access_token?: string;
-            refresh_token?: string;
-            expires_at?: number | Date | null;
-            scope?: string | null;
-            token_type?: string | null;
-            id_token?: string | null;
-        };
-    }): Promise<any> {
-        const { provider, providerAccountId, email, name, image, tokens } = params;
-        // Try existing link
-        const existing = await this.db
-            .select()
-            .from(this.schema.OAuthAccounts)
-            .where(and(
-                eq(this.schema.OAuthAccounts.provider, provider),
-                eq(this.schema.OAuthAccounts.providerAccountId, providerAccountId)
-            ))
-            .get();
-        if (existing?.userId) {
-            const u = await this.getUser(existing.userId);
-            if (u) return u;
-        }
-
-        // Find or create user by email
-        let user: any = null;
-        if (email) {
-            user = await this.getUserByEmail(email);
-        }
-        if (!user) {
-            user = await this.createUser({
-                email: email!,
-                name: name ?? null,
-                image: image ?? null,
-                emailVerified: new Date()
-            }, false);
-        }
-
-        // Upsert OAuth account
-        const now = new Date();
-        const expires_at = tokens?.expires_at ? (typeof tokens.expires_at === 'number' ? new Date(tokens.expires_at) : tokens.expires_at) : null;
-        // Try insert; if conflict not supported here, fallback to update
-        try {
-            await this.db.insert(this.schema.OAuthAccounts).values({
+            });
+        } else {
+            await (this.client as any).oauthAccounts.insert({
                 id: crypto.randomUUID(),
                 userId: user.id,
                 provider,
                 providerAccountId,
                 access_token: tokens?.access_token ?? null,
                 refresh_token: tokens?.refresh_token ?? null,
-                expires_at: expires_at,
+                expires_at,
                 scope: tokens?.scope ?? null,
                 token_type: tokens?.token_type ?? null,
                 id_token: tokens?.id_token ?? null,
                 created_at: now.toISOString(),
                 updated_at: now.toISOString(),
                 deleted_at: null,
-            }).returning().get();
-        } catch {
-            // Update existing row
-            await this.db.update(this.schema.OAuthAccounts)
-                .set({
-                    userId: user.id,
-                    access_token: tokens?.access_token ?? null,
-                    refresh_token: tokens?.refresh_token ?? null,
-                    expires_at: expires_at,
-                    scope: tokens?.scope ?? null,
-                    token_type: tokens?.token_type ?? null,
-                    id_token: tokens?.id_token ?? null,
-                    updated_at: now.toISOString(),
-                })
-                .where(and(
-                    eq(this.schema.OAuthAccounts.provider, provider),
-                    eq(this.schema.OAuthAccounts.providerAccountId, providerAccountId)
-                ))
-                .returning()
-                .get();
+            });
         }
-
-        return user;
     }
 
+    return user;
+}
 }

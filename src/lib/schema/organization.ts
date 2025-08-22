@@ -139,3 +139,5 @@ export type PasswordResetToken = InferSelectModel<typeof PasswordResetTokens>;
 export type MagicLinkToken = InferSelectModel<typeof MagicLinkTokens>;
 export type OAuthAccount = InferSelectModel<typeof OAuthAccounts>;
 export type Activity = InferSelectModel<typeof Activity>;
+export type EmailVerificationToken = InferSelectModel<typeof EmailVerificationTokens>;
+export type Role = InferSelectModel<typeof Roles>;

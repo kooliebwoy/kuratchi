@@ -1,6 +1,37 @@
 import { KuratchiHttpClient as InternalKuratchi } from './internal-http-client.js';
 import { KuratchiProvisioner } from './provisioner.js';
 import type { PrimaryLocationHint } from '../cloudflare.js';
+import type { DatabaseSchema } from '../orm/json-schema.js';
+import {
+  createClientFromJsonSchema,
+  createDynamicClient,
+  createTypedClientFromMapping,
+  type TableApi,
+  type TableApiTyped,
+} from '../orm/runtime.js';
+import type {
+  User as AdminUser,
+  Session as AdminSession,
+  PasswordResetToken as AdminPasswordResetToken,
+  MagicLinkToken as AdminMagicLinkToken,
+  OAuthAccount as AdminOAuthAccount,
+  OrganizationUser as AdminOrganizationUser,
+  Organization as AdminOrganization,
+  Activity as AdminActivity,
+  Database as AdminDatabase,
+  DBApiToken as AdminDBApiToken,
+  EmailVerificationToken as AdminEmailVerificationToken,
+} from '../schema/admin.js';
+import type {
+  User as OrgUser,
+  Session as OrgSession,
+  PasswordResetToken as OrgPasswordResetToken,
+  EmailVerificationToken as OrgEmailVerificationToken,
+  MagicLinkToken as OrgMagicLinkToken,
+  OAuthAccount as OrgOAuthAccount,
+  Activity as OrgActivity,
+  Role as OrgRole,
+} from '../schema/organization.js';
 
 export type { PrimaryLocationHint } from '../cloudflare.js';
 
@@ -67,12 +98,32 @@ export class KuratchiD1 {
     return this.getClient(cfg).getDrizzleProxy();
   }
 
+  // Top-level sugar: create a property-based client without calling database().client()
+  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }): Record<string, TableApi>;
+  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'admin' }): AdminTypedClient;
+  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'organization' }): OrganizationTypedClient;
+  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: DatabaseSchema }): Record<string, TableApi>;
+  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options?: { schema?: DatabaseSchema | 'admin' | 'organization' }): any {
+    const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
+    if (!options?.schema) return createDynamicClient(exec);
+    if (options.schema === 'admin') return createAdminClient(exec);
+    if (options.schema === 'organization') return createOrganizationClient(exec);
+    return createClientFromJsonSchema(exec, options.schema);
+  }
+
   database(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
     return {
       query: <T>(sql: string, params: any[] = []) => this.getClient(cfg).query<T>(sql, params),
       drizzleProxy: () => this.getDrizzleClient(cfg),
       migrate: (dirName: string) => this.migrateVite(cfg, dirName),
       getClient: () => this.getClient(cfg),
+      client: (options?: { schema?: DatabaseSchema | 'admin' | 'organization' }): Record<string, TableApi> | AdminTypedClient | OrganizationTypedClient => {
+        const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
+        if (!options?.schema) return createDynamicClient(exec);
+        if (options.schema === 'admin') return createAdminClient(exec);
+        if (options.schema === 'organization') return createOrganizationClient(exec);
+        return createClientFromJsonSchema(exec, options.schema);
+      },
     };
   }
 
@@ -144,4 +195,64 @@ export class KuratchiD1 {
   [Symbol.for('nodejs.util.inspect.custom')]() {
     return this.toJSON();
   }
+}
+
+// ---- Typed clients for known schemas ----
+type AdminRowMap = {
+  users: AdminUser;
+  session: AdminSession;
+  passwordResetTokens: AdminPasswordResetToken;
+  magicLinkTokens: AdminMagicLinkToken;
+  emailVerificationToken: AdminEmailVerificationToken;
+  oauthAccounts: AdminOAuthAccount;
+  organizationUsers: AdminOrganizationUser;
+  organizations: AdminOrganization;
+  activity: AdminActivity;
+  databases: AdminDatabase;
+  dbApiTokens: AdminDBApiToken;
+};
+
+type OrganizationRowMap = {
+  users: OrgUser;
+  session: OrgSession;
+  passwordResetTokens: OrgPasswordResetToken;
+  emailVerificationToken: OrgEmailVerificationToken;
+  magicLinkTokens: OrgMagicLinkToken;
+  activity: OrgActivity;
+  roles: OrgRole;
+  oauthAccounts: OrgOAuthAccount;
+};
+
+export type AdminTypedClient = { [K in keyof AdminRowMap]: TableApiTyped<AdminRowMap[K]> };
+export type OrganizationTypedClient = { [K in keyof OrganizationRowMap]: TableApiTyped<OrganizationRowMap[K]> };
+
+function createAdminClient(exec: (sql: string, params?: any[]) => Promise<any>): AdminTypedClient {
+  const mapping = {
+    users: 'users',
+    session: 'session',
+    passwordResetTokens: 'passwordResetTokens',
+    magicLinkTokens: 'magicLinkTokens',
+    emailVerificationToken: 'emailVerificationToken',
+    oauthAccounts: 'oauthAccounts',
+    organizationUsers: 'organizationUsers',
+    organizations: 'organizations',
+    activity: 'activity',
+    databases: 'databases',
+    dbApiTokens: 'dbApiTokens',
+  } as const;
+  return createTypedClientFromMapping<AdminRowMap>(exec, mapping as any);
+}
+
+function createOrganizationClient(exec: (sql: string, params?: any[]) => Promise<any>): OrganizationTypedClient {
+  const mapping = {
+    users: 'users',
+    session: 'session',
+    passwordResetTokens: 'passwordResetTokens',
+    emailVerificationToken: 'emailVerificationToken',
+    magicLinkTokens: 'magicLinkTokens',
+    activity: 'activity',
+    roles: 'roles',
+    oauthAccounts: 'oauthAccounts',
+  } as const;
+  return createTypedClientFromMapping<OrganizationRowMap>(exec, mapping as any);
 }
