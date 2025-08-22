@@ -39,13 +39,13 @@ const db = kuratchi.d1.database({ databaseName: database.name, apiToken });
 await db.migrate('org');
 
 // Use the minimal runtime ORM - Optional
-const org = db.client({ schema: 'organization' });
+const org = db.client({ schema }); // your schema
 
 // Insert a user
 await org.users.insert({ id: 'u1', email: 'a@acme.com' });
 
 // Find the user
-const res = await org.users.findFirst({ where: { email: { like: '%@acme.com' } } });
+const res = await org.users.findFirst({ email: '@acme.com' });
 if (!res.success) throw new Error(res.error);
 console.log(res.data); // { id: 'u1', email: 'a@acme.com' }
 ```
