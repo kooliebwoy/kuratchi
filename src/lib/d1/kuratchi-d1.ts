@@ -1,6 +1,6 @@
 import { KuratchiHttpClient as InternalKuratchi } from './internal-http-client.js';
-import { KuratchiProvisioner } from './provisioner.js';
-import type { PrimaryLocationHint } from '../cloudflare.js';
+import { CloudflareClient, type PrimaryLocationHint } from '../cloudflare.js';
+import { DEFAULT_WORKER_SCRIPT } from './worker-template.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
 import {
   createClientFromJsonSchema,
@@ -8,6 +8,7 @@ import {
   type TableApi,
   type TableApiTyped,
 } from '../orm/kuratchi-orm.js';
+import type { MigrationJournal } from '../orm/index.js';
 import type {
   User as AdminUser,
   Session as AdminSession,
@@ -42,31 +43,30 @@ export interface D1Options {
 }
 
 // Runtime-agnostic migration types
-export type MigrationJournal = { entries: { idx: number; tag: string }[] };
 export type MigrationBundle = {
   journal: MigrationJournal;
   migrations: Record<string, string | (() => Promise<string>)>;
 };
 
 export class KuratchiD1 {
-  private provisioner: KuratchiProvisioner;
+  private cf: CloudflareClient;
   private workersSubdomain: string;
 
   constructor(config: D1Options) {
-    this.provisioner = KuratchiProvisioner.getInstance({
+    this.cf = new CloudflareClient({
       apiToken: config.apiToken,
       accountId: config.accountId,
       endpointBase: config.endpointBase,
     });
     this.workersSubdomain = config.workersSubdomain;
-    // Hide internal provisioner from logs
+    // Hide internal client from logs
     try {
-      Object.defineProperty(this, 'provisioner', { enumerable: false, configurable: false, writable: true });
+      Object.defineProperty(this, 'cf', { enumerable: false, configurable: false, writable: true });
     } catch {}
   }
 
   async createDatabase(databaseName: string, options: { location?: PrimaryLocationHint } = {}) {
-    const { database, apiToken } = await this.provisioner.provisionDatabase(databaseName, {
+    const { database, apiToken } = await this.provisionDatabase(databaseName, {
       location: options.location,
     });
     // Best-effort: wait for the worker HTTP endpoint to become responsive
@@ -80,7 +80,7 @@ export class KuratchiD1 {
   }
 
   async deleteDatabase(databaseId: string) {
-    await this.provisioner.deleteDatabase(databaseId);
+    await this.cf.deleteDatabase(databaseId);
   }
 
   getClient(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
@@ -151,13 +151,13 @@ export class KuratchiD1 {
     dirName: string
   ) {
     try {
-      const mod = await import('./migrations-handler.js');
+      const mod = await import('../orm/loader.js');
       const loadMigrations = (mod as any).loadMigrations as (d: string) => Promise<{
         journal: MigrationJournal;
         migrations: Record<string, () => Promise<string>>;
       }>;
       if (typeof loadMigrations !== 'function') {
-        throw new Error('loadMigrations() not found in migrations-handler module');
+        throw new Error('loadMigrations() not found in ORM loader module');
       }
       const bundle = await loadMigrations(dirName);
       return this.applyBundle(cfg, bundle);
@@ -189,6 +189,70 @@ export class KuratchiD1 {
       }
     }
     return false;
+  }
+
+  /**
+   * Creates a Cloudflare D1 database, generates an API token, and deploys a Worker
+   * bound to that database with the token injected as a secret binding.
+   * If no workerScript is provided, uses the SDK's DEFAULT_WORKER_SCRIPT.
+   */
+  private async provisionDatabase(
+    databaseName: string,
+    options: { workerScript?: string; location?: PrimaryLocationHint } = {}
+  ): Promise<{ database: any; apiToken: string }> {
+    const { workerScript, location } = options;
+
+    const databaseResp = await this.cf.createDatabase(databaseName, location);
+    const database = (databaseResp as any)?.result ?? databaseResp; // Support both wrapped and raw responses
+    if (!database || !database.uuid) {
+      throw new Error('Failed to create database in Cloudflare');
+    }
+
+    // Ensure read replication is enabled so session bookmarks are supported
+    try {
+      await this.cf.enableReadReplication(database.uuid);
+    } catch {
+      // Non-fatal; continue provisioning even if this fails
+    }
+
+    const apiToken = crypto.randomUUID();
+
+    const bindings = [
+      { type: 'd1', name: 'DB', id: database.uuid },
+      { type: 'secret_text', name: 'API_KEY', text: apiToken },
+    ];
+
+    const scriptToUpload = workerScript || DEFAULT_WORKER_SCRIPT;
+    await this.cf.uploadWorkerModule(databaseName, scriptToUpload, bindings as any);
+    await this.cf.enableWorkerSubdomain(databaseName);
+
+    // Poll for readiness instead of fixed timeout
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const deadline = Date.now() + 20_000; // 20s max
+
+    // Ensure database is queryable via API (GET by id succeeds)
+    while (true) {
+      try {
+        await this.cf.getDatabase(database.uuid);
+        break;
+      } catch {
+        if (Date.now() > deadline) break;
+        await sleep(500);
+      }
+    }
+
+    // Ensure worker script is visible via API (GET script succeeds)
+    while (true) {
+      try {
+        await this.cf.getWorkerScript(databaseName);
+        break;
+      } catch {
+        if (Date.now() > deadline) break;
+        await sleep(500);
+      }
+    }
+
+    return { database, apiToken };
   }
 
   // Redact internals on logs

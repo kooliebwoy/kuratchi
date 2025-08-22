@@ -26,17 +26,6 @@ export interface KuratchiOptions {
     };
 }
 
-// Runtime-agnostic migration types
-export type MigrationJournal = { entries: { idx: number; tag: string }[] };
-export type MigrationBundle = {
-    journal: MigrationJournal;
-    migrations: Record<string, string | (() => Promise<string>)>;
-};
-export interface MigrationLoader {
-    loadJournal(dir: string): Promise<MigrationJournal>;
-    loadSql(dir: string, tag: string): Promise<string>;
-}
-
 /**
  * Kuratchi — Public SDK surface for provisioning and querying D1
  */

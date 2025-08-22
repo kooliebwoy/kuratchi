@@ -6,8 +6,12 @@ Welcome. These docs are organized by section to keep the root README minimal.
   - Runtime ORM (simple query builder)
   - JSON‑schema ORM & migrations
 - Auth (SvelteKit handle, magic link, OAuth) — coming soon
-- CLI (Admin D1 provisioning) — coming soon
+- CLI (Admin D1 provisioning and migrations) — available
 
 ## Sections
 
 - ORM: ./orm.md
+- Migrations: ./migrations.md
+  - Includes `org generate-migrations` alias and automatic schema snapshotting to `meta/_schema.json`.
+ - D1: ./d1.md
+ - Organization: ./organization.md

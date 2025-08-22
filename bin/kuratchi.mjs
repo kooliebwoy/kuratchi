@@ -18,7 +18,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Generate migration SQL and journal from a JSON schema, optionally diffing against a "from" schema
+// Generate migration SQL and journal from a JSON schema, with automatic schema snapshotting.
+// If --from-schema-json-file is not provided, we will diff from <out-dir>/meta/_schema.json when present;
+// otherwise we will generate an initial bundle. After generation, we update the snapshot to the new schema.
 async function adminGenerateMigrations(opts) {
   const outDir = opts.outDir || path.join(process.cwd(), 'migrations-admin');
   const tag = opts.tag || `m_${Date.now()}`;
@@ -39,22 +41,35 @@ async function adminGenerateMigrations(opts) {
   let sql = '';
   let warnings = [];
 
+  // Ensure paths early so we can safely write snapshot even on no-op
+  ensureDir(outDir);
+  const metaDir = path.join(outDir, 'meta');
+  ensureDir(metaDir);
+  const snapshotPath = path.join(metaDir, '_schema.json');
+
+  // Decide initial vs diff
+  let usedSnapshot = false;
   if (opts.fromSchemaJsonFile) {
     const fromSchema = readJson(opts.fromSchemaJsonFile);
     const diff = orm.buildDiffSql(fromSchema, toSchema);
     sql = diff.sql;
     warnings = diff.warnings || [];
+  } else if (fs.existsSync(snapshotPath)) {
+    const fromSchema = readJson(snapshotPath);
+    const diff = orm.buildDiffSql(fromSchema, toSchema);
+    sql = diff.sql;
+    warnings = diff.warnings || [];
+    usedSnapshot = true;
   } else {
     sql = orm.buildInitialSql(toSchema);
   }
 
-  if (!sql || !sql.trim()) {
-    return { ok: true, outDir, tag, skipped: true, reason: 'No statements generated', warnings };
-  }
+  // Always update snapshot to latest schema
+  fs.writeFileSync(snapshotPath, JSON.stringify(toSchema, null, 2), 'utf8');
 
-  // Ensure paths
-  ensureDir(outDir);
-  ensureDir(path.join(outDir, 'meta'));
+  if (!sql || !sql.trim()) {
+    return { ok: true, outDir, tag, skipped: true, reason: 'No statements generated', warnings, snapshotPath, usedSnapshot };
+  }
 
   // Write SQL file
   const sqlFile = path.join(outDir, `${tag}.sql`);
@@ -71,11 +86,80 @@ async function adminGenerateMigrations(opts) {
   journal.entries = [...(journal.entries || []), next];
   fs.writeFileSync(journalPath, JSON.stringify(journal, null, 2), 'utf8');
 
-  return { ok: true, outDir, tag, sqlFile, journalPath, warnings };
+  return { ok: true, outDir, tag, sqlFile, journalPath, warnings, snapshotPath, usedSnapshot };
+}
+
+// Org alias: same behavior as adminGenerateMigrations but defaults to organization schema and migrations-org
+async function orgGenerateMigrations(opts) {
+  const outDir = opts.outDir || path.join(process.cwd(), 'migrations-org');
+  const tag = opts.tag || `m_${Date.now()}`;
+  let schemaPath = opts.schemaJsonFile || path.join(process.cwd(), 'schema-json', 'organization.json');
+  if (!fs.existsSync(schemaPath)) {
+    const alt = path.join(process.cwd(), 'src', 'lib', 'schema-json', 'organization.json');
+    if (fs.existsSync(alt)) schemaPath = alt;
+  }
+  if (!fs.existsSync(schemaPath)) throw new Error('Provide --schema-json-file or place organization.json under ./schema-json/ or ./src/lib/schema-json/.');
+
+  const orm = await importOrm();
+  if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
+
+  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
+  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
+
+  const toSchema = readJson(schemaPath);
+  let sql = '';
+  let warnings = [];
+
+  // Ensure paths early
+  ensureDir(outDir);
+  const metaDir = path.join(outDir, 'meta');
+  ensureDir(metaDir);
+  const snapshotPath = path.join(metaDir, '_schema.json');
+
+  // Decide initial vs diff
+  let usedSnapshot = false;
+  if (opts.fromSchemaJsonFile) {
+    const fromSchema = readJson(opts.fromSchemaJsonFile);
+    const diff = orm.buildDiffSql(fromSchema, toSchema);
+    sql = diff.sql;
+    warnings = diff.warnings || [];
+  } else if (fs.existsSync(snapshotPath)) {
+    const fromSchema = readJson(snapshotPath);
+    const diff = orm.buildDiffSql(fromSchema, toSchema);
+    sql = diff.sql;
+    warnings = diff.warnings || [];
+    usedSnapshot = true;
+  } else {
+    sql = orm.buildInitialSql(toSchema);
+  }
+
+  // Always update snapshot
+  fs.writeFileSync(snapshotPath, JSON.stringify(toSchema, null, 2), 'utf8');
+
+  if (!sql || !sql.trim()) {
+    return { ok: true, outDir, tag, skipped: true, reason: 'No statements generated', warnings, snapshotPath, usedSnapshot };
+  }
+
+  // Write SQL file
+  const sqlFile = path.join(outDir, `${tag}.sql`);
+  fs.writeFileSync(sqlFile, sql, 'utf8');
+
+  // Update or create journal
+  const journalPath = path.join(outDir, 'meta', '_journal.json');
+  let journal = { entries: [] };
+  if (fs.existsSync(journalPath)) {
+    try { journal = readJson(journalPath); } catch { journal = { entries: [] }; }
+  }
+  const nextIdx = (journal.entries?.[journal.entries.length - 1]?.idx || 0) + 1;
+  const next = { idx: nextIdx, tag };
+  journal.entries = [...(journal.entries || []), next];
+  fs.writeFileSync(journalPath, JSON.stringify(journal, null, 2), 'utf8');
+
+  return { ok: true, outDir, tag, sqlFile, journalPath, warnings, snapshotPath, usedSnapshot };
 }
 
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-json-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then JSON schema (via --schema-json-file or ./schema-json/admin.json or ./src/lib/schema-json/admin.json).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json. If --from-schema-json-file is provided, generates a diff; otherwise creates an initial migration.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-json-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n  kuratchi org   generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then JSON schema (via --schema-json-file or ./schema-json/admin.json or ./src/lib/schema-json/admin.json).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin/org generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json.\n   - Snapshotting: we auto-snapshot the latest schema to <out-dir>/meta/_schema.json and diff from it next time. Pass --from-schema-json-file to override the baseline.\n   - Defaults: admin uses admin.json -> migrations-admin; org uses organization.json -> migrations-org.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
 }
 
 function parseArgs(argv) {
@@ -364,6 +448,10 @@ async function main() {
     } else if (scope === 'admin' && cmd === 'generate-migrations') {
       // No spinner for generation; it's instant and local
       const res = await adminGenerateMigrations(argv);
+      console.log(JSON.stringify(res, null, 2));
+    } else if (scope === 'org' && cmd === 'generate-migrations') {
+      // Org alias for generating org bundles
+      const res = await orgGenerateMigrations(argv);
       console.log(JSON.stringify(res, null, 2));
     } else {
       usage();

@@ -54,6 +54,81 @@ Result shape:
 
 Under the hood this compiles SQL like `SELECT ... FROM table WHERE ... ORDER BY ... LIMIT ...` and calls the D1 HTTP endpoint via the Kuratchi client.
 
+### Chainable query builder
+
+In addition to the options form, each table exposes a chainable builder for common patterns:
+
+```ts
+// Example: admin typed client
+const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' });
+
+// WHERE ... OR ... ORDER BY ... LIMIT ...
+const res = await admin.users
+  .where({ email: '%@acme.com' })          // strings with %/_ use LIKE automatically
+  .orWhere({ status: { in: [1, 2] } })
+  .orderBy({ id: 'desc' })
+  .limit(10)
+  .offset(3) // with LIMIT, offset(n) treats n as 1-based page number => OFFSET (n-1)*LIMIT
+  .findMany();
+```
+
+#### Simple filter shorthand
+
+`findMany()` and `findFirst()` accept a plain filter object directly (no `where` wrapper needed):
+
+```ts
+await admin.users.findFirst({ email: '%@acme.com' }); // SELECT * ... WHERE email LIKE ? LIMIT 1
+await admin.users.findMany({ id: { in: ['u1', 'u2'] } });
+```
+
+#### Pagination helpers
+
+Use `limit(n)` and `offset(n)` together for simple pagination. When used with `limit`, `offset(n)` treats `n` as a 1-based page number and the ORM computes the SQL `OFFSET (n-1)*limit` for you. Without `limit`, `offset(n)` is treated as a raw row offset.
+
+```ts
+const page = 3;
+const pageSize = 20;
+await admin.activity
+  .orderBy({ created_at: 'desc' })
+  .limit(pageSize)
+  .offset(page) // computed OFFSET = (page-1) * pageSize
+  .findMany();
+```
+
+### include() eager loading
+
+Basic eager loading is supported via naming conventions:
+
+- Parent include: if the base rows have `<related>Id`, `.include({ related: true })` loads parents by `id` and attaches one object.
+- Child include: if the related table has `<singular(base)>Id`, `.include({ related: true })` loads children and attaches an array.
+
+Examples:
+
+```ts
+// Parent: orders.userId -> users.id
+const withUsers = await admin.orders
+  .include({ users: true })
+  .findMany();
+// rows[i].users is the user object for orders[i].userId
+
+// Child: sessions.userId -> users.id
+const withSessions = await admin.users
+  .include({ sessions: true })
+  .findMany();
+// rows[i].sessions is an array of sessions for users[i].id
+```
+
+You can customize the include behavior per key:
+
+```ts
+await admin.orders
+  .include({
+    users: { as: 'user', table: 'users' }, // rename property and/or target table
+    items: { localKey: 'id', foreignKey: 'orderId', table: 'orderItems' }, // child side
+  })
+  .findMany();
+```
+
 
 ## JSON‑schema ORM & migrations
 

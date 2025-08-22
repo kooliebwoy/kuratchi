@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
+import adminJson from '../lib/schema-json/admin.json';
+import orgJson from '../lib/schema-json/organization.json';
 
 function setupD1() {
   const d1 = new KuratchiD1({ apiToken: 't', accountId: 'acc', workersSubdomain: 'workers.dev' });
@@ -17,9 +19,10 @@ function setupD1() {
 const cfg = { databaseName: 'dbx', apiToken: 'abc' };
 
 describe('KuratchiD1 top-level sugar client', () => {
-  it('dynamic client compiles SELECT with where/order/limit/offset', async () => {
+  it('JSON schema client compiles SELECT with where/order/limit/offset', async () => {
     const { d1, mockClient, captured } = setupD1();
-    const c = d1.client(cfg);
+    const schema = { tables: [{ name: 'users' }] } as any;
+    const c = d1.client(cfg, { schema });
     await c.users.findMany({
       where: { email: { like: '%@acme.com' }, status: { in: [1, 2] } },
       select: ['id', 'email'],
@@ -33,9 +36,9 @@ describe('KuratchiD1 top-level sugar client', () => {
     expect(params).toEqual(['%@acme.com', 1, 2]);
   });
 
-  it('admin typed client maps properties to correct tables and compiles INSERT/UPDATE/DELETE/COUNT', async () => {
+  it('JSON schema client (admin schema) maps properties to correct tables and compiles INSERT/UPDATE/DELETE/COUNT', async () => {
     const { d1, mockClient, captured } = setupD1();
-    const admin = d1.client(cfg, { schema: 'admin' });
+    const admin = d1.client(cfg, { schema: adminJson as any });
 
     await admin.users.insert({ id: 'u1', email: 'a@acme.com' });
     await admin.dbApiTokens.update({ id: 'tok1' }, { revoked: 1 });
@@ -61,9 +64,9 @@ describe('KuratchiD1 top-level sugar client', () => {
     });
   });
 
-  it('organization typed client maps roles and compiles COUNT with LIKE', async () => {
+  it('JSON schema client (organization schema) maps roles and compiles COUNT with LIKE', async () => {
     const { d1, mockClient, captured } = setupD1();
-    const org = d1.client(cfg, { schema: 'organization' });
+    const org = d1.client(cfg, { schema: orgJson as any });
     await org.roles.count({ name: { like: 'admin%' } } as any);
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     expect(captured[0]).toEqual({
@@ -76,14 +79,14 @@ describe('KuratchiD1 top-level sugar client', () => {
     const { d1, mockClient, captured } = setupD1();
     const schema = { tables: [{ name: 'widgets' }] } as any;
     const custom = d1.client(cfg, { schema });
-    await custom.widgets.delete({ id: 'w1' });
+    await (custom as any).widgets.delete({ id: 'w1' });
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     expect(captured[0]).toEqual({ sql: 'DELETE FROM widgets WHERE id = ?', params: ['w1'] });
   });
 });
 
 describe('KuratchiD1 database().client', () => {
-  it('dynamic fallback findFirst returns first row data and compiles LIMIT 1', async () => {
+  it('db.client({ schema }) findFirst returns first row data and compiles LIMIT 1', async () => {
     const { d1, mockClient, captured } = setupD1();
     // Return a single row for this first call
     (mockClient.query as any).mockImplementationOnce(async (sql: string, params?: any[]) => {
@@ -91,7 +94,8 @@ describe('KuratchiD1 database().client', () => {
       return { success: true, results: [{ id: 'u1' }] } as any;
     });
     const db = d1.database(cfg);
-    const dyn = db.client();
+    const schema = { tables: [{ name: 'users' }] } as any;
+    const dyn = db.client({ schema });
     const res = await (dyn as any).users.findFirst({ where: { id: 'u1' }, select: ['id'] });
     expect(res.success).toBe(true);
     expect(res.data).toEqual({ id: 'u1' });

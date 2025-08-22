@@ -88,7 +88,7 @@ export class OrgService {
   }
 
   async getAllActivity(): Promise<any[]> {
-    const res = await this.client.activity.findMany({ orderBy: [{ created_at: 'desc' }] });
+    const res = await this.client.activity.findMany({ orderBy: { created_at: 'desc' } });
     return ((res as any).data ?? []) as any[];
   }
 
@@ -102,12 +102,12 @@ export class OrgService {
     const where = search && search.trim() !== '' ? ({ action: { like: `%${search}%` } } as any) : undefined;
     const cnt = await this.client.activity.count(where as any);
     const total = Number(((cnt as any).data?.[0]?.count ?? 0) as any) || 0;
-    const res = await this.client.activity.findMany({
-      where: where as any,
-      limit,
-      offset: (page - 1) * limit,
-      orderBy: [{ created_at: order } as any],
-    });
+    const qb = where ? this.client.activity.where(where as any) : this.client.activity;
+    const res = await qb
+      .orderBy({ created_at: order })
+      .limit(limit)
+      .offset(page)
+      .findMany();
     const rows = ((res as any).data ?? []) as any[];
     return { data: rows, total };
   }
