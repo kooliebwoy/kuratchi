@@ -1,4 +1,4 @@
-import type { TableApi } from "../orm/runtime.js";
+import type { TableApi } from "../orm/kuratchi-orm.js";
 
 interface Env {
   ADMIN_DB: any;
@@ -57,7 +57,7 @@ export class OrgService {
 
   async getRoles(): Promise<any[]> {
     const res = await this.client.roles.findMany();
-    return ((res as any).results ?? (res as any).data ?? []) as any[];
+    return ((res as any).data ?? []) as any[];
   }
 
   async getRole(id: string): Promise<any | undefined> {
@@ -89,7 +89,7 @@ export class OrgService {
 
   async getAllActivity(): Promise<any[]> {
     const res = await this.client.activity.findMany({ orderBy: [{ created_at: 'desc' }] });
-    return ((res as any).results ?? (res as any).data ?? []) as any[];
+    return ((res as any).data ?? []) as any[];
   }
 
   async getPaginatedActivity(
@@ -101,14 +101,14 @@ export class OrgService {
   ): Promise<{ data: any[]; total: number }> {
     const where = search && search.trim() !== '' ? ({ action: { like: `%${search}%` } } as any) : undefined;
     const cnt = await this.client.activity.count(where as any);
-    const total = Number(((cnt as any).results?.[0]?.count ?? (cnt as any).data?.[0]?.count ?? 0) as any) || 0;
+    const total = Number(((cnt as any).data?.[0]?.count ?? 0) as any) || 0;
     const res = await this.client.activity.findMany({
       where: where as any,
       limit,
       offset: (page - 1) * limit,
       orderBy: [{ created_at: order } as any],
     });
-    const rows = ((res as any).results ?? (res as any).data ?? []) as any[];
+    const rows = ((res as any).data ?? []) as any[];
     return { data: rows, total };
   }
 

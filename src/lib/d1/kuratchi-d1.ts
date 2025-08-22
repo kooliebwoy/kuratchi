@@ -4,11 +4,10 @@ import type { PrimaryLocationHint } from '../cloudflare.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
 import {
   createClientFromJsonSchema,
-  createDynamicClient,
   createTypedClientFromMapping,
   type TableApi,
   type TableApiTyped,
-} from '../orm/runtime.js';
+} from '../orm/kuratchi-orm.js';
 import type {
   User as AdminUser,
   Session as AdminSession,
@@ -98,14 +97,18 @@ export class KuratchiD1 {
     return this.getClient(cfg).getDrizzleProxy();
   }
 
-  // Top-level sugar: create a property-based client without calling database().client()
-  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }): Record<string, TableApi>;
+  // Top-level sugar: create a property-based client; schema is required
   client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'admin' }): AdminTypedClient;
   client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'organization' }): OrganizationTypedClient;
   client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: DatabaseSchema }): Record<string, TableApi>;
-  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options?: { schema?: DatabaseSchema | 'admin' | 'organization' }): any {
+  client(
+    cfg: { databaseName: string; apiToken: string; bookmark?: string },
+    options: { schema: DatabaseSchema | 'admin' | 'organization' }
+  ): any {
     const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
-    if (!options?.schema) return createDynamicClient(exec);
+    if (!options?.schema) {
+      throw new Error('KuratchiD1.client requires a schema: "admin", "organization", or DatabaseSchema');
+    }
     if (options.schema === 'admin') return createAdminClient(exec);
     if (options.schema === 'organization') return createOrganizationClient(exec);
     return createClientFromJsonSchema(exec, options.schema);
@@ -117,9 +120,13 @@ export class KuratchiD1 {
       drizzleProxy: () => this.getDrizzleClient(cfg),
       migrate: (dirName: string) => this.migrateVite(cfg, dirName),
       getClient: () => this.getClient(cfg),
-      client: (options?: { schema?: DatabaseSchema | 'admin' | 'organization' }): Record<string, TableApi> | AdminTypedClient | OrganizationTypedClient => {
+      client: (
+        options: { schema: DatabaseSchema | 'admin' | 'organization' }
+      ): Record<string, TableApi> | AdminTypedClient | OrganizationTypedClient => {
         const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
-        if (!options?.schema) return createDynamicClient(exec);
+        if (!options?.schema) {
+          throw new Error('KuratchiD1.database().client requires a schema: "admin", "organization", or DatabaseSchema');
+        }
         if (options.schema === 'admin') return createAdminClient(exec);
         if (options.schema === 'organization') return createOrganizationClient(exec);
         return createClientFromJsonSchema(exec, options.schema);

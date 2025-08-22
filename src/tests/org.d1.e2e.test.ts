@@ -139,14 +139,16 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
 
     const proxy = d1.getDrizzleClient({ databaseName, apiToken });
     drizzle = createDrizzle(proxy as any, { schema: schema as any });
-    auth = new AuthService(drizzle as any, {
+    // Instantiate runtime ORM client (organization schema) for AuthService
+    const client = d1.client({ databaseName, apiToken }, { schema: 'organization' });
+    auth = new AuthService(client as any, {
       ADMIN_DB: {} as any,
       RESEND_API_KEY: 'test-resend',
       EMAIL_FROM: 'noreply@example.com',
       ORIGIN: 'http://localhost:5173',
       RESEND_CLUTCHCMS_AUDIENCE: 'test-audience',
       KURATCHI_AUTH_SECRET,
-    } as any, schema as any);
+    } as any);
   }, 120_000);
 
   afterAll(async () => {

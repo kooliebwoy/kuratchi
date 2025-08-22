@@ -1,8 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
 import { AuthService } from '../lib/auth/AuthService.js';
-import { adminSchema as schema } from '../lib/schema/index.js';
-import { drizzle as createDrizzle } from 'drizzle-orm/sqlite-proxy';
+
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
 
@@ -101,7 +100,7 @@ describeMaybe('AuthService E2E with Cloudflare D1 (SvelteKit env, outside lib)',
   const databaseName = makeDbName();
   let databaseId = '';
   let apiToken = '';
-  let drizzle: any;
+ 
   let auth: AuthService;
 
   beforeAll(async () => {
@@ -114,16 +113,16 @@ describeMaybe('AuthService E2E with Cloudflare D1 (SvelteKit env, outside lib)',
       await db.query(sql);
     }
 
-    const proxy = d1.getDrizzleClient({ databaseName, apiToken });
-    drizzle = createDrizzle(proxy as any, { schema: schema as any });
-    auth = new AuthService(drizzle as any, {
+    // Instantiate runtime ORM client (admin schema) for AuthService
+    const client = d1.client({ databaseName, apiToken }, { schema: 'admin' });
+    auth = new AuthService(client as any, {
       ADMIN_DB: {} as any,
       RESEND_API_KEY: 'test-resend',
       EMAIL_FROM: 'noreply@example.com',
       ORIGIN: 'http://localhost:5173',
       RESEND_CLUTCHCMS_AUDIENCE: 'test-audience',
       KURATCHI_AUTH_SECRET,
-    } as any, schema as any);
+    } as any);
   }, 120_000);
 
   afterAll(async () => {

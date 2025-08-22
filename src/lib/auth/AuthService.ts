@@ -1,7 +1,7 @@
 import { comparePassword, hashPassword, generateSessionToken, hashToken, buildSessionCookie, parseSessionCookie } from "./utils.js";
 import { EmailService } from "../email/EmailService.js";
 import { OrgService } from "../org/OrgService.js";
-import type { TableApi } from "../orm/runtime.js";
+import type { TableApi } from "../orm/kuratchi-orm.js";
 import type { D1Database } from "@cloudflare/workers-types";
 
 // Session data built from DB on demand
@@ -42,8 +42,37 @@ interface Env {
     KURATCHI_AUTH_SECRET: string;
 }
 
-export class AuthService {
-    private client: Record<string, TableApi>;
+// Minimal tables the AuthService expects on the runtime client
+type AuthClientTables = {
+    users: TableApi<any>;
+    session: TableApi<any>;
+    passwordResetTokens: TableApi<any>;
+    emailVerificationToken: TableApi<any>;
+    magicLinkTokens: TableApi<any>;
+    oauthAccounts?: TableApi<any>;
+};
+
+// Helper to infer a table row type from the runtime client
+type UsersRowOf<C> = C extends { users: TableApi<infer R> } ? R : never;
+
+// Helper field resolver: if UsersRow has key K, infer its type; otherwise fall back to F
+type FieldOr<C, K extends string, F> = UsersRowOf<C> extends { [P in K]?: infer T } ? T : F;
+
+// Helper user row type used throughout AuthService, normalized to ensure presence of common keys
+type UserRow<C> = UsersRowOf<C> & {
+    id: string;
+    email: string;
+    emailVerified?: FieldOr<C, 'emailVerified', Date | null | undefined>;
+    role?: FieldOr<C, 'role', string | null>;
+    firstName?: FieldOr<C, 'firstName', string | null>;
+    lastName?: FieldOr<C, 'lastName', string | null>;
+    name?: FieldOr<C, 'name', string | null>;
+    image?: FieldOr<C, 'image', string | null>;
+    password_hash?: FieldOr<C, 'password_hash', string | null>;
+};
+
+export class AuthService<C extends AuthClientTables & Record<string, TableApi> = AuthClientTables & Record<string, TableApi>> {
+    private client: C;
     private env: Env; // Store env for EmailService creation
     
     private emailService: EmailService;
@@ -55,14 +84,14 @@ export class AuthService {
      * @param env - Environment variables
      */
     constructor(
-        client: Record<string, TableApi>,
+        client: C,
         env: Env,
     ) {
         this.client = client;
         this.env = env;
         this.emailService = new EmailService(env as any); // Centralized templated email sender
         // Always initialize OrgService with the same runtime client
-        this.orgService = new OrgService(client, env);
+        this.orgService = new OrgService(client as any, env);
     }
 
     /**
@@ -71,15 +100,15 @@ export class AuthService {
      * @param sendVerificationEmail - Whether to send a verification email (default: true)
      * @returns Object containing the created user and verification token
      */
-    async createUser(userData: any, sendVerificationEmail: boolean = true) {
+    async createUser(userData: (Partial<UserRow<C>> & Record<string, any>) & { email: string; password?: string }, sendVerificationEmail: boolean = true): Promise<UserRow<C> | null> {
         // Generate a UUID for the new user
         const userId = crypto.randomUUID();
         
         // Hash password if plain provided and password_hash missing
-        let toInsert = { ...userData } as any;
-        if (!toInsert.password_hash && toInsert.password) {
+        let toInsert = { ...userData } as Record<string, any>;
+        if (!toInsert['password_hash'] && toInsert.password) {
             const pepper = this.env.KURATCHI_AUTH_SECRET; // reuse local secret as pepper
-            toInsert.password_hash = await hashPassword(toInsert.password, undefined, pepper);
+            toInsert['password_hash'] = (await hashPassword(toInsert.password, undefined, pepper)) as any;
             delete toInsert.password; // never persist plain password
         }
 
@@ -89,8 +118,8 @@ export class AuthService {
             id: userId,
             emailVerified: null
         });
-        const created = await this.client.users.findFirst({ where: { id: userId } as any });
-        const user = (created as any)?.data;
+        const got = await this.client.users.findFirst({ where: { id: userId } as any });
+        const user = (got as any)?.data as UserRow<C> | undefined;
         
         // Generate an email verification token
         // const verificationToken = await this.createEmailVerificationToken(userId, userData.email);
@@ -103,16 +132,16 @@ export class AuthService {
         //     console.log(`Verification token for ${userData.email}: ${verificationToken.token}`);
         // }
         
-        return user;
+        return user ?? null;
     }
 
     /**
      * Get all users
      * @returns Array of users
      */
-    async getUsers(): Promise<any[]> {
+    async getUsers(): Promise<UserRow<C>[]> {
         const res = await this.client.users.findMany();
-        return ((res as any).results ?? (res as any).data ?? []) as any[];
+        return ((res as any)?.data ?? []) as UserRow<C>[];
     }
 
     /**
@@ -120,9 +149,9 @@ export class AuthService {
      * @param id - User ID
      * @returns User or undefined
      */
-    async getUser(id: string): Promise<any | undefined> {
+    async getUser(id: string): Promise<UserRow<C> | undefined> {
         const res = await this.client.users.findFirst({ where: { id } as any });
-        return (res as any)?.data;
+        return (res as any)?.data as UserRow<C> | undefined;
     }
 
     /**
@@ -131,10 +160,10 @@ export class AuthService {
      * @param userData - Partial user data to update
      * @returns Updated user
      */
-    async updateUser(id: string, userData: Partial<any>): Promise<any | undefined> {
-        await this.client.users.update({ id } as any, { ...userData, updated_at: Date.now().toString() });
+    async updateUser(id: string, userData: Partial<UserRow<C>> & Record<string, any>): Promise<UserRow<C> | undefined> {
+        await this.client.users.update({ id } as any, { ...userData, updated_at: new Date().toISOString() });
         const res = await this.client.users.findFirst({ where: { id } as any });
-        return (res as any)?.data;
+        return (res as any)?.data as UserRow<C> | undefined;
     }
 
     /**
@@ -142,7 +171,7 @@ export class AuthService {
      * @param id - User ID
      * @returns Deleted user
      */
-    async deleteUser(id: string): Promise<any | undefined> {
+    async deleteUser(id: string): Promise<UserRow<C> | null> {
         const user = await this.getUser(id);
 
         if (!user) {
@@ -153,17 +182,17 @@ export class AuthService {
         await this.invalidateAllSessions(id);
 
         await this.client.users.delete({ id } as any);
-        return user as any;
+        return user as UserRow<C>;
     }
 
     /**
      * Delete all users
      * @returns Array of deleted users
      */
-    async deleteUsers(): Promise<any[]> {
+    async deleteUsers(): Promise<UserRow<C>[]> {
         const before = await this.getUsers();
         await this.client.users.delete({} as any);
-        return before as any[];
+        return before;
     }
 
     /**
@@ -171,9 +200,9 @@ export class AuthService {
      * @param email - User email
      * @returns User or undefined
      */
-    async getUserByEmail(email: string): Promise<any | undefined> {
+    async getUserByEmail(email: string): Promise<UserRow<C> | undefined> {
         const res = await this.client.users.findFirst({ where: { email } as any });
-        return (res as any)?.data;
+        return (res as any)?.data as UserRow<C> | undefined;
     }
 
     // Role Methods
@@ -295,7 +324,7 @@ export class AuthService {
      * @param password - User password
      * @returns User if authentication successful, null otherwise
      */
-    async authenticateUser(email: string, password: string): Promise<any | null> {
+    async authenticateUser(email: string, password: string): Promise<UserRow<C> | null> {
         const user = await this.getUserByEmail(email);
         
         if (!user || !user.password_hash) {
@@ -326,7 +355,7 @@ export class AuthService {
         ipAddress?: string, 
         userAgent?: string
     ): Promise<{
-        user: any;
+        user: UserRow<C>;
         sessionId: string;
         sessionData: SessionData;
     } | null> {
@@ -459,7 +488,7 @@ export class AuthService {
 
             // Count existing sessions for the user
             const sessionRes = await this.client.session.findMany({ where: { userId } as any });
-            const sessions = ((sessionRes as any).results ?? (sessionRes as any).data ?? []) as any[];
+            const sessions = (sessionRes as any).data ?? [];
 
             if (!Array.isArray(sessions) || sessions.length === 0) {
                 return { success: true, refreshedCount: 0 };
@@ -540,10 +569,10 @@ export class AuthService {
             user: {
                 id: userData.id,
                 email: userData.email,
-                firstName: userData.firstName,
-                lastName: userData.lastName,
-                name: userData.name,
-                role: userData.role,
+                firstName: userData.firstName ?? null,
+                lastName: userData.lastName ?? null,
+                name: userData.name ?? null,
+                role: userData.role ?? null,
                 organizationSlug: (userData as any).organizationSlug ?? null,
                 organizationId: (userData as any).organizationId
                     ?? (userData as any).tenantId
@@ -574,20 +603,19 @@ export class AuthService {
             deleted_at: null,
             expires: expiryDate
         });
-        const res = await this.client.passwordResetTokens.findFirst({ where: { id } as any });
-        return (res as any)?.data;
+        return { id, email, token, expires: expiryDate } as any;
     }
 
     async deletePasswordResetToken(token: string) {
         const before = await this.client.passwordResetTokens.findMany({ where: { token } as any });
         await this.client.passwordResetTokens.delete({ token } as any);
-        const rows = ((before as any).results ?? (before as any).data ?? []) as any[];
+        const rows = ((before as any).data ?? []) as any[];
         return rows.length > 0;
     }
 
     async getPasswordResetToken(token: string) {
         const res = await this.client.passwordResetTokens.findMany({ where: { token } as any });
-        return ((res as any).results ?? (res as any).data ?? []) as any[];
+        return ((res as any).data ?? []) as any[];
     }
 
     /**
@@ -616,8 +644,7 @@ export class AuthService {
             updated_at: now.toISOString(),
             deleted_at: null,
         });
-        const res = await this.client.emailVerificationToken.findFirst({ where: { id } as any });
-        return (res as any)?.data;
+        return { id, userId, email, token, expires: expiryDate } as any;
     }
 
     /**
@@ -638,7 +665,7 @@ export class AuthService {
     async getEmailVerificationTokenByEmail(email: string) {
         // Return the most recent token for this email
         const res = await this.client.emailVerificationToken.findMany({ where: { email } as any });
-        const tokens = ((res as any).results ?? (res as any).data ?? []) as any[];
+        const tokens = ((res as any).data ?? []) as any[];
         if (!Array.isArray(tokens) || tokens.length === 0) return null as any;
         // Choose the latest by expires
         const latest = tokens.sort((a: any, b: any) => {
@@ -756,7 +783,7 @@ export class AuthService {
         
         // Update the user's emailVerified status using updateUser for event-driven session updates
         const now = new Date();
-        const updatedUser = await this.updateUser(verificationToken.userId, { emailVerified: now });
+        const updatedUser = await this.updateUser(verificationToken.userId, { emailVerified: now as any } as any);
                 
         // Delete the verification token
         await this.deleteEmailVerificationTokenByEmail(email);
@@ -786,12 +813,10 @@ async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) 
         updated_at: now.toISOString(),
         deleted_at: null
     });
-    const res = await this.client.magicLinkTokens.findFirst({ where: { id } as any });
-    const row = (res as any)?.data;
-    return { token, expires: row?.expires ?? expires, redirectTo: row?.redirectTo ?? redirectTo };
+    return { token, expires, redirectTo };
 }
 
-async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: any; error?: string }> {
+async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: UserRow<C>; error?: string }> {
     const found = await this.client.magicLinkTokens.findFirst({ where: { token } as any });
     const row = (found as any)?.data;
     if (!row) return { success: false, error: 'Invalid or expired token' };
@@ -806,14 +831,17 @@ async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: strin
     // Ensure user exists
     let user = await this.getUserByEmail(row.email);
     if (!user) {
-        user = await this.createUser({ email: row.email, emailVerified: now });
+        const created = await this.createUser({ email: row.email, emailVerified: now as any } as any);
+        if (!created) return { success: false, error: 'Failed to create user' };
+        user = created;
     } else if (!user.emailVerified) {
-        await this.updateUser(user.id, { emailVerified: now });
+        await this.updateUser(user.id, { emailVerified: now as any } as any);
     }
 
     // Create a session and return cookie
-    const cookie = await this.upsertSession({ userId: user.id });
-    return { success: true, cookie, redirectTo: row.redirectTo ?? undefined, user };
+    const ensuredUser = user as UserRow<C>;
+    const cookie = await this.upsertSession({ userId: ensuredUser.id });
+    return { success: true, cookie, redirectTo: row.redirectTo ?? undefined, user: ensuredUser };
 }
 
 async sendMagicLink(email: string, link: string, opts?: { from?: string; subject?: string }) {
@@ -858,8 +886,8 @@ async getOrCreateUserFromOAuth(params: {
             email: email!,
             name: name ?? null,
             image: image ?? null,
-            emailVerified: new Date()
-        }, false);
+            emailVerified: new Date() as any
+        } as any, false);
     }
 
     // Upsert OAuth account
@@ -867,10 +895,12 @@ async getOrCreateUserFromOAuth(params: {
     const expires_at = tokens?.expires_at ? (typeof tokens.expires_at === 'number' ? new Date(tokens.expires_at) : tokens.expires_at) : null;
 
     if ((this.client as any).oauthAccounts) {
+        if (!user) throw new Error('Failed to resolve user');
+        const ensuredUser = user as UserRow<C>;
         const link = await (this.client as any).oauthAccounts.findFirst({ where: { provider, providerAccountId } as any });
         if ((link as any)?.data) {
             await (this.client as any).oauthAccounts.update({ provider, providerAccountId } as any, {
-                userId: user.id,
+                userId: ensuredUser.id,
                 access_token: tokens?.access_token ?? null,
                 refresh_token: tokens?.refresh_token ?? null,
                 expires_at,
@@ -882,7 +912,7 @@ async getOrCreateUserFromOAuth(params: {
         } else {
             await (this.client as any).oauthAccounts.insert({
                 id: crypto.randomUUID(),
-                userId: user.id,
+                userId: ensuredUser.id,
                 provider,
                 providerAccountId,
                 access_token: tokens?.access_token ?? null,

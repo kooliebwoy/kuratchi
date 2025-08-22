@@ -105,24 +105,29 @@ export function createRuntimeOrm(execute: SqlExecutor) {
         const offset = typeof opts.offset === 'number' ? `OFFSET ${opts.offset}` : '';
         const head = `SELECT ${sel} FROM ${tableName}`;
         const sql = [head, w.sql, order, limit, offset].filter(Boolean).join(' ');
-        return execute(sql, w.params);
+        const ret = await execute(sql, w.params);
+        if (!ret || ret.success === false) return ret as any;
+        const rows = (ret as any).data ?? (ret as any).results ?? [];
+        return { success: true, data: rows } as QueryResult<Row[]>;
       },
-      async findFirst(opts: Omit<FindManyOptions, 'limit'> = {}): Promise<QueryResult<Row>> {
+      async findFirst(opts: Omit<FindManyOptions, 'limit'> = {}): Promise<QueryResult<Row | undefined>> {
         const res = await this.findMany({ ...opts, limit: 1 });
         if (!res.success) return res as any;
-        const rows = (res as any).results ?? (res as any).data;
+        const rows = (res as any).data ?? (res as any).results;
         const first = Array.isArray(rows) ? rows[0] : undefined;
         return { success: true, data: first };
       },
-      async insert(values: Record<string, any> | Record<string, any>[]): Promise<QueryResult<any>> {
+      async insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>> {
         const rows = Array.isArray(values) ? values : [values];
         if (rows.length === 0) return { success: true };
         const cols = Object.keys(rows[0]);
         const placeholders = `(${cols.map(() => '?').join(', ')})`;
         const allPlaceholders = rows.map(() => placeholders).join(', ');
-        const params = rows.flatMap((r) => cols.map((c) => r[c]));
-        const sql = `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES ${allPlaceholders}`;
-        return execute(sql, params);
+        const params = rows.flatMap((r) => cols.map((c) => (r as any)[c]));
+        const baseSql = `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES ${allPlaceholders}`;
+        // Always perform a single INSERT without RETURNING and without follow-up SELECTs
+        const ret = await execute(baseSql, params);
+        return ret as QueryResult<Row | Row[]>;
       },
       async update(where: Where, values: Record<string, any>): Promise<QueryResult<any>> {
         const setCols = Object.keys(values);
@@ -141,7 +146,10 @@ export function createRuntimeOrm(execute: SqlExecutor) {
       async count(where?: Where): Promise<QueryResult<{ count: number }[]>> {
         const w = compileWhere(where);
         const sql = `SELECT COUNT(*) as count FROM ${tableName} ${w.sql}`;
-        return execute(sql, w.params);
+        const ret = await execute(sql, w.params);
+        if (!ret || ret.success === false) return ret as any;
+        const rows = (ret as any).data ?? (ret as any).results ?? [];
+        return { success: true, data: rows } as QueryResult<{ count: number }[]>;
       },
     };
   }
@@ -159,8 +167,8 @@ export function createRuntimeOrmFromKuratchiDb(db: { query: (sql: string, params
 
 export interface TableApi<Row = any> {
   findMany(opts?: FindManyOptions): Promise<QueryResult<Row[]>>;
-  findFirst(opts?: Omit<FindManyOptions, 'limit'>): Promise<QueryResult<Row>>;
-  insert(values: Record<string, any> | Record<string, any>[]): Promise<QueryResult<any>>;
+  findFirst(opts?: Omit<FindManyOptions, 'limit'>): Promise<QueryResult<Row | undefined>>;
+  insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>>;
   update(where: Where, values: Record<string, any>): Promise<QueryResult<any>>;
   delete(where: Where): Promise<QueryResult<any>>;
   count(where?: Where): Promise<QueryResult<{ count: number }[]>>;

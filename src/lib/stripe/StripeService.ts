@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { subscriptionToBilling } from './utils.js';
 import type { OrganizationBilling } from './types.js';
-import type { TableApi } from '../orm/runtime.js';
+import type { TableApi } from '../orm/kuratchi-orm.js';
 
 interface Env {
   ADMIN_DB: any;
