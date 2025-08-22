@@ -2,14 +2,16 @@
 
 Toolkit for multi-organization MVPs. Opinionated. Built to be simple.
 
-- Stand up org DBs and auth quickly. Auth is scoped org.
-- Lightweight included ORM to get you started.
+- Stand up org DBs and auth quickly. Auth is scoped to the org.
+- Lightweight ORM included to get you started.
 - CLI for D1 provisioning (Admin DB to manage org DBs).
-- Migrations included (JSON schema) with automatic schema snapshotting.
+- Migrations included (JSON schema) with automatic schema snapshotting (Think drizzle-kit, inspired by them).
 
 ## Documentation
 
 - ORM: ./src/docs/orm.md
+- CLI: ./src/docs/cli.md
+- Auth: ./src/docs/auth.md
 - Docs index: ./src/docs/README.md
 
 ## Install
@@ -36,7 +38,7 @@ const { database, apiToken } = await kuratchi.d1.createDatabase('acme-org');
 const db = kuratchi.d1.database({ databaseName: database.name, apiToken });
 
 // Migrate the database
-await db.migrate('org');
+await db.migrate('org'); // path: ./migrations-org
 
 // Use the minimal runtime ORM - Optional
 const org = db.client({ schema }); // your schema
@@ -50,35 +52,35 @@ if (!res.success) throw new Error(res.error);
 console.log(res.data); // { id: 'u1', email: 'a@acme.com' }
 ```
 
-### Quickstart: ORM + Migrations
-
-- Generate migration bundles from JSON schema via the CLI (no manual files). The CLI creates `migrations-<dir>/meta/_journal.json` and `<tag>.sql` for you.
-- At runtime (Vite/SvelteKit), apply with `await kuratchi.d1.database({ databaseName, apiToken }).migrate('<dir>')`.
-- For Admin DB, generate an initial bundle from JSON schema and migrate via CLI:
+### CLI Quickstart (minimal)
 
 ```sh
-# Generate initial admin bundle
-kuratchi admin generate-migrations \
-  --schema-json-file ./src/lib/schema-json/admin.json \
-  --tag initial
+# Create Admin DB (defaults to name: kuratchi-admin)
+kuratchi admin create
 
-# Apply admin migrations (local CLI)
-kuratchi admin migrate \
-  --name kuratchi-admin \
-  --token "$KURATCHI_ADMIN_DB_TOKEN" \
-  --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"
+# Migrate Admin DB (uses local migrations if present, else JSON schema fallback)
+kuratchi admin migrate
 ```
 
-See `src/docs/orm.md` and `src/docs/migrations.md` for details.
+See `src/docs/cli.md` for full CLI reference.
 
-Notes:
-- Org alias: `kuratchi org generate-migrations` defaults to `organization.json` -> `./migrations-org`.
-- Snapshotting: the generator maintains `meta/_schema.json` inside the migrations folder and uses it as the diff baseline next time (override with `--from-schema-json-file`).
+Set env (server):
+- KURATCHI_AUTH_SECRET
+- CLOUDFLARE_WORKERS_SUBDOMAIN
+- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_API_TOKEN
+- KURATCHI_ADMIN_DB_NAME
+- KURATCHI_ADMIN_DB_TOKEN
+- ORIGIN (e.g. https://app.example.com)
+- Optional for magic link: RESEND_API_KEY, EMAIL_FROM
+- Optional for Google OAuth: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
-
+See `src/docs/auth.md` for details.
+See `src/docs/orm.md` for details.
+See `src/docs/migrations.md` for details.
+See `src/docs/cli.md` for details.
 
 > For full guides and examples (Auth, CLI, migrations, environment), see `src/docs/`.
-
 
 ## License
 

@@ -2,6 +2,8 @@
 
 This guide shows how to create and apply database migrations with Kuratchi.
 
+> See the CLI reference: ./cli.md
+
 It covers a zero‑friction workflow where you only define a JSON schema and run the CLI:
 - Generate initial and incremental bundles (org/admin) from JSON schema
 - Apply migrations at runtime with `db.migrate('<dir>')` (Vite/SvelteKit)
