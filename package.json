@@ -34,22 +34,15 @@
 		"kuratchi": "./bin/kuratchi.mjs"
 	},
 	"peerDependencies": {
-		"drizzle-orm": "^0.29.0",
 		"svelte": "^5.0.0"
 	},
-	"peerDependenciesMeta": {
-		"drizzle-orm": {
-			"optional": true
-		}
-	},
+	"peerDependenciesMeta": {},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250816.0",
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/kit": "^2.22.0",
 		"@sveltejs/package": "^2.0.0",
 		"@sveltejs/vite-plugin-svelte": "^6.0.0",
-		"drizzle-orm": "^0.44.4",
-		"drizzle-kit": "^0.31.4",
 		"publint": "^0.3.2",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",

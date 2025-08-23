@@ -1,5 +1,8 @@
 import { KuratchiD1 } from './d1/kuratchi-d1.js';
+import { KuratchiKV } from './kv/kuratchi-kv.js';
 import { KuratchiAuth } from './auth/kuratchi-auth.js';
+import { KuratchiR2 } from './r2/kuratchi-r2.js';
+import { KuratchiQueues } from './queues/kuratchi-queues.js';
 import { createAuthHandle, type CreateAuthHandleOptions } from './auth/kuratchi-auth.js';
 import type { Handle } from '@sveltejs/kit';
 export type { PrimaryLocationHint } from './d1/kuratchi-d1.js';
@@ -31,6 +34,9 @@ export interface KuratchiOptions {
  */
 export class Kuratchi {
     public d1: KuratchiD1;
+    public kv: KuratchiKV;
+    public r2: KuratchiR2;
+    public queues: KuratchiQueues;
     public auth: KuratchiAuth | { handle: (options?: CreateAuthHandleOptions) => Handle };
 
     // Static convenience: use without instantiating Kuratchi
@@ -81,6 +87,24 @@ export class Kuratchi {
             endpointBase: config.endpointBase,
             workersSubdomain: config.workersSubdomain,
         });
+        this.kv = new KuratchiKV({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            endpointBase: config.endpointBase,
+            workersSubdomain: config.workersSubdomain,
+        });
+        this.r2 = new KuratchiR2({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            endpointBase: config.endpointBase,
+            workersSubdomain: config.workersSubdomain,
+        });
+        this.queues = new KuratchiQueues({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            endpointBase: config.endpointBase,
+            workersSubdomain: config.workersSubdomain,
+        });
         
         // Initialize auth if config is provided
         if (config.auth) {
@@ -104,6 +128,9 @@ export class Kuratchi {
     toJSON() {
         return {
             d1: '[api]',
+            kv: '[api]',
+            r2: '[api]',
+            queues: '[api]',
             auth: '[api]'
         } as any;
     }

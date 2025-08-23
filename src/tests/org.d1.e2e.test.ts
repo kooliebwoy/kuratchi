@@ -1,9 +1,8 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
-import { organizationSchema as schema } from '../lib/schema/index.js';
 import { AuthService } from '../lib/auth/AuthService.js';
-import { drizzle as createDrizzle } from 'drizzle-orm/sqlite-proxy';
-import { eq } from 'drizzle-orm';
+import { createClientFromJsonSchema } from '../lib/orm/kuratchi-orm.js';
+import organizationJsonSchema from '../lib/schema-json/organization.json' with { type: 'json' };
 
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
@@ -124,7 +123,7 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
   const databaseName = makeDbName();
   let databaseId = '';
   let apiToken = '';
-  let drizzle: any;
+  let client: any;
   let auth: AuthService;
 
   beforeAll(async () => {
@@ -137,10 +136,8 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
       await db.query(sql);
     }
 
-    const proxy = d1.getDrizzleClient({ databaseName, apiToken });
-    drizzle = createDrizzle(proxy as any, { schema: schema as any });
     // Instantiate runtime ORM client (organization schema) for AuthService
-    const client = d1.client({ databaseName, apiToken }, { schema: 'organization' });
+    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), organizationJsonSchema as any);
     auth = new AuthService(client as any, {
       ADMIN_DB: {} as any,
       RESEND_API_KEY: 'test-resend',
@@ -159,14 +156,12 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
 
   it('CRUD users in organization DB', async () => {
     const id = crypto.randomUUID();
-    const u = await drizzle.insert(schema.Users).values({ id, email: 'orguser@example.com' }).returning().get();
-    expect(u.id).toBe(id);
-
-    const got = await drizzle.select().from(schema.Users).where(eq(schema.Users.id, id)).get();
-    expect(got?.email).toBe('orguser@example.com');
-
-    const upd = await drizzle.update(schema.Users).set({ name: 'Org User' }).where(eq(schema.Users.id, id)).returning().get();
-    expect(upd?.name).toBe('Org User');
+    await client.users.insert({ id, email: 'orguser@example.com' });
+    const got = await client.users.findFirst({ where: { id } });
+    expect((got as any)?.data?.email).toBe('orguser@example.com');
+    await client.users.update({ id } as any, { name: 'Org User' } as any);
+    const upd = await client.users.findFirst({ where: { id } });
+    expect((upd as any)?.data?.name).toBe('Org User');
   }, 60_000);
 
   it('AuthService works against organization DB (create/auth/session)', async () => {

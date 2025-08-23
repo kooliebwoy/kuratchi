@@ -12,6 +12,9 @@ Toolkit for multi-organization MVPs. Opinionated. Built to be simple.
 - ORM: ./src/docs/orm.md
 - CLI: ./src/docs/cli.md
 - Auth: ./src/docs/auth.md
+- KV: ./src/docs/kv.md
+- R2: ./src/docs/r2.md
+- Queues: ./src/docs/queues.md
 - Docs index: ./src/docs/README.md
 
 ## Install

@@ -118,6 +118,77 @@ export class CloudflareClient {
         });
     }
 
+    // ===== KV Namespaces =====
+    /** Create a KV Namespace */
+    async createKVNamespace(title: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title })
+        });
+    }
+
+    /** List KV Namespaces */
+    async listKVNamespaces(): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces`, {
+            method: 'GET'
+        });
+    }
+
+    /** Delete a KV Namespace by id and attempt to delete a Worker script named after the title */
+    async deleteKVNamespace(namespaceId: string): Promise<CloudflareAPIResponse<any>> {
+        // Best-effort: resolve namespace title to infer worker script name
+        try {
+            const list = await this.listKVNamespaces();
+            const items: any[] = Array.isArray(list?.result) ? (list.result as any[]) : [];
+            const found = items.find((ns: any) => ns?.id === namespaceId);
+            const scriptName: string | undefined = found?.title;
+            if (scriptName) {
+                try {
+                    await this.deleteWorkerScript(scriptName);
+                } catch {
+                    // ignore worker deletion errors to ensure KV deletion proceeds
+                }
+            }
+        } catch {
+            // ignore lookup errors and proceed to KV deletion
+        }
+
+        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces/${namespaceId}`, {
+            method: 'DELETE'
+        });
+    }
+
+    // ===== R2 Buckets =====
+    /** Create an R2 bucket */
+    async createR2Bucket(name: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/r2/buckets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+    }
+
+    /** List R2 buckets */
+    async listR2Buckets(): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/r2/buckets`, {
+            method: 'GET'
+        });
+    }
+
+    /** Delete an R2 bucket by name and attempt to delete a Worker script named after it */
+    async deleteR2Bucket(name: string): Promise<CloudflareAPIResponse<any>> {
+        // Best-effort: delete worker with same name
+        try {
+            await this.deleteWorkerScript(name);
+        } catch {
+            // ignore worker deletion errors to ensure bucket deletion proceeds
+        }
+        return this.request(`/accounts/${this.accountId}/r2/buckets/${encodeURIComponent(name)}`, {
+            method: 'DELETE'
+        });
+    }
+
     /** Upload a Workers script (module syntax) with provided bindings */
     async uploadWorkerModule(scriptName: string, workerScript: string, bindings: Array<unknown>): Promise<CloudflareAPIResponse<any>> {
         const form = new FormData();
@@ -166,6 +237,41 @@ export class CloudflareClient {
     /** Delete a Worker script by name (force=true to remove along with bindings/objects) */
     async deleteWorkerScript(scriptName: string): Promise<void> {
         await this.request(`/accounts/${this.accountId}/workers/scripts/${scriptName}?force=true`, {
+            method: 'DELETE'
+        });
+    }
+
+    // ===== Queues =====
+    /** Create a Queue */
+    async createQueue(queueName: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/queues`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ queue_name: queueName })
+        });
+    }
+
+    /** List Queues */
+    async listQueues(): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/queues`, {
+            method: 'GET'
+        });
+    }
+
+    /** Delete a Queue by id or name */
+    async deleteQueue(idOrName: string): Promise<CloudflareAPIResponse<any>> {
+        let target = idOrName;
+        try {
+            const list = await this.listQueues();
+            const items: any[] = Array.isArray(list?.result) ? (list.result as any[]) : [];
+            const found = items.find((q: any) => q?.id === idOrName || q?.queue_id === idOrName || q?.queue_name === idOrName || q?.name === idOrName);
+            if (found) {
+                target = found.id || found.queue_id || found.name || found.queue_name || target;
+            }
+        } catch {
+            // ignore lookup errors and try with provided value
+        }
+        return this.request(`/accounts/${this.accountId}/queues/${encodeURIComponent(target)}`, {
             method: 'DELETE'
         });
     }

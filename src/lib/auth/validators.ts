@@ -34,50 +34,41 @@ export async function validateAdminSchema(client: D1LikeClient): Promise<void> {
     session: ['sessionToken', 'userId', 'expires'],
     databases: ['id', 'organizationId'],
     dbApiTokens: ['id', 'token', 'databaseId'],
-    activity: ['id', 'action']
+    activity: ['id', 'action'],
+    // Newly required resource tracking tables
+    kvNamespaces: ['id', 'namespaceId', 'organizationId'],
+    kvApiTokens: ['id', 'token', 'kvNamespaceId'],
+    r2Buckets: ['id', 'name', 'organizationId'],
+    r2ApiTokens: ['id', 'token', 'r2BucketId'],
+    queues: ['id', 'name', 'organizationId'],
   };
-  const missing: { table: string; columns?: string[] }[] = [];
 
-  for (const [table, cols] of Object.entries(requiredTables)) {
+  for (const [table, requiredCols] of Object.entries(requiredTables)) {
     const exists = await tableExists(client, table);
-    if (!exists) {
-      missing.push({ table });
-      continue;
-    }
-    const present = await getColumns(client, table);
-    const missCols = missingColumns(present, cols);
-    if (missCols.length) missing.push({ table, columns: missCols });
-  }
-
-  if (missing.length) {
-    const details = missing.map(m => `- ${m.table}${m.columns ? ` (missing cols: ${m.columns.join(', ')})` : ''}`).join('\n');
-    throw new Error(`Admin DB schema validation failed. Missing requirements:\n${details}`);
+    if (!exists) throw new Error(`Missing required admin table: ${table}`);
+    const cols = await getColumns(client, table);
+    const missing = missingColumns(cols, requiredCols);
+    if (missing.length) throw new Error(`Table ${table} missing columns: ${missing.join(', ')}`);
   }
 }
 
 export async function validateOrganizationSchema(client: D1LikeClient): Promise<void> {
   const requiredTables: Record<string, string[]> = {
-    users: ['id', 'email', 'password_hash'],
+    users: ['id', 'email'],
     session: ['sessionToken', 'userId', 'expires'],
-    passwordResetTokens: ['id', 'token', 'email', 'expires'],
-    emailVerificationToken: ['id', 'token', 'email', 'userId', 'expires'],
-    activity: ['id', 'action']
+    roles: ['id', 'name'],
+    activity: ['id', 'action'],
+    oauthAccounts: ['id', 'provider', 'providerAccountId', 'userId'],
+    passwordResetTokens: ['id', 'userId'],
+    emailVerificationToken: ['id', 'identifier', 'token', 'expires'],
+    magicLinkTokens: ['id', 'userId', 'token', 'expires'],
   };
-  const missing: { table: string; columns?: string[] }[] = [];
 
-  for (const [table, cols] of Object.entries(requiredTables)) {
+  for (const [table, requiredCols] of Object.entries(requiredTables)) {
     const exists = await tableExists(client, table);
-    if (!exists) {
-      missing.push({ table });
-      continue;
-    }
-    const present = await getColumns(client, table);
-    const missCols = missingColumns(present, cols);
-    if (missCols.length) missing.push({ table, columns: missCols });
-  }
-
-  if (missing.length) {
-    const details = missing.map(m => `- ${m.table}${m.columns ? ` (missing cols: ${m.columns.join(', ')})` : ''}`).join('\n');
-    throw new Error(`Organization DB schema validation failed. Missing requirements:\n${details}`);
+    if (!exists) throw new Error(`Missing required organization table: ${table}`);
+    const cols = await getColumns(client, table);
+    const missing = missingColumns(cols, requiredCols);
+    if (missing.length) throw new Error(`Table ${table} missing columns: ${missing.join(', ')}`);
   }
 }

@@ -2,5 +2,8 @@
 export { Kuratchi, type KuratchiOptions, type PrimaryLocationHint } from './kuratchi.js';
 
 // Schemas and validators (stable public API)
-export { adminSchema, organizationSchema } from './schema/index.js';
-export { validateAdminSchema, validateOrganizationSchema } from './schema/index.js';
+import adminJsonSchema from './schema-json/admin.json' with { type: 'json' };
+import organizationJsonSchema from './schema-json/organization.json' with { type: 'json' };
+export const adminSchema = adminJsonSchema as any;
+export const organizationSchema = organizationJsonSchema as any;
+export { validateAdminSchema, validateOrganizationSchema } from './auth/validators.js';

@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
-import { adminSchema as schema } from '../lib/schema/index.js';
-import { drizzle as createDrizzle } from 'drizzle-orm/sqlite-proxy';
+import { createClientFromJsonSchema } from '../lib/orm/kuratchi-orm.js';
+import adminJsonSchema from '../lib/schema-json/admin.json' with { type: 'json' };
 
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
@@ -106,7 +106,7 @@ describeMaybe('Admin E2E with Cloudflare D1', () => {
   const databaseName = makeDbName();
   let databaseId = '';
   let apiToken = '';
-  let drizzle: any;
+  let client: any;
 
   beforeAll(async () => {
     const { database, apiToken: createdToken } = await d1.createDatabase(databaseName);
@@ -118,8 +118,8 @@ describeMaybe('Admin E2E with Cloudflare D1', () => {
       await db.query(sql);
     }
 
-    const proxy = d1.getDrizzleClient({ databaseName, apiToken });
-    drizzle = createDrizzle(proxy as any, { schema: schema as any });
+    // Create runtime ORM client from JSON schema
+    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), adminJsonSchema as any);
   }, 120_000);
 
   afterAll(async () => {
@@ -133,34 +133,19 @@ describeMaybe('Admin E2E with Cloudflare D1', () => {
     const dbId = crypto.randomUUID();
     const tokenId = crypto.randomUUID();
 
-    const org = await drizzle.insert(schema.Organizations).values({
-      id: orgId,
-      organizationName: 'Acme Co',
-      email: 'ops@acme.test',
-      organizationSlug: 'acme',
-      status: 'active',
-    }).returning().get();
-    expect(org.id).toBe(orgId);
+    await client.organizations.insert({ id: orgId, organizationName: 'Acme Co', email: 'ops@acme.test', organizationSlug: 'acme', status: 'active' });
+    const gotOrg = await client.organizations.findFirst({ where: { id: orgId } });
+    expect((gotOrg as any)?.data?.id).toBe(orgId);
 
-    const dbrow = await drizzle.insert(schema.Databases).values({
-      id: dbId,
-      name: 'acme-db',
-      dbuuid: 'uuid-' + dbId,
-      isActive: 1,
-      organizationId: orgId,
-    }).returning().get();
-    expect(dbrow.organizationId).toBe(orgId);
+    await client.databases.insert({ id: dbId, name: 'acme-db', dbuuid: 'uuid-' + dbId, isActive: 1 as any, organizationId: orgId });
+    const gotDb = await client.databases.findFirst({ where: { id: dbId } });
+    expect((gotDb as any)?.data?.organizationId).toBe(orgId);
 
-    const tok = await drizzle.insert(schema.DBApiTokens).values({
-      id: tokenId,
-      token: 'tkn-' + tokenId,
-      name: 'default',
-      databaseId: dbId,
-      revoked: 0,
-    }).returning().get();
-    expect(tok.databaseId).toBe(dbId);
+    await client.dbApiTokens.insert({ id: tokenId, token: 'tkn-' + tokenId, name: 'default', databaseId: dbId, revoked: 0 as any });
+    const gotTok = await client.dbApiTokens.findFirst({ where: { id: tokenId } });
+    expect((gotTok as any)?.data?.databaseId).toBe(dbId);
 
-    const join = await drizzle.select().from(schema.Databases).get();
-    expect(join.organizationId).toBe(orgId);
+    const got = await client.databases.findFirst({ where: { id: dbId } });
+    expect((got as any)?.data?.organizationId).toBe(orgId);
   }, 60_000);
 });

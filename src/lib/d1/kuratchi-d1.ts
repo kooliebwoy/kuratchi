@@ -9,29 +9,8 @@ import {
   type TableApiTyped,
 } from '../orm/kuratchi-orm.js';
 import type { MigrationJournal } from '../orm/index.js';
-import type {
-  User as AdminUser,
-  Session as AdminSession,
-  PasswordResetToken as AdminPasswordResetToken,
-  MagicLinkToken as AdminMagicLinkToken,
-  OAuthAccount as AdminOAuthAccount,
-  OrganizationUser as AdminOrganizationUser,
-  Organization as AdminOrganization,
-  Activity as AdminActivity,
-  Database as AdminDatabase,
-  DBApiToken as AdminDBApiToken,
-  EmailVerificationToken as AdminEmailVerificationToken,
-} from '../schema/admin.js';
-import type {
-  User as OrgUser,
-  Session as OrgSession,
-  PasswordResetToken as OrgPasswordResetToken,
-  EmailVerificationToken as OrgEmailVerificationToken,
-  MagicLinkToken as OrgMagicLinkToken,
-  OAuthAccount as OrgOAuthAccount,
-  Activity as OrgActivity,
-  Role as OrgRole,
-} from '../schema/organization.js';
+// Note: decoupled from src/lib/schema/* to rely purely on JSON schema at runtime.
+// Row typing for table APIs is set to any to avoid compile-time coupling.
 
 export type { PrimaryLocationHint } from '../cloudflare.js';
 
@@ -270,28 +249,28 @@ export class KuratchiD1 {
 
 // ---- Typed clients for known schemas ----
 type AdminRowMap = {
-  users: AdminUser;
-  session: AdminSession;
-  passwordResetTokens: AdminPasswordResetToken;
-  magicLinkTokens: AdminMagicLinkToken;
-  emailVerificationToken: AdminEmailVerificationToken;
-  oauthAccounts: AdminOAuthAccount;
-  organizationUsers: AdminOrganizationUser;
-  organizations: AdminOrganization;
-  activity: AdminActivity;
-  databases: AdminDatabase;
-  dbApiTokens: AdminDBApiToken;
+  users: any;
+  session: any;
+  passwordResetTokens: any;
+  magicLinkTokens: any;
+  emailVerificationToken: any;
+  oauthAccounts: any;
+  organizationUsers: any;
+  organizations: any;
+  activity: any;
+  databases: any;
+  dbApiTokens: any;
 };
 
 type OrganizationRowMap = {
-  users: OrgUser;
-  session: OrgSession;
-  passwordResetTokens: OrgPasswordResetToken;
-  emailVerificationToken: OrgEmailVerificationToken;
-  magicLinkTokens: OrgMagicLinkToken;
-  activity: OrgActivity;
-  roles: OrgRole;
-  oauthAccounts: OrgOAuthAccount;
+  users: any;
+  session: any;
+  passwordResetTokens: any;
+  emailVerificationToken: any;
+  magicLinkTokens: any;
+  activity: any;
+  roles: any;
+  oauthAccounts: any;
 };
 
 export type AdminTypedClient = { [K in keyof AdminRowMap]: TableApiTyped<AdminRowMap[K]> };

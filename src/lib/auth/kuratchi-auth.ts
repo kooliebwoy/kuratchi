@@ -1,26 +1,20 @@
 import { KuratchiD1 } from '../d1/kuratchi-d1.js';
+import { KuratchiKV } from '../kv/kuratchi-kv.js';
+import { KuratchiR2 } from '../r2/kuratchi-r2.js';
+import { KuratchiQueues } from '../queues/kuratchi-queues.js';
 import { AuthService } from './AuthService.js';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { parseSessionCookie, signState, verifyState } from './utils.js';
-import { adminSchema, organizationSchema, validateAdminSchema, validateOrganizationSchema } from '../schema/index.js'
-import { drizzle as drizzleSqliteProxy } from 'drizzle-orm/sqlite-proxy';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import adminJsonSchema from '../schema-json/admin.json' with { type: 'json' };
+import organizationJsonSchema from '../schema-json/organization.json' with { type: 'json' };
+import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
 import { KuratchiHttpClient } from '../d1/internal-http-client.js';
-import type { QueryResult } from '../d1/internal-http-client.js';
 
 // Consolidated SvelteKit handle and types (previously in sveltekit.ts)
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
 
 // Utility to allow sync or async returns
 type MaybePromise<T> = T | Promise<T>;
-
-// Supported admin DB (Kuratchi admin CLI HTTP client)
-type KuratchiHttpLike = {
-  query: (sql: string, params?: any[]) => Promise<QueryResult<any>>;
-  getDrizzleProxy?: () => any;
-  drizzleProxy?: () => any;
-};
-export type AdminDbLike = KuratchiHttpLike;
 
 // Env shape consumed by the auth handle
 export type AuthHandleEnv = {
@@ -42,7 +36,7 @@ export type AuthHandleEnv = {
 export interface CreateAuthHandleOptions {
   cookieName?: string;
   // Optional override to provide an admin DB client. Can be async.
-  getAdminDb?: (event: RequestEvent) => MaybePromise<AdminDbLike>;
+  getAdminDb?: (event: RequestEvent) => MaybePromise<any>;
   // Optional override to provide env. Can be async. Defaults to $env/dynamic/private values.
   getEnv?: (event: RequestEvent) => MaybePromise<AuthHandleEnv>;
 }
@@ -135,7 +129,11 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
 
     let sdk: any = null;
     const getKuratchi = async (): Promise<any> => {
-      if (sdk) return sdk;
+      if (sdk) {
+        // Ensure sdk helpers (including auth) are present on locals every request
+        Object.assign(locals.kuratchi, sdk);
+        return sdk;
+      }
       // Validate Cloudflare env required for KuratchiAuth usage
       const cfMissing = ['CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'].filter((k) => !env?.[k]);
       if (cfMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${cfMissing.join(', ')}`);
@@ -156,6 +154,21 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       });
       // Expose the SDK instance under locals.kuratchi, preserving existing helpers
       Object.assign(locals.kuratchi, sdk);
+      // Batteries-included: wrap credentials.authenticate to set cookie automatically
+      try {
+        const authApi = (sdk as any).auth as KuratchiAuth;
+        const original = authApi?.signIn?.credentials?.authenticate;
+        if (typeof original === 'function') {
+          authApi.signIn.credentials.authenticate = async (email: string, password: string, options?: any) => {
+            const res: any = await original.call(authApi, email, password, options);
+            if (res?.ok && res.cookie) {
+              const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+              locals.kuratchi.setSessionCookie(res.cookie, { expires });
+            }
+            return res;
+          };
+        }
+      } catch {}
       return sdk;
     };
 
@@ -165,13 +178,19 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       return k.auth as KuratchiAuth;
     };
 
+    // Ensure SDK and auth API are attached on every request for batteries-included DX
+    try {
+      await getKuratchi();
+      (locals.kuratchi as any).auth = await getAuthApi();
+    } catch {}
+
     // Helper: look up organizationId by email in admin DB (Kuratchi HTTP client only)
     const findOrganizationIdByEmail = async (email: string): Promise<string | null> => {
       try {
         const adminDb = await getAdminDbLazy().catch(() => null);
         if (!adminDb || typeof (adminDb as any).query !== 'function') return null;
         const sql = 'SELECT organizationId FROM organizationUsers WHERE email = ? AND deleted_at IS NULL LIMIT 1';
-        const res = await (adminDb as KuratchiHttpLike).query(sql, [email]);
+        const res = await (adminDb as KuratchiHttpClient).query(sql, [email]);
         const rows = (res && (res.results ?? res.data)) || [];
         const row = Array.isArray(rows) ? rows[0] : null;
         return row?.organizationId || null;
@@ -374,12 +393,25 @@ interface AuthConfig {
 
 export class KuratchiAuth {
     private kuratchiD1: KuratchiD1;
+    private kuratchiKV: KuratchiKV;
+    private kuratchiR2: KuratchiR2;
+    private kuratchiQueues: KuratchiQueues;
     private adminDb: any;
     private organizationServices: Map<string, AuthService>;
     private config: AuthConfig;
     public signIn: {
         magicLink: {
             send: (email: string, options?: { redirectTo?: string; organizationId?: string }) => Promise<{ ok: true }>
+        };
+        credentials: {
+            authenticate: (
+                email: string,
+                password: string,
+                options?: { organizationId?: string; ipAddress?: string; userAgent?: string; redirectTo?: string }
+            ) => Promise<
+                | { ok: true; cookie: string; user: any; session: any }
+                | { ok: false; error: 'invalid_credentials' }
+            >
         };
         oauth: {
             google: {
@@ -404,26 +436,34 @@ export class KuratchiAuth {
             accountId: config.accountId,
             workersSubdomain: config.workersSubdomain
         });
+        // Initialize other Cloudflare services (KV, R2, Queues)
+        this.kuratchiKV = new KuratchiKV({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            workersSubdomain: config.workersSubdomain
+        });
+        this.kuratchiR2 = new KuratchiR2({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            workersSubdomain: config.workersSubdomain
+        });
+        this.kuratchiQueues = new KuratchiQueues({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            workersSubdomain: config.workersSubdomain
+        });
         
-        // Initialize admin DB for admin operations
+        // Initialize admin DB runtime client (Kuratchi HTTP client only)
         const admin = config.adminDb as any;
-        const isKuratchiClient = !!(admin && typeof admin.query === 'function' && (typeof admin.getDrizzleProxy === 'function' || typeof admin.drizzleProxy === 'function'));
+        const isKuratchiClient = !!(admin && typeof admin.query === 'function');
         if (isKuratchiClient) {
-            const proxy = (typeof admin.getDrizzleProxy === 'function') ? admin.getDrizzleProxy() : admin.drizzleProxy();
-            this.adminDb = drizzleSqliteProxy(proxy, { schema: adminSchema });
+            this.adminDb = createClientFromJsonSchema(
+                (sql, params) => admin.query(sql, params || []),
+                adminJsonSchema as any
+            ) as Record<string, TableApi>;
         } else {
             throw new Error('Unsupported adminDb: expected KuratchiHttpClient');
         }
-
-        // Validate admin DB contract using KuratchiHttpClient adapter
-        const adminAdapter = {
-            query: async (sql: string, params?: any[]) => {
-                const res = await admin.query(sql, params || []);
-                const results = (res && (res.results ?? res.data)) ?? [];
-                return { success: res?.success !== false, results } as any;
-            }
-        };
-        void validateAdminSchema(adminAdapter as any);
 
         // Batteries-included sign-in API (organization-aware)
         // Usage:
@@ -443,6 +483,27 @@ export class KuratchiAuth {
                     const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
                     await auth.sendMagicLink(email, link, { from: this.config.emailFrom });
                     return { ok: true } as const;
+                }
+            },
+            credentials: {
+                authenticate: async (
+                    email: string,
+                    password: string,
+                    options?: { organizationId?: string; ipAddress?: string; userAgent?: string; redirectTo?: string }
+                ) => {
+                    let orgId: string | undefined = options?.organizationId;
+                    if (!orgId) orgId = await this.findOrganizationIdByEmail(email);
+                    if (!orgId) throw new Error('organization_not_found_for_email');
+
+                    const auth = await this.getOrganizationAuthService(orgId);
+                    const result = await auth.createAuthSession(email, password, options?.ipAddress, options?.userAgent);
+                    if (!result) return { ok: false as const, error: 'invalid_credentials' } as const;
+                    return {
+                        ok: true as const,
+                        cookie: result.sessionId,
+                        user: result.user,
+                        session: result.sessionData,
+                    } as const;
                 }
             },
             oauth: {
@@ -488,12 +549,8 @@ export class KuratchiAuth {
         
         private async findOrganizationIdByEmail(email: string): Promise<string | undefined> {
             try {
-                const mapping = await this.adminDb.query.OrganizationUsers.findFirst({
-                    where: and(
-                        eq(adminSchema.OrganizationUsers.email, email),
-                        isNull(adminSchema.OrganizationUsers.deleted_at)
-                    )
-                });
+                const res = await (this.adminDb as any).organizationUsers.findFirst({ email, deleted_at: { is: null } });
+                const mapping = (res as any)?.data;
                 return (mapping as any)?.organizationId || undefined;
             } catch {
                 return undefined;
@@ -506,13 +563,11 @@ export class KuratchiAuth {
         private async getOrganizationAuthService(organizationId: string): Promise<AuthService> {
             if (!this.organizationServices.has(organizationId)) {
                 // Resolve the organization's database name from admin DB
-                const dbRecord = await this.adminDb.query.Databases.findFirst({
-                    where: and(
-                        eq(adminSchema.Databases.organizationId, organizationId),
-                        isNull(adminSchema.Databases.deleted_at)
-                    ),
-                    orderBy: desc(adminSchema.Databases.created_at)
+                const dbRes = await (this.adminDb as any).databases.findFirst({
+                    where: { organizationId, deleted_at: { is: null } },
+                    orderBy: { created_at: 'desc' }
                 });
+                const dbRecord = (dbRes as any)?.data;
                 if (!dbRecord || !dbRecord.name) {
                     throw new Error(`No database found for organization ${organizationId}`);
                 }
@@ -520,14 +575,11 @@ export class KuratchiAuth {
                 const databaseName = dbRecord.name;
 
                 // Determine API token by looking up latest valid DB token
-                const tokenCandidates = await this.adminDb.query.DBApiTokens.findMany({
-                    where: and(
-                        eq(adminSchema.DBApiTokens.databaseId, dbRecord.id),
-                        isNull(adminSchema.DBApiTokens.deleted_at),
-                        eq(adminSchema.DBApiTokens.revoked, false)
-                    ),
-                    orderBy: desc(adminSchema.DBApiTokens.created_at)
+                const tokenRes = await (this.adminDb as any).dbApiTokens.findMany({
+                    where: { databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false },
+                    orderBy: { created_at: 'desc' }
                 });
+                const tokenCandidates = (tokenRes as any)?.data ?? [];
                 const nowMs = Date.now();
                 const isNotExpired = (exp: any) => {
                     if (!exp) return true; // no expiry
@@ -549,21 +601,14 @@ export class KuratchiAuth {
                     apiToken: effectiveToken!
                 });
                 
-                // Validate organization DB contract
-                await validateOrganizationSchema(organizationClient);
-
-                // Get Drizzle proxy with organization schema
-                const orgDrizzleProxy = this.kuratchiD1.getDrizzleClient({
-                    databaseName,
-                    apiToken: effectiveToken!
-                });
-                
-                const drizzleDB = drizzleSqliteProxy(orgDrizzleProxy as any, { schema: organizationSchema });
-                
+                // Build runtime ORM client for organization DB
+                const orgClient = createClientFromJsonSchema(
+                    (sql, params) => organizationClient.query(sql, params || []),
+                    organizationJsonSchema as any
+                ) as Record<string, TableApi>;
                 const authService = new AuthService(
-                    drizzleDB as any,
-                    this.buildEnv(organizationClient),
-                    organizationSchema
+                    orgClient as any,
+                    this.buildEnv(organizationClient)
                 );
                 
                 this.organizationServices.set(organizationId, authService);
@@ -580,17 +625,20 @@ export class KuratchiAuth {
                 migrate?: boolean; // default true
                 migrationsDir?: string; // default 'org' (expects /migrations-org/ when using Vite loader)
                 migrationsPath?: string; // optional absolute/relative FS path to migrations folder (./migrations-org)
+                // Optional resource provisioning
+                provisionKV?: boolean;
+                provisionR2?: boolean;
+                provisionQueues?: boolean;
+                kvTitle?: string;
+                r2BucketName?: string;
+                queueName?: string;
             }
         ) {
             // 1) Create organization row
             const orgId = crypto.randomUUID();
-            const [org] = await this.adminDb.insert(adminSchema.Organizations)
-                .values({
-                    ...data,
-                    id: orgId
-                })
-                .returning();
-            if (!org) throw new Error('Failed to create organization');
+            const orgValues: any = { ...(data || {}), id: orgId };
+            await (this.adminDb as any).organizations.insert(orgValues);
+            const org = orgValues;
 
             // 2) Provision D1 database for this org
             const dbName = (org as any).organizationSlug || (org as any).organizationName || `org-${orgId}`;
@@ -598,28 +646,83 @@ export class KuratchiAuth {
 
             // 3) Persist database metadata
             const dbId = crypto.randomUUID();
-            const [dbRow] = await this.adminDb.insert(adminSchema.Databases)
-                .values({
-                    id: dbId,
-                    name: database?.name ?? String(dbName),
-                    dbuuid: database?.uuid ?? database?.id,
-                    organizationId: org.id
-                })
-                .returning();
-            if (!dbRow) throw new Error('Failed to persist organization database');
+            const dbRow: any = {
+                id: dbId,
+                name: database?.name ?? String(dbName),
+                dbuuid: (database as any)?.uuid ?? (database as any)?.id,
+                organizationId: org.id
+            };
+            await (this.adminDb as any).databases.insert(dbRow);
 
             // 4) Store API token for the org DB
-            const [tokenRow] = await this.adminDb.insert(adminSchema.DBApiTokens)
-                .values({
-                    id: crypto.randomUUID(),
-                    token: apiToken,
-                    name: 'primary',
-                    databaseId: dbRow.id
-                })
-                .returning();
-            if (!tokenRow) throw new Error('Failed to persist organization DB API token');
+            const tokenRow: any = {
+                id: crypto.randomUUID(),
+                token: apiToken,
+                name: 'primary',
+                databaseId: dbRow.id
+            };
+            await (this.adminDb as any).dbApiTokens.insert(tokenRow);
 
-            // 5) Optionally migrate the organization's database schema
+            // 5) Optionally provision Cloudflare resources (KV, R2, Queues) and persist admin records
+            const doKV = options?.provisionKV === true;
+            const doR2 = options?.provisionR2 === true;
+            const doQueues = options?.provisionQueues === true;
+            const baseName = String((org as any).organizationSlug || (org as any).organizationName || `org-${orgId}`);
+
+            if (doKV && (this.adminDb as any).kvNamespaces && (this.adminDb as any).kvApiTokens) {
+                const kvTitle = (options?.kvTitle || `${baseName}-kv`).toString();
+                const { namespace, apiToken: kvApiToken } = await this.kuratchiKV.createNamespace(kvTitle);
+                const kvRowId = crypto.randomUUID();
+                await (this.adminDb as any).kvNamespaces.insert({
+                    id: kvRowId,
+                    namespaceId: (namespace as any)?.id,
+                    title: (namespace as any)?.title || kvTitle,
+                    organizationId: org.id
+                });
+                await (this.adminDb as any).kvApiTokens.insert({
+                    id: crypto.randomUUID(),
+                    token: kvApiToken,
+                    name: 'primary',
+                    kvNamespaceId: kvRowId
+                });
+            }
+
+            if (doR2 && (this.adminDb as any).r2Buckets && (this.adminDb as any).r2ApiTokens) {
+                const r2Name = (options?.r2BucketName || `${baseName}-r2`).toString().toLowerCase();
+                const { bucket, apiToken: r2ApiToken } = await this.kuratchiR2.createBucket(r2Name);
+                const r2RowId = crypto.randomUUID();
+                await (this.adminDb as any).r2Buckets.insert({
+                    id: r2RowId,
+                    name: (bucket as any)?.name || r2Name,
+                    organizationId: org.id
+                });
+                await (this.adminDb as any).r2ApiTokens.insert({
+                    id: crypto.randomUUID(),
+                    token: r2ApiToken,
+                    name: 'primary',
+                    r2BucketId: r2RowId
+                });
+            }
+
+            if (doQueues && (this.adminDb as any).queues && (this.adminDb as any).queueApiTokens) {
+                const qName = (options?.queueName || `${baseName}-queue`).toString();
+                const { queue, apiToken: qApiToken } = await this.kuratchiQueues.createQueue(qName);
+                const qRowId = crypto.randomUUID();
+                await (this.adminDb as any).queues.insert({
+                    id: qRowId,
+                    cfid: (queue as any)?.id || (queue as any)?.queue_id || null,
+                    name: (queue as any)?.queue_name || (queue as any)?.name || qName,
+                    organizationId: org.id
+                });
+                await (this.adminDb as any).queueApiTokens.insert({
+                    id: crypto.randomUUID(),
+                    token: qApiToken,
+                    name: 'primary',
+                    queueId: qRowId
+                });
+            }
+
+            // 6) Optionally migrate the organization's database schema
             const shouldMigrate = options?.migrate !== false;
             const migrationsDir = options?.migrationsDir || 'org';
             let migrationStrategy: 'vite' | 'skipped' | 'failed' = 'skipped';
@@ -634,7 +737,7 @@ export class KuratchiAuth {
                 }
             }
 
-            // 6) Seed initial organization user and create a session
+            // 7) Seed initial organization user and create a session
             // Build an organization-scoped AuthService using the just-provisioned DB
             const orgAuth = await this.getOrganizationAuthService(orgId);
             let createdUser: any = null;
@@ -652,22 +755,23 @@ export class KuratchiAuth {
                 sessionCookie = await orgAuth.upsertSession({ userId: createdUser.id });
             }
 
-            // 7) Create OrganizationUsers mapping in admin DB
+            // 8) Create OrganizationUsers mapping in admin DB
             if (data?.email) {
-                await this.adminDb.insert(adminSchema.OrganizationUsers)
-                    .values({
-                        id: crypto.randomUUID(),
-                        email: data.email,
-                        organizationId: org.id,
-                        organizationSlug: (org as any).organizationSlug || null
-                    })
-                    .returning();
+                await (this.adminDb as any).organizationUsers.insert({
+                    id: crypto.randomUUID(),
+                    email: data.email,
+                    organizationId: org.id,
+                    organizationSlug: (org as any).organizationSlug || null
+                });
             }
 
             return {
                 organization: org ?? null,
                 database: dbRow,
                 token: tokenRow,
+                kv: doKV ? 'created' : 'skipped',
+                r2: doR2 ? 'created' : 'skipped',
+                queues: doQueues ? 'created' : 'skipped',
                 migration: { strategy: migrationStrategy },
                 user: createdUser,
                 sessionCookie
@@ -675,19 +779,13 @@ export class KuratchiAuth {
         }
     
         async listOrganizations() {
-            return await this.adminDb.query.Organizations.findMany({
-                where: isNull(adminSchema.Organizations.deleted_at),
-                orderBy: desc(adminSchema.Organizations.created_at)
-            });
+            const res = await (this.adminDb as any).organizations.findMany({ where: { deleted_at: { is: null } }, orderBy: { created_at: 'desc' } });
+            return (res as any)?.data ?? [];
         }
     
         async getOrganization(id: string) {
-            return await this.adminDb.query.Organizations.findFirst({
-                where: and(
-                    eq(adminSchema.Organizations.id, id),
-                    isNull(adminSchema.Organizations.deleted_at)
-                )
-            });
+            const res = await (this.adminDb as any).organizations.findFirst({ id, deleted_at: { is: null } } as any);
+            return (res as any)?.data;
         }
 
         /**
@@ -695,13 +793,8 @@ export class KuratchiAuth {
          */
         async deleteOrganization(organizationId: string) {
             // Find active database for this org
-            const db = await this.adminDb.query.Databases.findFirst({
-                where: and(
-                    eq(adminSchema.Databases.organizationId, organizationId),
-                    isNull(adminSchema.Databases.deleted_at)
-                ),
-                orderBy: desc(adminSchema.Databases.created_at)
-            });
+            const dbRes = await (this.adminDb as any).databases.findFirst({ where: { organizationId, deleted_at: { is: null } }, orderBy: { created_at: 'desc' } });
+            const db = (dbRes as any)?.data;
 
             // Best-effort delete in Cloudflare if we have a uuid
             if (db?.dbuuid) {
@@ -716,43 +809,76 @@ export class KuratchiAuth {
 
             // Soft-delete DB tokens for this DB
             if (db?.id) {
-                await this.adminDb
-                    .update(adminSchema.DBApiTokens)
-                    .set({ revoked: true as any, deleted_at: now as any })
-                    .where(eq(adminSchema.DBApiTokens.databaseId, db.id));
+                await (this.adminDb as any).dbApiTokens.update({ databaseId: db.id } as any, { revoked: true as any, deleted_at: now as any });
+                await (this.adminDb as any).databases.update({ id: db.id } as any, { deleted_at: now as any });
+            }
 
-                // Soft-delete database row
-                await this.adminDb
-                    .update(adminSchema.Databases)
-                    .set({ deleted_at: now as any })
-                    .where(eq(adminSchema.Databases.id, db.id));
+            // Best-effort delete KV namespaces
+            if ((this.adminDb as any).kvNamespaces) {
+            const kvNsRes = await (this.adminDb as any).kvNamespaces.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const kvNamespaces = ((kvNsRes as any)?.data ?? []) as any[];
+            for (const ns of kvNamespaces) {
+                const nsId = (ns as any).namespaceId;
+                if (nsId) {
+                    try { await this.kuratchiKV.deleteNamespace(nsId); } catch (e) {
+                        console.error('Failed to delete KV namespace for org', organizationId, nsId, e);
+                    }
+                }
+                if ((this.adminDb as any).kvApiTokens) {
+                    await (this.adminDb as any).kvApiTokens.update({ kvNamespaceId: (ns as any).id } as any, { revoked: true as any, deleted_at: now as any });
+                }
+                await (this.adminDb as any).kvNamespaces.update({ id: (ns as any).id } as any, { deleted_at: now as any });
+            }
+            }
+
+            // Best-effort delete R2 buckets
+            if ((this.adminDb as any).r2Buckets) {
+            const r2Res = await (this.adminDb as any).r2Buckets.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const r2Buckets = ((r2Res as any)?.data ?? []) as any[];
+            for (const b of r2Buckets) {
+                const name = (b as any).name;
+                if (name) {
+                    try { await this.kuratchiR2.deleteBucket(name); } catch (e) {
+                        console.error('Failed to delete R2 bucket for org', organizationId, name, e);
+                    }
+                }
+                if ((this.adminDb as any).r2ApiTokens) {
+                    await (this.adminDb as any).r2ApiTokens.update({ r2BucketId: (b as any).id } as any, { revoked: true as any, deleted_at: now as any });
+                }
+                await (this.adminDb as any).r2Buckets.update({ id: (b as any).id } as any, { deleted_at: now as any });
+            }
+            }
+
+            // Best-effort delete Queues
+            if ((this.adminDb as any).queues) {
+            const qRes = await (this.adminDb as any).queues.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const queues = ((qRes as any)?.data ?? []) as any[];
+            for (const q of queues) {
+                const target = (q as any).cfid || (q as any).name;
+                if (target) {
+                    try { await this.kuratchiQueues.deleteQueue(String(target)); } catch (e) {
+                        console.error('Failed to delete Queue for org', organizationId, target, e);
+                    }
+                }
+                if ((this.adminDb as any).queueApiTokens) {
+                    await (this.adminDb as any).queueApiTokens.update({ queueId: (q as any).id } as any, { revoked: true as any, deleted_at: now as any });
+                }
+                await (this.adminDb as any).queues.update({ id: (q as any).id } as any, { deleted_at: now as any });
+            }
             }
 
             // Soft-delete organization
-            await this.adminDb
-                .update(adminSchema.Organizations)
-                .set({ deleted_at: now as any })
-                .where(eq(adminSchema.Organizations.id, organizationId));
+            await (this.adminDb as any).organizations.update({ id: organizationId } as any, { deleted_at: now as any });
 
             return true;
         }
     
     async authenticate(email: string, password: string) {
-        const mapping = await this.adminDb.query.OrganizationUsers.findFirst({
-            where: and(
-                eq(adminSchema.OrganizationUsers.email, email),
-                isNull(adminSchema.OrganizationUsers.deleted_at)
-            ),
-            with: { Organization: true }
-        });
-        if (!mapping || !mapping.organizationId) return null;
-        
-        // Get the organization to retrieve details
-        const org = await this.getOrganization(mapping.organizationId);
+        const orgId = await this.findOrganizationIdByEmail(email);
+        if (!orgId) return null;
+        const org = await this.getOrganization(orgId);
         if (!org) return null;
-        
-        // Resolve organization AuthService using the per-database token from admin DB
-        const orgAuth = await this.getOrganizationAuthService(mapping.organizationId);
+        const orgAuth = await this.getOrganizationAuthService(orgId);
         return orgAuth.createAuthSession(email, password);
     }
 
