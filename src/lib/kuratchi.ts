@@ -2,6 +2,7 @@ import { KuratchiD1 } from './d1/kuratchi-d1.js';
 import { KuratchiKV } from './kv/kuratchi-kv.js';
 import { KuratchiAuth } from './auth/kuratchi-auth.js';
 import { KuratchiR2 } from './r2/kuratchi-r2.js';
+import { KuratchiDO } from './do/kuratchi-do.js';
 import { KuratchiQueues } from './queues/kuratchi-queues.js';
 import { createAuthHandle, type CreateAuthHandleOptions } from './auth/kuratchi-auth.js';
 import type { Handle } from '@sveltejs/kit';
@@ -36,6 +37,7 @@ export class Kuratchi {
     public d1: KuratchiD1;
     public kv: KuratchiKV;
     public r2: KuratchiR2;
+    public do: KuratchiDO;
     public queues: KuratchiQueues;
     public auth: KuratchiAuth | { handle: (options?: CreateAuthHandleOptions) => Handle };
 
@@ -94,6 +96,12 @@ export class Kuratchi {
             workersSubdomain: config.workersSubdomain,
         });
         this.r2 = new KuratchiR2({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            endpointBase: config.endpointBase,
+            workersSubdomain: config.workersSubdomain,
+        });
+        this.do = new KuratchiDO({
             apiToken: config.apiToken,
             accountId: config.accountId,
             endpointBase: config.endpointBase,

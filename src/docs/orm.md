@@ -17,7 +17,9 @@ const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
 // Option A: property-based client without calling database()
 const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' });
 await admin.users.insert({ id: 'u1', email: 'a@acme.com' });
-const first = await admin.users.findFirst({ where: { email: { like: '%@acme.com' } } });
+const first = await admin.users
+  .where({ email: { like: '%@acme.com' } })
+  .findFirst();
 if (!first.success) throw new Error(first.error);
 console.log(first.data);
 
@@ -28,12 +30,20 @@ await org.session.delete({ sessionToken: 'deadbeef' });
 
 ```
 
-### Table API
+### Table API (chainable)
 
-Each table exposes:
+Each table exposes a chainable query builder plus mutations:
 
-- findMany({ where?, select?, orderBy?, limit?, offset? }) -> { success, data?: Row[] | undefined, error? }
-- findFirst({ where?, select?, orderBy? }) -> { success, data?: Row | undefined, error? }
+- where(filter) -> this
+- orWhere(filter) -> this
+- whereRaw`raw sql with ${params}` -> this
+- orderBy(order) -> this
+- select(columns: string[]) -> this
+- limit(n: number) -> this
+- offset(n: number) -> this
+- include(spec) -> this
+- findMany() -> { success, data?: Row[] | undefined, error? }
+- findFirst() -> { success, data?: Row | undefined, error? }
 - insert(values | values[]) -> { success, ... }
 - update(where, values) -> { success, ... }
 - delete(where) -> { success, ... }
@@ -56,8 +66,6 @@ Under the hood this compiles SQL like `SELECT ... FROM table WHERE ... ORDER BY 
 
 ### Chainable query builder
 
-In addition to the options form, each table exposes a chainable builder for common patterns:
-
 ```ts
 // Example: admin typed client
 const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' });
@@ -66,19 +74,23 @@ const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' }
 const res = await admin.users
   .where({ email: '%@acme.com' })          // strings with %/_ use LIKE automatically
   .orWhere({ status: { in: [1, 2] } })
+  .whereRaw`created_at BETWEEN ${start} AND ${end}`
   .orderBy({ id: 'desc' })
   .limit(10)
   .offset(3) // with LIMIT, offset(n) treats n as 1-based page number => OFFSET (n-1)*LIMIT
   .findMany();
 ```
 
-#### Simple filter shorthand
+#### Selecting specific columns
 
-`findMany()` and `findFirst()` accept a plain filter object directly (no `where` wrapper needed):
+Use `select()` to choose columns:
 
 ```ts
-await admin.users.findFirst({ email: '%@acme.com' }); // SELECT * ... WHERE email LIKE ? LIMIT 1
-await admin.users.findMany({ id: { in: ['u1', 'u2'] } });
+const emails = await admin.users
+  .select(['id', 'email'])
+  .where({ email: { like: '%@acme.com' } })
+  .orderBy({ id: 'asc' })
+  .findMany();
 ```
 
 #### Pagination helpers

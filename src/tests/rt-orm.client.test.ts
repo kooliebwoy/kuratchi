@@ -23,13 +23,14 @@ describe('KuratchiD1 top-level sugar client', () => {
     const { d1, mockClient, captured } = setupD1();
     const schema = { tables: [{ name: 'users' }] } as any;
     const c = d1.client(cfg, { schema });
-    await c.users.findMany({
-      where: { email: { like: '%@acme.com' }, status: { in: [1, 2] } },
-      select: ['id', 'email'],
-      orderBy: [{ id: 'desc' }],
-      limit: 10,
-      offset: 20,
-    });
+    await c.users
+      .where({ email: { like: '%@acme.com' }, status: { in: [1, 2] } })
+      .select(['id', 'email'])
+      .orderBy([{ id: 'desc' }])
+      .limit(10)
+      // offset() acts as page when used with limit(); offset(3) -> OFFSET 20 for limit 10
+      .offset(3)
+      .findMany();
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     const { sql, params } = captured[0];
     expect(sql).toBe('SELECT id, email FROM users WHERE (email LIKE ?) AND (status IN (?, ?)) ORDER BY id DESC LIMIT 10 OFFSET 20');
@@ -96,7 +97,7 @@ describe('KuratchiD1 database().client', () => {
     const db = d1.database(cfg);
     const schema = { tables: [{ name: 'users' }] } as any;
     const dyn = db.client({ schema });
-    const res = await (dyn as any).users.findFirst({ where: { id: 'u1' }, select: ['id'] });
+    const res = await (dyn as any).users.where({ id: 'u1' }).select(['id']).findFirst();
     expect(res.success).toBe(true);
     expect(res.data).toEqual({ id: 'u1' });
     expect(captured[0]).toEqual({ sql: 'SELECT id FROM users WHERE id = ? LIMIT 1', params: ['u1'] });

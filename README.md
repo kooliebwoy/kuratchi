@@ -50,7 +50,7 @@ const org = db.client({ schema }); // your schema
 await org.users.insert({ id: 'u1', email: 'a@acme.com' });
 
 // Find the user
-const res = await org.users.findFirst({ email: '@acme.com' });
+const res = await org.users.where({ email: '@acme.com' } as any).findFirst();
 if (!res.success) throw new Error(res.error);
 console.log(res.data); // { id: 'u1', email: 'a@acme.com' }
 ```

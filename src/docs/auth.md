@@ -73,7 +73,7 @@ The handle implements the following endpoints:
   - Body: `{ email: string, redirectTo?: string, organizationId?: string }`
   - If `organizationId` is not provided, it attempts to resolve it from the admin DB by email.
   - Sends an email via Resend with a login link to `/auth/magic/callback`.
-  - Returns `{ ok: true }` on success, otherwise `{ ok: false, error }`.
+  - Returns `{ success: true }` on success, otherwise `{ success: false, error }`.
 
 - GET `/auth/magic/callback`
   - Query: `token`, `org`, optional `redirectTo`
@@ -147,7 +147,7 @@ Sign out (invalidate cookie) in an action:
 export const actions = {
   signout: async ({ locals }) => {
     locals.kuratchi.clearSessionCookie();
-    return { ok: true } as const;
+    return { success: true } as const;
   }
 };
 ```

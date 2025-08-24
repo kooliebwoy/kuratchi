@@ -82,16 +82,17 @@ Exposed tables on `org`:
   `magicLinkTokens`, `activity`, `roles`, `oauthAccounts`
 
 Each table supports:
-- `findMany(optsOrFilter)`, `findFirst(optsOrFilter)`
-- `insert(values | values[])`, `update(where, values)`, `delete(where)`, `count(where?)`
-- chainable: `where()`, `orWhere()`, `orderBy()`, `limit()`, `offset()`, `include()`
+- chainable reads: `where()`, `orWhere()`, `orderBy()`, `select()`, `limit()`, `offset()`, `include()`, then `findMany()` / `findFirst()`
+- writes/utilities: `insert(values | values[])`, `update(where, values)`, `delete(where)`, `count(where?)`
 
 ## Examples
 
 Create and query a user:
 ```ts
 await org.users.insert({ id: 'u1', email: 'a@acme.com', role: 'member' });
-const user = await org.users.findFirst({ where: { email: { like: '%@acme.com' } } });
+const user = await org.users
+  .where({ email: { like: '%@acme.com' } })
+  .findFirst();
 if (!user.success) throw new Error(user.error);
 ```
 
@@ -125,6 +126,6 @@ const c = await org.users.count({ role: 'member' });
 ```
 
 ## Tips
-- Use narrow `select` and `orderBy` in `findMany` for performance where needed.
+- Use narrow `select()` and `orderBy()` with `findMany()` for performance where needed.
 - For custom schemas, you can generate a client from a JSON schema using `createClientFromJsonSchema`.
 - See `src/docs/migrations.md` for full migration details and snapshotting.

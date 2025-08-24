@@ -74,11 +74,11 @@ describe('Runtime ORM chainable query builder', () => {
     const exec = mkExec(calls);
     const orm = createRuntimeOrm(exec as any);
 
-    const res = await orm.table('users').findFirst({ email: 'a@%' } as any);
+    const res = await orm.table('users').where({ email: 'a@%' } as any).findFirst();
     expect(res.success).toBe(true);
     expect(calls.length).toBe(1);
     expect(calls[0]).toEqual({
-      sql: 'SELECT * FROM users WHERE (email LIKE ?) LIMIT 1',
+      sql: 'SELECT * FROM users WHERE email LIKE ? LIMIT 1',
       params: ['a@%'],
     });
   });

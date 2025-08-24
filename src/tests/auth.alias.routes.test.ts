@@ -216,7 +216,7 @@ describe('Auth route aliases', () => {
     // Assert
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ ok: true });
+    expect(json).toEqual({ success: true });
     expect(fakeService.createMagicLinkToken).toHaveBeenCalledWith('a@b.com', '/x');
     expect(fakeService.sendMagicLink).toHaveBeenCalledTimes(1);
     const [, link] = fakeService.sendMagicLink.mock.calls[0];

@@ -60,7 +60,7 @@ export class StripeService {
     subscription?: Stripe.Subscription;
   }> {
     // Get organization from our database (runtime ORM)
-    const orgRes = await this.client.organizations.findFirst({ where: { id: options.organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: options.organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization) {
@@ -104,7 +104,7 @@ export class StripeService {
    * Get organization with billing information from our database
    */
   async getOrganizationWithBilling(organizationId: string): Promise<any> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization) {
@@ -142,7 +142,7 @@ export class StripeService {
     priceId: string,
     trialDays?: number
   ): Promise<Stripe.Subscription> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeCustomerId) {
@@ -180,7 +180,7 @@ export class StripeService {
    * Create checkout session for organization billing
    */
   async createCheckoutSession(options: CheckoutSessionOptions): Promise<Stripe.Checkout.Session> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: options.organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: options.organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization) {
@@ -226,7 +226,7 @@ export class StripeService {
    * Create billing portal session for organization
    */
   async createBillingPortalSession(organizationId: string, returnUrl: string): Promise<Stripe.BillingPortal.Session> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeCustomerId) {
@@ -243,7 +243,7 @@ export class StripeService {
    * Cancel organization subscription
    */
   async cancelOrganizationSubscription(organizationId: string, immediately = false): Promise<Stripe.Subscription> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeSubscriptionId) {
@@ -275,7 +275,7 @@ export class StripeService {
     priceId: string,
     prorationBehavior: Stripe.SubscriptionUpdateParams.ProrationBehavior = 'create_prorations'
   ): Promise<Stripe.Subscription> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization || !organization.stripeSubscriptionId) {
@@ -325,7 +325,7 @@ export class StripeService {
     organization: any;
     billing: OrganizationBilling | null;
   }> {
-    const orgRes = await this.client.organizations.findFirst({ where: { id: organizationId } as any });
+    const orgRes = await this.client.organizations.where({ id: organizationId } as any).findFirst();
     const organization = (orgRes as any)?.data;
 
     if (!organization) {

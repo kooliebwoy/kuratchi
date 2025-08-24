@@ -33,6 +33,10 @@ function isObject(v: any): v is Record<string, any> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
 
+function isTemplateStringsArray(x: any): x is TemplateStringsArray {
+  return Array.isArray(x) && x !== null && typeof (x as any).raw !== 'undefined';
+}
+
 function compileWhere(where?: Where): { sql: string; params: any[] } {
   if (!where || Object.keys(where).length === 0) return { sql: '', params: [] };
   const clauses: string[] = [];
@@ -102,42 +106,107 @@ function compileSelect(select?: string[]): string {
 // Internal: compile an array of OR groups (each group ANDs its keys)
 function compileWhereGroups(groups: Where[]): { sql: string; params: any[] } {
   if (!groups || groups.length === 0) return { sql: '', params: [] };
+  // If only one group, return its compiled WHERE directly (avoids extra wrapping parens)
+  if (groups.length === 1) return compileWhere(groups[0]);
   const parts: string[] = [];
   const params: any[] = [];
   for (const g of groups) {
     const c = compileWhere(g);
     if (!c.sql) continue;
-    parts.push(`(${c.sql.replace(/^WHERE\s+/i, '')})`);
+    // Wrap each group in parentheses when OR-ing multiple groups
+    const inner = c.sql.replace(/^WHERE\s+/i, '');
+    parts.push(`(${inner})`);
     params.push(...c.params);
   }
   if (!parts.length) return { sql: '', params: [] };
   return { sql: `WHERE ${parts.join(' OR ')}`, params };
 }
 
+// Compile groups with additional raw fragments per group. Each group is OR'ed together; within a group, parts are AND'ed.
+function compileWhereGroupsWithRaw(
+  groups: Where[],
+  rawGroups: { sql: string; params: any[] }[][]
+): { sql: string; params: any[] } {
+  const G = groups || [];
+  const RG = rawGroups || [];
+  const groupCount = Math.max(G.length, RG.length);
+  if (groupCount === 0) return { sql: '', params: [] };
+
+  const groupSqls: string[] = [];
+  const allParams: any[] = [];
+
+  for (let i = 0; i < groupCount; i++) {
+    const base = compileWhere(G[i] || {});
+    const raws = (RG[i] || []).filter((r) => r && r.sql && r.sql.trim().length);
+
+    const parts: string[] = [];
+    const params: any[] = [];
+
+    if (base.sql) {
+      const inner = base.sql.replace(/^WHERE\s+/i, '');
+      parts.push(inner);
+      params.push(...base.params);
+    }
+    for (const r of raws) {
+      parts.push(r.sql);
+      if (r.params && r.params.length) params.push(...r.params);
+    }
+
+    if (parts.length === 0) continue;
+    const combined = parts.length > 1 ? `(${parts.join(' AND ')})` : parts[0];
+    groupSqls.push(combined);
+    allParams.push(...params);
+  }
+
+  if (groupSqls.length === 0) return { sql: '', params: [] };
+  if (groupSqls.length === 1) return { sql: `WHERE ${groupSqls[0]}`, params: allParams };
+  return { sql: `WHERE ${groupSqls.map((s) => `(${s})`).join(' OR ')}`, params: allParams };
+}
+
 type IncludeSpec = Record<string, boolean | { as?: string; single?: boolean; localKey?: string; foreignKey?: string; table?: string }>;
 
 class QueryBuilder<Row = any> {
   private whereGroups: Where[] = [];
+  private rawWhereGroups: { sql: string; params: any[] }[][] = [];
   private order?: OrderBy;
   private limitN?: number;
   private offsetN?: number;
   private includeSpec?: IncludeSpec;
+  private selectCols?: string[];
 
   constructor(private readonly tableName: string, private readonly execute: SqlExecutor) {}
 
   private currentGroup(): Where {
-    if (this.whereGroups.length === 0) this.whereGroups.push({});
+    if (this.whereGroups.length === 0) {
+      this.whereGroups.push({});
+      this.rawWhereGroups.push([]);
+    }
     return this.whereGroups[this.whereGroups.length - 1];
   }
 
   where(filter: Where): this {
-    if (this.whereGroups.length === 0) this.whereGroups.push({});
+    if (this.whereGroups.length === 0) {
+      this.whereGroups.push({});
+      this.rawWhereGroups.push([]);
+    }
     Object.assign(this.whereGroups[this.whereGroups.length - 1], filter || {});
     return this;
   }
 
   orWhere(filter: Where): this {
     this.whereGroups.push({ ...filter });
+    this.rawWhereGroups.push([]);
+    return this;
+  }
+
+  whereRaw(tpl: TemplateStringsArray, ...vals: any[]): this {
+    if (this.whereGroups.length === 0) {
+      this.whereGroups.push({});
+      this.rawWhereGroups.push([]);
+    }
+    const idx = this.whereGroups.length - 1;
+    const sql = tpl.reduce((acc, cur, i) => acc + cur + (i < vals.length ? '?' : ''), '');
+    this.rawWhereGroups[idx].push({ sql: sql.trim(), params: vals ?? [] });
     return this;
   }
 
@@ -161,9 +230,14 @@ class QueryBuilder<Row = any> {
     return this;
   }
 
+  select(cols: string[]): this {
+    this.selectCols = cols;
+    return this;
+  }
+
   async findMany(): Promise<QueryResult<Row[]>> {
-    const sel = '*';
-    const w = compileWhereGroups(this.whereGroups);
+    const sel = compileSelect(this.selectCols);
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
     const order = compileOrderBy(this.order);
     const limit = typeof this.limitN === 'number' ? `LIMIT ${this.limitN}` : '';
     const computedOffset = typeof this.offsetN === 'number'
@@ -254,36 +328,11 @@ export function createRuntimeOrm(execute: SqlExecutor) {
   function table<Row = any>(tableName: string): TableApi<Row> {
     const builderFactory = () => new QueryBuilder<Row>(tableName, execute);
     return {
-      // New simple API: findMany/findFirst accept simple filters too
-      async findMany(optsOrFilter: any = {}): Promise<QueryResult<Row[]>> {
-        // Detect simple filter (no select/order/limit keys)
-        const isSimple = !('where' in (optsOrFilter || {})) && !('select' in (optsOrFilter || {})) && !('orderBy' in (optsOrFilter || {})) && !('limit' in (optsOrFilter || {})) && !('offset' in (optsOrFilter || {}));
-        if (isSimple) {
-          return builderFactory().where(optsOrFilter as Where).findMany();
-        }
-        const opts = optsOrFilter as FindManyOptions;
-        const sel = compileSelect(opts.select);
-        const w = compileWhere(opts.where);
-        const order = compileOrderBy(opts.orderBy);
-        const limit = typeof opts.limit === 'number' ? `LIMIT ${opts.limit}` : '';
-        const offset = typeof opts.offset === 'number' ? `OFFSET ${opts.offset}` : '';
-        const head = `SELECT ${sel} FROM ${tableName}`;
-        const sql = [head, w.sql, order, limit, offset].filter(Boolean).join(' ');
-        const ret = await execute(sql, w.params);
-        if (!ret || ret.success === false) return ret as any;
-        const rows = (ret as any).data ?? (ret as any).results ?? [];
-        return { success: true, data: rows } as QueryResult<Row[]>;
+      async findMany(): Promise<QueryResult<Row[]>> {
+        return builderFactory().findMany();
       },
-      async findFirst(optsOrFilter: any = {}): Promise<QueryResult<Row | undefined>> {
-        const isSimple = !('where' in (optsOrFilter || {})) && !('select' in (optsOrFilter || {})) && !('orderBy' in (optsOrFilter || {})) && !('limit' in (optsOrFilter || {})) && !('offset' in (optsOrFilter || {}));
-        if (isSimple) {
-          return builderFactory().where(optsOrFilter as Where).findFirst();
-        }
-        const res = await (this as any).findMany({ ...(optsOrFilter as FindManyOptions), limit: 1 });
-        if (!res.success) return res as any;
-        const rows = (res as any).data ?? (res as any).results;
-        const first = Array.isArray(rows) ? rows[0] : undefined;
-        return { success: true, data: first };
+      async findFirst(): Promise<QueryResult<Row | undefined>> {
+        return builderFactory().findFirst();
       },
       async insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>> {
         const rows = Array.isArray(values) ? values : [values];
@@ -324,6 +373,8 @@ export function createRuntimeOrm(execute: SqlExecutor) {
       limit(n: number) { return builderFactory().limit(n); },
       offset(n: number) { return builderFactory().offset(n); },
       include(spec: IncludeSpec) { return builderFactory().include(spec); },
+      select(cols: string[]) { return builderFactory().select(cols); },
+      whereRaw(tpl: TemplateStringsArray, ...vals: any[]) { return builderFactory().whereRaw(tpl, ...vals); },
     } as TableApi<Row> as any;
   }
 
@@ -339,8 +390,8 @@ export function createRuntimeOrmFromKuratchiDb(db: { query: (sql: string, params
 // ---- Property-based clients ----
 
 export interface TableApi<Row = any> {
-  findMany(opts?: FindManyOptions): Promise<QueryResult<Row[]>>;
-  findFirst(opts?: Omit<FindManyOptions, 'limit'>): Promise<QueryResult<Row | undefined>>;
+  findMany(): Promise<QueryResult<Row[]>>;
+  findFirst(): Promise<QueryResult<Row | undefined>>;
   insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>>;
   update(where: Where, values: Record<string, any>): Promise<QueryResult<any>>;
   delete(where: Where): Promise<QueryResult<any>>;
@@ -352,6 +403,8 @@ export interface TableApi<Row = any> {
   limit(n: number): TableQuery<Row>;
   offset(n: number): TableQuery<Row>;
   include(spec: IncludeSpec): TableQuery<Row>;
+  select(cols: string[]): TableQuery<Row>;
+  whereRaw(sql: TemplateStringsArray, ...params: any[]): TableQuery<Row>;
 }
 
 export interface TableQuery<Row = any> {
@@ -361,6 +414,8 @@ export interface TableQuery<Row = any> {
   limit(n: number): TableQuery<Row>;
   offset(n: number): TableQuery<Row>;
   include(spec: IncludeSpec): TableQuery<Row>;
+  select(cols: string[]): TableQuery<Row>;
+  whereRaw(sql: TemplateStringsArray, ...params: any[]): TableQuery<Row>;
   findMany(): Promise<QueryResult<Row[]>>;
   findFirst(): Promise<QueryResult<Row | undefined>>;
 }

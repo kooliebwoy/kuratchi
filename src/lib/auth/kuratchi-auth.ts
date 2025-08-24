@@ -83,20 +83,39 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
     // Initialize only user/session placeholders; leave auth alone (will be provided by SDK)
     if (typeof locals.kuratchi.user === 'undefined') locals.kuratchi.user = null;
     if (typeof locals.kuratchi.session === 'undefined') locals.kuratchi.session = null;
+    // Provide top-level mirrors for common patterns: locals.user / locals.session
+    if (typeof locals.user === 'undefined') locals.user = null;
+    if (typeof locals.session === 'undefined') locals.session = null;
 
     // Cookie helpers live under kuratchi
+    const sanitizeUser = (u: any) => {
+      if (!u || typeof u !== 'object') return u;
+      const { password_hash, ...rest } = u as any;
+      return rest;
+    };
     locals.kuratchi.setSessionCookie = (value: string, opts?: { expires?: Date }) => {
       const expires = opts?.expires;
+      const isHttps = new URL(event.request.url).protocol === 'https:';
       event.cookies.set(cookieName, value, {
         httpOnly: true,
         sameSite: 'lax',
-        secure: true,
+        secure: isHttps,
         path: '/',
         ...(expires ? { expires } : {})
       });
     };
     locals.kuratchi.clearSessionCookie = () => {
       event.cookies.delete(cookieName, { path: '/' });
+    };
+    // Server-only helper to get org ORM client
+    locals.kuratchi.orgDatabaseClient = async (orgIdOverride?: string) => {
+      if (typeof window !== 'undefined') throw new Error('[Kuratchi] orgDatabaseClient() is server-only');
+      const rawCookie = event.cookies.get(cookieName);
+      const parsed = rawCookie ? await parseSessionCookie((await getEnv(event as any)).KURATCHI_AUTH_SECRET, rawCookie) : null;
+      const currentOrg = orgIdOverride || locals.kuratchi?.session?.organizationId || parsed?.orgId;
+      if (!currentOrg || currentOrg === 'admin') throw new Error('[Kuratchi] organizationId is required');
+      const auth = await getAuthApi();
+      return await (auth as any).getOrganizationDb(currentOrg);
     };
     // No top-level mirrors; use locals.kuratchi only
 
@@ -161,11 +180,51 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (typeof original === 'function') {
           authApi.signIn.credentials.authenticate = async (email: string, password: string, options?: any) => {
             const res: any = await original.call(authApi, email, password, options);
-            if (res?.ok && res.cookie) {
+            if (res?.success && res.cookie) {
               const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
               locals.kuratchi.setSessionCookie(res.cookie, { expires });
+              // Populate locals immediately for this request
+              if (res.user) {
+                const safeUser = sanitizeUser(res.user);
+                locals.kuratchi.user = safeUser;
+                locals.user = safeUser;
+              }
+              if (res.session) {
+                const merged = { ...res.session, user: sanitizeUser(res.user) };
+                locals.kuratchi.session = merged;
+                locals.session = merged;
+              }
             }
             return res;
+          };
+        }
+        // Also wrap createOrganization to set cookie if sessionCookie is returned
+        const originalCreateOrg = (authApi as any)?.createOrganization;
+        if (typeof originalCreateOrg === 'function') {
+          (authApi as any).createOrganization = async (...args: any[]) => {
+            const result = await originalCreateOrg.apply(authApi, args);
+            const cookie = (result as any)?.sessionCookie;
+            if (cookie) {
+              const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+              locals.kuratchi.setSessionCookie(cookie, { expires });
+              // If we know organizationId, validate cookie and populate locals for this request
+              try {
+                const orgId = (result as any)?.organization?.id;
+                if (orgId && typeof (authApi as any).forOrganization === 'function') {
+                  const orgAuth = await (authApi as any).forOrganization(orgId);
+                  const { sessionData, user } = await orgAuth.validateSessionToken(cookie);
+                  if (sessionData && user) {
+                    const safeUser = sanitizeUser(user);
+                    locals.kuratchi.user = safeUser;
+                    const merged = { ...sessionData, user: safeUser };
+                    locals.kuratchi.session = merged;
+                    locals.user = user;
+                    locals.session = merged;
+                  }
+                }
+              } catch {}
+            }
+            return result;
           };
         }
       } catch {}
@@ -208,20 +267,20 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         let orgId = body?.organizationId || url.searchParams.get('org');
 
         if (!env.RESEND_API_KEY || !env.EMAIL_FROM)
-          return new Response(JSON.stringify({ ok: false, error: 'email_not_configured' }), { status: 500, headers: { 'content-type': 'application/json' } });
+          return new Response(JSON.stringify({ success: false, error: 'email_not_configured' }), { status: 500, headers: { 'content-type': 'application/json' } });
 
-        if (!email) return new Response(JSON.stringify({ ok: false, error: 'email_required' }), { status: 400, headers: { 'content-type': 'application/json' } });
+        if (!email) return new Response(JSON.stringify({ success: false, error: 'email_required' }), { status: 400, headers: { 'content-type': 'application/json' } });
         if (!orgId) orgId = await findOrganizationIdByEmail(email);
-        if (!orgId) return new Response(JSON.stringify({ ok: false, error: 'organization_not_found_for_email' }), { status: 404, headers: { 'content-type': 'application/json' } });
+        if (!orgId) return new Response(JSON.stringify({ success: false, error: 'organization_not_found_for_email' }), { status: 404, headers: { 'content-type': 'application/json' } });
 
         const auth = await (await getAuthApi()).forOrganization(orgId);
         const tokenData = await auth.createMagicLinkToken(email, redirectTo);
         const origin = env.ORIGIN || `${url.protocol}//${url.host}`;
         const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
         await auth.sendMagicLink(email, link);
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'content-type': 'application/json' } });
       } catch (e: any) {
-        return new Response(JSON.stringify({ ok: false, error: 'send_failed', detail: e?.message || String(e) }), { status: 500, headers: { 'content-type': 'application/json' } });
+        return new Response(JSON.stringify({ success: false, error: 'send_failed', detail: e?.message || String(e) }), { status: 500, headers: { 'content-type': 'application/json' } });
       }
     }
 
@@ -336,7 +395,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
             id_token
           }
         });
-        const cookie = await auth.upsertSession({ userId: user.id });
+        const cookie = await auth.upsertSession({ userId: user.id, organizationId: orgId });
         const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         locals.kuratchi.setSessionCookie(cookie, { expires });
         return new Response(null, { status: 303, headers: { Location: redirectTo || '/' } });
@@ -361,16 +420,25 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
             }
             (locals.kuratchi as any).auth = await getAuthApi();
             (locals.kuratchi as any).auth.org = authService;
-            locals.kuratchi.user = user;
-            locals.kuratchi.session = sessionData;
+            const safeUser = sanitizeUser(user);
+            locals.kuratchi.user = safeUser;
+            const merged = { ...sessionData, organizationId: sessionData.organizationId || orgId, user: safeUser };
+            locals.kuratchi.session = merged;
+            // populate mirrors
+            locals.user = safeUser;
+            locals.session = merged;
           } else {
             // Session invalid or expired
             locals.kuratchi.clearSessionCookie();
+            locals.user = null;
+            locals.session = null;
           }
         }
       } catch (e) {
         // On any parsing/validation error, clear cookie silently
         locals.kuratchi.clearSessionCookie();
+        locals.user = null;
+        locals.session = null;
       }
     }
 
@@ -392,33 +460,34 @@ interface AuthConfig {
 }
 
 export class KuratchiAuth {
-    private kuratchiD1: KuratchiD1;
-    private kuratchiKV: KuratchiKV;
-    private kuratchiR2: KuratchiR2;
-    private kuratchiQueues: KuratchiQueues;
-    private adminDb: any;
-    private organizationServices: Map<string, AuthService>;
-    private config: AuthConfig;
-    public signIn: {
-        magicLink: {
-            send: (email: string, options?: { redirectTo?: string; organizationId?: string }) => Promise<{ ok: true }>
-        };
-        credentials: {
-            authenticate: (
-                email: string,
-                password: string,
-                options?: { organizationId?: string; ipAddress?: string; userAgent?: string; redirectTo?: string }
-            ) => Promise<
-                | { ok: true; cookie: string; user: any; session: any }
-                | { ok: false; error: 'invalid_credentials' }
-            >
-        };
-        oauth: {
-            google: {
-                startUrl: (params: { organizationId: string; redirectTo?: string }) => string;
-            }
-        };
-    };
+private kuratchiD1: KuratchiD1;
+private kuratchiKV: KuratchiKV;
+private kuratchiR2: KuratchiR2;
+private kuratchiQueues: KuratchiQueues;
+private adminDb: any;
+private organizationServices: Map<string, AuthService>;
+private organizationOrmClients: Map<string, Record<string, TableApi>>;
+private config: AuthConfig;
+public signIn: {
+  magicLink: {
+    send: (email: string, options?: { redirectTo?: string; organizationId?: string }) => Promise<{ success: true }>
+  };
+  credentials: {
+    authenticate: (
+      email: string,
+      password: string,
+      options?: { organizationId?: string; ipAddress?: string; userAgent?: string; redirectTo?: string }
+    ) => Promise<
+      | { success: true; cookie: string; user: any; session: any }
+      | { success: false; error: 'invalid_credentials' }
+    >
+  };
+  oauth: {
+    google: {
+      startUrl: (params: { organizationId: string; redirectTo?: string }) => string;
+    }
+  };
+};
     
     constructor(
         config: AuthConfig
@@ -429,6 +498,7 @@ export class KuratchiAuth {
             Object.defineProperty(this, 'config', { enumerable: false, configurable: false, writable: true });
         } catch {}
         this.organizationServices = new Map();
+        this.organizationOrmClients = new Map();
         
         // Initialize KuratchiD1 instance
         this.kuratchiD1 = new KuratchiD1({
@@ -482,7 +552,7 @@ export class KuratchiAuth {
                     const origin = this.config.origin;
                     const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
                     await auth.sendMagicLink(email, link, { from: this.config.emailFrom });
-                    return { ok: true } as const;
+                    return { success: true } as const;
                 }
             },
             credentials: {
@@ -496,10 +566,16 @@ export class KuratchiAuth {
                     if (!orgId) throw new Error('organization_not_found_for_email');
 
                     const auth = await this.getOrganizationAuthService(orgId);
-                    const result = await auth.createAuthSession(email, password, options?.ipAddress, options?.userAgent);
-                    if (!result) return { ok: false as const, error: 'invalid_credentials' } as const;
+                    const result = await auth.createAuthSession(
+                        email,
+                        password,
+                        options?.ipAddress,
+                        options?.userAgent,
+                        orgId
+                    );
+                    if (!result) return { success: false as const, error: 'invalid_credentials' } as const;
                     return {
-                        ok: true as const,
+                        success: true as const,
                         cookie: result.sessionId,
                         user: result.user,
                         session: result.sessionData,
@@ -549,7 +625,7 @@ export class KuratchiAuth {
         
         private async findOrganizationIdByEmail(email: string): Promise<string | undefined> {
             try {
-                const res = await (this.adminDb as any).organizationUsers.findFirst({ email, deleted_at: { is: null } });
+                const res = await (this.adminDb as any).organizationUsers.where({ email, deleted_at: { is: null } }).findFirst();
                 const mapping = (res as any)?.data;
                 return (mapping as any)?.organizationId || undefined;
             } catch {
@@ -563,10 +639,10 @@ export class KuratchiAuth {
         private async getOrganizationAuthService(organizationId: string): Promise<AuthService> {
             if (!this.organizationServices.has(organizationId)) {
                 // Resolve the organization's database name from admin DB
-                const dbRes = await (this.adminDb as any).databases.findFirst({
-                    where: { organizationId, deleted_at: { is: null } },
-                    orderBy: { created_at: 'desc' }
-                });
+                const dbRes = await (this.adminDb as any).databases
+                    .where({ organizationId, deleted_at: { is: null } })
+                    .orderBy({ created_at: 'desc' })
+                    .findFirst();
                 const dbRecord = (dbRes as any)?.data;
                 if (!dbRecord || !dbRecord.name) {
                     throw new Error(`No database found for organization ${organizationId}`);
@@ -575,10 +651,10 @@ export class KuratchiAuth {
                 const databaseName = dbRecord.name;
 
                 // Determine API token by looking up latest valid DB token
-                const tokenRes = await (this.adminDb as any).dbApiTokens.findMany({
-                    where: { databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false },
-                    orderBy: { created_at: 'desc' }
-                });
+                const tokenRes = await (this.adminDb as any).dbApiTokens
+                    .where({ databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false })
+                    .orderBy({ created_at: 'desc' })
+                    .findMany();
                 const tokenCandidates = (tokenRes as any)?.data ?? [];
                 const nowMs = Date.now();
                 const isNotExpired = (exp: any) => {
@@ -612,6 +688,7 @@ export class KuratchiAuth {
                 );
                 
                 this.organizationServices.set(organizationId, authService);
+                this.organizationOrmClients.set(organizationId, orgClient);
             }
             
             return this.organizationServices.get(organizationId)!;
@@ -634,9 +711,31 @@ export class KuratchiAuth {
                 queueName?: string;
             }
         ) {
-            // 1) Create organization row
+            // 1) Create organization row (whitelist allowed columns)
             const orgId = crypto.randomUUID();
-            const orgValues: any = { ...(data || {}), id: orgId };
+            const src: any = data || {};
+            // Pre-insert uniqueness check for contact email (better DX)
+            if (src.email) {
+                try {
+                    const existing = await (this.adminDb as any).organizations
+                        .where({ email: src.email, deleted_at: { is: null } })
+                        .findFirst();
+                    if ((existing as any)?.data) {
+                        throw new Error('organization_email_already_exists');
+                    }
+                } catch (err) {
+                    // If the ORM throws for any reason besides not found, rethrow
+                    if (err instanceof Error && err.message.includes('already exists')) throw err;
+                    // Otherwise, continue; the DB-level UNIQUE constraint will still enforce correctness
+                }
+            }
+            const orgValues: any = {
+                id: orgId,
+                organizationName: src.organizationName,
+                organizationSlug: src.organizationSlug,
+                email: src.email,
+                status: src.status ?? 'active',
+            };
             await (this.adminDb as any).organizations.insert(orgValues);
             const org = orgValues;
 
@@ -659,7 +758,8 @@ export class KuratchiAuth {
                 id: crypto.randomUUID(),
                 token: apiToken,
                 name: 'primary',
-                databaseId: dbRow.id
+                databaseId: dbRow.id,
+                revoked: false
             };
             await (this.adminDb as any).dbApiTokens.insert(tokenRow);
 
@@ -779,12 +879,15 @@ export class KuratchiAuth {
         }
     
         async listOrganizations() {
-            const res = await (this.adminDb as any).organizations.findMany({ where: { deleted_at: { is: null } }, orderBy: { created_at: 'desc' } });
+            const res = await (this.adminDb as any).organizations
+                .where({ deleted_at: { is: null } })
+                .orderBy({ created_at: 'desc' })
+                .findMany();
             return (res as any)?.data ?? [];
         }
     
         async getOrganization(id: string) {
-            const res = await (this.adminDb as any).organizations.findFirst({ id, deleted_at: { is: null } } as any);
+            const res = await (this.adminDb as any).organizations.where({ id, deleted_at: { is: null } } as any).findFirst();
             return (res as any)?.data;
         }
 
@@ -793,7 +896,10 @@ export class KuratchiAuth {
          */
         async deleteOrganization(organizationId: string) {
             // Find active database for this org
-            const dbRes = await (this.adminDb as any).databases.findFirst({ where: { organizationId, deleted_at: { is: null } }, orderBy: { created_at: 'desc' } });
+            const dbRes = await (this.adminDb as any).databases
+                .where({ organizationId, deleted_at: { is: null } })
+                .orderBy({ created_at: 'desc' })
+                .findFirst();
             const db = (dbRes as any)?.data;
 
             // Best-effort delete in Cloudflare if we have a uuid
@@ -815,7 +921,7 @@ export class KuratchiAuth {
 
             // Best-effort delete KV namespaces
             if ((this.adminDb as any).kvNamespaces) {
-            const kvNsRes = await (this.adminDb as any).kvNamespaces.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const kvNsRes = await (this.adminDb as any).kvNamespaces.where({ organizationId, deleted_at: { is: null } }).findMany();
             const kvNamespaces = ((kvNsRes as any)?.data ?? []) as any[];
             for (const ns of kvNamespaces) {
                 const nsId = (ns as any).namespaceId;
@@ -833,7 +939,7 @@ export class KuratchiAuth {
 
             // Best-effort delete R2 buckets
             if ((this.adminDb as any).r2Buckets) {
-            const r2Res = await (this.adminDb as any).r2Buckets.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const r2Res = await (this.adminDb as any).r2Buckets.where({ organizationId, deleted_at: { is: null } }).findMany();
             const r2Buckets = ((r2Res as any)?.data ?? []) as any[];
             for (const b of r2Buckets) {
                 const name = (b as any).name;
@@ -851,7 +957,7 @@ export class KuratchiAuth {
 
             // Best-effort delete Queues
             if ((this.adminDb as any).queues) {
-            const qRes = await (this.adminDb as any).queues.findMany({ where: { organizationId, deleted_at: { is: null } } });
+            const qRes = await (this.adminDb as any).queues.where({ organizationId, deleted_at: { is: null } }).findMany();
             const queues = ((qRes as any)?.data ?? []) as any[];
             for (const q of queues) {
                 const target = (q as any).cfid || (q as any).name;
@@ -889,7 +995,24 @@ export class KuratchiAuth {
     async forOrganization(
         organizationId: string
     ): Promise<AuthService> {
+        // Prevent client-side usage which could expose credentials via instantiation side-effects
+        if (typeof window !== 'undefined') {
+            throw new Error('[KuratchiAuth] forOrganization() is server-only. Call this on the server (load, actions, endpoints).');
+        }
         return this.getOrganizationAuthService(organizationId);
+    }
+
+    // Server-only accessor for organization ORM client
+    async getOrganizationDb(organizationId: string): Promise<Record<string, TableApi>> {
+        if (typeof window !== 'undefined') {
+            throw new Error('[KuratchiAuth] getOrganizationDb() is server-only. Call this on the server (load, actions, endpoints).');
+        }
+        if (!this.organizationOrmClients.has(organizationId)) {
+            await this.getOrganizationAuthService(organizationId);
+        }
+        const client = this.organizationOrmClients.get(organizationId);
+        if (!client) throw new Error(`[KuratchiAuth] Organization ORM client not available for ${organizationId}`);
+        return client;
     }
 
     /**

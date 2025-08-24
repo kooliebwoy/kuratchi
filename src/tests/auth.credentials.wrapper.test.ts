@@ -112,7 +112,7 @@ describe('credentials authenticate wrapper sets cookie', () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.ok).toBe(true);
+    expect(json.success).toBe(true);
     expect(setCalls.length).toBe(1);
     expect(setCalls[0].name).toBe('kuratchi_session');
     expect(setCalls[0].value).toBe('cookie_val');
@@ -142,7 +142,7 @@ describe('credentials authenticate wrapper sets cookie', () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.ok).toBe(false);
+    expect(json.success).toBe(false);
     expect(json.error).toBe('invalid_credentials');
     expect(setCalls.length).toBe(0);
   });

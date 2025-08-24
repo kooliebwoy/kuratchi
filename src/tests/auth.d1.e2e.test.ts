@@ -146,8 +146,11 @@ describeMaybe('AuthService E2E with Cloudflare D1 (SvelteKit env, outside lib)',
     const cookie = await auth.createSession(u.id);
     expect(cookie).toBeTruthy();
 
-    const { sessionData } = await auth.validateSessionToken(cookie);
+    const { sessionData, user } = await auth.validateSessionToken(cookie);
     expect(sessionData?.userId).toBe(u.id);
+    // user in session validation should be sanitized (no password_hash)
+    expect(user).toBeTruthy();
+    expect((user as any).password_hash).toBeUndefined();
 
     const r = await auth.refreshSession(cookie);
     expect(r.success).toBe(true);
@@ -176,5 +179,7 @@ describeMaybe('AuthService E2E with Cloudflare D1 (SvelteKit env, outside lib)',
     const verify = await auth.verifyEmail(tokenData.token, u.email);
     expect(verify.success).toBe(true);
     expect(verify.user?.emailVerified).toBeTruthy();
+    // verified user returned should be sanitized (no password_hash)
+    expect((verify.user as any)?.password_hash).toBeUndefined();
   }, 60_000);
 });

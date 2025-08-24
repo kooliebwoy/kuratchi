@@ -134,18 +134,18 @@ describeMaybe('Admin E2E with Cloudflare D1', () => {
     const tokenId = crypto.randomUUID();
 
     await client.organizations.insert({ id: orgId, organizationName: 'Acme Co', email: 'ops@acme.test', organizationSlug: 'acme', status: 'active' });
-    const gotOrg = await client.organizations.findFirst({ where: { id: orgId } });
+    const gotOrg = await client.organizations.where({ id: orgId } as any).findFirst();
     expect((gotOrg as any)?.data?.id).toBe(orgId);
 
     await client.databases.insert({ id: dbId, name: 'acme-db', dbuuid: 'uuid-' + dbId, isActive: 1 as any, organizationId: orgId });
-    const gotDb = await client.databases.findFirst({ where: { id: dbId } });
+    const gotDb = await client.databases.where({ id: dbId } as any).findFirst();
     expect((gotDb as any)?.data?.organizationId).toBe(orgId);
 
     await client.dbApiTokens.insert({ id: tokenId, token: 'tkn-' + tokenId, name: 'default', databaseId: dbId, revoked: 0 as any });
-    const gotTok = await client.dbApiTokens.findFirst({ where: { id: tokenId } });
+    const gotTok = await client.dbApiTokens.where({ id: tokenId } as any).findFirst();
     expect((gotTok as any)?.data?.databaseId).toBe(dbId);
 
-    const got = await client.databases.findFirst({ where: { id: dbId } });
+    const got = await client.databases.where({ id: dbId } as any).findFirst();
     expect((got as any)?.data?.organizationId).toBe(orgId);
   }, 60_000);
 });

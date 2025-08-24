@@ -92,6 +92,41 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         this.emailService = new EmailService(env as any); // Centralized templated email sender
         // Always initialize OrgService with the same runtime client
         this.orgService = new OrgService(client as any, env);
+        // Prevent accidental exposure of sensitive internals via console.log / JSON
+        try {
+            Object.defineProperty(this, 'env', { enumerable: false, configurable: false, writable: true });
+            Object.defineProperty(this, 'client', { enumerable: false, configurable: false, writable: true });
+        } catch {}
+    }
+
+    // Remove sensitive fields from user objects leaving only safe properties
+    private sanitizeUser(user: UserRow<C> | null | undefined): Omit<UserRow<C>, 'password_hash'> | null {
+        if (!user) return null;
+        const { password_hash, ...rest } = user as any;
+        return rest as any;
+    }
+
+    // Node.js inspect and JSON serialization redaction
+    toJSON() {
+        return {
+            // expose minimal safe surface for introspection
+            createUser: '[api]',
+            getUsers: '[api]',
+            getUser: '[api]',
+            updateUser: '[api]',
+            deleteUser: '[api]',
+            deleteUsers: '[api]',
+            createAuthSession: '[api]',
+            validateSessionToken: '[api]',
+            refreshSession: '[api]',
+            verifyEmail: '[api]',
+            createMagicLinkToken: '[api]',
+            verifyMagicLink: '[api]'
+        } as any;
+    }
+
+    [Symbol.for('nodejs.util.inspect.custom')]() {
+        return this.toJSON();
     }
 
     /**
@@ -118,7 +153,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             id: userId,
             emailVerified: null
         });
-        const got = await this.client.users.findFirst({ id: userId } as any);
+        const got = await this.client.users.where({ id: userId } as any).findFirst();
         const user = (got as any)?.data as UserRow<C> | undefined;
         
         // Generate an email verification token
@@ -150,7 +185,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns User or undefined
      */
     async getUser(id: string): Promise<UserRow<C> | undefined> {
-        const res = await this.client.users.findFirst({ id } as any);
+        const res = await this.client.users.where({ id } as any).findFirst();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -162,7 +197,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      */
     async updateUser(id: string, userData: Partial<UserRow<C>> & Record<string, any>): Promise<UserRow<C> | undefined> {
         await this.client.users.update({ id } as any, { ...userData, updated_at: new Date().toISOString() });
-        const res = await this.client.users.findFirst({ id } as any);
+        const res = await this.client.users.where({ id } as any).findFirst();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -201,7 +236,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns User or undefined
      */
     async getUserByEmail(email: string): Promise<UserRow<C> | undefined> {
-        const res = await this.client.users.findFirst({ email } as any);
+        const res = await this.client.users.where({ email } as any).findFirst();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -353,7 +388,8 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         email: string, 
         password: string, 
         ipAddress?: string, 
-        userAgent?: string
+        userAgent?: string,
+        organizationId?: string
     ): Promise<{
         user: UserRow<C>;
         sessionId: string;
@@ -370,14 +406,15 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         const sessionId = await this.upsertSession({
             userId: user.id,
             ipAddress,
-            userAgent
+            userAgent,
+            organizationId
         });
 
         // Build the session data for return
         const sessionData = await this.buildSessionData(user.id, ipAddress, userAgent);
         
         return {
-            user,
+            user: this.sanitizeUser(user) as any,
             sessionId,
             sessionData: sessionData!
         };
@@ -409,6 +446,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         userId?: string;
         ipAddress?: string;
         userAgent?: string;
+        organizationId?: string;
     }): Promise<string> {
         const { sessionId } = options;
         let { userId } = options;
@@ -421,7 +459,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionId);
             if (!parsed) throw new Error('Invalid session cookie');
             const { tokenHash } = parsed;
-            const found = await this.client.session.findFirst({ sessionToken: tokenHash } as any);
+            const found = await this.client.session.where({ sessionToken: tokenHash } as any).findFirst();
             const row = (found as any)?.data;
             if (!row) throw new Error('Session to refresh not found');
             userId = row.userId;
@@ -436,7 +474,8 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         const userData = await this.getUser(userId);
         if (!userData) throw new Error('User not found for session creation');
         // Determine organization prefix for the session cookie
-        const organizationId = (userData as any).organizationId
+        const organizationId = options.organizationId
+            ?? (userData as any).organizationId
             ?? (userData as any).tenantId
             ?? (userData as any).organization
             ?? 'admin';
@@ -487,7 +526,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             }
 
             // Count existing sessions for the user
-            const sessionRes = await this.client.session.findMany({ userId } as any);
+            const sessionRes = await this.client.session.where({ userId } as any).findMany();
             const sessions = (sessionRes as any).data ?? [];
 
             if (!Array.isArray(sessions) || sessions.length === 0) {
@@ -523,7 +562,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionCookie);
         if (!parsed) return { sessionData: null, user: null };
         const { tokenHash } = parsed;
-        const sessionRes = await this.client.session.findFirst({ sessionToken: tokenHash } as any);
+        const sessionRes = await this.client.session.where({ sessionToken: tokenHash } as any).findFirst();
         const sessionRow = (sessionRes as any)?.data;
         if (!sessionRow) return { sessionData: null, user: null };
 
@@ -549,7 +588,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         // Build SessionData on the fly
         const sessionData = await this.buildSessionData(user.id);
         sessionData.lastAccessedAt = now;
-        return { sessionData, user };
+        return { sessionData, user: this.sanitizeUser(user) as any };
     }
 
     private async buildSessionData(userId: string, ipAddress?: string, userAgent?: string): Promise<SessionData> {
@@ -607,14 +646,14 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
     }
 
     async deletePasswordResetToken(token: string) {
-        const before = await this.client.passwordResetTokens.findMany({ token } as any);
+        const before = await this.client.passwordResetTokens.where({ token } as any).findMany();
         await this.client.passwordResetTokens.delete({ token } as any);
         const rows = ((before as any).data ?? []) as any[];
         return rows.length > 0;
     }
 
     async getPasswordResetToken(token: string) {
-        const res = await this.client.passwordResetTokens.findMany({ token } as any);
+        const res = await this.client.passwordResetTokens.where({ token } as any).findMany();
         return ((res as any).data ?? []) as any[];
     }
 
@@ -664,7 +703,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      */
     async getEmailVerificationTokenByEmail(email: string) {
         // Return the most recent token for this email
-        const res = await this.client.emailVerificationToken.findMany({ email } as any);
+        const res = await this.client.emailVerificationToken.where({ email } as any).findMany();
         const tokens = ((res as any).data ?? []) as any[];
         if (!Array.isArray(tokens) || tokens.length === 0) return null as any;
         // Choose the latest by expires
@@ -749,7 +788,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @param email - User's email address
      * @returns Object with success status and user data if successful
      */
-    async verifyEmail(token: string, email?: string): Promise<{ success: boolean; user?: any; error?: string }> {
+    async verifyEmail(token: string, email?: string): Promise<{ success: boolean; user?: Omit<UserRow<C>, 'password_hash'>; error?: string }> {
         // If email is not provided, we need to find it by searching all possible email verification tokens
         // For now, we'll require email to be passed
         if (!email) {
@@ -788,7 +827,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         // Delete the verification token
         await this.deleteEmailVerificationTokenByEmail(email);
         
-        return { success: true, user: updatedUser };
+        return { success: true, user: this.sanitizeUser(updatedUser as any) as any };
     }
 
     
@@ -816,8 +855,8 @@ async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) 
     return { token, expires, redirectTo };
 }
 
-async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: UserRow<C>; error?: string }> {
-    const found = await this.client.magicLinkTokens.findFirst({ token } as any);
+async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: Omit<UserRow<C>, 'password_hash'>; error?: string }> {
+    const found = await this.client.magicLinkTokens.where({ token } as any).findFirst();
     const row = (found as any)?.data;
     if (!row) return { success: false, error: 'Invalid or expired token' };
     const now = new Date();
@@ -841,7 +880,7 @@ async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: strin
     // Create a session and return cookie
     const ensuredUser = user as UserRow<C>;
     const cookie = await this.upsertSession({ userId: ensuredUser.id });
-    return { success: true, cookie, redirectTo: row.redirectTo ?? undefined, user: ensuredUser };
+    return { success: true, cookie, redirectTo: row.redirectTo ?? undefined, user: this.sanitizeUser(user) as any };
 }
 
 async sendMagicLink(email: string, link: string, opts?: { from?: string; subject?: string }) {
@@ -869,7 +908,7 @@ async getOrCreateUserFromOAuth(params: {
 }): Promise<any> {
     const { provider, providerAccountId, email, name, image, tokens } = params;
     // Try existing link
-    const existing = await (this.client as any).oauthAccounts?.findFirst({ provider, providerAccountId } as any);
+    const existing = await (this.client as any).oauthAccounts?.where({ provider, providerAccountId } as any).findFirst();
     const existingRow = (existing as any)?.data;
     if (existingRow?.userId) {
         const u = await this.getUser(existingRow.userId);
@@ -897,7 +936,7 @@ async getOrCreateUserFromOAuth(params: {
     if ((this.client as any).oauthAccounts) {
         if (!user) throw new Error('Failed to resolve user');
         const ensuredUser = user as UserRow<C>;
-        const link = await (this.client as any).oauthAccounts.findFirst({ provider, providerAccountId } as any);
+        const link = await (this.client as any).oauthAccounts.where({ provider, providerAccountId } as any).findFirst();
         if ((link as any)?.data) {
             await (this.client as any).oauthAccounts.update({ provider, providerAccountId } as any, {
                 userId: ensuredUser.id,

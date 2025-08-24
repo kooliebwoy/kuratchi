@@ -14,7 +14,7 @@ describe('Kuratchi.auth.signIn static helpers', () => {
       expect(init?.headers['content-type'] || init?.headers?.get?.('content-type')).toContain('application/json');
       const body = JSON.parse(init?.body || '{}');
       expect(body).toEqual({ email: 'a@b.com', redirectTo: '/x', organizationId: 'org_1' });
-      return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ success: true }), { headers: { 'content-type': 'application/json' } });
     });
 
     const res = await Kuratchi.auth.signIn.magicLink.send('a@b.com', {
@@ -23,7 +23,7 @@ describe('Kuratchi.auth.signIn static helpers', () => {
       fetch: fetchMock as any,
     });
 
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -51,7 +51,7 @@ export class OrgService {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     await this.client.roles.insert({ ...roleData, id, created_at: now, updated_at: now });
-    const res = await this.client.roles.findFirst({ where: { id } });
+    const res = await this.client.roles.where({ id }).findFirst();
     return (res as any)?.data;
   }
 
@@ -61,14 +61,14 @@ export class OrgService {
   }
 
   async getRole(id: string): Promise<any | undefined> {
-    const res = await this.client.roles.findFirst({ where: { id } });
+    const res = await this.client.roles.where({ id }).findFirst();
     return (res as any)?.data;
   }
 
   async updateRole(id: string, roleData: Partial<any>): Promise<any | undefined> {
     const now = new Date().toISOString();
     await this.client.roles.update({ id }, { ...roleData, updated_at: now });
-    const res = await this.client.roles.findFirst({ where: { id } });
+    const res = await this.client.roles.where({ id }).findFirst();
     return (res as any)?.data;
   }
 
@@ -83,12 +83,12 @@ export class OrgService {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     await this.client.activity.insert({ ...activity, id, created_at: now, updated_at: now });
-    const res = await this.client.activity.findFirst({ where: { id } });
+    const res = await this.client.activity.where({ id }).findFirst();
     return (res as any)?.data;
   }
 
   async getAllActivity(): Promise<any[]> {
-    const res = await this.client.activity.findMany({ orderBy: { created_at: 'desc' } });
+    const res = await this.client.activity.orderBy({ created_at: 'desc' }).findMany();
     return ((res as any).data ?? []) as any[];
   }
 
@@ -134,7 +134,7 @@ export class OrgService {
     if (!this.env.STRIPE_SECRET_KEY) {
       // Return organization without billing data if Stripe not configured, using runtime client if available
       if ((this.client as any).organizations) {
-        const res = await (this.client as any).organizations.findFirst({ where: { id: organizationId } as any });
+        const res = await (this.client as any).organizations.where({ id: organizationId } as any).findFirst();
         return (res as any)?.data;
       }
       throw new Error('organizations table not available on runtime client and Stripe not configured');
