@@ -3,41 +3,12 @@ import { DEFAULT_DO_WORKER_SCRIPT } from './worker-template.js';
 import { KuratchiDoHttpClient } from './internal-http-client.js';
 import { createSignedDbToken } from './token.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
-import {
-  createClientFromJsonSchema,
-  createTypedClientFromMapping,
-  type TableApi,
-  type TableApiTyped
-} from '../orm/kuratchi-orm.js';
+import { generateInitialMigrationBundle } from '../orm/migrator.js';
+import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
+// Convenience re-exports for normalized standard schemas
+export { adminSchema, organizationSchema } from '../index.js';
 
-// Mirror typed clients exposed for D1
-type AdminRowMap = {
-  users: any;
-  session: any;
-  passwordResetTokens: any;
-  magicLinkTokens: any;
-  emailVerificationToken: any;
-  oauthAccounts: any;
-  organizationUsers: any;
-  organizations: any;
-  activity: any;
-  databases: any;
-  dbApiTokens: any;
-};
-
-type OrganizationRowMap = {
-  users: any;
-  session: any;
-  passwordResetTokens: any;
-  emailVerificationToken: any;
-  magicLinkTokens: any;
-  activity: any;
-  roles: any;
-  oauthAccounts: any;
-};
-
-export type AdminTypedClient = { [K in keyof AdminRowMap]: TableApiTyped<AdminRowMap[K]> };
-export type OrganizationTypedClient = { [K in keyof OrganizationRowMap]: TableApiTyped<OrganizationRowMap[K]> };
+// Note: DO client requires explicit DatabaseSchema. Typed alias clients have been removed.
 
 export interface DOOptions {
   apiToken: string;
@@ -68,7 +39,7 @@ export class KuratchiDO {
    * Provision a logical DO-backed database and issue a per-database token.
    * Persistence of this token should be handled by your admin flow (e.g., store in Admin DB).
    */
-  async createDatabase(opts: { databaseName: string; gatewayKey: string }): Promise<{ databaseName: string; token: string }> {
+  async createDatabase(opts: { databaseName: string; gatewayKey: string; migrate?: boolean; schema?: DatabaseSchema }): Promise<{ databaseName: string; token: string }> {
     const { databaseName, gatewayKey } = opts;
     if (!databaseName) throw new Error('createDatabase requires databaseName');
     if (!gatewayKey) throw new Error('createDatabase requires gatewayKey');
@@ -84,6 +55,34 @@ export class KuratchiDO {
       await this.waitForWorkerEndpoint(databaseName, token, gatewayKey);
     } catch {
       // Non-fatal; queries may still succeed shortly after
+    }
+    
+    // Optional: apply initial schema migration (single-bundle) when requested
+    if (opts.migrate) {
+      // DO runtime requires a concrete DatabaseSchema object (TS), not a string alias
+      if (!opts.schema) {
+        throw new Error('KuratchiDO.createDatabase: migrate:true requires a TS DatabaseSchema object.');
+      }
+      const { migrations } = generateInitialMigrationBundle(opts.schema);
+      const initialSql = await migrations.m0001();
+      const client = this.getClient({ databaseName, dbToken: token, gatewayKey });
+      // Split into statements for atomic batch execution
+      const statements = initialSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length)
+        .map((s) => (s.endsWith(';') ? s : s + ';'));
+      if (statements.length === 1) {
+        const res = await client.query(statements[0]);
+        if (!res || res.success === false) {
+          throw new Error(`Migration failed: ${res?.error || 'unknown error'}`);
+        }
+      } else if (statements.length > 1) {
+        const res = await client.batch(statements.map((q) => ({ query: q })));
+        if (!res || res.success === false) {
+          throw new Error(`Migration batch failed: ${res?.error || 'unknown error'}`);
+        }
+      }
     }
     
     // NOTE: Persist (databaseName, token) in your Admin DB in your provisioning flow.
@@ -127,15 +126,13 @@ export class KuratchiDO {
     });
   }
 
-  // Top-level sugar: property client with schema (explicit only)
-  client(cfg: { databaseName: string; dbToken: string; gatewayKey: string }, options: { schema: 'admin' }): AdminTypedClient;
-  client(cfg: { databaseName: string; dbToken: string; gatewayKey: string }, options: { schema: 'organization' }): OrganizationTypedClient;
-  client(cfg: { databaseName: string; dbToken: string; gatewayKey: string }, options: { schema: DatabaseSchema }): Record<string, TableApi>;
-  client(cfg: { databaseName: string; dbToken: string; gatewayKey: string }, options: { schema: DatabaseSchema | 'admin' | 'organization' }): any {
+  // Top-level sugar: property client with explicit TS DatabaseSchema only
+  client(
+    cfg: { databaseName: string; dbToken: string; gatewayKey: string },
+    options: { schema: DatabaseSchema }
+  ): Record<string, TableApi> {
     const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-    if (!options?.schema) throw new Error('KuratchiDO.client requires a schema: "admin", "organization", or DatabaseSchema');
-    if (options.schema === 'admin') return createAdminClient(exec);
-    if (options.schema === 'organization') return createOrganizationClient(exec);
+    if (!options?.schema) throw new Error('KuratchiDO.client requires a TS DatabaseSchema');
     return createClientFromJsonSchema(exec, options.schema);
   }
 
@@ -143,11 +140,9 @@ export class KuratchiDO {
     return {
       query: <T>(sql: string, params: any[] = []) => this.getClient(cfg as any).query<T>(sql, params),
       getClient: () => this.getClient(cfg as any),
-      client: (options: { schema: DatabaseSchema | 'admin' | 'organization' }): Record<string, TableApi> | AdminTypedClient | OrganizationTypedClient => {
+      client: (options: { schema: DatabaseSchema }): Record<string, TableApi> => {
         const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-        if (!options?.schema) throw new Error('KuratchiDO.database().client requires a schema: "admin", "organization", or DatabaseSchema');
-        if (options.schema === 'admin') return createAdminClient(exec);
-        if (options.schema === 'organization') return createOrganizationClient(exec);
+        if (!options?.schema) throw new Error('KuratchiDO.database().client requires a TS DatabaseSchema');
         return createClientFromJsonSchema(exec, options.schema);
       },
     };
@@ -183,33 +178,3 @@ export class KuratchiDO {
   [Symbol.for('nodejs.util.inspect.custom')]() { return this.toJSON(); }
 }
 
-function createAdminClient(exec: (sql: string, params?: any[]) => Promise<any>): AdminTypedClient {
-  const mapping = {
-    users: 'users',
-    session: 'session',
-    passwordResetTokens: 'passwordResetTokens',
-    magicLinkTokens: 'magicLinkTokens',
-    emailVerificationToken: 'emailVerificationToken',
-    oauthAccounts: 'oauthAccounts',
-    organizationUsers: 'organizationUsers',
-    organizations: 'organizations',
-    activity: 'activity',
-    databases: 'databases',
-    dbApiTokens: 'dbApiTokens',
-  } as const;
-  return createTypedClientFromMapping<AdminRowMap>(exec, mapping as any);
-}
-
-function createOrganizationClient(exec: (sql: string, params?: any[]) => Promise<any>): OrganizationTypedClient {
-  const mapping = {
-    users: 'users',
-    session: 'session',
-    passwordResetTokens: 'passwordResetTokens',
-    emailVerificationToken: 'emailVerificationToken',
-    magicLinkTokens: 'magicLinkTokens',
-    activity: 'activity',
-    roles: 'roles',
-    oauthAccounts: 'oauthAccounts',
-  } as const;
-  return createTypedClientFromMapping<OrganizationRowMap>(exec, mapping as any);
-}

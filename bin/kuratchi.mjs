@@ -34,7 +34,7 @@ async function tryImportTypescript() {
 }
 
 // Transpile a .ts file to a temporary ESM module using the project's TypeScript
-async function transpileTsFileToEsmTemp(tsPath) {
+async function transpileTsFileToEsmTemp(tsPath, tempRootOverride) {
   const ts = await tryImportTypescript();
   if (!ts) return null;
   const src = fs.readFileSync(tsPath, 'utf8');
@@ -49,7 +49,7 @@ async function transpileTsFileToEsmTemp(tsPath) {
     fileName: tsPath,
     reportDiagnostics: false,
   });
-  const tmpRoot = path.join(process.cwd(), '.kuratchi-tmp');
+  const tmpRoot = tempRootOverride || path.join(process.cwd(), '.kuratchi-tmp');
   ensureDir(tmpRoot);
   const outFile = path.join(tmpRoot, `schema-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
   fs.writeFileSync(outFile, transpiled.outputText, 'utf8');
@@ -57,7 +57,7 @@ async function transpileTsFileToEsmTemp(tsPath) {
 }
 
 // Resolve a schema path to an importable module path, handling .ts neighbors or transpilation
-async function resolveImportableSchemaPath(schemaPath) {
+async function resolveImportableSchemaPath(schemaPath, tempRootOverride) {
   if (!schemaPath) return null;
   // If TS, prefer adjacent compiled outputs
   if (schemaPath.endsWith('.ts')) {
@@ -68,7 +68,7 @@ async function resolveImportableSchemaPath(schemaPath) {
     ];
     for (const c of tsNeighbors) { if (fs.existsSync(c)) return c; }
     // As a last resort, transpile using project's typescript
-    const temp = await transpileTsFileToEsmTemp(schemaPath);
+    const temp = await transpileTsFileToEsmTemp(schemaPath, tempRootOverride);
     if (temp) return temp;
     return null;
   }
@@ -76,19 +76,24 @@ async function resolveImportableSchemaPath(schemaPath) {
 }
 
 // Load and normalize the schema DSL. Optionally caches normalized JSON under kuratchi-schema/<kind>.json
-async function loadNormalizedSchema({ schemaPath, kind, orm }) {
-  const importable = await resolveImportableSchemaPath(schemaPath);
+async function loadNormalizedSchema({ schemaPath, kind, cacheDir }) {
+  const importable = await resolveImportableSchemaPath(schemaPath, cacheDir && path.join(cacheDir, '.tmp'));
   if (!importable || !fs.existsSync(importable)) throw new Error(`Schema file not found or not importable: ${schemaPath}`);
   const mod = await import(pathToFileURL(importable).href);
   const dsl = (kind === 'admin' ? (mod.adminSchemaDsl || mod.schema) : (mod.organizationSchemaDsl || mod.schema)) || mod.default || mod;
   if (!dsl || typeof dsl !== 'object' || !dsl.tables) throw new Error('Schema module must export a DSL with { name, version, tables }');
-  const toSchema = orm.normalizeSchema(dsl);
-  const cacheDir = path.join(process.cwd(), 'kuratchi-schema');
-  ensureDir(cacheDir);
-  const cacheFile = path.join(cacheDir, `${kind}.json`);
-  try {
-    fs.writeFileSync(cacheFile, JSON.stringify(toSchema, null, 2), 'utf8');
-  } catch {}
+  // normalizeSchema is exported from the package root (dist/index.js)
+  const root = await importRootLib();
+  if (!root || typeof root.normalizeSchema !== 'function') throw new Error('normalizeSchema not available. Build the package (npm run build).');
+  const toSchema = root.normalizeSchema(dsl);
+  let cacheFile = null;
+  if (cacheDir) {
+    ensureDir(cacheDir);
+    cacheFile = path.join(cacheDir, `${kind}.json`);
+    try {
+      fs.writeFileSync(cacheFile, JSON.stringify(toSchema, null, 2), 'utf8');
+    } catch {}
+  }
   return { toSchema, cacheFile };
 }
 
@@ -114,7 +119,7 @@ async function adminGenerateMigrations(opts) {
   }
   const orm = await importOrm();
   if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
-  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'admin', orm });
+  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'admin', cacheDir: path.join(outDir, 'schema') });
   let sql = '';
   let warnings = [];
 
@@ -129,7 +134,9 @@ async function adminGenerateMigrations(opts) {
   if (opts.fromSchemaFile) {
     const fromMod = await import(pathToFileURL(opts.fromSchemaFile).href);
     const fromDsl = fromMod.schema || fromMod.default || fromMod;
-    const fromSchema = orm.normalizeSchema(fromDsl);
+    const root = await importRootLib();
+    if (!root || typeof root.normalizeSchema !== 'function') throw new Error('normalizeSchema not available. Build the package (npm run build).');
+    const fromSchema = root.normalizeSchema(fromDsl);
     const diff = orm.buildDiffSql(fromSchema, toSchema);
     sql = diff.sql;
     warnings = diff.warnings || [];
@@ -187,7 +194,7 @@ async function orgGenerateMigrations(opts) {
   }
   const orm = await importOrm();
   if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
-  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'organization', orm });
+  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'organization', cacheDir: path.join(outDir, 'schema') });
   let sql = '';
   let warnings = [];
 
@@ -202,7 +209,9 @@ async function orgGenerateMigrations(opts) {
   if (opts.fromSchemaFile) {
     const fromMod = await import(pathToFileURL(opts.fromSchemaFile).href);
     const fromDsl = fromMod.schema || fromMod.default || fromMod;
-    const fromSchema = orm.normalizeSchema(fromDsl);
+    const root = await importRootLib();
+    if (!root || typeof root.normalizeSchema !== 'function') throw new Error('normalizeSchema not available. Build the package (npm run build).');
+    const fromSchema = root.normalizeSchema(fromDsl);
     const diff = orm.buildDiffSql(fromSchema, toSchema);
     sql = diff.sql;
     warnings = diff.warnings || [];
@@ -361,6 +370,14 @@ async function importOrm() {
   return null;
 }
 
+// Import package root for shared exports like normalizeSchema
+async function importRootLib() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.join(here, '..', 'dist', 'index.js');
+  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
+  return null;
+}
+
 // Filesystem migration loader: reads ./migrations-<dir>/meta/_journal.json and <tag>.sql files
 async function loadMigrationsFromFs(dirName, basePath) {
   const root = basePath || path.join(process.cwd(), `migrations-${dirName}`);
@@ -480,7 +497,8 @@ async function adminMigrate(opts) {
       for (const cand of candidates) { if (cand && fs.existsSync(cand)) { schemaFile = cand; break; } }
       if (schemaFile) {
         // Load normalized schema using TS-aware path, kind: admin
-        const { toSchema: schema } = await loadNormalizedSchema({ schemaPath: schemaFile, kind: 'admin', orm: om });
+        const cacheDir = path.join(process.cwd(), `migrations-${migrationsDir}`, 'schema');
+        const { toSchema: schema } = await loadNormalizedSchema({ schemaPath: schemaFile, kind: 'admin', cacheDir });
         const bundle = om.generateInitialMigrationBundle(schema, { tag: 'initial' });
         const ok = await client.migrate(bundle);
         if (ok) {
