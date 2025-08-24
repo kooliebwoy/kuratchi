@@ -1,4 +1,5 @@
 import { KuratchiD1 } from '../d1/kuratchi-d1.js';
+import { KuratchiDO } from '../do/kuratchi-do.js';
 import { KuratchiKV } from '../kv/kuratchi-kv.js';
 import { KuratchiR2 } from '../r2/kuratchi-r2.js';
 import { KuratchiQueues } from '../queues/kuratchi-queues.js';
@@ -32,6 +33,8 @@ export type AuthHandleEnv = {
   AUTH_WEBHOOK_SECRET?: string;
   KURATCHI_ADMIN_DB_NAME?: string;
   KURATCHI_ADMIN_DB_TOKEN?: string;
+  // Optional: master gateway key for DO-backed org databases
+  KURATCHI_GATEWAY_KEY?: string;
 };
 
 export interface CreateAuthHandleOptions {
@@ -70,7 +73,8 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       GOOGLE_CLIENT_SECRET: pick('GOOGLE_CLIENT_SECRET'),
       AUTH_WEBHOOK_SECRET: pick('AUTH_WEBHOOK_SECRET'),
       KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
-      KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN')
+      KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN'),
+      KURATCHI_GATEWAY_KEY: pick('KURATCHI_GATEWAY_KEY')
     } as any;
   });
 
@@ -169,7 +173,9 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
           origin: env.ORIGIN || '',
           resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
           authSecret: env.KURATCHI_AUTH_SECRET,
-          adminDb
+          adminDb,
+          // Wire DO gateway key when present so DO-backed org flows work
+          gatewayKey: env.KURATCHI_GATEWAY_KEY
         }
       });
       // Expose the SDK instance under locals.kuratchi, preserving existing helpers
@@ -458,10 +464,13 @@ interface AuthConfig {
     apiToken: string;
     // Bound admin D1 database (e.g., platform.env.DB)
     adminDb: any;
+    // Optional master gateway key for DO-backed org databases (required if using DO)
+    gatewayKey?: string;
 }
 
 export class KuratchiAuth {
 private kuratchiD1: KuratchiD1;
+private kuratchiDO: KuratchiDO;
 private kuratchiKV: KuratchiKV;
 private kuratchiR2: KuratchiR2;
 private kuratchiQueues: KuratchiQueues;
@@ -503,6 +512,12 @@ public signIn: {
         
         // Initialize KuratchiD1 instance
         this.kuratchiD1 = new KuratchiD1({
+            apiToken: config.apiToken,
+            accountId: config.accountId,
+            workersSubdomain: config.workersSubdomain
+        });
+        // Initialize KuratchiDO instance (available for DO-backed orgs)
+        this.kuratchiDO = new KuratchiDO({
             apiToken: config.apiToken,
             accountId: config.accountId,
             workersSubdomain: config.workersSubdomain
@@ -673,21 +688,39 @@ public signIn: {
                 }
                 const effectiveToken = (valid as any).token as string;
 
-                // Get client for organization database
-                const organizationClient = this.kuratchiD1.getClient({
-                    databaseName,
-                    apiToken: effectiveToken!
-                });
-                
+                // Decide engine based on presence of dbuuid: if present => D1, else assume DO
+                const isD1 = !!(dbRecord as any).dbuuid;
+                let exec: (sql: string, params?: any[]) => Promise<any>;
+                if (isD1) {
+                    const organizationClient = this.kuratchiD1.getClient({
+                        databaseName,
+                        apiToken: effectiveToken!
+                    });
+                    exec = (sql: string, params?: any[]) => organizationClient.query(sql, params || []);
+                } else {
+                    if (!this.config.gatewayKey) {
+                        throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
+                    }
+                    const doClient = this.kuratchiDO.getClient({
+                        databaseName,
+                        dbToken: effectiveToken!,
+                        gatewayKey: this.config.gatewayKey
+                    });
+                    exec = (sql: string, params?: any[]) => doClient.query(sql, params || []);
+                }
+
                 // Build runtime ORM client for organization DB
                 const orgSchema = normalizeSchema(organizationSchemaDsl as any);
                 const orgClient = createClientFromJsonSchema(
-                    (sql, params) => organizationClient.query(sql, params || []),
+                    (sql, params) => exec(sql, params),
                     orgSchema as any
                 ) as Record<string, TableApi>;
                 const authService = new AuthService(
                     orgClient as any,
-                    this.buildEnv(organizationClient)
+                    this.buildEnv(isD1
+                        ? this.kuratchiD1.getClient({ databaseName, apiToken: effectiveToken! })
+                        : this.kuratchiDO.getClient({ databaseName, dbToken: effectiveToken!, gatewayKey: this.config.gatewayKey! })
+                    )
                 );
                 
                 this.organizationServices.set(organizationId, authService);
@@ -712,59 +745,163 @@ public signIn: {
                 kvTitle?: string;
                 r2BucketName?: string;
                 queueName?: string;
+                // Engine selection
+                d1?: boolean; // default true
+                do?: boolean; // if true, uses Durable Objects engine
+                // Optional gateway key for DO; if omitted, uses config.gatewayKey
+                gatewayKey?: string;
             }
         ) {
-            // 1) Create organization row (whitelist allowed columns)
-            const orgId = crypto.randomUUID();
+            // 1) Get or create organization row idempotently (whitelist allowed columns)
             const src: any = data || {};
-            // Pre-insert uniqueness check for contact email (better DX)
-            if (src.email) {
+            let org: any | null = null;
+            // Prefer matching by slug for idempotency if provided
+            if (src.organizationSlug) {
                 try {
                     const existing = await (this.adminDb as any).organizations
-                        .where({ email: src.email, deleted_at: { is: null } })
+                        .where({ organizationSlug: src.organizationSlug, deleted_at: { is: null } } as any)
                         .findFirst();
-                    if ((existing as any)?.data) {
-                        throw new Error('organization_email_already_exists');
+                    org = (existing as any)?.data || null;
+                } catch {}
+            }
+            // If not found by slug, optionally match by email (soft heuristic)
+            if (!org && src.email) {
+                try {
+                    const existing = await (this.adminDb as any).organizations
+                        .where({ email: src.email, deleted_at: { is: null } } as any)
+                        .findFirst();
+                    org = (existing as any)?.data || null;
+                } catch {}
+            }
+            if (!org) {
+                // Pre-insert uniqueness check for contact email (better DX)
+                if (src.email) {
+                    try {
+                        const existing = await (this.adminDb as any).organizations
+                            .where({ email: src.email, deleted_at: { is: null } })
+                            .findFirst();
+                        if ((existing as any)?.data) {
+                            throw new Error('organization_email_already_exists');
+                        }
+                    } catch (err) {
+                        if (err instanceof Error && err.message.includes('already exists')) throw err;
                     }
-                } catch (err) {
-                    // If the ORM throws for any reason besides not found, rethrow
-                    if (err instanceof Error && err.message.includes('already exists')) throw err;
-                    // Otherwise, continue; the DB-level UNIQUE constraint will still enforce correctness
+                }
+                const orgId = crypto.randomUUID();
+                const orgValues: any = {
+                    id: orgId,
+                    organizationName: src.organizationName,
+                    organizationSlug: src.organizationSlug,
+                    email: src.email,
+                    status: src.status ?? 'active',
+                };
+                try {
+                    await (this.adminDb as any).organizations.insert(orgValues);
+                    org = orgValues;
+                } catch (e) {
+                    // Handle race or prior creation: fetch by slug (preferred) or email
+                    if (src.organizationSlug) {
+                        const existing = await (this.adminDb as any).organizations
+                            .where({ organizationSlug: src.organizationSlug, deleted_at: { is: null } } as any)
+                            .findFirst();
+                        org = (existing as any)?.data || null;
+                    }
+                    if (!org && src.email) {
+                        const existing = await (this.adminDb as any).organizations
+                            .where({ email: src.email, deleted_at: { is: null } } as any)
+                            .findFirst();
+                        org = (existing as any)?.data || null;
+                    }
+                    if (!org) throw e;
                 }
             }
-            const orgValues: any = {
-                id: orgId,
-                organizationName: src.organizationName,
-                organizationSlug: src.organizationSlug,
-                email: src.email,
-                status: src.status ?? 'active',
-            };
-            await (this.adminDb as any).organizations.insert(orgValues);
-            const org = orgValues;
 
-            // 2) Provision D1 database for this org
-            const dbName = (org as any).organizationSlug || (org as any).organizationName || `org-${orgId}`;
-            const { database, apiToken } = await this.kuratchiD1.createDatabase(String(dbName));
+            // 2) Determine engine and provision database idempotently
+            const dbName = (org as any).organizationSlug || (org as any).organizationName || `org-${(org as any).id}`;
+            const useDO = options?.do === true;
+            const useD1 = options?.d1 !== false && !useDO; // default D1 unless DO explicitly selected
 
-            // 3) Persist database metadata
+            // Insert database row first to enforce name uniqueness and enable idempotency
+            let dbRow: any | null = null;
             const dbId = crypto.randomUUID();
-            const dbRow: any = {
-                id: dbId,
-                name: database?.name ?? String(dbName),
-                dbuuid: (database as any)?.uuid ?? (database as any)?.id,
-                organizationId: org.id
-            };
-            await (this.adminDb as any).databases.insert(dbRow);
+            try {
+                await (this.adminDb as any).databases.insert({
+                    id: dbId,
+                    name: String(dbName),
+                    dbuuid: useD1 ? '' : null,
+                    organizationId: org.id
+                });
+                const sel = await (this.adminDb as any).databases.where({ id: dbId } as any).findFirst();
+                dbRow = (sel as any)?.data || { id: dbId, name: String(dbName), dbuuid: useD1 ? '' : null, organizationId: org.id };
+            } catch (e: any) {
+                // If name is unique and already exists, fetch it
+                const existing = await (this.adminDb as any).databases.where({ name: String(dbName), deleted_at: { is: null } } as any).findFirst();
+                dbRow = (existing as any)?.data;
+                if (!dbRow) throw e;
+            }
 
-            // 4) Store API token for the org DB
-            const tokenRow: any = {
-                id: crypto.randomUUID(),
-                token: apiToken,
-                name: 'primary',
-                databaseId: dbRow.id,
-                revoked: false
-            };
-            await (this.adminDb as any).dbApiTokens.insert(tokenRow);
+            // Check for existing valid API token to avoid re-provisioning
+            let apiToken: string | null = null;
+            let tokenRow: any | null = null;
+            try {
+                const tokenRes = await (this.adminDb as any).dbApiTokens
+                    .where({ databaseId: dbRow.id, deleted_at: { is: null }, revoked: false } as any)
+                    .orderBy({ created_at: 'desc' })
+                    .findMany();
+                const tokens = ((tokenRes as any)?.data ?? []) as any[];
+                const now = Date.now();
+                const notExpired = (exp: any) => {
+                    if (!exp) return true;
+                    if (exp instanceof Date) return exp.getTime() > now;
+                    if (typeof exp === 'number') return exp > now;
+                    const t = new Date(exp as any).getTime();
+                    return Number.isNaN(t) ? true : t > now;
+                };
+                const valid = tokens.find((t) => notExpired((t as any).expires));
+                if (valid) {
+                    apiToken = (valid as any).token;
+                    tokenRow = valid;
+                }
+            } catch {}
+
+            let database: any = null;
+            let provisioned = false;
+
+            if (!apiToken) {
+                if (useDO) {
+                    const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
+                    if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create DO-backed database');
+                    const res = await this.kuratchiDO.createDatabase({
+                        databaseName: String(dbName),
+                        gatewayKey,
+                        migrate: options?.migrate !== false,
+                        schema: organizationSchemaDsl as any
+                    });
+                    apiToken = res.token;
+                    database = { name: res.databaseName };
+                    provisioned = true;
+                    // Ensure dbuuid remains null/empty for DO to signal engine type
+                    await (this.adminDb as any).databases.update({ id: dbRow.id } as any, { name: String(dbName) } as any);
+                } else {
+                    // D1 path (default)
+                    const created = await this.kuratchiD1.createDatabase(String(dbName));
+                    database = created.database;
+                    apiToken = created.apiToken;
+                    provisioned = true;
+                    // Update db row with real D1 uuid
+                    await (this.adminDb as any).databases.update({ id: dbRow.id } as any, { name: database?.name ?? String(dbName), dbuuid: (database as any)?.uuid ?? (database as any)?.id } as any);
+                }
+
+                // Persist API token for the org DB
+                tokenRow = {
+                    id: crypto.randomUUID(),
+                    token: apiToken!,
+                    name: 'primary',
+                    databaseId: dbRow.id,
+                    revoked: false
+                };
+                await (this.adminDb as any).dbApiTokens.insert(tokenRow);
+            }
 
             // 5) Optionally provision Cloudflare resources (KV, R2, Queues) and persist admin records
             const doKV = options?.provisionKV === true;
@@ -830,19 +967,23 @@ public signIn: {
             const migrationsDir = options?.migrationsDir || 'org';
             let migrationStrategy: 'vite' | 'skipped' | 'failed' = 'skipped';
             if (shouldMigrate) {
-                try {
-                    // Unified runtime path: Vite-based loader only
-                    await this.kuratchiD1.database({ databaseName: String(database?.name || dbName), apiToken })
-                        .migrate(migrationsDir);
-                    migrationStrategy = 'vite';
-                } catch {
-                    migrationStrategy = 'failed';
+                if (useD1) {
+                    try {
+                        await this.kuratchiD1.database({ databaseName: String((database?.name || dbRow.name || dbName)), apiToken: apiToken! })
+                            .migrate(migrationsDir);
+                        migrationStrategy = 'vite';
+                    } catch {
+                        migrationStrategy = 'failed';
+                    }
+                } else {
+                    // DO path: initial migration handled during createDatabase when migrate:true
+                    migrationStrategy = provisioned ? 'vite' : 'skipped';
                 }
             }
 
             // 7) Seed initial organization user and create a session
             // Build an organization-scoped AuthService using the just-provisioned DB
-            const orgAuth = await this.getOrganizationAuthService(orgId);
+            const orgAuth = await this.getOrganizationAuthService((org as any).id);
             let createdUser: any = null;
             let sessionCookie: string | null = null;
             if (data?.email) {
@@ -858,14 +999,24 @@ public signIn: {
                 sessionCookie = await orgAuth.upsertSession({ userId: createdUser.id });
             }
 
-            // 8) Create OrganizationUsers mapping in admin DB
+            // 8) Create OrganizationUsers mapping in admin DB (idempotent)
             if (data?.email) {
-                await (this.adminDb as any).organizationUsers.insert({
-                    id: crypto.randomUUID(),
-                    email: data.email,
-                    organizationId: org.id,
-                    organizationSlug: (org as any).organizationSlug || null
-                });
+                try {
+                    // Check if mapping already exists
+                    const existing = await (this.adminDb as any).organizationUsers
+                        .where({ email: data.email, organizationId: org.id, deleted_at: { is: null } } as any)
+                        .findFirst();
+                    if (!(existing as any)?.data) {
+                        await (this.adminDb as any).organizationUsers.insert({
+                            id: crypto.randomUUID(),
+                            email: data.email,
+                            organizationId: org.id,
+                            organizationSlug: (org as any).organizationSlug || null
+                        });
+                    }
+                } catch {
+                    // Best-effort; ignore duplicate errors
+                }
             }
 
             return {

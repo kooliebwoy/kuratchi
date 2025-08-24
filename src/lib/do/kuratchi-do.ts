@@ -3,12 +3,21 @@ import { DEFAULT_DO_WORKER_SCRIPT } from './worker-template.js';
 import { KuratchiDoHttpClient } from './internal-http-client.js';
 import { createSignedDbToken } from './token.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
+import type { SchemaDsl } from '../schema/types.js';
+import { normalizeSchema } from '../schema/normalize.js';
 import { generateInitialMigrationBundle } from '../orm/migrator.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
 // Convenience re-exports for normalized standard schemas
 export { adminSchema, organizationSchema } from '../index.js';
 
-// Note: DO client requires explicit DatabaseSchema. Typed alias clients have been removed.
+// Note: DO client accepts DatabaseSchema or SchemaDsl (normalized internally). String aliases are not supported.
+
+function ensureDbSchema(schema: DatabaseSchema | SchemaDsl): DatabaseSchema {
+  // Heuristic: DatabaseSchema has tables: Array; SchemaDsl has tables: object
+  const t: any = (schema as any)?.tables;
+  if (Array.isArray(t)) return schema as DatabaseSchema;
+  return normalizeSchema(schema as SchemaDsl);
+}
 
 export interface DOOptions {
   apiToken: string;
@@ -39,7 +48,7 @@ export class KuratchiDO {
    * Provision a logical DO-backed database and issue a per-database token.
    * Persistence of this token should be handled by your admin flow (e.g., store in Admin DB).
    */
-  async createDatabase(opts: { databaseName: string; gatewayKey: string; migrate?: boolean; schema?: DatabaseSchema }): Promise<{ databaseName: string; token: string }> {
+  async createDatabase(opts: { databaseName: string; gatewayKey: string; migrate?: boolean; schema?: DatabaseSchema | SchemaDsl }): Promise<{ databaseName: string; token: string }> {
     const { databaseName, gatewayKey } = opts;
     if (!databaseName) throw new Error('createDatabase requires databaseName');
     if (!gatewayKey) throw new Error('createDatabase requires gatewayKey');
@@ -59,11 +68,12 @@ export class KuratchiDO {
     
     // Optional: apply initial schema migration (single-bundle) when requested
     if (opts.migrate) {
-      // DO runtime requires a concrete DatabaseSchema object (TS), not a string alias
+      // DO runtime requires a concrete schema; accept DSL and normalize it
       if (!opts.schema) {
-        throw new Error('KuratchiDO.createDatabase: migrate:true requires a TS DatabaseSchema object.');
+        throw new Error('KuratchiDO.createDatabase: migrate:true requires a schema (DatabaseSchema or SchemaDsl).');
       }
-      const { migrations } = generateInitialMigrationBundle(opts.schema);
+      const normalized = ensureDbSchema(opts.schema);
+      const { migrations } = generateInitialMigrationBundle(normalized);
       const initialSql = await migrations.m0001();
       const client = this.getClient({ databaseName, dbToken: token, gatewayKey });
       // Split into statements for atomic batch execution
@@ -129,21 +139,23 @@ export class KuratchiDO {
   // Top-level sugar: property client with explicit TS DatabaseSchema only
   client(
     cfg: { databaseName: string; dbToken: string; gatewayKey: string },
-    options: { schema: DatabaseSchema }
+    options: { schema: DatabaseSchema | SchemaDsl }
   ): Record<string, TableApi> {
     const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-    if (!options?.schema) throw new Error('KuratchiDO.client requires a TS DatabaseSchema');
-    return createClientFromJsonSchema(exec, options.schema);
+    if (!options?.schema) throw new Error('KuratchiDO.client requires a schema (DatabaseSchema or SchemaDsl)');
+    const normalized = ensureDbSchema(options.schema);
+    return createClientFromJsonSchema(exec, normalized);
   }
 
   database(cfg: { databaseName: string; dbToken: string; gatewayKey: string }) {
     return {
       query: <T>(sql: string, params: any[] = []) => this.getClient(cfg as any).query<T>(sql, params),
       getClient: () => this.getClient(cfg as any),
-      client: (options: { schema: DatabaseSchema }): Record<string, TableApi> => {
+      client: (options: { schema: DatabaseSchema | SchemaDsl }): Record<string, TableApi> => {
         const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-        if (!options?.schema) throw new Error('KuratchiDO.database().client requires a TS DatabaseSchema');
-        return createClientFromJsonSchema(exec, options.schema);
+        if (!options?.schema) throw new Error('KuratchiDO.database().client requires a schema (DatabaseSchema or SchemaDsl)');
+        const normalized = ensureDbSchema(options.schema);
+        return createClientFromJsonSchema(exec, normalized);
       },
     };
   }

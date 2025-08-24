@@ -27,6 +27,8 @@ export interface KuratchiOptions {
         authSecret: string;
         // Bound D1 database for admin (e.g., platform.env.DB)
         adminDb: any;
+        // Optional: master gateway key for DO-backed org databases
+        gatewayKey?: string;
     };
 }
 

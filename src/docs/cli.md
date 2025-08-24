@@ -5,7 +5,7 @@ Provision and manage the Kuratchi Admin D1 database, and generate/apply migratio
 - Binary: `kuratchi` (see `package.json` → `bin`)
 - Output: always JSON to stdout
 - Progress: spinner on TTY by default; pass `--no-spinner` to disable
-- Zero‑config discovery: `kuratchi.config.json|.mjs|.js` or `package.json` → `{ "kuratchi": { accountId, apiToken, workersSubdomain } }`
+- Zero‑config discovery: `kuratchi.config.json|.mjs|.js` or `package.json` → `{ "kuratchi": { accountId, apiToken, workersSubdomain, adminSchemaFile, organizationSchemaFile } }`
 
 ## Install / Build
 
@@ -38,14 +38,16 @@ Keep tokens secret. Do not expose them in client bundles or commit them.
 }
 ```
 
-For ESM config, you can export default:
+For ESM config, you can export default (include schema file paths for auto‑discovery):
 
 ```js
 // kuratchi.config.mjs
 export default {
   accountId: "...",
   apiToken: "...",
-  workersSubdomain: "example.workers.dev"
+  workersSubdomain: "example.workers.dev",
+  adminSchemaFile: './src/lib/schema/admin.ts',
+  organizationSchemaFile: './src/lib/schema/organization.ts'
 };
 ```
 

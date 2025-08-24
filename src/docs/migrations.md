@@ -4,8 +4,8 @@ This guide shows how to create and apply database migrations with Kuratchi.
 
 > See the CLI reference: ./cli.md
 
-It covers a zero‑friction workflow where you only define a JSON schema and run the CLI:
-- Generate initial and incremental bundles (org/admin) from JSON schema
+It covers a zero‑friction workflow where you only define a TypeScript/JavaScript schema DSL and run the CLI:
+- Generate initial and incremental bundles (org/admin) from your typed schema DSL
 - Apply migrations at runtime with `db.migrate('<dir>')` (Vite/SvelteKit)
 - What the CLI generates under the hood (FYI only)
 - Troubleshooting and reference
@@ -22,6 +22,9 @@ Under the hood, the on‑disk layout looks like this (at repo root so Vite can g
 ```
 migrations-<dir>/
   meta/_journal.json     # { entries: [{ idx: number, tag: string }, ...] }
+  schema/                # normalized schema cache + temp when using TS/JS schema
+    <kind>.json          # normalized schema snapshot (for convenience)
+    .tmp/                # transient transpile outputs when schema is .ts
   <tag>.sql              # One file per journal entry
 ```
 
@@ -32,34 +35,50 @@ Notes:
 
 ## Generate migrations from schema (no manual files)
 
-Prerequisite: place your schema JSONs, e.g.:
-- `src/lib/schema-json/organization.json`
-- `src/lib/schema-json/admin.json`
+Prerequisite: define your schema DSL (TypeScript recommended):
+- `src/lib/schema/organization.ts` exporting `organizationSchemaDsl`
+- `src/lib/schema/admin.ts` exporting `adminSchemaDsl`
+
+Recommended: configure paths in `kuratchi.config.mjs` so the CLI can auto‑discover them:
+
+```js
+// kuratchi.config.mjs
+export default {
+  // ... other settings ...
+  adminSchemaFile: './src/lib/schema/admin.ts',
+  organizationSchemaFile: './src/lib/schema/organization.ts',
+};
+```
 
 The CLI will generate or update bundles for you and keep a journal.
 
 Notes:
-- Defaults: `kuratchi org generate-migrations` uses `organization.json` -> `./migrations-org`. `kuratchi admin generate-migrations` uses `admin.json` -> `./migrations-admin`.
-- The CLI auto-creates directories and maintains both `meta/_journal.json` and `meta/_schema.json` (snapshot for diffs).
+- Defaults: `kuratchi org generate-migrations` uses your configured `organizationSchemaFile` (or common defaults) -> `./migrations-org`. `kuratchi admin generate-migrations` uses `adminSchemaFile` -> `./migrations-admin`.
+- The CLI auto-creates directories and maintains both `meta/_journal.json` (diff baseline) and writes a convenience normalized schema cache in `schema/<kind>.json`.
+- When your schema file is `.ts`, a transient transpile file is emitted under `migrations-*/schema/.tmp/` during generation.
 - Working from this repo? Run `npm run build` before using the CLI so dist files are available.
 
 ### Organization DB — initial bundle (org alias)
 
 ```sh
-kuratchi org generate-migrations \
-  --schema-json-file ./src/lib/schema-json/organization.json \
-  --tag initial
+kuratchi org generate-migrations --tag initial
 ```
 
 ### Organization DB — incremental diff (after editing the schema)
 
 ```sh
-kuratchi org generate-migrations \
-  --schema-json-file ./src/lib/schema-json/organization.json \
-  --tag add-sessions
+kuratchi org generate-migrations --tag add-sessions
 ```
 
-Snapshotting: the generator automatically stores the latest schema at `migrations-org/meta/_schema.json` and will diff from it next time. You can override the baseline with `--from-schema-json-file <path>` if needed.
+Snapshotting: the generator automatically stores the latest schema at `migrations-org/meta/_schema.json` and will diff from it next time. You can override the baseline with `--from-schema-file <path>` if needed (pass a module that exports the schema DSL).
+
+Override schema file explicitly (optional):
+
+```sh
+kuratchi org generate-migrations \
+  --schema-file ./src/lib/schema/organization.ts \
+  --tag add-sessions
+```
 
 ## Apply at runtime (Vite/SvelteKit)
 
@@ -102,14 +121,11 @@ Re-run `await db.migrate('org')` at runtime; only the new tag runs.
 
 You can fully manage the Admin DB with the CLI:
 
-### Generate from JSON schema (recommended)
+### Generate from schema DSL (recommended)
 
 ```sh
-# Generate or update the admin bundle from JSON schema
-kuratchi admin generate-migrations \
-  --schema-json-file ./src/lib/schema-json/admin.json \
-  --out-dir ./migrations-admin \
-  --tag initial
+# Generate or update the admin bundle from your configured schema DSL
+kuratchi admin generate-migrations --out-dir ./migrations-admin --tag initial
 
 # Apply the bundle to the Admin DB (reads from filesystem)
 kuratchi admin migrate \
@@ -118,7 +134,7 @@ kuratchi admin migrate \
   --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"
 ```
 
-For diffs, add `--from-schema-json-file <previous.json>`.
+For diffs, add `--from-schema-file <path-to-schema-module>`.
 
 ### Use an existing filesystem bundle (optional)
 
@@ -154,4 +170,4 @@ kuratchi admin migrate \
 - Vite loader: `src/lib/orm/loader.ts` uses `import.meta.glob('...')`
 - Runtime executor: `src/lib/d1/internal-http-client.ts#migrate()`
 - CLI: `bin/kuratchi.mjs` (commands: `org generate-migrations`, `admin generate-migrations`, `admin migrate`)
-- Snapshotting: `meta/_schema.json` is updated on each generation and used as the diff baseline when `--from-schema-json-file` is not provided.
+- Snapshotting: `meta/_schema.json` is updated on each generation and used as the diff baseline when `--from-schema-file` is not provided. A normalized schema cache is also written to `migrations-*/schema/<kind>.json` for convenience.
