@@ -190,17 +190,37 @@ export class CloudflareClient {
     }
 
     /** Upload a Workers script (module syntax) with provided bindings */
-    async uploadWorkerModule(scriptName: string, workerScript: string, bindings: Array<unknown>): Promise<CloudflareAPIResponse<any>> {
+    async uploadWorkerModule(scriptName: string, workerScript: string, bindings: Array<unknown>, options?: { skipDoMigrations?: boolean }): Promise<CloudflareAPIResponse<any>> {
         const form = new FormData();
         const mainModule = 'worker.js';
         form.append(mainModule, new File([workerScript], mainModule, { type: 'application/javascript+module' }));
-        form.append('metadata', JSON.stringify({
-            bindings,
+        
+        // Check if there are any Durable Object bindings to extract class names
+        const durableObjectClasses: string[] = [];
+        const processedBindings = bindings.map((binding: any) => {
+            if (binding.type === 'durable_object_namespace' && binding.class_name) {
+                // Store the class name for SQLite storage migrations
+                durableObjectClasses.push(binding.class_name);
+            }
+            return binding;
+        });
+        
+        const metadata: any = {
+            bindings: processedBindings,
             main_module: mainModule,
             compatibility_date: '2025-08-17',
             placement: { mode: 'smart' },
             compatibility_flags: ['nodejs_compat']
-        }));
+        };
+        
+        // Add migrations for Durable Object classes if any exist and not explicitly skipped
+        if (durableObjectClasses.length > 0 && !options?.skipDoMigrations) {
+            metadata.migrations = {
+                new_sqlite_classes: durableObjectClasses
+            };
+        }
+        
+        form.append('metadata', JSON.stringify(metadata));
 
         const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}`, {
             method: 'PUT',

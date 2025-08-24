@@ -78,21 +78,41 @@ export class KuratchiDO {
 
     // Issue a signed per-database API token (store in Admin DB)
     const token = await createSignedDbToken(databaseName, gatewayKey);
+    
+    // Best-effort: wait for the worker endpoint to become responsive
+    try {
+      await this.waitForWorkerEndpoint(databaseName, token, gatewayKey);
+    } catch {
+      // Non-fatal; queries may still succeed shortly after
+    }
+    
     // NOTE: Persist (databaseName, token) in your Admin DB in your provisioning flow.
     return { databaseName, token };
   }
 
   // Deploy or update the internal DO worker that hosts the KuratchiDoInternal durable object.
   private async ensureWorker(apiKey: string) {
+    if (!apiKey) throw new Error('ensureWorker(apiKey) requires an API key');
+    
     const bindings: any[] = [
+      // Secret binding for gateway key
+      { type: 'secret_text', name: 'API_KEY', text: apiKey },
       // Durable Object namespace binding exposed to the script as env.DO
       { type: 'durable_object_namespace', name: 'DO', class_name: 'KuratchiDoInternal' },
     ];
-    if (!apiKey) throw new Error('ensureWorker(apiKey) requires an API key');
-    bindings.push({ type: 'secret_text', name: 'API_KEY', text: apiKey });
 
-    // Upload module with class + fetch handler
-    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_DO_WORKER_SCRIPT, bindings);
+    // Try to update existing worker first, then create if it doesn't exist
+    try {
+      await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_DO_WORKER_SCRIPT, bindings);
+    } catch (error: any) {
+      // If it's a DO class migration error, try without migrations
+      if (error.message?.includes('new-class migration') || error.message?.includes('already depended on')) {
+        await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_DO_WORKER_SCRIPT, bindings, { skipDoMigrations: true });
+      } else {
+        throw error;
+      }
+    }
+    
     await this.cf.enableWorkerSubdomain(this.scriptName);
   }
 
@@ -131,6 +151,29 @@ export class KuratchiDO {
         return createClientFromJsonSchema(exec, options.schema);
       },
     };
+  }
+
+  // Ensure Worker endpoint is reachable before returning from createDatabase
+  private async waitForWorkerEndpoint(databaseName: string, dbToken: string, gatewayKey: string): Promise<boolean> {
+    const client = this.getClient({ databaseName, dbToken, gatewayKey });
+    const deadline = Date.now() + 30_000; // up to 30s
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    
+    while (true) {
+      try {
+        const res: any = await client.query('SELECT 1 as test');
+        // Check if query succeeded
+        if (res && res.success === true) {
+          return true;
+        }
+        if (Date.now() > deadline) break;
+        await sleep(2000); // Wait 2s between attempts
+      } catch {
+        if (Date.now() > deadline) break;
+        await sleep(2000);
+      }
+    }
+    return false;
   }
 
   // Redact internals on logs

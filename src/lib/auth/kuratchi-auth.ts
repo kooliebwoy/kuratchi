@@ -5,8 +5,9 @@ import { KuratchiQueues } from '../queues/kuratchi-queues.js';
 import { AuthService } from './AuthService.js';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { parseSessionCookie, signState, verifyState } from './utils.js';
-import adminJsonSchema from '../schema-json/admin.json' with { type: 'json' };
-import organizationJsonSchema from '../schema-json/organization.json' with { type: 'json' };
+import { adminSchemaDsl } from '../schema/admin.js';
+import { organizationSchemaDsl } from '../schema/organization.js';
+import { normalizeSchema } from '../schema/normalize.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
 import { KuratchiHttpClient } from '../d1/internal-http-client.js';
 
@@ -527,9 +528,10 @@ public signIn: {
         const admin = config.adminDb as any;
         const isKuratchiClient = !!(admin && typeof admin.query === 'function');
         if (isKuratchiClient) {
+            const adminSchema = normalizeSchema(adminSchemaDsl as any);
             this.adminDb = createClientFromJsonSchema(
                 (sql, params) => admin.query(sql, params || []),
-                adminJsonSchema as any
+                adminSchema as any
             ) as Record<string, TableApi>;
         } else {
             throw new Error('Unsupported adminDb: expected KuratchiHttpClient');
@@ -678,9 +680,10 @@ public signIn: {
                 });
                 
                 // Build runtime ORM client for organization DB
+                const orgSchema = normalizeSchema(organizationSchemaDsl as any);
                 const orgClient = createClientFromJsonSchema(
                     (sql, params) => organizationClient.query(sql, params || []),
-                    organizationJsonSchema as any
+                    orgSchema as any
                 ) as Record<string, TableApi>;
                 const authService = new AuthService(
                     orgClient as any,

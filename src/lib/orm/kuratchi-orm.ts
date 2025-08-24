@@ -29,6 +29,8 @@ export type QueryResult<T = any> = {
 
 export type SqlExecutor = (sql: string, params?: any[]) => Promise<QueryResult<any>>;
 
+export type SqlCondition = { query: string; params?: any[] };
+
 function isObject(v: any): v is Record<string, any> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
@@ -199,14 +201,36 @@ class QueryBuilder<Row = any> {
     return this;
   }
 
-  whereRaw(tpl: TemplateStringsArray, ...vals: any[]): this {
+  sql(condition: SqlCondition): this {
     if (this.whereGroups.length === 0) {
       this.whereGroups.push({});
       this.rawWhereGroups.push([]);
     }
     const idx = this.whereGroups.length - 1;
-    const sql = tpl.reduce((acc, cur, i) => acc + cur + (i < vals.length ? '?' : ''), '');
-    this.rawWhereGroups[idx].push({ sql: sql.trim(), params: vals ?? [] });
+    const query = String(condition?.query ?? '').trim();
+    const params = Array.isArray(condition?.params) ? condition!.params! : [];
+
+    // Guards
+    if (query.includes('${') || /\$\{.*\}/.test(query)) {
+      throw new Error('Potential SQL injection detected. Use ? placeholders and params array.');
+    }
+    if (/["'`]\s*\+|concat\s*\(/i.test(query)) {
+      throw new Error('String concatenation detected in SQL. Use ? placeholders instead.');
+    }
+    if (params.length === 0) {
+      if (/\b\d{10,}\b/.test(query)) {
+        console.warn('⚠️  Hardcoded numeric values detected. Consider using ? and params.');
+      }
+      if ((/['"][^'\"]*['\"]/).test(query) && !(/^[^'\"]*['\"][a-zA-Z_][a-zA-Z0-9_]*['\"][^'\"]*$/.test(query))) {
+        console.warn('⚠️  Hardcoded string values detected. Consider using ? and params.');
+      }
+    }
+    if (/;\s*(drop|delete|insert|update|create)\s+/i.test(query)) {
+      throw new Error('Potentially dangerous SQL detected. Multiple statements not allowed.');
+    }
+
+    if (!query) return this;
+    this.rawWhereGroups[idx].push({ sql: query, params });
     return this;
   }
 
@@ -374,7 +398,7 @@ export function createRuntimeOrm(execute: SqlExecutor) {
       offset(n: number) { return builderFactory().offset(n); },
       include(spec: IncludeSpec) { return builderFactory().include(spec); },
       select(cols: string[]) { return builderFactory().select(cols); },
-      whereRaw(tpl: TemplateStringsArray, ...vals: any[]) { return builderFactory().whereRaw(tpl, ...vals); },
+      sql(condition: SqlCondition) { return builderFactory().sql(condition); },
     } as TableApi<Row> as any;
   }
 
@@ -404,7 +428,7 @@ export interface TableApi<Row = any> {
   offset(n: number): TableQuery<Row>;
   include(spec: IncludeSpec): TableQuery<Row>;
   select(cols: string[]): TableQuery<Row>;
-  whereRaw(sql: TemplateStringsArray, ...params: any[]): TableQuery<Row>;
+  sql(condition: SqlCondition): TableQuery<Row>;
 }
 
 export interface TableQuery<Row = any> {
@@ -415,7 +439,7 @@ export interface TableQuery<Row = any> {
   offset(n: number): TableQuery<Row>;
   include(spec: IncludeSpec): TableQuery<Row>;
   select(cols: string[]): TableQuery<Row>;
-  whereRaw(sql: TemplateStringsArray, ...params: any[]): TableQuery<Row>;
+  sql(condition: SqlCondition): TableQuery<Row>;
   findMany(): Promise<QueryResult<Row[]>>;
   findFirst(): Promise<QueryResult<Row | undefined>>;
 }

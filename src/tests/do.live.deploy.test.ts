@@ -56,8 +56,31 @@ if (!shouldRun) {
     console.log(`[LIVE] Gateway Key: ${GATEWAY_KEY}`);
 
     const db = doSvc.database({ databaseName, dbToken: token, gatewayKey: GATEWAY_KEY! });
-    const res = await db.query('select 1 as ok');
+    
+    // Poll for worker readiness before testing queries
+    // eslint-disable-next-line no-console
+    console.log('[LIVE] Waiting for worker to become ready...');
+    
+    const deadline = Date.now() + 30_000; // 30s max wait
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    
+    let res;
+    while (Date.now() < deadline) {
+      res = await db.query('SELECT 1 as ok');
+      if (res.success) {
+        // eslint-disable-next-line no-console
+        console.log('[LIVE] Worker is ready!');
+        break;
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[LIVE] Worker not ready yet, retrying... (${res.error?.slice(0, 100)})`);
+      await sleep(2000); // Wait 2s between attempts
+    }
 
-    expect(res.success).toBe(true);
+    // Debug the final response
+    // eslint-disable-next-line no-console
+    console.log('[LIVE] Final Query Response:', JSON.stringify(res, null, 2));
+
+    expect(res!.success).toBe(true);
   }, 120_000);
 });

@@ -18,26 +18,103 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Generate migration SQL and journal from a JSON schema, with automatic schema snapshotting.
-// If --from-schema-json-file is not provided, we will diff from <out-dir>/meta/_schema.json when present;
+// Utilities
+const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
+const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
+
+// Try to import Typescript from the project devDependencies (optional)
+async function tryImportTypescript() {
+  try {
+    // typescript is listed in devDependencies; if not installed, this throws
+    const ts = await import('typescript');
+    return ts;
+  } catch {
+    return null;
+  }
+}
+
+// Transpile a .ts file to a temporary ESM module using the project's TypeScript
+async function transpileTsFileToEsmTemp(tsPath) {
+  const ts = await tryImportTypescript();
+  if (!ts) return null;
+  const src = fs.readFileSync(tsPath, 'utf8');
+  const transpiled = ts.transpileModule(src, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2020,
+      module: ts.ModuleKind.ESNext,
+      jsx: ts.JsxEmit.Preserve,
+      sourceMap: false,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    },
+    fileName: tsPath,
+    reportDiagnostics: false,
+  });
+  const tmpRoot = path.join(process.cwd(), '.kuratchi-tmp');
+  ensureDir(tmpRoot);
+  const outFile = path.join(tmpRoot, `schema-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+  fs.writeFileSync(outFile, transpiled.outputText, 'utf8');
+  return outFile;
+}
+
+// Resolve a schema path to an importable module path, handling .ts neighbors or transpilation
+async function resolveImportableSchemaPath(schemaPath) {
+  if (!schemaPath) return null;
+  // If TS, prefer adjacent compiled outputs
+  if (schemaPath.endsWith('.ts')) {
+    const tsNeighbors = [
+      schemaPath.replace(/\.ts$/, '.mjs'),
+      schemaPath.replace(/\.ts$/, '.js'),
+      schemaPath.replace(path.join('src', path.sep), path.join('dist', path.sep)).replace(/\.ts$/, '.js'),
+    ];
+    for (const c of tsNeighbors) { if (fs.existsSync(c)) return c; }
+    // As a last resort, transpile using project's typescript
+    const temp = await transpileTsFileToEsmTemp(schemaPath);
+    if (temp) return temp;
+    return null;
+  }
+  return schemaPath;
+}
+
+// Load and normalize the schema DSL. Optionally caches normalized JSON under kuratchi-schema/<kind>.json
+async function loadNormalizedSchema({ schemaPath, kind, orm }) {
+  const importable = await resolveImportableSchemaPath(schemaPath);
+  if (!importable || !fs.existsSync(importable)) throw new Error(`Schema file not found or not importable: ${schemaPath}`);
+  const mod = await import(pathToFileURL(importable).href);
+  const dsl = (kind === 'admin' ? (mod.adminSchemaDsl || mod.schema) : (mod.organizationSchemaDsl || mod.schema)) || mod.default || mod;
+  if (!dsl || typeof dsl !== 'object' || !dsl.tables) throw new Error('Schema module must export a DSL with { name, version, tables }');
+  const toSchema = orm.normalizeSchema(dsl);
+  const cacheDir = path.join(process.cwd(), 'kuratchi-schema');
+  ensureDir(cacheDir);
+  const cacheFile = path.join(cacheDir, `${kind}.json`);
+  try {
+    fs.writeFileSync(cacheFile, JSON.stringify(toSchema, null, 2), 'utf8');
+  } catch {}
+  return { toSchema, cacheFile };
+}
+
+// Generate migration SQL and journal from a Schema DSL ESM module, with automatic schema snapshotting.
+// If --from-schema-file is not provided, we will diff from <out-dir>/meta/_schema.json when present;
 // otherwise we will generate an initial bundle. After generation, we update the snapshot to the new schema.
 async function adminGenerateMigrations(opts) {
   const outDir = opts.outDir || path.join(process.cwd(), 'migrations-admin');
   const tag = opts.tag || `m_${Date.now()}`;
-  let schemaPath = opts.schemaJsonFile || path.join(process.cwd(), 'schema-json', 'admin.json');
-  if (!fs.existsSync(schemaPath)) {
-    const alt = path.join(process.cwd(), 'src', 'lib', 'schema-json', 'admin.json');
-    if (fs.existsSync(alt)) schemaPath = alt;
+  const cfg = await loadConfig();
+  let schemaPath = opts.schemaFile || cfg.adminSchemaFile;
+  if (!schemaPath) {
+    // try default locations for built schema modules
+    const candidates = [
+      path.join(process.cwd(), 'schema', 'admin.mjs'),
+      path.join(process.cwd(), 'schema', 'admin.js'),
+      path.join(process.cwd(), 'dist', 'lib', 'schema', 'admin.js'),
+      path.join(process.cwd(), 'dist', 'schema', 'admin.js'),
+      path.join(process.cwd(), 'src', 'lib', 'schema', 'admin.js'),
+      path.join(process.cwd(), 'src', 'lib', 'schema', 'admin.mjs'),
+    ];
+    for (const c of candidates) { if (fs.existsSync(c)) { schemaPath = c; break; } }
   }
-  if (!fs.existsSync(schemaPath)) throw new Error('Provide --schema-json-file or place admin.json under ./schema-json/ or ./src/lib/schema-json/.');
-
   const orm = await importOrm();
   if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
-
-  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
-  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
-
-  const toSchema = readJson(schemaPath);
+  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'admin', orm });
   let sql = '';
   let warnings = [];
 
@@ -49,8 +126,10 @@ async function adminGenerateMigrations(opts) {
 
   // Decide initial vs diff
   let usedSnapshot = false;
-  if (opts.fromSchemaJsonFile) {
-    const fromSchema = readJson(opts.fromSchemaJsonFile);
+  if (opts.fromSchemaFile) {
+    const fromMod = await import(pathToFileURL(opts.fromSchemaFile).href);
+    const fromDsl = fromMod.schema || fromMod.default || fromMod;
+    const fromSchema = orm.normalizeSchema(fromDsl);
     const diff = orm.buildDiffSql(fromSchema, toSchema);
     sql = diff.sql;
     warnings = diff.warnings || [];
@@ -93,20 +172,22 @@ async function adminGenerateMigrations(opts) {
 async function orgGenerateMigrations(opts) {
   const outDir = opts.outDir || path.join(process.cwd(), 'migrations-org');
   const tag = opts.tag || `m_${Date.now()}`;
-  let schemaPath = opts.schemaJsonFile || path.join(process.cwd(), 'schema-json', 'organization.json');
-  if (!fs.existsSync(schemaPath)) {
-    const alt = path.join(process.cwd(), 'src', 'lib', 'schema-json', 'organization.json');
-    if (fs.existsSync(alt)) schemaPath = alt;
+  const cfg = await loadConfig();
+  let schemaPath = opts.schemaFile || cfg.organizationSchemaFile;
+  if (!schemaPath) {
+    const candidates = [
+      path.join(process.cwd(), 'schema', 'organization.mjs'),
+      path.join(process.cwd(), 'schema', 'organization.js'),
+      path.join(process.cwd(), 'dist', 'lib', 'schema', 'organization.js'),
+      path.join(process.cwd(), 'dist', 'schema', 'organization.js'),
+      path.join(process.cwd(), 'src', 'lib', 'schema', 'organization.js'),
+      path.join(process.cwd(), 'src', 'lib', 'schema', 'organization.mjs'),
+    ];
+    for (const c of candidates) { if (fs.existsSync(c)) { schemaPath = c; break; } }
   }
-  if (!fs.existsSync(schemaPath)) throw new Error('Provide --schema-json-file or place organization.json under ./schema-json/ or ./src/lib/schema-json/.');
-
   const orm = await importOrm();
   if (!orm) throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
-
-  const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
-  const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
-
-  const toSchema = readJson(schemaPath);
+  const { toSchema } = await loadNormalizedSchema({ schemaPath, kind: 'organization', orm });
   let sql = '';
   let warnings = [];
 
@@ -118,8 +199,10 @@ async function orgGenerateMigrations(opts) {
 
   // Decide initial vs diff
   let usedSnapshot = false;
-  if (opts.fromSchemaJsonFile) {
-    const fromSchema = readJson(opts.fromSchemaJsonFile);
+  if (opts.fromSchemaFile) {
+    const fromMod = await import(pathToFileURL(opts.fromSchemaFile).href);
+    const fromDsl = fromMod.schema || fromMod.default || fromMod;
+    const fromSchema = orm.normalizeSchema(fromDsl);
     const diff = orm.buildDiffSql(fromSchema, toSchema);
     sql = diff.sql;
     warnings = diff.warnings || [];
@@ -159,7 +242,7 @@ async function orgGenerateMigrations(opts) {
 }
 
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-json-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n  kuratchi org   generate-migrations [--out-dir <path>] [--schema-json-file <path>] [--from-schema-json-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then JSON schema (via --schema-json-file or ./schema-json/admin.json or ./src/lib/schema-json/admin.json).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin/org generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json.\n   - Snapshotting: we auto-snapshot the latest schema to <out-dir>/meta/_schema.json and diff from it next time. Pass --from-schema-json-file to override the baseline.\n   - Defaults: admin uses admin.json -> migrations-admin; org uses organization.json -> migrations-org.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-file <path>] [--from-schema-file <path>] [--tag <string>]\n  kuratchi org   generate-migrations [--out-dir <path>] [--schema-file <path>] [--from-schema-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then Schema module (via --schema-file or ./schema/admin.(mjs|js)).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin/org generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json.\n   - Snapshotting: we auto-snapshot the latest schema to <out-dir>/meta/_schema.json and diff from it next time. Pass --from-schema-file to override the baseline.\n   - Defaults: admin uses schema/admin.(mjs|js) -> migrations-admin; org uses schema/organization.(mjs|js) -> migrations-org.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
 }
 
 function parseArgs(argv) {
@@ -179,8 +262,8 @@ function parseArgs(argv) {
       case '--workers-subdomain': case '-S': take('workersSubdomain'); break;
       case '--migrations-dir': take('migrationsDir'); break;
       case '--migrations-path': take('migrationsPath'); break;
-      case '--schema-json-file': take('schemaJsonFile'); break;
-      case '--from-schema-json-file': take('fromSchemaJsonFile'); break;
+      case '--schema-file': take('schemaFile'); break;
+      case '--from-schema-file': take('fromSchemaFile'); break;
       case '--out-dir': take('outDir'); break;
       case '--tag': take('tag'); break;
       case '--no-spinner': out.noSpinner = true; break;
@@ -381,32 +464,34 @@ async function adminMigrate(opts) {
     // Ignore and continue to next strategy
   }
 
-  // Tertiary path: attempt JSON-schema-based migration (single initial bundle)
+  // Tertiary path: attempt Schema-DSL-based migration (single initial bundle)
   try {
-    const om = await importOrmMigrator();
+    const om = await importOrm();
     if (om && typeof om.generateInitialMigrationBundle === 'function') {
       let schemaFile = null;
       const candidates = [];
-      if (opts.schemaJsonFile) candidates.push(opts.schemaJsonFile);
-      candidates.push(path.join(process.cwd(), 'schema-json', 'admin.json'));
-      candidates.push(path.join(process.cwd(), 'src', 'lib', 'schema-json', 'admin.json'));
-      for (const cand of candidates) {
-        if (cand && fs.existsSync(cand)) { schemaFile = cand; break; }
-      }
+      if (opts.schemaFile) candidates.push(opts.schemaFile);
+      const cfg = await loadConfig();
+      if (cfg.adminSchemaFile) candidates.push(cfg.adminSchemaFile);
+      candidates.push(path.join(process.cwd(), 'schema', 'admin.mjs'));
+      candidates.push(path.join(process.cwd(), 'schema', 'admin.js'));
+      candidates.push(path.join(process.cwd(), 'dist', 'lib', 'schema', 'admin.js'));
+      candidates.push(path.join(process.cwd(), 'dist', 'schema', 'admin.js'));
+      for (const cand of candidates) { if (cand && fs.existsSync(cand)) { schemaFile = cand; break; } }
       if (schemaFile) {
-        const raw = fs.readFileSync(schemaFile, 'utf8');
-        const schema = JSON.parse(raw);
+        // Load normalized schema using TS-aware path, kind: admin
+        const { toSchema: schema } = await loadNormalizedSchema({ schemaPath: schemaFile, kind: 'admin', orm: om });
         const bundle = om.generateInitialMigrationBundle(schema, { tag: 'initial' });
         const ok = await client.migrate(bundle);
         if (ok) {
-          return { ok: true, databaseName: name, workersSubdomain, strategy: 'json-schema', schemaFile };
+          return { ok: true, databaseName: name, workersSubdomain, strategy: 'schema-dsl', schemaFile };
         }
       }
     }
   } catch (e) {
     // Ignore and continue
   }
-  throw new Error('No migrations found. Provide a local filesystem bundle or a JSON schema file to generate an initial bundle.');
+  throw new Error('No migrations found. Provide a local filesystem bundle or a schema module (--schema-file) to generate an initial bundle.');
 }
 
 async function main() {

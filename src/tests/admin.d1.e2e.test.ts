@@ -1,7 +1,8 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
 import { createClientFromJsonSchema } from '../lib/orm/kuratchi-orm.js';
-import adminJsonSchema from '../lib/schema-json/admin.json' with { type: 'json' };
+import { adminSchemaDsl } from '../lib/schema/admin.js';
+import { normalizeSchema } from '../lib/schema/normalize.js';
 
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
@@ -118,8 +119,9 @@ describeMaybe('Admin E2E with Cloudflare D1', () => {
       await db.query(sql);
     }
 
-    // Create runtime ORM client from JSON schema
-    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), adminJsonSchema as any);
+    // Create runtime ORM client from normalized TS schema DSL
+    const adminSchema = normalizeSchema(adminSchemaDsl as any);
+    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), adminSchema as any);
   }, 120_000);
 
   afterAll(async () => {

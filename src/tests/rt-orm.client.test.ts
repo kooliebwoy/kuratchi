@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
-import adminJson from '../lib/schema-json/admin.json';
-import orgJson from '../lib/schema-json/organization.json';
+import { adminSchemaDsl } from '../lib/schema/admin.js';
+import { organizationSchemaDsl } from '../lib/schema/organization.js';
+import { normalizeSchema } from '../lib/schema/normalize.js';
+import type { DatabaseSchema } from '../lib/orm/json-schema.js';
 
 function setupD1() {
   const d1 = new KuratchiD1({ apiToken: 't', accountId: 'acc', workersSubdomain: 'workers.dev' });
@@ -39,7 +41,7 @@ describe('KuratchiD1 top-level sugar client', () => {
 
   it('JSON schema client (admin schema) maps properties to correct tables and compiles INSERT/UPDATE/DELETE/COUNT', async () => {
     const { d1, mockClient, captured } = setupD1();
-    const admin = d1.client(cfg, { schema: adminJson as any });
+    const admin = d1.client(cfg, { schema: normalizeSchema(adminSchemaDsl as any) as any });
 
     await admin.users.insert({ id: 'u1', email: 'a@acme.com' });
     await admin.dbApiTokens.update({ id: 'tok1' }, { revoked: 1 });
@@ -67,7 +69,8 @@ describe('KuratchiD1 top-level sugar client', () => {
 
   it('JSON schema client (organization schema) maps roles and compiles COUNT with LIKE', async () => {
     const { d1, mockClient, captured } = setupD1();
-    const org = d1.client(cfg, { schema: orgJson as any });
+    const orgSchema: DatabaseSchema = normalizeSchema(organizationSchemaDsl as any);
+    const org = d1.client(cfg, { schema: orgSchema });
     await org.roles.count({ name: { like: 'admin%' } } as any);
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     expect(captured[0]).toEqual({

@@ -2,7 +2,8 @@ import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
 import { AuthService } from '../lib/auth/AuthService.js';
 import { createClientFromJsonSchema } from '../lib/orm/kuratchi-orm.js';
-import organizationJsonSchema from '../lib/schema-json/organization.json' with { type: 'json' };
+import { organizationSchemaDsl } from '../lib/schema/organization.js';
+import { normalizeSchema } from '../lib/schema/normalize.js';
 
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
@@ -137,7 +138,8 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
     }
 
     // Instantiate runtime ORM client (organization schema) for AuthService
-    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), organizationJsonSchema as any);
+    const orgSchema = normalizeSchema(organizationSchemaDsl as any);
+    client = createClientFromJsonSchema((sql, params) => db.query(sql, params || []), orgSchema as any);
     auth = new AuthService(client as any, {
       ADMIN_DB: {} as any,
       RESEND_API_KEY: 'test-resend',

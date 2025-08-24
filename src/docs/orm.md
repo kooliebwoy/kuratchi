@@ -36,7 +36,8 @@ Each table exposes a chainable query builder plus mutations:
 
 - where(filter) -> this
 - orWhere(filter) -> this
-- whereRaw`raw sql with ${params}` -> this
+- sql({ query, params }) -> this  
+  - query uses `?` placeholders; provide parameters via `params`.
 - orderBy(order) -> this
 - select(columns: string[]) -> this
 - limit(n: number) -> this
@@ -70,11 +71,11 @@ Under the hood this compiles SQL like `SELECT ... FROM table WHERE ... ORDER BY 
 // Example: admin typed client
 const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' });
 
-// WHERE ... OR ... ORDER BY ... LIMIT ...
+// WHERE ... OR ... extra SQL ... ORDER BY ... LIMIT ...
 const res = await admin.users
   .where({ email: '%@acme.com' })          // strings with %/_ use LIKE automatically
   .orWhere({ status: { in: [1, 2] } })
-  .whereRaw`created_at BETWEEN ${start} AND ${end}`
+  .sql({ query: 'created_at BETWEEN ? AND ?', params: [start, end] })
   .orderBy({ id: 'desc' })
   .limit(10)
   .offset(3) // with LIMIT, offset(n) treats n as 1-based page number => OFFSET (n-1)*LIMIT
@@ -83,7 +84,7 @@ const res = await admin.users
 
 #### Selecting specific columns
 
-Use `select()` to choose columns:
+Use `select()` to choose columns and reduce row size/transfer costs:
 
 ```ts
 const emails = await admin.users
@@ -92,6 +93,31 @@ const emails = await admin.users
   .orderBy({ id: 'asc' })
   .findMany();
 ```
+
+Notes:
+
+- When `select()` is omitted, `SELECT *` is used.
+- With `select([...])`, only those columns are returned by `findMany()`/`findFirst()`.
+
+#### Raw SQL fragments with safety guards
+
+For cases not covered by the `where()` shape, use `sql({ query, params })` to add extra conditions to the current WHERE group.
+
+```ts
+// Adds: AND (name LIKE ?)
+await admin.users
+  .where({ active: true })
+  .sql({ query: 'name LIKE ?', params: [`%${needle}%`] })
+  .findMany();
+```
+
+Safety guard behavior:
+
+- Throws on template interpolation or concatenation in `query` (e.g., `` `name = ${input}` `` or `'name = ' + input`).
+- Throws on attempts to send multiple statements or dangerous keywords after `;`.
+- Warns when no `params` and hardcoded values are detected; prefer placeholders.
+
+Migration note: `whereRaw` has been removed in favor of `sql({ query, params })`.
 
 #### Pagination helpers
 
