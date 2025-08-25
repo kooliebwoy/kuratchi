@@ -1,5 +1,5 @@
 import { CloudflareClient, type PrimaryLocationHint } from '../cloudflare.js';
-import { DEFAULT_D1V2_WORKER_SCRIPT } from './worker-template.js';
+import { DEFAULT_D1_WORKER_SCRIPT } from './worker-template.js';
 import { KuratchiD1v2HttpClient } from './internal-http-client.js';
 import { createSignedDbToken } from '../do/token.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
@@ -42,7 +42,7 @@ export class KuratchiD1 {
       { type: 'secret_text', name: 'API_KEY', text: apiKey },
       ...d1Bindings,
     ];
-    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
     await this.cf.enableWorkerSubdomain(this.scriptName);
   }
 
@@ -115,7 +115,7 @@ export class KuratchiD1 {
       ...preserved,
     ];
     try {
-      await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+      await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
     } catch (e) {
       // If upload fails, rethrow (no DO migrations here)
       throw e;
@@ -138,7 +138,7 @@ export class KuratchiD1 {
       ...nonD1,
       ...mergedD1,
     ];
-    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
     await this.cf.enableWorkerSubdomain(this.scriptName);
   }
 

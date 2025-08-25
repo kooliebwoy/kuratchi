@@ -1,9 +1,9 @@
-// D1v2 Router Worker script (multi-DB router)
+// D1 Router Worker script (multi-DB router)
 // Single worker that routes SQL to multiple D1 databases bound as env["DB_<name>"]
 // Auth: Authorization: Bearer <API_KEY> (gateway key) + x-db-name + x-db-token (signed with API_KEY)
 // Supports D1 session bookmarks via x-d1-bookmark request/response header
 
-export const DEFAULT_D1V2_WORKER_SCRIPT = `export default {
+export const DEFAULT_D1_WORKER_SCRIPT = `export default {
   async fetch(request, env, ctx) {
     const cors = {
       'Access-Control-Allow-Origin': '*',
