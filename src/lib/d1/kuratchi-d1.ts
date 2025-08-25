@@ -20,17 +20,23 @@ export interface D1Options {
   endpointBase?: string;
   workersSubdomain: string;
   scriptName?: string; // default: 'kuratchi-d1-internal'
+  /** Optional callback to list existing D1 databases from Admin DB for initial router bindings. */
+  listDbsForBindings?: () => Promise<Array<{ name: string; uuid: string }>>;
 }
 
 export class KuratchiD1 {
   private cf: CloudflareClient;
   private workersSubdomain: string;
   private scriptName: string;
+  private listDbsForBindings?: () => Promise<Array<{ name: string; uuid: string }>>;
+  private routerEnsured = false;
+  private cachedBindings: any[] | null = null;
 
   constructor(config: D1Options) {
     this.cf = new CloudflareClient({ apiToken: config.apiToken, accountId: config.accountId, endpointBase: config.endpointBase });
     this.workersSubdomain = config.workersSubdomain;
     this.scriptName = config.scriptName || 'kuratchi-d1-internal';
+    this.listDbsForBindings = config.listDbsForBindings;
     try { Object.defineProperty(this, 'cf', { enumerable: false, configurable: false, writable: true }); } catch {}
   }
 
@@ -104,35 +110,49 @@ export class KuratchiD1 {
     return { database, token };
   }
 
-  /** Ensure router worker is deployed with API_KEY and current bindings (no-op if already exists). */
+  /** Ensure router worker exists; build bindings from Admin DB (if provided) without remote GET. */
   private async ensureWorker(apiKey: string) {
     if (!apiKey) throw new Error('ensureWorker(apiKey) requires a key');
-    const existingBindings = await this.getExistingBindingsSafe();
-    // Remove any previous API_KEY secret and then prepend the current one
-    const preserved = existingBindings.filter((b: any) => !(b?.type === 'secret_text' && b?.name === 'API_KEY'));
+    if (this.routerEnsured) return;
+    // Build initial bindings from Admin DB if available; otherwise API_KEY only.
+    let initialBindings: any[] = [];
+    try {
+      const dbs = (await this.listDbsForBindings?.()) || [];
+      if (Array.isArray(dbs) && dbs.length > 0) {
+        initialBindings = dbs
+          .filter((d) => d && d.name && d.uuid)
+          .map((d) => ({ type: 'd1', name: `DB_${d.name}`, id: d.uuid }));
+      }
+    } catch {}
     const bindings = [
       { type: 'secret_text', name: 'API_KEY', text: apiKey },
-      ...preserved,
+      ...initialBindings,
     ];
-    try {
-      await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
-    } catch (e) {
-      // If upload fails, rethrow (no DO migrations here)
-      throw e;
-    }
+    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
     await this.cf.enableWorkerSubdomain(this.scriptName);
+    this.cachedBindings = bindings;
+    this.routerEnsured = true;
   }
 
-  /** Patch router bindings by merging new entries with existing and re-uploading. */
+  /** Patch router bindings by merging new entries with cached and re-uploading (no remote GET). */
   private async patchBindings(apiKey: string, newBindings: any[]) {
-    const existing = await this.getExistingBindingsSafe();
-    // Build a map for D1 bindings to merge by name, but preserve all non-D1 bindings verbatim
-    const nonD1 = existing.filter((b: any) => b?.type !== 'd1' && !(b?.type === 'secret_text' && b?.name === 'API_KEY'));
+    // Ensure we have a baseline in cache
+    if (!this.cachedBindings) {
+      const base: any[] = [];
+      try {
+        const dbs = (await this.listDbsForBindings?.()) || [];
+        if (Array.isArray(dbs) && dbs.length > 0) {
+          for (const d of dbs) if (d && d.name && d.uuid) base.push({ type: 'd1', name: `DB_${d.name}`, id: d.uuid });
+        }
+      } catch {}
+      this.cachedBindings = [{ type: 'secret_text', name: 'API_KEY', text: apiKey }, ...base];
+    }
+    // Merge D1 bindings by name into cache; always keep a single API_KEY entry
+    const nonD1 = this.cachedBindings.filter((b: any) => b?.type !== 'd1' && !(b?.type === 'secret_text' && b?.name === 'API_KEY'));
     const d1Map = new Map<string, any>();
-    for (const b of existing) if (b?.type === 'd1' && b?.name) d1Map.set(b.name, b);
+    for (const b of this.cachedBindings) if (b?.type === 'd1' && b?.name) d1Map.set(b.name, b);
     for (const b of newBindings) if (b?.type === 'd1' && b?.name) d1Map.set(b.name, b);
     const mergedD1 = Array.from(d1Map.values());
-
     const bindings = [
       { type: 'secret_text', name: 'API_KEY', text: apiKey },
       ...nonD1,
@@ -140,6 +160,7 @@ export class KuratchiD1 {
     ];
     await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1_WORKER_SCRIPT, bindings);
     await this.cf.enableWorkerSubdomain(this.scriptName);
+    this.cachedBindings = bindings;
   }
 
   private async getExistingBindingsSafe(): Promise<any[]> {

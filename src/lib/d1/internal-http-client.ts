@@ -11,6 +11,7 @@ export interface KuratchiD1v2Config {
   dbToken: string; // per-database token
   gatewayKey: string; // master API key for router Worker
   scriptName?: string; // default: 'kuratchi-d1-internal'
+  debug?: boolean; // optional debug logging
 }
 
 // Back-compat alias to avoid touching many imports immediately
@@ -23,6 +24,7 @@ export class KuratchiD1v2HttpClient {
   private gatewayKey: string;
   private dbName: string;
   private bookmark?: string;
+  private debug: boolean;
 
   constructor(config: KuratchiD1v2Config) {
     const script = config.scriptName || 'kuratchi-d1-internal';
@@ -30,6 +32,7 @@ export class KuratchiD1v2HttpClient {
     this.dbToken = config.dbToken;
     this.gatewayKey = config.gatewayKey;
     this.dbName = config.databaseName;
+    this.debug = !!config.debug;
     try {
       Object.defineProperty(this, 'dbToken', { enumerable: false, configurable: false, writable: true });
       Object.defineProperty(this, 'gatewayKey', { enumerable: false, configurable: false, writable: true });
@@ -45,7 +48,7 @@ export class KuratchiD1v2HttpClient {
         Authorization: `Bearer ${this.gatewayKey}`,
       };
       if (this.bookmark) headers['x-d1-bookmark'] = this.bookmark;
-      try { console.log('[KuratchiD1v2HttpClient.makeRequest] ->', path, { hasBookmark: !!this.bookmark }); } catch {}
+      if (this.debug) { try { console.log('[KuratchiD1v2HttpClient.makeRequest] ->', path, { hasBookmark: !!this.bookmark }); } catch {} }
       const res = await fetch(`${this.endpoint}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
       if (!res.ok) {
         const ct = res.headers.get('content-type') || '';
@@ -59,7 +62,7 @@ export class KuratchiD1v2HttpClient {
       const bm = res.headers.get('x-d1-bookmark');
       if (bm) this.bookmark = bm;
       const json = await res.json();
-      try { console.log('[KuratchiD1v2HttpClient.makeRequest] <-', path, { keys: json && typeof json === 'object' ? Object.keys(json) : typeof json, bookmark: this.bookmark ? this.bookmark.slice(0, 24)+'...' : null }); } catch {}
+      if (this.debug) { try { console.log('[KuratchiD1v2HttpClient.makeRequest] <-', path, { keys: json && typeof json === 'object' ? Object.keys(json) : typeof json, bookmark: this.bookmark ? this.bookmark.slice(0, 24)+'...' : null }); } catch {} }
       return json;
     } catch (e: any) {
       return { success: false, error: e.message };
@@ -76,7 +79,7 @@ export class KuratchiD1v2HttpClient {
         return res as any;
       }
       let rows: any[] = [];
-      try { console.log('[KuratchiD1v2HttpClient.query][SELECT] raw response type:', Array.isArray(res) ? 'array' : typeof res); } catch {}
+      if (this.debug) { try { console.log('[KuratchiD1v2HttpClient.query][SELECT] raw response type:', Array.isArray(res) ? 'array' : typeof res); } catch {} }
       if (Array.isArray(res)) {
         const arr: any[] = res as any[];
         if (arr.length && Array.isArray(arr[0]) && arr[0].every((x: any) => typeof x === 'string')) {
@@ -114,12 +117,12 @@ export class KuratchiD1v2HttpClient {
       } else {
         rows = [];
       }
-      try { console.log('[KuratchiD1v2HttpClient.query][SELECT] mapped rows:', Array.isArray(rows) ? rows.slice(0, 2) : rows); } catch {}
+      if (this.debug) { try { console.log('[KuratchiD1v2HttpClient.query][SELECT] mapped rows:', Array.isArray(rows) ? rows.slice(0, 2) : rows); } catch {} }
       return { success: true, data: rows } as any;
     } else {
       // Use run for DDL/DML with bound params
       const res = await this.makeRequest('/api/run', { query, params });
-      try { console.log('[KuratchiD1v2HttpClient.query][RUN] response keys:', res && typeof res === 'object' ? Object.keys(res as any) : typeof res); } catch {}
+      if (this.debug) { try { console.log('[KuratchiD1v2HttpClient.query][RUN] response keys:', res && typeof res === 'object' ? Object.keys(res as any) : typeof res); } catch {} }
       return res as any;
     }
   }

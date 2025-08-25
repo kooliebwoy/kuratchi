@@ -104,9 +104,8 @@ describe('KuratchiAuth.createOrganization idempotent token reuse', () => {
     // 4) Call createOrganization with same name; expect reuse and no provisioning
     const res: any = await (auth as any).createOrganization({ organizationName: 'Beta' }, { do: true });
 
-    // Assert token reused
-    expect(res.token).toBeTruthy();
-    expect(res.token.token).toBe('existing-do-token');
+    // Minimal return shape
+    expect(res && res.success).toBe(true);
 
     // No new token inserted
     expect((adminStub.tables.dbApiTokens.insert as any)).not.toHaveBeenCalled();
@@ -115,9 +114,9 @@ describe('KuratchiAuth.createOrganization idempotent token reuse', () => {
     expect((auth as any).kuratchiD1.createDatabase).not.toHaveBeenCalled();
     expect((auth as any).kuratchiDO.createDatabase).not.toHaveBeenCalled();
 
-    // Returns database row wired to org
-    expect(res.database).toBeTruthy();
-    expect(res.organization).toBeTruthy();
+    // No database/organization returned in minimal shape
+    expect((res as any).database).toBeUndefined();
+    expect((res as any).organization).toBeUndefined();
   });
 
   it('reuses existing dbApiTokens and does not call provisioners', async () => {
@@ -137,9 +136,8 @@ describe('KuratchiAuth.createOrganization idempotent token reuse', () => {
     // 4) Call createOrganization with same name; expect reuse
     const res: any = await (auth as any).createOrganization({ organizationName: 'Acme' }, { d1: true });
 
-    // Assert token reused
-    expect(res.token).toBeTruthy();
-    expect(res.token.token).toBe('existing-token');
+    // Minimal return shape
+    expect(res && res.success).toBe(true);
 
     // No new token inserted
     expect((adminStub.tables.dbApiTokens.insert as any)).not.toHaveBeenCalled();
@@ -148,8 +146,8 @@ describe('KuratchiAuth.createOrganization idempotent token reuse', () => {
     expect((auth as any).kuratchiD1.createDatabase).not.toHaveBeenCalled();
     expect((auth as any).kuratchiDO.createDatabase).not.toHaveBeenCalled();
 
-    // Returns database row wired to org
-    expect(res.database).toBeTruthy();
-    expect(res.organization).toBeTruthy();
+    // No database/organization returned in minimal shape
+    expect((res as any).database).toBeUndefined();
+    expect((res as any).organization).toBeUndefined();
   });
 });

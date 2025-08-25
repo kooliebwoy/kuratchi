@@ -211,13 +211,15 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (typeof originalCreateOrg === 'function') {
           (authApi as any).createOrganization = async (...args: any[]) => {
             const result = await originalCreateOrg.apply(authApi, args);
-            const cookie = (result as any)?.sessionCookie;
+            const cookie = (result as any)?.sessionCookie || (result as any)?.cookie;
             if (cookie) {
               const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
               locals.kuratchi.setSessionCookie(cookie, { expires });
-              // If we know organizationId, validate cookie and populate locals for this request
+              // Parse cookie to discover organizationId, then validate and populate locals
               try {
-                const orgId = (result as any)?.organization?.id;
+                const env = await getEnv(event as any);
+                const parsed = await parseSessionCookie(env.KURATCHI_AUTH_SECRET, cookie);
+                const orgId = parsed?.orgId;
                 if (orgId && typeof (authApi as any).forOrganization === 'function') {
                   const orgAuth = await (authApi as any).forOrganization(orgId);
                   const { sessionData, user } = await orgAuth.validateSessionToken(cookie);
@@ -226,7 +228,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
                     locals.kuratchi.user = safeUser;
                     const merged = { ...sessionData, user: safeUser };
                     locals.kuratchi.session = merged;
-                    locals.user = user;
+                    locals.user = safeUser;
                     locals.session = merged;
                   }
                 }
@@ -515,7 +517,22 @@ public signIn: {
         this.kuratchiD1 = new KuratchiD1({
             apiToken: config.apiToken,
             accountId: config.accountId,
-            workersSubdomain: config.workersSubdomain
+            workersSubdomain: config.workersSubdomain,
+            // Provide Admin DB as the source of truth for initial router bindings
+            listDbsForBindings: async () => {
+                try {
+                    const res = await (this.adminDb as any).databases
+                        .where({ deleted_at: { is: null } })
+                        .orderBy({ created_at: 'asc' })
+                        .many();
+                    const rows = ((res as any)?.data ?? []) as Array<any>;
+                    return rows
+                        .filter((r) => r && r.name && r.dbuuid)
+                        .map((r) => ({ name: r.name as string, uuid: r.dbuuid as string }));
+                } catch {
+                    return [];
+                }
+            }
         });
         // Initialize KuratchiDO instance (available for DO-backed orgs)
         this.kuratchiDO = new KuratchiDO({
@@ -1030,14 +1047,7 @@ public signIn: {
             }
 
             return {
-                organization: org ?? null,
-                database: dbRow,
-                token: tokenRow,
-                kv: doKV ? 'created' : 'skipped',
-                r2: doR2 ? 'created' : 'skipped',
-                queues: doQueues ? 'created' : 'skipped',
-                migration: { strategy: migrationStrategy },
-                user: createdUser,
+                success: true as const,
                 sessionCookie
             };
         }
