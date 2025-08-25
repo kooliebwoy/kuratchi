@@ -11,7 +11,7 @@ import { adminSchemaDsl } from '../schema/admin.js';
 import { organizationSchemaDsl } from '../schema/organization.js';
 import { normalizeSchema } from '../schema/normalize.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
-import { KuratchiHttpClient } from '../d1Legacy/internal-http-client.js';
+import { KuratchiHttpClient } from '../d1/internal-http-client.js';
 
 // Consolidated SvelteKit handle and types (previously in sveltekit.ts)
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
@@ -141,13 +141,17 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       if (options.getAdminDb) {
         adminDbInst = await options.getAdminDb(event as any as RequestEvent);
       } else {
-        const adminMissing = ['KURATCHI_ADMIN_DB_NAME', 'KURATCHI_ADMIN_DB_TOKEN', 'CLOUDFLARE_WORKERS_SUBDOMAIN'].filter((k) => !env?.[k]);
+        const GW = env.KURATCHI_GATEWAY_KEY || env.GATEWAY_KEY;
+        const required = ['KURATCHI_ADMIN_DB_NAME', 'KURATCHI_ADMIN_DB_TOKEN', 'CLOUDFLARE_WORKERS_SUBDOMAIN'];
+        const adminMissing = required.filter((k) => !env?.[k]);
+        if (!GW) adminMissing.push('KURATCHI_GATEWAY_KEY');
         if (adminMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${adminMissing.join(', ')}`);
         adminDbInst = new KuratchiHttpClient({
           databaseName: env.KURATCHI_ADMIN_DB_NAME,
           workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-          apiToken: env.KURATCHI_ADMIN_DB_TOKEN
-        });
+          dbToken: env.KURATCHI_ADMIN_DB_TOKEN,
+          gatewayKey: GW
+        } as any);
       }
       return adminDbInst;
     };
