@@ -3,7 +3,7 @@
 declare const process: any;
 import { describe, it, expect } from 'vitest';
 import { env } from '$env/dynamic/private';
-import { KuratchiD1v2 } from '../lib/d1v2/kuratchi-d1v2.js';
+import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
 import { CloudflareClient } from '../lib/cloudflare.js';
 
 // Allow dynamic env via SvelteKit (process.env) with multiple naming schemes.
@@ -36,9 +36,9 @@ if (!shouldRun) {
   });
 }
 
-(shouldRun ? describe : describe.skip)('D1v2 live deploy (real Cloudflare)', () => {
+(shouldRun ? describe : describe.skip)('D1 router live deploy (real Cloudflare)', () => {
   it('deploys router worker, creates 3 DBs, patches bindings, migrates, and routes queries correctly', async () => {
-    const svc = new KuratchiD1v2({
+    const svc = new KuratchiD1({
       apiToken: CF_API_TOKEN!,
       accountId: CF_ACCOUNT_ID!,
       workersSubdomain: CF_WORKERS_SUBDOMAIN!,

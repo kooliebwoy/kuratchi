@@ -10,7 +10,7 @@ export interface KuratchiD1v2Config {
   workersSubdomain: string;
   dbToken: string; // per-database token
   gatewayKey: string; // master API key for router Worker
-  scriptName?: string; // default: 'kuratchi-d1v2-internal'
+  scriptName?: string; // default: 'kuratchi-d1-internal'
 }
 
 /** INTERNAL: Low-level HTTP client for D1v2 router Worker. */
@@ -21,7 +21,7 @@ export class KuratchiD1v2HttpClient {
   private dbName: string;
 
   constructor(config: KuratchiD1v2Config) {
-    const script = config.scriptName || 'kuratchi-d1v2-internal';
+    const script = config.scriptName || 'kuratchi-d1-internal';
     this.endpoint = `https://${script}.${config.workersSubdomain}`;
     this.dbToken = config.dbToken;
     this.gatewayKey = config.gatewayKey;

@@ -1,4 +1,5 @@
 import { KuratchiD1 } from '../d1/kuratchi-d1.js';
+import { CloudflareClient } from '../cloudflare.js';
 import { KuratchiDO } from '../do/kuratchi-do.js';
 import { KuratchiKV } from '../kv/kuratchi-kv.js';
 import { KuratchiR2 } from '../r2/kuratchi-r2.js';
@@ -10,7 +11,7 @@ import { adminSchemaDsl } from '../schema/admin.js';
 import { organizationSchemaDsl } from '../schema/organization.js';
 import { normalizeSchema } from '../schema/normalize.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
-import { KuratchiHttpClient } from '../d1/internal-http-client.js';
+import { KuratchiHttpClient } from '../d1Legacy/internal-http-client.js';
 
 // Consolidated SvelteKit handle and types (previously in sveltekit.ts)
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
@@ -510,7 +511,7 @@ public signIn: {
         this.organizationServices = new Map();
         this.organizationOrmClients = new Map();
         
-        // Initialize KuratchiD1 instance
+        // Initialize Kuratchi D1 router (v2) instance
         this.kuratchiD1 = new KuratchiD1({
             apiToken: config.apiToken,
             accountId: config.accountId,
@@ -688,13 +689,17 @@ public signIn: {
                 }
                 const effectiveToken = (valid as any).token as string;
 
-                // Decide engine based on presence of dbuuid: if present => D1, else assume DO
+                // Decide engine based on presence of dbuuid: if present => D1 (router v2), else assume DO
                 const isD1 = !!(dbRecord as any).dbuuid;
                 let exec: (sql: string, params?: any[]) => Promise<any>;
                 if (isD1) {
+                    if (!this.config.gatewayKey) {
+                        throw new Error('[KuratchiAuth] gatewayKey is required in config to use D1 router');
+                    }
                     const organizationClient = this.kuratchiD1.getClient({
                         databaseName,
-                        apiToken: effectiveToken!
+                        dbToken: effectiveToken!,
+                        gatewayKey: this.config.gatewayKey
                     });
                     exec = (sql: string, params?: any[]) => organizationClient.query(sql, params || []);
                 } else {
@@ -718,7 +723,7 @@ public signIn: {
                 const authService = new AuthService(
                     orgClient as any,
                     this.buildEnv(isD1
-                        ? this.kuratchiD1.getClient({ databaseName, apiToken: effectiveToken! })
+                        ? this.kuratchiD1.getClient({ databaseName, dbToken: effectiveToken!, gatewayKey: this.config.gatewayKey! })
                         : this.kuratchiDO.getClient({ databaseName, dbToken: effectiveToken!, gatewayKey: this.config.gatewayKey! })
                     )
                 );
@@ -883,13 +888,23 @@ public signIn: {
                     // Ensure dbuuid remains null/empty for DO to signal engine type
                     await (this.adminDb as any).databases.update({ id: dbRow.id } as any, { name: String(dbName) } as any);
                 } else {
-                    // D1 path (default)
-                    const created = await this.kuratchiD1.createDatabase(String(dbName));
+                    // D1 router v2 path (default)
+                    const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
+                    if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create D1 database');
+                    const created = await this.kuratchiD1.createDatabase({
+                        databaseName: String(dbName),
+                        gatewayKey,
+                        migrate: options?.migrate !== false,
+                        schema: organizationSchemaDsl as any,
+                    });
                     database = created.database;
-                    apiToken = created.apiToken;
+                    apiToken = created.token;
                     provisioned = true;
                     // Update db row with real D1 uuid
-                    await (this.adminDb as any).databases.update({ id: dbRow.id } as any, { name: database?.name ?? String(dbName), dbuuid: (database as any)?.uuid ?? (database as any)?.id } as any);
+                    await (this.adminDb as any).databases.update(
+                        { id: dbRow.id } as any,
+                        { name: database?.name ?? String(dbName), dbuuid: (database as any)?.uuid ?? (database as any)?.id } as any
+                    );
                 }
 
                 // Persist API token for the org DB
@@ -965,19 +980,14 @@ public signIn: {
             // 6) Optionally migrate the organization's database schema
             const shouldMigrate = options?.migrate !== false;
             const migrationsDir = options?.migrationsDir || 'org';
-            let migrationStrategy: 'vite' | 'skipped' | 'failed' = 'skipped';
+            let migrationStrategy: 'vite' | 'router-init' | 'do-init' | 'skipped' | 'failed' = 'skipped';
             if (shouldMigrate) {
                 if (useD1) {
-                    try {
-                        await this.kuratchiD1.database({ databaseName: String((database?.name || dbRow.name || dbName)), apiToken: apiToken! })
-                            .migrate(migrationsDir);
-                        migrationStrategy = 'vite';
-                    } catch {
-                        migrationStrategy = 'failed';
-                    }
-                } else {
-                    // DO path: initial migration handled during createDatabase when migrate:true
-                    migrationStrategy = provisioned ? 'vite' : 'skipped';
+                    // D1v2 path: migrations applied during createDatabase() via schema
+                    migrationStrategy = 'router-init';
+                } else if (useDO) {
+                    // DO path: migrations applied during DO createDatabase()
+                    migrationStrategy = 'do-init';
                 }
             }
 
@@ -1059,7 +1069,8 @@ public signIn: {
             // Best-effort delete in Cloudflare if we have a uuid
             if (db?.dbuuid) {
                 try {
-                    await this.kuratchiD1.deleteDatabase(db.dbuuid);
+                    const cf = new CloudflareClient({ apiToken: this.config.apiToken, accountId: this.config.accountId });
+                    await cf.deleteDatabase(db.dbuuid);
                 } catch (e) {
                     console.error('Failed to delete Cloudflare D1 database for org', organizationId, e);
                 }

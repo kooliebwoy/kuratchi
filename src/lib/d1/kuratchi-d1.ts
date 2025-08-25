@@ -1,308 +1,219 @@
-import { KuratchiHttpClient as InternalKuratchi } from './internal-http-client.js';
 import { CloudflareClient, type PrimaryLocationHint } from '../cloudflare.js';
-import { DEFAULT_WORKER_SCRIPT } from './worker-template.js';
+import { DEFAULT_D1V2_WORKER_SCRIPT } from './worker-template.js';
+import { KuratchiD1v2HttpClient } from './internal-http-client.js';
+import { createSignedDbToken } from '../do/token.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
-import {
-  createClientFromJsonSchema,
-  createTypedClientFromMapping,
-  type TableApi,
-  type TableApiTyped,
-} from '../orm/kuratchi-orm.js';
-import type { MigrationJournal } from '../orm/index.js';
-// Note: decoupled from src/lib/schema/* to rely purely on JSON schema at runtime.
-// Row typing for table APIs is set to any to avoid compile-time coupling.
+import type { SchemaDsl } from '../schema/types.js';
+import { normalizeSchema } from '../schema/normalize.js';
+import { generateInitialMigrationBundle } from '../orm/migrator.js';
+import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
 
-export type { PrimaryLocationHint } from '../cloudflare.js';
+function ensureDbSchema(schema: DatabaseSchema | SchemaDsl): DatabaseSchema {
+  const t: any = (schema as any)?.tables;
+  if (Array.isArray(t)) return schema as DatabaseSchema;
+  return normalizeSchema(schema as SchemaDsl);
+}
 
 export interface D1Options {
   apiToken: string;
   accountId: string;
   endpointBase?: string;
   workersSubdomain: string;
+  scriptName?: string; // default: 'kuratchi-d1-internal'
 }
-
-// Runtime-agnostic migration types
-export type MigrationBundle = {
-  journal: MigrationJournal;
-  migrations: Record<string, string | (() => Promise<string>)>;
-};
 
 export class KuratchiD1 {
   private cf: CloudflareClient;
   private workersSubdomain: string;
+  private scriptName: string;
 
   constructor(config: D1Options) {
-    this.cf = new CloudflareClient({
-      apiToken: config.apiToken,
-      accountId: config.accountId,
-      endpointBase: config.endpointBase,
-    });
+    this.cf = new CloudflareClient({ apiToken: config.apiToken, accountId: config.accountId, endpointBase: config.endpointBase });
     this.workersSubdomain = config.workersSubdomain;
-    // Hide internal client from logs
-    try {
-      Object.defineProperty(this, 'cf', { enumerable: false, configurable: false, writable: true });
-    } catch {}
+    this.scriptName = config.scriptName || 'kuratchi-d1-internal';
+    try { Object.defineProperty(this, 'cf', { enumerable: false, configurable: false, writable: true }); } catch {}
   }
 
-  async createDatabase(databaseName: string, options: { location?: PrimaryLocationHint } = {}) {
-    const { database, apiToken } = await this.provisionDatabase(databaseName, {
-      location: options.location,
-    });
-    // Best-effort: wait for the worker HTTP endpoint to become responsive
+  /** Rebuild and deploy router with provided D1 bindings in one shot (no merge). */
+  async deployRouterWithBindings(apiKey: string, databases: Array<{ name: string; uuid: string }>) {
+    if (!apiKey) throw new Error('deployRouterWithBindings(apiKey, databases) requires apiKey');
+    const d1Bindings = databases.map((d) => ({ type: 'd1', name: `DB_${d.name}`, id: d.uuid }));
+    const bindings = [
+      { type: 'secret_text', name: 'API_KEY', text: apiKey },
+      ...d1Bindings,
+    ];
+    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+    await this.cf.enableWorkerSubdomain(this.scriptName);
+  }
+
+  /**
+   * Creates a D1 database and patches the single router worker with a new binding DB_<databaseName>.
+   * Returns a per-database signed token that should be persisted by the caller (e.g., Admin DB).
+   */
+  async createDatabase(opts: { databaseName: string; gatewayKey: string; location?: PrimaryLocationHint; migrate?: boolean; schema?: DatabaseSchema | SchemaDsl; deferBinding?: boolean })
+  : Promise<{ database: any; token: string }> {
+    const { databaseName, gatewayKey, location } = opts;
+    if (!databaseName) throw new Error('createDatabase requires databaseName');
+    if (!gatewayKey) throw new Error('createDatabase requires gatewayKey');
+
+    // Ensure router worker exists with gateway key
+    await this.ensureWorker(gatewayKey);
+
+    // Create the D1 database
+    const databaseResp = await this.cf.createDatabase(databaseName, location);
+    const database = (databaseResp as any)?.result ?? databaseResp;
+    if (!database || !database.uuid) throw new Error('Failed to create D1 database');
+
+    // Enable read replication to support bookmarks
+    try { await this.cf.enableReadReplication(database.uuid); } catch {}
+
+    // Issue signed per-db token
+    const token = await createSignedDbToken(databaseName, gatewayKey);
+
+    // Either patch immediately or let caller rebuild bindings in bulk later
+    if (!opts.deferBinding) {
+      await this.patchBindings(gatewayKey, [
+        { type: 'd1', name: `DB_${databaseName}`, id: database.uuid },
+      ]);
+    }
+
+    // Best-effort: if bound now, wait for router endpoint to respond for this DB
+    try { if (!opts.deferBinding) await this.waitForWorkerEndpoint(databaseName, token, gatewayKey); } catch {}
+
+    // Optional initial migration
+    if (opts.migrate) {
+      if (!opts.schema) throw new Error('KuratchiD1.createDatabase: migrate:true requires a schema');
+      const normalized = ensureDbSchema(opts.schema);
+      const { migrations } = generateInitialMigrationBundle(normalized);
+      const initialSql = await migrations.m0001();
+      const client = this.getClient({ databaseName, dbToken: token, gatewayKey });
+      const statements = initialSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length)
+        .map((s) => (s.endsWith(';') ? s : s + ';'));
+      if (statements.length === 1) {
+        const res = await client.query(statements[0]);
+        if (!res || res.success === false) throw new Error(`Migration failed: ${res?.error || 'unknown error'}`);
+      } else if (statements.length > 1) {
+        const res = await client.batch(statements.map((q) => ({ query: q })));
+        if (!res || res.success === false) throw new Error(`Migration batch failed: ${res?.error || 'unknown error'}`);
+      }
+    }
+
+    return { database, token };
+  }
+
+  /** Ensure router worker is deployed with API_KEY and current bindings (no-op if already exists). */
+  private async ensureWorker(apiKey: string) {
+    if (!apiKey) throw new Error('ensureWorker(apiKey) requires a key');
+    const existingBindings = await this.getExistingBindingsSafe();
+    // Remove any previous API_KEY secret and then prepend the current one
+    const preserved = existingBindings.filter((b: any) => !(b?.type === 'secret_text' && b?.name === 'API_KEY'));
+    const bindings = [
+      { type: 'secret_text', name: 'API_KEY', text: apiKey },
+      ...preserved,
+    ];
     try {
-      const workerName = (database as any)?.name || databaseName;
-      await this.waitForWorkerEndpoint(workerName, apiToken);
+      await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+    } catch (e) {
+      // If upload fails, rethrow (no DO migrations here)
+      throw e;
+    }
+    await this.cf.enableWorkerSubdomain(this.scriptName);
+  }
+
+  /** Patch router bindings by merging new entries with existing and re-uploading. */
+  private async patchBindings(apiKey: string, newBindings: any[]) {
+    const existing = await this.getExistingBindingsSafe();
+    // Build a map for D1 bindings to merge by name, but preserve all non-D1 bindings verbatim
+    const nonD1 = existing.filter((b: any) => b?.type !== 'd1' && !(b?.type === 'secret_text' && b?.name === 'API_KEY'));
+    const d1Map = new Map<string, any>();
+    for (const b of existing) if (b?.type === 'd1' && b?.name) d1Map.set(b.name, b);
+    for (const b of newBindings) if (b?.type === 'd1' && b?.name) d1Map.set(b.name, b);
+    const mergedD1 = Array.from(d1Map.values());
+
+    const bindings = [
+      { type: 'secret_text', name: 'API_KEY', text: apiKey },
+      ...nonD1,
+      ...mergedD1,
+    ];
+    await this.cf.uploadWorkerModule(this.scriptName, DEFAULT_D1V2_WORKER_SCRIPT, bindings);
+    await this.cf.enableWorkerSubdomain(this.scriptName);
+  }
+
+  private async getExistingBindingsSafe(): Promise<any[]> {
+    try {
+      const meta = await this.cf.getWorkerScript(this.scriptName);
+      // Some responses may include result.bindings; otherwise, best-effort empty
+      const b = (meta as any)?.result?.bindings || (meta as any)?.bindings || [];
+      return Array.isArray(b) ? b : [];
     } catch {
-      // Non-fatal; migrations may still succeed shortly after
+      return [];
     }
-    return { database, apiToken };
   }
 
-  async deleteDatabase(databaseId: string) {
-    await this.cf.deleteDatabase(databaseId);
-  }
-
-  getClient(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
-    const client = new InternalKuratchi({
+  getClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string }) {
+    return new KuratchiD1v2HttpClient({
       databaseName: cfg.databaseName,
+      dbToken: cfg.dbToken,
+      gatewayKey: cfg.gatewayKey,
       workersSubdomain: this.workersSubdomain,
-      apiToken: cfg.apiToken,
+      scriptName: this.scriptName,
     });
-    if (cfg.bookmark) (client as any).setSessionBookmark?.(cfg.bookmark);
-    return client;
   }
 
-  getDrizzleClient(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
-    return this.getClient(cfg).getDrizzleProxy();
-  }
-
-  // Top-level sugar: create a property-based client; schema is required
-  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'admin' }): AdminTypedClient;
-  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: 'organization' }): OrganizationTypedClient;
-  client(cfg: { databaseName: string; apiToken: string; bookmark?: string }, options: { schema: DatabaseSchema }): Record<string, TableApi>;
   client(
-    cfg: { databaseName: string; apiToken: string; bookmark?: string },
-    options: { schema: DatabaseSchema | 'admin' | 'organization' }
-  ): any {
-    const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
-    if (!options?.schema) {
-      throw new Error('KuratchiD1.client requires a schema: "admin", "organization", or DatabaseSchema');
-    }
-    if (options.schema === 'admin') return createAdminClient(exec);
-    if (options.schema === 'organization') return createOrganizationClient(exec);
-    return createClientFromJsonSchema(exec, options.schema);
+    cfg: { databaseName: string; dbToken: string; gatewayKey: string },
+    options: { schema: DatabaseSchema | SchemaDsl }
+  ): Record<string, TableApi> {
+    const http = this.getClient(cfg);
+    const exec = (sql: string, params?: any[]) => http.query(sql, params);
+    if (!options?.schema) throw new Error('KuratchiD1.client requires a schema (DatabaseSchema or SchemaDsl)');
+    const normalized = ensureDbSchema(options.schema);
+    return createClientFromJsonSchema(exec, normalized);
   }
 
-  database(cfg: { databaseName: string; apiToken: string; bookmark?: string }) {
+  database(cfg: { databaseName: string; dbToken: string; gatewayKey: string }) {
+    // IMPORTANT: reuse a single HTTP client instance to preserve the D1 session bookmark
+    const http = this.getClient(cfg);
     return {
-      query: <T>(sql: string, params: any[] = []) => this.getClient(cfg).query<T>(sql, params),
-      drizzleProxy: () => this.getDrizzleClient(cfg),
-      migrate: (dirName: string) => this.migrateVite(cfg, dirName),
-      getClient: () => this.getClient(cfg),
-      client: (
-        options: { schema: DatabaseSchema | 'admin' | 'organization' }
-      ): Record<string, TableApi> | AdminTypedClient | OrganizationTypedClient => {
-        const exec = (sql: string, params?: any[]) => this.getClient(cfg).query(sql, params);
-        if (!options?.schema) {
-          throw new Error('KuratchiD1.database().client requires a schema: "admin", "organization", or DatabaseSchema');
-        }
-        if (options.schema === 'admin') return createAdminClient(exec);
-        if (options.schema === 'organization') return createOrganizationClient(exec);
-        return createClientFromJsonSchema(exec, options.schema);
+      query: <T>(sql: string, params: any[] = []) => http.query<T>(sql, params),
+      getClient: () => http,
+      client: (options: { schema: DatabaseSchema | SchemaDsl }): Record<string, TableApi> => {
+        const exec = (sql: string, params?: any[]) => http.query(sql, params);
+        if (!options?.schema) throw new Error('KuratchiD1.database().client requires a schema (DatabaseSchema or SchemaDsl)');
+        const normalized = ensureDbSchema(options.schema);
+        return createClientFromJsonSchema(exec, normalized);
       },
     };
   }
 
-  private async applyBundle(
-    cfg: { databaseName: string; apiToken: string },
-    bundle: { journal: { entries: any[] }, migrations: Record<string, string | (() => Promise<string>)> }
-  ) {
-    const client = this.getClient(cfg);
-    const normalized: Record<string, any> = {};
-    for (const [k, v] of Object.entries(bundle.migrations)) {
-      normalized[k] = v as any;
-    }
-    return client.migrate({ journal: bundle.journal, migrations: normalized as any });
+  /** Delete a D1 database by id */
+  async deleteDatabase(databaseId: string) {
+    return this.cf.deleteDatabase(databaseId);
   }
 
-  private async migrateVite(
-    cfg: { databaseName: string; apiToken: string },
-    dirName: string
-  ) {
-    try {
-      const mod = await import('../orm/loader.js');
-      const loadMigrations = (mod as any).loadMigrations as (d: string) => Promise<{
-        journal: MigrationJournal;
-        migrations: Record<string, () => Promise<string>>;
-      }>;
-      if (typeof loadMigrations !== 'function') {
-        throw new Error('loadMigrations() not found in ORM loader module');
-      }
-      const bundle = await loadMigrations(dirName);
-      return this.applyBundle(cfg, bundle);
-    } catch (err: any) {
-      const hint = 'This method requires a Vite environment with import.meta.glob support.';
-      err.message = `${err.message}\n${hint}`;
-      throw err;
-    }
-  }
-
-  // Ensure Worker endpoint is reachable before attempting migrations
-  private async waitForWorkerEndpoint(databaseName: string, apiToken: string) {
-    const client = this.getClient({ databaseName, apiToken });
-    const deadline = Date.now() + 30_000; // up to 30s
+  private async waitForWorkerEndpoint(databaseName: string, dbToken: string, gatewayKey: string): Promise<boolean> {
+    const client = this.getClient({ databaseName, dbToken, gatewayKey });
+    const deadline = Date.now() + 30_000;
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     while (true) {
       try {
         const res: any = await client.query('SELECT 1');
-        // makeRequest returns { success: false, error } on non-2xx; otherwise returns JSON payload
-        if (!res || res.success === false) {
-          if (Date.now() > deadline) break;
-          await sleep(500);
-          continue;
-        }
-        return true;
+        if (res && res.success === true) return true;
+        if (Date.now() > deadline) break;
+        await sleep(1000);
       } catch {
         if (Date.now() > deadline) break;
-        await sleep(500);
+        await sleep(1000);
       }
     }
     return false;
   }
 
-  /**
-   * Creates a Cloudflare D1 database, generates an API token, and deploys a Worker
-   * bound to that database with the token injected as a secret binding.
-   * If no workerScript is provided, uses the SDK's DEFAULT_WORKER_SCRIPT.
-   */
-  private async provisionDatabase(
-    databaseName: string,
-    options: { workerScript?: string; location?: PrimaryLocationHint } = {}
-  ): Promise<{ database: any; apiToken: string }> {
-    const { workerScript, location } = options;
-
-    const databaseResp = await this.cf.createDatabase(databaseName, location);
-    const database = (databaseResp as any)?.result ?? databaseResp; // Support both wrapped and raw responses
-    if (!database || !database.uuid) {
-      throw new Error('Failed to create database in Cloudflare');
-    }
-
-    // Ensure read replication is enabled so session bookmarks are supported
-    try {
-      await this.cf.enableReadReplication(database.uuid);
-    } catch {
-      // Non-fatal; continue provisioning even if this fails
-    }
-
-    const apiToken = crypto.randomUUID();
-
-    const bindings = [
-      { type: 'd1', name: 'DB', id: database.uuid },
-      { type: 'secret_text', name: 'API_KEY', text: apiToken },
-    ];
-
-    const scriptToUpload = workerScript || DEFAULT_WORKER_SCRIPT;
-    await this.cf.uploadWorkerModule(databaseName, scriptToUpload, bindings as any);
-    await this.cf.enableWorkerSubdomain(databaseName);
-
-    // Poll for readiness instead of fixed timeout
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const deadline = Date.now() + 20_000; // 20s max
-
-    // Ensure database is queryable via API (GET by id succeeds)
-    while (true) {
-      try {
-        await this.cf.getDatabase(database.uuid);
-        break;
-      } catch {
-        if (Date.now() > deadline) break;
-        await sleep(500);
-      }
-    }
-
-    // Ensure worker script is visible via API (GET script succeeds)
-    while (true) {
-      try {
-        await this.cf.getWorkerScript(databaseName);
-        break;
-      } catch {
-        if (Date.now() > deadline) break;
-        await sleep(500);
-      }
-    }
-
-    return { database, apiToken };
-  }
-
-  // Redact internals on logs
-  toJSON() {
-    return {
-      database: '[api]',
-      migrate: '[api]'
-    } as any;
-  }
-
-  [Symbol.for('nodejs.util.inspect.custom')]() {
-    return this.toJSON();
-  }
+  toJSON() { return { ensureWorker: '[api]', database: '[api]' } as any; }
+  [Symbol.for('nodejs.util.inspect.custom')]() { return this.toJSON(); }
 }
 
-// ---- Typed clients for known schemas ----
-type AdminRowMap = {
-  users: any;
-  session: any;
-  passwordResetTokens: any;
-  magicLinkTokens: any;
-  emailVerificationToken: any;
-  oauthAccounts: any;
-  organizationUsers: any;
-  organizations: any;
-  activity: any;
-  databases: any;
-  dbApiTokens: any;
-};
-
-type OrganizationRowMap = {
-  users: any;
-  session: any;
-  passwordResetTokens: any;
-  emailVerificationToken: any;
-  magicLinkTokens: any;
-  activity: any;
-  roles: any;
-  oauthAccounts: any;
-};
-
-export type AdminTypedClient = { [K in keyof AdminRowMap]: TableApiTyped<AdminRowMap[K]> };
-export type OrganizationTypedClient = { [K in keyof OrganizationRowMap]: TableApiTyped<OrganizationRowMap[K]> };
-
-function createAdminClient(exec: (sql: string, params?: any[]) => Promise<any>): AdminTypedClient {
-  const mapping = {
-    users: 'users',
-    session: 'session',
-    passwordResetTokens: 'passwordResetTokens',
-    magicLinkTokens: 'magicLinkTokens',
-    emailVerificationToken: 'emailVerificationToken',
-    oauthAccounts: 'oauthAccounts',
-    organizationUsers: 'organizationUsers',
-    organizations: 'organizations',
-    activity: 'activity',
-    databases: 'databases',
-    dbApiTokens: 'dbApiTokens',
-  } as const;
-  return createTypedClientFromMapping<AdminRowMap>(exec, mapping as any);
-}
-
-function createOrganizationClient(exec: (sql: string, params?: any[]) => Promise<any>): OrganizationTypedClient {
-  const mapping = {
-    users: 'users',
-    session: 'session',
-    passwordResetTokens: 'passwordResetTokens',
-    emailVerificationToken: 'emailVerificationToken',
-    magicLinkTokens: 'magicLinkTokens',
-    activity: 'activity',
-    roles: 'roles',
-    oauthAccounts: 'oauthAccounts',
-  } as const;
-  return createTypedClientFromMapping<OrganizationRowMap>(exec, mapping as any);
-}
+export type { PrimaryLocationHint } from '../cloudflare.js';

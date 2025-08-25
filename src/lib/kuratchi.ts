@@ -6,8 +6,7 @@ import { KuratchiDO } from './do/kuratchi-do.js';
 import { KuratchiQueues } from './queues/kuratchi-queues.js';
 import { createAuthHandle, type CreateAuthHandleOptions } from './auth/kuratchi-auth.js';
 import type { Handle } from '@sveltejs/kit';
-export type { PrimaryLocationHint } from './d1/kuratchi-d1.js';
-import { KuratchiD1v2 } from './d1v2/kuratchi-d1v2.js';
+export type { PrimaryLocationHint } from './cloudflare.js';
 
 /**
  * Public options for the Kuratchi SDK
@@ -37,8 +36,8 @@ export interface KuratchiOptions {
  * Kuratchi — Public SDK surface for provisioning and querying D1
  */
 export class Kuratchi {
+    // New default D1 surface (multi-DB router)
     public d1: KuratchiD1;
-    public d1v2: KuratchiD1v2;
     public kv: KuratchiKV;
     public r2: KuratchiR2;
     public do: KuratchiDO;
@@ -93,12 +92,6 @@ export class Kuratchi {
             endpointBase: config.endpointBase,
             workersSubdomain: config.workersSubdomain,
         });
-        this.d1v2 = new KuratchiD1v2({
-            apiToken: config.apiToken,
-            accountId: config.accountId,
-            endpointBase: config.endpointBase,
-            workersSubdomain: config.workersSubdomain,
-        });
         this.kv = new KuratchiKV({
             apiToken: config.apiToken,
             accountId: config.accountId,
@@ -146,6 +139,7 @@ export class Kuratchi {
     toJSON() {
         return {
             d1: '[api]',
+            d1Legacy: '[api]',
             kv: '[api]',
             r2: '[api]',
             queues: '[api]',

@@ -13,6 +13,7 @@ const CF_API_TOKEN = (env as any).CLOUDFLARE_API_TOKEN || (env as any).CF_API_TO
 const CF_ACCOUNT_ID = (env as any).CLOUDFLARE_ACCOUNT_ID || (env as any).CF_ACCOUNT_ID || '';
 const WORKERS_SUBDOMAIN = (env as any).CLOUDFLARE_WORKERS_SUBDOMAIN || '';
 const KURATCHI_AUTH_SECRET = (env as any).KURATCHI_AUTH_SECRET || '';
+const GATEWAY_KEY = (env as any).KURATCHI_GATEWAY_KEY || (env as any).GATEWAY_KEY || '';
 
 const missing = [
   ['CLOUDFLARE_API_TOKEN', CF_API_TOKEN],
@@ -27,7 +28,7 @@ if (missing.length) {
   console.warn('[org.d1.e2e] Skipping E2E: missing env ->', missing.join(', '));
 }
 
-const shouldRun = !!(CF_API_TOKEN && CF_ACCOUNT_ID && WORKERS_SUBDOMAIN && KURATCHI_AUTH_SECRET);
+const shouldRun = !!(CF_API_TOKEN && CF_ACCOUNT_ID && WORKERS_SUBDOMAIN && KURATCHI_AUTH_SECRET && GATEWAY_KEY);
 const describeMaybe = shouldRun ? describe : describe.skip;
 const makeDbName = () => `kuratchi_org_e2e_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
 
@@ -123,16 +124,16 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
 
   const databaseName = makeDbName();
   let databaseId = '';
-  let apiToken = '';
+  let dbToken = '';
   let client: any;
   let auth: AuthService;
 
   beforeAll(async () => {
-    const { database, apiToken: createdToken } = await d1.createDatabase(databaseName);
+    const { database, token } = await d1.createDatabase({ databaseName, gatewayKey: GATEWAY_KEY });
     databaseId = database.uuid || database.id || '';
-    apiToken = createdToken;
+    dbToken = token;
 
-    const db = d1.database({ databaseName, apiToken });
+    const db = d1.database({ databaseName, dbToken, gatewayKey: GATEWAY_KEY });
     for (const sql of MIGRATIONS_SQL) {
       await db.query(sql);
     }

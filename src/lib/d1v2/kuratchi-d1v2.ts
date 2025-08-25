@@ -19,7 +19,7 @@ export interface D1v2Options {
   accountId: string;
   endpointBase?: string;
   workersSubdomain: string;
-  scriptName?: string; // default: 'kuratchi-d1v2-internal'
+  scriptName?: string; // default: 'kuratchi-d1-internal'
 }
 
 export class KuratchiD1v2 {
@@ -30,7 +30,7 @@ export class KuratchiD1v2 {
   constructor(config: D1v2Options) {
     this.cf = new CloudflareClient({ apiToken: config.apiToken, accountId: config.accountId, endpointBase: config.endpointBase });
     this.workersSubdomain = config.workersSubdomain;
-    this.scriptName = config.scriptName || 'kuratchi-d1v2-internal';
+    this.scriptName = config.scriptName || 'kuratchi-d1-internal';
     try { Object.defineProperty(this, 'cf', { enumerable: false, configurable: false, writable: true }); } catch {}
   }
 

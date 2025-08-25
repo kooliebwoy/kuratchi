@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { KuratchiD1 } from '../lib/d1/kuratchi-d1.js';
 import { AuthService } from '../lib/auth/AuthService.js';
+import { adminSchemaDsl } from '../lib/schema/admin.js';
 
 // Use SvelteKit static env so it resolves under Vitest + Vite
 const env = await import('$env/static/private');
@@ -10,6 +11,7 @@ const CF_API_TOKEN = (env as any).CLOUDFLARE_API_TOKEN || (env as any).CF_API_TO
 const CF_ACCOUNT_ID = (env as any).CLOUDFLARE_ACCOUNT_ID || (env as any).CF_ACCOUNT_ID || '';
 const WORKERS_SUBDOMAIN = (env as any).CLOUDFLARE_WORKERS_SUBDOMAIN || '';
 const KURATCHI_AUTH_SECRET = (env as any).KURATCHI_AUTH_SECRET || '';
+const GATEWAY_KEY = (env as any).KURATCHI_GATEWAY_KEY || (env as any).GATEWAY_KEY || '';
 
 // Help diagnose skips: warn which variable(s) are missing
 const missing = [
@@ -17,6 +19,7 @@ const missing = [
   ['CLOUDFLARE_ACCOUNT_ID', CF_ACCOUNT_ID],
   ['CLOUDFLARE_WORKERS_SUBDOMAIN', WORKERS_SUBDOMAIN],
   ['KURATCHI_AUTH_SECRET', KURATCHI_AUTH_SECRET],
+  ['KURATCHI_GATEWAY_KEY', GATEWAY_KEY],
 ]
   .filter(([, v]) => !v)
   .map(([k]) => k);
@@ -25,7 +28,7 @@ if (missing.length) {
   console.warn('[auth.d1.e2e] Skipping E2E: missing env ->', missing.join(', '));
 }
 
-const shouldRun = !!(CF_API_TOKEN && CF_ACCOUNT_ID && WORKERS_SUBDOMAIN && KURATCHI_AUTH_SECRET);
+const shouldRun = !!(CF_API_TOKEN && CF_ACCOUNT_ID && WORKERS_SUBDOMAIN && KURATCHI_AUTH_SECRET && GATEWAY_KEY);
 const describeMaybe = shouldRun ? describe : describe.skip;
 const makeDbName = () => `kuratchi_auth_e2e_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
 
@@ -99,22 +102,22 @@ describeMaybe('AuthService E2E with Cloudflare D1 (SvelteKit env, outside lib)',
 
   const databaseName = makeDbName();
   let databaseId = '';
-  let apiToken = '';
+  let dbToken = '';
  
   let auth: AuthService;
 
   beforeAll(async () => {
-    const { database, apiToken: createdToken } = await d1.createDatabase(databaseName);
+    const { database, token } = await d1.createDatabase({ databaseName, gatewayKey: GATEWAY_KEY });
     databaseId = database.uuid || database.id || '';
-    apiToken = createdToken;
+    dbToken = token;
 
-    const db = d1.database({ databaseName, apiToken });
+    const db = d1.database({ databaseName, dbToken, gatewayKey: GATEWAY_KEY });
     for (const sql of MIGRATIONS_SQL) {
       await db.query(sql);
     }
 
     // Instantiate runtime ORM client (admin schema) for AuthService
-    const client = d1.client({ databaseName, apiToken }, { schema: 'admin' });
+    const client = d1.client({ databaseName, dbToken, gatewayKey: GATEWAY_KEY }, { schema: adminSchemaDsl as any });
     auth = new AuthService(client as any, {
       ADMIN_DB: {} as any,
       RESEND_API_KEY: 'test-resend',
