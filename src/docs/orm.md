@@ -19,7 +19,7 @@ const admin = kuratchi.d1.client({ databaseName, apiToken }, { schema: 'admin' }
 await admin.users.insert({ id: 'u1', email: 'a@acme.com' });
 const first = await admin.users
   .where({ email: { like: '%@acme.com' } })
-  .findFirst();
+  .first();
 if (!first.success) throw new Error(first.error);
 console.log(first.data);
 
@@ -43,8 +43,9 @@ Each table exposes a chainable query builder plus mutations:
 - limit(n: number) -> this
 - offset(n: number) -> this
 - include(spec) -> this
-- findMany() -> { success, data?: Row[] | undefined, error? }
-- findFirst() -> { success, data?: Row | undefined, error? }
+- many() -> { success, data?: Row[] | undefined, error? }
+- first() -> { success, data?: Row | undefined, error? }
+- one() -> { success, data?: Row | undefined, error?: 'Not found' | 'Expected exactly one row' }
 - insert(values | values[]) -> { success, ... }
 - update(where, values) -> { success, ... }
 - delete(where) -> { success, ... }
@@ -79,7 +80,7 @@ const res = await admin.users
   .orderBy({ id: 'desc' })
   .limit(10)
   .offset(3) // with LIMIT, offset(n) treats n as 1-based page number => OFFSET (n-1)*LIMIT
-  .findMany();
+  .many();
 ```
 
 #### Selecting specific columns
@@ -91,13 +92,13 @@ const emails = await admin.users
   .select(['id', 'email'])
   .where({ email: { like: '%@acme.com' } })
   .orderBy({ id: 'asc' })
-  .findMany();
+  .many();
 ```
 
 Notes:
 
 - When `select()` is omitted, `SELECT *` is used.
-- With `select([...])`, only those columns are returned by `findMany()`/`findFirst()`.
+- With `select([...])`, only those columns are returned by `many()`/`first()`.
 
 #### Raw SQL fragments with safety guards
 
@@ -108,7 +109,7 @@ For cases not covered by the `where()` shape, use `sql({ query, params })` to ad
 await admin.users
   .where({ active: true })
   .sql({ query: 'name LIKE ?', params: [`%${needle}%`] })
-  .findMany();
+  .many();
 ```
 
 Safety guard behavior:
@@ -130,7 +131,7 @@ await admin.activity
   .orderBy({ created_at: 'desc' })
   .limit(pageSize)
   .offset(page) // computed OFFSET = (page-1) * pageSize
-  .findMany();
+  .many();
 ```
 
 ### include() eager loading
@@ -146,13 +147,13 @@ Examples:
 // Parent: orders.userId -> users.id
 const withUsers = await admin.orders
   .include({ users: true })
-  .findMany();
+  .many();
 // rows[i].users is the user object for orders[i].userId
 
 // Child: sessions.userId -> users.id
 const withSessions = await admin.users
   .include({ sessions: true })
-  .findMany();
+  .many();
 // rows[i].sessions is an array of sessions for users[i].id
 ```
 
@@ -164,7 +165,7 @@ await admin.orders
     users: { as: 'user', table: 'users' }, // rename property and/or target table
     items: { localKey: 'id', foreignKey: 'orderId', table: 'orderItems' }, // child side
   })
-  .findMany();
+  .many();
 ```
 
 

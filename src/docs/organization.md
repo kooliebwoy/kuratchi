@@ -82,7 +82,7 @@ Exposed tables on `org`:
   `magicLinkTokens`, `activity`, `roles`, `oauthAccounts`
 
 Each table supports:
-- chainable reads: `where()`, `orWhere()`, `orderBy()`, `select()`, `limit()`, `offset()`, `include()`, then `findMany()` / `findFirst()`
+- chainable reads: `where()`, `orWhere()`, `orderBy()`, `select()`, `limit()`, `offset()`, `include()`, then `many()` / `first()` / `one()`
 - writes/utilities: `insert(values | values[])`, `update(where, values)`, `delete(where)`, `count(where?)`
 
 ## Examples
@@ -92,7 +92,7 @@ Create and query a user:
 await org.users.insert({ id: 'u1', email: 'a@acme.com', role: 'member' });
 const user = await org.users
   .where({ email: { like: '%@acme.com' } })
-  .findFirst();
+  .first();
 if (!user.success) throw new Error(user.error);
 ```
 
@@ -102,7 +102,7 @@ Attach child relations using `include()` (one‑to‑many):
 const res = await org.users
   .where({ role: 'member' })
   .include({ oauthAccounts: true })
-  .findMany();
+  .many();
 ```
 
 Attach parent relations using `include()` (many‑to‑one):
@@ -111,7 +111,7 @@ Attach parent relations using `include()` (many‑to‑one):
 const res = await org.session
   .where({ expires: { gt: Date.now() } })
   .include({ users: { as: 'user' } })
-  .findMany();
+  .many();
 ```
 
 Update and delete:
@@ -126,6 +126,6 @@ const c = await org.users.count({ role: 'member' });
 ```
 
 ## Tips
-- Use narrow `select()` and `orderBy()` with `findMany()` for performance where needed.
+- Use narrow `select()` and `orderBy()` with `many()` for performance where needed.
 - For custom schemas, you can generate a client from a JSON schema using `createClientFromJsonSchema`.
 - See `src/docs/migrations.md` for full migration details and snapshotting.

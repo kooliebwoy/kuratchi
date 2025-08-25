@@ -32,7 +32,7 @@ describe('KuratchiD1 top-level sugar client', () => {
       .limit(10)
       // offset() acts as page when used with limit(); offset(3) -> OFFSET 20 for limit 10
       .offset(3)
-      .findMany();
+      .many();
     expect(mockClient.query).toHaveBeenCalledTimes(1);
     const { sql, params } = captured[0];
     expect(sql).toBe('SELECT id, email FROM users WHERE (email LIKE ?) AND (status IN (?, ?)) ORDER BY id DESC LIMIT 10 OFFSET 20');
@@ -90,7 +90,7 @@ describe('KuratchiD1 top-level sugar client', () => {
 });
 
 describe('KuratchiD1 database().client', () => {
-  it('db.client({ schema }) findFirst returns first row data and compiles LIMIT 1', async () => {
+  it('db.client({ schema }) first() returns first row data and compiles LIMIT 1', async () => {
     const { d1, mockClient, captured } = setupD1();
     // Return a single row for this first call
     (mockClient.query as any).mockImplementationOnce(async (sql: string, params?: any[]) => {
@@ -100,7 +100,7 @@ describe('KuratchiD1 database().client', () => {
     const db = d1.database(cfg);
     const schema = { tables: [{ name: 'users' }] } as any;
     const dyn = db.client({ schema });
-    const res = await (dyn as any).users.where({ id: 'u1' }).select(['id']).findFirst();
+    const res = await (dyn as any).users.where({ id: 'u1' }).select(['id']).first();
     expect(res.success).toBe(true);
     expect(res.data).toEqual({ id: 'u1' });
     expect(captured[0]).toEqual({ sql: 'SELECT id FROM users WHERE id = ? LIMIT 1', params: ['u1'] });

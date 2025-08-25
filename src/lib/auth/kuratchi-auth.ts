@@ -642,7 +642,7 @@ public signIn: {
         
         private async findOrganizationIdByEmail(email: string): Promise<string | undefined> {
             try {
-                const res = await (this.adminDb as any).organizationUsers.where({ email, deleted_at: { is: null } }).findFirst();
+                const res = await (this.adminDb as any).organizationUsers.where({ email, deleted_at: { is: null } }).first();
                 const mapping = (res as any)?.data;
                 return (mapping as any)?.organizationId || undefined;
             } catch {
@@ -659,7 +659,7 @@ public signIn: {
                 const dbRes = await (this.adminDb as any).databases
                     .where({ organizationId, deleted_at: { is: null } })
                     .orderBy({ created_at: 'desc' })
-                    .findFirst();
+                    .first();
                 const dbRecord = (dbRes as any)?.data;
                 if (!dbRecord || !dbRecord.name) {
                     throw new Error(`No database found for organization ${organizationId}`);
@@ -671,7 +671,7 @@ public signIn: {
                 const tokenRes = await (this.adminDb as any).dbApiTokens
                     .where({ databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false })
                     .orderBy({ created_at: 'desc' })
-                    .findMany();
+                    .many();
                 const tokenCandidates = (tokenRes as any)?.data ?? [];
                 const nowMs = Date.now();
                 const isNotExpired = (exp: any) => {
@@ -760,7 +760,7 @@ public signIn: {
                 try {
                     const existing = await (this.adminDb as any).organizations
                         .where({ organizationSlug: src.organizationSlug, deleted_at: { is: null } } as any)
-                        .findFirst();
+                        .first();
                     org = (existing as any)?.data || null;
                 } catch {}
             }
@@ -769,7 +769,7 @@ public signIn: {
                 try {
                     const existing = await (this.adminDb as any).organizations
                         .where({ email: src.email, deleted_at: { is: null } } as any)
-                        .findFirst();
+                        .first();
                     org = (existing as any)?.data || null;
                 } catch {}
             }
@@ -779,7 +779,7 @@ public signIn: {
                     try {
                         const existing = await (this.adminDb as any).organizations
                             .where({ email: src.email, deleted_at: { is: null } })
-                            .findFirst();
+                            .first();
                         if ((existing as any)?.data) {
                             throw new Error('organization_email_already_exists');
                         }
@@ -803,13 +803,13 @@ public signIn: {
                     if (src.organizationSlug) {
                         const existing = await (this.adminDb as any).organizations
                             .where({ organizationSlug: src.organizationSlug, deleted_at: { is: null } } as any)
-                            .findFirst();
+                            .first();
                         org = (existing as any)?.data || null;
                     }
                     if (!org && src.email) {
                         const existing = await (this.adminDb as any).organizations
                             .where({ email: src.email, deleted_at: { is: null } } as any)
-                            .findFirst();
+                            .first();
                         org = (existing as any)?.data || null;
                     }
                     if (!org) throw e;
@@ -831,11 +831,11 @@ public signIn: {
                     dbuuid: useD1 ? '' : null,
                     organizationId: org.id
                 });
-                const sel = await (this.adminDb as any).databases.where({ id: dbId } as any).findFirst();
+                const sel = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
                 dbRow = (sel as any)?.data || { id: dbId, name: String(dbName), dbuuid: useD1 ? '' : null, organizationId: org.id };
             } catch (e: any) {
                 // If name is unique and already exists, fetch it
-                const existing = await (this.adminDb as any).databases.where({ name: String(dbName), deleted_at: { is: null } } as any).findFirst();
+                const existing = await (this.adminDb as any).databases.where({ name: String(dbName), deleted_at: { is: null } } as any).first();
                 dbRow = (existing as any)?.data;
                 if (!dbRow) throw e;
             }
@@ -847,7 +847,7 @@ public signIn: {
                 const tokenRes = await (this.adminDb as any).dbApiTokens
                     .where({ databaseId: dbRow.id, deleted_at: { is: null }, revoked: false } as any)
                     .orderBy({ created_at: 'desc' })
-                    .findMany();
+                    .many();
                 const tokens = ((tokenRes as any)?.data ?? []) as any[];
                 const now = Date.now();
                 const notExpired = (exp: any) => {
@@ -907,7 +907,7 @@ public signIn: {
             const doKV = options?.provisionKV === true;
             const doR2 = options?.provisionR2 === true;
             const doQueues = options?.provisionQueues === true;
-            const baseName = String((org as any).organizationSlug || (org as any).organizationName || `org-${orgId}`);
+            const baseName = String((org as any).organizationSlug || (org as any).organizationName || `org-${org.id}`);
 
             if (doKV && (this.adminDb as any).kvNamespaces && (this.adminDb as any).kvApiTokens) {
                 const kvTitle = (options?.kvTitle || `${baseName}-kv`).toString();
@@ -1005,7 +1005,7 @@ public signIn: {
                     // Check if mapping already exists
                     const existing = await (this.adminDb as any).organizationUsers
                         .where({ email: data.email, organizationId: org.id, deleted_at: { is: null } } as any)
-                        .findFirst();
+                        .first();
                     if (!(existing as any)?.data) {
                         await (this.adminDb as any).organizationUsers.insert({
                             id: crypto.randomUUID(),
@@ -1036,12 +1036,12 @@ public signIn: {
             const res = await (this.adminDb as any).organizations
                 .where({ deleted_at: { is: null } })
                 .orderBy({ created_at: 'desc' })
-                .findMany();
+                .many();
             return (res as any)?.data ?? [];
         }
     
         async getOrganization(id: string) {
-            const res = await (this.adminDb as any).organizations.where({ id, deleted_at: { is: null } } as any).findFirst();
+            const res = await (this.adminDb as any).organizations.where({ id, deleted_at: { is: null } } as any).first();
             return (res as any)?.data;
         }
 
@@ -1053,7 +1053,7 @@ public signIn: {
             const dbRes = await (this.adminDb as any).databases
                 .where({ organizationId, deleted_at: { is: null } })
                 .orderBy({ created_at: 'desc' })
-                .findFirst();
+                .first();
             const db = (dbRes as any)?.data;
 
             // Best-effort delete in Cloudflare if we have a uuid
@@ -1075,7 +1075,7 @@ public signIn: {
 
             // Best-effort delete KV namespaces
             if ((this.adminDb as any).kvNamespaces) {
-            const kvNsRes = await (this.adminDb as any).kvNamespaces.where({ organizationId, deleted_at: { is: null } }).findMany();
+            const kvNsRes = await (this.adminDb as any).kvNamespaces.where({ organizationId, deleted_at: { is: null } }).many();
             const kvNamespaces = ((kvNsRes as any)?.data ?? []) as any[];
             for (const ns of kvNamespaces) {
                 const nsId = (ns as any).namespaceId;
@@ -1093,7 +1093,7 @@ public signIn: {
 
             // Best-effort delete R2 buckets
             if ((this.adminDb as any).r2Buckets) {
-            const r2Res = await (this.adminDb as any).r2Buckets.where({ organizationId, deleted_at: { is: null } }).findMany();
+            const r2Res = await (this.adminDb as any).r2Buckets.where({ organizationId, deleted_at: { is: null } }).many();
             const r2Buckets = ((r2Res as any)?.data ?? []) as any[];
             for (const b of r2Buckets) {
                 const name = (b as any).name;
@@ -1111,7 +1111,7 @@ public signIn: {
 
             // Best-effort delete Queues
             if ((this.adminDb as any).queues) {
-            const qRes = await (this.adminDb as any).queues.where({ organizationId, deleted_at: { is: null } }).findMany();
+            const qRes = await (this.adminDb as any).queues.where({ organizationId, deleted_at: { is: null } }).many();
             const queues = ((qRes as any)?.data ?? []) as any[];
             for (const q of queues) {
                 const target = (q as any).cfid || (q as any).name;

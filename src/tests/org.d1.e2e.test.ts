@@ -159,10 +159,10 @@ describeMaybe('Organization E2E with Cloudflare D1', () => {
   it('CRUD users in organization DB', async () => {
     const id = crypto.randomUUID();
     await client.users.insert({ id, email: 'orguser@example.com' });
-    const got = await client.users.where({ id } as any).findFirst();
+    const got = await client.users.where({ id } as any).first();
     expect((got as any)?.data?.email).toBe('orguser@example.com');
     await client.users.update({ id } as any, { name: 'Org User' } as any);
-    const upd = await client.users.where({ id } as any).findFirst();
+    const upd = await client.users.where({ id } as any).first();
     expect((upd as any)?.data?.name).toBe('Org User');
   }, 60_000);
 

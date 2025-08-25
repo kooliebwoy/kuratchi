@@ -25,12 +25,12 @@ function makeAdminStub() {
       }),
       where: vi.fn((w: any) => ({
         orderBy: (_o: any) => ({
-          findFirst: async () => {
+          first: async () => {
             const found = databases.find(d => (!w?.id || d.id === w.id) && (!w?.name || d.name === w.name) && !d.deleted_at);
             return { data: found || null } as any;
           }
         }),
-        findFirst: async () => {
+        first: async () => {
           const found = databases.find(d => (!w?.id || d.id === w.id) && (!w?.name || d.name === w.name) && !d.deleted_at);
           return { data: found || null } as any;
         }
@@ -44,7 +44,7 @@ function makeAdminStub() {
     dbApiTokens: {
       where: vi.fn((_w: any) => ({
         orderBy: (_o: any) => ({
-          findMany: async () => {
+          many: async () => {
             // Return existing tokens (simulate already persisted token for this DB)
             return { data: dbApiTokens.slice() } as any;
           }
@@ -72,6 +72,7 @@ describe('KuratchiAuth.createOrganization idempotent token reuse', () => {
       apiToken: 'cf_test',
       accountId: 'acc_test',
       workersSubdomain: 'example-subdomain',
+      gatewayKey: 'test_gateway_key',
       resendApiKey: '',
       emailFrom: 'noreply@example.com',
       origin: 'https://example.com',

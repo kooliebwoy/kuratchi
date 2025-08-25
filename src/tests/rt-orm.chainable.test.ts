@@ -24,12 +24,43 @@ describe('Runtime ORM chainable query builder', () => {
       .orWhere({ status: { in: [1, 2] } })
       .orderBy({ id: 'desc' })
       .limit(10)
-      .findMany();
+      .many();
 
     expect(calls.length).toBe(1);
     expect(calls[0]).toEqual({
       sql: 'SELECT * FROM users WHERE (email LIKE ?) OR (status IN (?, ?)) ORDER BY id DESC LIMIT 10',
       params: ['%@acme.com', 1, 2],
+    });
+  });
+  it('whereIn + updateMany compiles UPDATE ... WHERE col IN (...)', async () => {
+    const calls: { sql: string; params?: any[] }[] = [];
+    const exec = mkExec(calls);
+    const orm = createRuntimeOrm(exec as any);
+
+    await orm
+      .table('users')
+      .whereIn('id', ['u1', 'u2', 'u3'])
+      .updateMany({ lastSeen: 123 });
+
+    expect(calls.length).toBe(1);
+    expect(calls[0]).toEqual({
+      sql: 'UPDATE users SET lastSeen = ? WHERE id IN (?, ?, ?)',
+      params: [123, 'u1', 'u2', 'u3'],
+    });
+  });
+
+  it('exists() returns boolean and compiles SELECT 1 ... LIMIT 1', async () => {
+    const calls: { sql: string; params?: any[] }[] = [];
+    const exec = mkExec(calls, [
+      () => ({ success: true, results: [{ 1: 1 }] }),
+    ]);
+    const orm = createRuntimeOrm(exec as any);
+
+    const ok = await orm.table('users').where({ email: 'a@%' } as any).exists();
+    expect(ok).toBe(true);
+    expect(calls[0]).toEqual({
+      sql: 'SELECT 1 FROM users WHERE email LIKE ? LIMIT 1',
+      params: ['a@%'],
     });
   });
 
@@ -43,7 +74,7 @@ describe('Runtime ORM chainable query builder', () => {
       .orderBy({ id: 'desc' })
       .limit(5)
       .offset(3)
-      .findMany();
+      .many();
 
     expect(calls.length).toBe(1);
     expect(calls[0]).toEqual({
@@ -60,7 +91,7 @@ describe('Runtime ORM chainable query builder', () => {
     await orm
       .table('users')
       .offset(10)
-      .findMany();
+      .many();
 
     expect(calls.length).toBe(1);
     expect(calls[0]).toEqual({
@@ -69,12 +100,12 @@ describe('Runtime ORM chainable query builder', () => {
     });
   });
 
-  it('simple filter findFirst infers LIKE and LIMIT 1', async () => {
+  it('simple filter first() infers LIKE and LIMIT 1', async () => {
     const calls: { sql: string; params?: any[] }[] = [];
     const exec = mkExec(calls);
     const orm = createRuntimeOrm(exec as any);
 
-    const res = await orm.table('users').where({ email: 'a@%' } as any).findFirst();
+    const res = await orm.table('users').where({ email: 'a@%' } as any).first();
     expect(res.success).toBe(true);
     expect(calls.length).toBe(1);
     expect(calls[0]).toEqual({
@@ -99,7 +130,7 @@ describe('Runtime ORM chainable query builder', () => {
     ]);
     const orm = createRuntimeOrm(exec as any);
 
-    const res = await orm.table('orders').include({ users: true }).findMany();
+    const res = await orm.table('orders').include({ users: true }).many();
     expect(res.success).toBe(true);
 
     expect(calls[0]).toEqual({ sql: 'SELECT * FROM orders', params: [] });
@@ -127,7 +158,7 @@ describe('Runtime ORM chainable query builder', () => {
     ]);
     const orm = createRuntimeOrm(exec as any);
 
-    const res = await orm.table('users').include({ sessions: true }).findMany();
+    const res = await orm.table('users').include({ sessions: true }).many();
     expect(res.success).toBe(true);
 
     expect(calls[0]).toEqual({ sql: 'SELECT * FROM users', params: [] });

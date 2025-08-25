@@ -28,13 +28,17 @@ describe('KuratchiDO.ensureWorker (via createDatabase)', () => {
       scriptName: 'my-do-internal'
     });
 
+    // Short-circuit endpoint readiness wait to avoid test timeout
+    // @ts-expect-error accessing private method for test shim
+    doSvc.waitForWorkerEndpoint = async () => true;
+
     const gatewayKey = 'MASTER_KEY_123';
     await doSvc.createDatabase({ databaseName: 'org_acme', gatewayKey });
 
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(enableSpy).toHaveBeenCalledTimes(1);
 
-    const firstCall = uploadSpy.mock.calls[0];
+    const firstCall = uploadSpy.mock.calls[0] as unknown as [string, string, any[]];
     if (!firstCall) throw new Error('uploadWorkerModule was not called');
     const scriptName = firstCall[0];
     const script = firstCall[1];

@@ -189,7 +189,11 @@ export const verifyState = async (secret: string, state: string): Promise<Record
         const json = b64urlDecodeToString(p);
         const key = await importHmacKey(secret);
         const sigBytes = fromBase64Url(s);
-        const valid = await crypto.subtle.verify('HMAC', key, sigBytes, new TextEncoder().encode(json));
+        // Copy into a fresh ArrayBuffer to avoid SharedArrayBuffer typing
+        const sigCopy = new Uint8Array(sigBytes.byteLength);
+        sigCopy.set(sigBytes);
+        const sigBuf: ArrayBuffer = sigCopy.buffer;
+        const valid = await crypto.subtle.verify('HMAC', key, sigBuf, new TextEncoder().encode(json));
         if (!valid) return null;
         return JSON.parse(json);
     } catch {

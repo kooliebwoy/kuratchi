@@ -153,7 +153,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             id: userId,
             emailVerified: null
         });
-        const got = await this.client.users.where({ id: userId } as any).findFirst();
+        const got = await this.client.users.where({ id: userId } as any).first();
         const user = (got as any)?.data as UserRow<C> | undefined;
         
         // Generate an email verification token
@@ -175,7 +175,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns Array of users
      */
     async getUsers(): Promise<UserRow<C>[]> {
-        const res = await this.client.users.findMany();
+        const res = await this.client.users.many();
         return ((res as any)?.data ?? []) as UserRow<C>[];
     }
 
@@ -185,7 +185,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns User or undefined
      */
     async getUser(id: string): Promise<UserRow<C> | undefined> {
-        const res = await this.client.users.where({ id } as any).findFirst();
+        const res = await this.client.users.where({ id } as any).first();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -197,7 +197,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      */
     async updateUser(id: string, userData: Partial<UserRow<C>> & Record<string, any>): Promise<UserRow<C> | undefined> {
         await this.client.users.update({ id } as any, { ...userData, updated_at: new Date().toISOString() });
-        const res = await this.client.users.where({ id } as any).findFirst();
+        const res = await this.client.users.where({ id } as any).first();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -236,7 +236,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns User or undefined
      */
     async getUserByEmail(email: string): Promise<UserRow<C> | undefined> {
-        const res = await this.client.users.where({ email } as any).findFirst();
+        const res = await this.client.users.where({ email } as any).first();
         return (res as any)?.data as UserRow<C> | undefined;
     }
 
@@ -459,7 +459,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionId);
             if (!parsed) throw new Error('Invalid session cookie');
             const { tokenHash } = parsed;
-            const found = await this.client.session.where({ sessionToken: tokenHash } as any).findFirst();
+            const found = await this.client.session.where({ sessionToken: tokenHash } as any).first();
             const row = (found as any)?.data;
             if (!row) throw new Error('Session to refresh not found');
             userId = row.userId;
@@ -526,7 +526,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             }
 
             // Count existing sessions for the user
-            const sessionRes = await this.client.session.where({ userId } as any).findMany();
+            const sessionRes = await this.client.session.where({ userId } as any).many();
             const sessions = (sessionRes as any).data ?? [];
 
             if (!Array.isArray(sessions) || sessions.length === 0) {
@@ -562,7 +562,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         const parsed = await parseSessionCookie(this.env.KURATCHI_AUTH_SECRET, sessionCookie);
         if (!parsed) return { sessionData: null, user: null };
         const { tokenHash } = parsed;
-        const sessionRes = await this.client.session.where({ sessionToken: tokenHash } as any).findFirst();
+        const sessionRes = await this.client.session.where({ sessionToken: tokenHash } as any).first();
         const sessionRow = (sessionRes as any)?.data;
         if (!sessionRow) return { sessionData: null, user: null };
 
@@ -646,14 +646,14 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
     }
 
     async deletePasswordResetToken(token: string) {
-        const before = await this.client.passwordResetTokens.where({ token } as any).findMany();
+        const before = await this.client.passwordResetTokens.where({ token } as any).many();
         await this.client.passwordResetTokens.delete({ token } as any);
         const rows = ((before as any).data ?? []) as any[];
         return rows.length > 0;
     }
 
     async getPasswordResetToken(token: string) {
-        const res = await this.client.passwordResetTokens.where({ token } as any).findMany();
+        const res = await this.client.passwordResetTokens.where({ token } as any).many();
         return ((res as any).data ?? []) as any[];
     }
 
@@ -703,7 +703,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      */
     async getEmailVerificationTokenByEmail(email: string) {
         // Return the most recent token for this email
-        const res = await this.client.emailVerificationToken.where({ email } as any).findMany();
+        const res = await this.client.emailVerificationToken.where({ email } as any).many();
         const tokens = ((res as any).data ?? []) as any[];
         if (!Array.isArray(tokens) || tokens.length === 0) return null as any;
         // Choose the latest by expires
@@ -856,7 +856,7 @@ async createMagicLinkToken(email: string, redirectTo?: string, ttlMinutes = 15) 
 }
 
 async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: string; redirectTo?: string; user?: Omit<UserRow<C>, 'password_hash'>; error?: string }> {
-    const found = await this.client.magicLinkTokens.where({ token } as any).findFirst();
+    const found = await this.client.magicLinkTokens.where({ token } as any).first();
     const row = (found as any)?.data;
     if (!row) return { success: false, error: 'Invalid or expired token' };
     const now = new Date();
@@ -908,7 +908,7 @@ async getOrCreateUserFromOAuth(params: {
 }): Promise<any> {
     const { provider, providerAccountId, email, name, image, tokens } = params;
     // Try existing link
-    const existing = await (this.client as any).oauthAccounts?.where({ provider, providerAccountId } as any).findFirst();
+    const existing = await (this.client as any).oauthAccounts?.where({ provider, providerAccountId } as any).first();
     const existingRow = (existing as any)?.data;
     if (existingRow?.userId) {
         const u = await this.getUser(existingRow.userId);
@@ -936,7 +936,7 @@ async getOrCreateUserFromOAuth(params: {
     if ((this.client as any).oauthAccounts) {
         if (!user) throw new Error('Failed to resolve user');
         const ensuredUser = user as UserRow<C>;
-        const link = await (this.client as any).oauthAccounts.where({ provider, providerAccountId } as any).findFirst();
+        const link = await (this.client as any).oauthAccounts.where({ provider, providerAccountId } as any).first();
         if ((link as any)?.data) {
             await (this.client as any).oauthAccounts.update({ provider, providerAccountId } as any, {
                 userId: ensuredUser.id,

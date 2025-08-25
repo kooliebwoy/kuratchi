@@ -22,7 +22,7 @@ const org = kuratchi.do.client({ databaseName: dbName, dbToken, gatewayKey }, { 
 
 // Use the same chainable ORM as D1
 await org.users.insert({ id: 'u1', email: 'a@acme.com' });
-const first = await org.users.where({ email: { like: '%@acme.com' } }).findFirst();
+const first = await org.users.where({ email: { like: '%@acme.com' } }).first();
 ```
 
 ## API

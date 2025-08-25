@@ -195,6 +195,13 @@ class QueryBuilder<Row = any> {
     return this;
   }
 
+  // Adds an IN (...) clause for a specific column on the current where group
+  whereIn(column: string, values: any[]): this {
+    if (!Array.isArray(values) || values.length === 0) return this; // no-op
+    const placeholders = values.map(() => '?').join(', ');
+    return this.sql({ query: `${column} IN (${placeholders})`, params: values });
+  }
+
   orWhere(filter: Where): this {
     this.whereGroups.push({ ...filter });
     this.rawWhereGroups.push([]);
@@ -259,7 +266,26 @@ class QueryBuilder<Row = any> {
     return this;
   }
 
-  async findMany(): Promise<QueryResult<Row[]>> {
+  async updateMany(values: Record<string, any>): Promise<QueryResult<any>> {
+    const setCols = Object.keys(values || {});
+    if (!setCols.length) return { success: true };
+    const setSql = setCols.map((c) => `${c} = ?`).join(', ');
+    const setParams = setCols.map((c) => values[c]);
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+    const sql = `UPDATE ${this.tableName} SET ${setSql} ${w.sql}`.trim();
+    return this.execute(sql, [...setParams, ...w.params]);
+  }
+
+  async exists(): Promise<boolean> {
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+    const sql = `SELECT 1 FROM ${this.tableName} ${w.sql} LIMIT 1`;
+    const ret = await this.execute(sql, w.params);
+    if (!ret || ret.success === false) return false;
+    const rows = (ret as any).data ?? (ret as any).results ?? [];
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  async many(): Promise<QueryResult<Row[]>> {
     const sel = compileSelect(this.selectCols);
     const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
     const order = compileOrderBy(this.order);
@@ -281,13 +307,24 @@ class QueryBuilder<Row = any> {
     return { success: true, data: rows } as QueryResult<Row[]>;
   }
 
-  async findFirst(): Promise<QueryResult<Row | undefined>> {
+  async first(): Promise<QueryResult<Row | undefined>> {
     this.limitN = 1;
-    const res = await this.findMany();
+    const res = await this.many();
     if (!res.success) return res as any;
     const rows = (res as any).data ?? (res as any).results;
     const first = Array.isArray(rows) ? rows[0] : undefined;
     return { success: true, data: first };
+  }
+
+  async one(): Promise<QueryResult<Row>> {
+    this.limitN = 2; // fetch up to 2 to detect non-uniqueness cheaply
+    const res = await this.many();
+    if (!res.success) return res as any;
+    const rows = ((res as any).data ?? (res as any).results ?? []) as Row[];
+    if (rows.length !== 1) {
+      return { success: false, error: rows.length === 0 ? 'Not found' : 'Expected exactly one row' } as any;
+    }
+    return { success: true, data: rows[0] } as any;
   }
 
   private singularize(name: string): string {
@@ -352,11 +389,17 @@ export function createRuntimeOrm(execute: SqlExecutor) {
   function table<Row = any>(tableName: string): TableApi<Row> {
     const builderFactory = () => new QueryBuilder<Row>(tableName, execute);
     return {
-      async findMany(): Promise<QueryResult<Row[]>> {
-        return builderFactory().findMany();
+      async many(): Promise<QueryResult<Row[]>> {
+        return builderFactory().many();
       },
-      async findFirst(): Promise<QueryResult<Row | undefined>> {
-        return builderFactory().findFirst();
+      async first(): Promise<QueryResult<Row | undefined>> {
+        return builderFactory().first();
+      },
+      async one(): Promise<QueryResult<Row>> {
+        return builderFactory().one();
+      },
+      async exists(): Promise<boolean> {
+        return builderFactory().exists();
       },
       async insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>> {
         const rows = Array.isArray(values) ? values : [values];
@@ -378,6 +421,9 @@ export function createRuntimeOrm(execute: SqlExecutor) {
         const sql = `UPDATE ${tableName} SET ${setSql} ${w.sql}`;
         return execute(sql, [...setParams, ...w.params]);
       },
+      async updateMany(values: Record<string, any>): Promise<QueryResult<any>> {
+        return builderFactory().updateMany(values);
+      },
       async delete(where: Where): Promise<QueryResult<any>> {
         const w = compileWhere(where);
         const sql = `DELETE FROM ${tableName} ${w.sql}`;
@@ -392,6 +438,7 @@ export function createRuntimeOrm(execute: SqlExecutor) {
         return { success: true, data: rows } as QueryResult<{ count: number }[]>;
       },
       where(filter: Where) { return builderFactory().where(filter); },
+      whereIn(column: string, values: any[]) { return builderFactory().whereIn(column, values); },
       orWhere(filter: Where) { return builderFactory().orWhere(filter); },
       orderBy(order: OrderBy | string) { return builderFactory().orderBy(order); },
       limit(n: number) { return builderFactory().limit(n); },
@@ -414,14 +461,18 @@ export function createRuntimeOrmFromKuratchiDb(db: { query: (sql: string, params
 // ---- Property-based clients ----
 
 export interface TableApi<Row = any> {
-  findMany(): Promise<QueryResult<Row[]>>;
-  findFirst(): Promise<QueryResult<Row | undefined>>;
+  many(): Promise<QueryResult<Row[]>>;
+  first(): Promise<QueryResult<Row | undefined>>;
+  one(): Promise<QueryResult<Row>>;
+  exists(): Promise<boolean>;
   insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>>;
   update(where: Where, values: Record<string, any>): Promise<QueryResult<any>>;
+  updateMany(values: Record<string, any>): Promise<QueryResult<any>>;
   delete(where: Where): Promise<QueryResult<any>>;
   count(where?: Where): Promise<QueryResult<{ count: number }[]>>;
   // New chainable builder
   where(filter: Where): TableQuery<Row>;
+  whereIn(column: string, values: any[]): TableQuery<Row>;
   orWhere(filter: Where): TableQuery<Row>;
   orderBy(order: OrderBy | string): TableQuery<Row>;
   limit(n: number): TableQuery<Row>;
@@ -433,6 +484,7 @@ export interface TableApi<Row = any> {
 
 export interface TableQuery<Row = any> {
   where(filter: Where): TableQuery<Row>;
+  whereIn(column: string, values: any[]): TableQuery<Row>;
   orWhere(filter: Where): TableQuery<Row>;
   orderBy(order: OrderBy | string): TableQuery<Row>;
   limit(n: number): TableQuery<Row>;
@@ -440,8 +492,11 @@ export interface TableQuery<Row = any> {
   include(spec: IncludeSpec): TableQuery<Row>;
   select(cols: string[]): TableQuery<Row>;
   sql(condition: SqlCondition): TableQuery<Row>;
-  findMany(): Promise<QueryResult<Row[]>>;
-  findFirst(): Promise<QueryResult<Row | undefined>>;
+  many(): Promise<QueryResult<Row[]>>;
+  first(): Promise<QueryResult<Row | undefined>>;
+  one(): Promise<QueryResult<Row>>;
+  exists(): Promise<boolean>;
+  updateMany(values: Record<string, any>): Promise<QueryResult<any>>;
 }
 
 export function createClientFromMapping<T extends Record<string, string>>(execute: SqlExecutor, mapping: T): { [K in keyof T]: TableApi } {
