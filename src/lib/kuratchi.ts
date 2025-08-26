@@ -139,7 +139,6 @@ export class Kuratchi {
     toJSON() {
         return {
             d1: '[api]',
-            d1Legacy: '[api]',
             kv: '[api]',
             r2: '[api]',
             queues: '[api]',

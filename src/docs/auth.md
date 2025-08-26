@@ -35,6 +35,7 @@ The handle reads env via `$env/dynamic/private` by default. You can override wit
 - CLOUDFLARE_API_TOKEN
 - KURATCHI_ADMIN_DB_NAME
 - KURATCHI_ADMIN_DB_TOKEN
+- KURATCHI_GATEWAY_KEY
 
 Email (magic link) configuration:
 - RESEND_API_KEY
@@ -49,7 +50,7 @@ Google OAuth (if you enable OAuth):
 
 Notes:
 - The handle fails fast with a 500 if `KURATCHI_AUTH_SECRET` is missing.
-- When needed (first auth usage), it lazily constructs an admin HTTP client from `KURATCHI_ADMIN_DB_NAME` + `KURATCHI_ADMIN_DB_TOKEN` + `CLOUDFLARE_WORKERS_SUBDOMAIN`.
+- When needed (first auth usage), it lazily constructs an admin HTTP client from `KURATCHI_ADMIN_DB_NAME` + `KURATCHI_ADMIN_DB_TOKEN` + `KURATCHI_GATEWAY_KEY` + `CLOUDFLARE_WORKERS_SUBDOMAIN`.
 - Admin DB is expected to be a Kuratchi HTTP client; the SDK validates its schema contract automatically.
 
 ## What `locals.kuratchi` exposes
@@ -122,7 +123,8 @@ createAuthHandle({
     return new KuratchiHttpClient({
       databaseName: process.env.KURATCHI_ADMIN_DB_NAME!,
       workersSubdomain: process.env.CLOUDFLARE_WORKERS_SUBDOMAIN!,
-      apiToken: process.env.KURATCHI_ADMIN_DB_TOKEN!
+      dbToken: process.env.KURATCHI_ADMIN_DB_TOKEN!,
+      gatewayKey: process.env.KURATCHI_GATEWAY_KEY!
     });
   }
 });
