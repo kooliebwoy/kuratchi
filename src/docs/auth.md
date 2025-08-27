@@ -16,7 +16,7 @@ This page shows how to wire it up quickly and what routes/APIs are available.
 ```ts
 // src/hooks.server.ts
 import type { Handle } from '@sveltejs/kit';
-import { kuratchi } from 'kuratchi';
+import { kuratchi } from 'kuratchi-sdk';
 
 export const handle: Handle = kuratchi.handle();
 ```

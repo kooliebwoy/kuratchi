@@ -13,7 +13,7 @@ This guide covers provisioning Cloudflare KV namespaces with Kuratchi and using 
 ## Instantiate Kuratchi
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({
   apiToken: process.env.CLOUDFLARE_API_TOKEN!,

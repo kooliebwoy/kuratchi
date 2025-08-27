@@ -1,4 +1,4 @@
-# Kuratchi
+# Kuratchi SDK
 
 Toolkit for multi-organization SvelteKit apps. Opinionated. Batteries included.
 
@@ -20,7 +20,7 @@ Toolkit for multi-organization SvelteKit apps. Opinionated. Batteries included.
 ## Install
 
 ```sh
-npm install kuratchi
+npm install kuratchi-sdk
 ```
 
 ## Quickstart
@@ -47,7 +47,7 @@ KURATCHI_GATEWAY_KEY=...
 
 ```ts
 // src/hooks.server.ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 export const handle = Kuratchi.auth.handle();
 ```
 
@@ -55,13 +55,13 @@ export const handle = Kuratchi.auth.handle();
 
 ```sh
 # Create Admin DB (defaults to name: kuratchi-admin)
-kuratchi admin create
+kuratchi-sdk admin create
 
 # Generate migrations for Admin DB
-kuratchi admin generate-migrations
+kuratchi-sdk admin generate-migrations
 
 # Migrate Admin DB (uses local migrations if present, else JSON schema fallback)
-kuratchi admin migrate
+kuratchi-sdk admin migrate
 ```
 
 See `src/docs/cli.md` for full CLI reference.
@@ -91,21 +91,21 @@ See `src/docs/cli.md` for details.
 
 ```sh
 # Generate admin migrations (writes to ./migrations-admin and snapshots schema)
-kuratchi admin generate-migrations
+kuratchi-sdk admin generate-migrations
 
 # Apply migrations to the admin DB (expects KURATCHI_ADMIN_DB_TOKEN)
-kuratchi admin migrate
+kuratchi-sdk admin migrate
 ```
 
 - __Organization DB schema__ (generate SQL bundle from your org schema DSL)
 
 ```sh
 # Generate org migrations (writes to ./migrations-org and snapshots schema)
-kuratchi org generate-migrations
+kuratchi-sdk org generate-migrations
 
 # Apply org migrations at runtime (example: D1)
 // inside a server route or script
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const k = new Kuratchi({
   accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,

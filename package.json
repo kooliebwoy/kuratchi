@@ -1,5 +1,5 @@
 {
-	"name": "kuratchi",
+	"name": "kuratchi-sdk",
 	"version": "0.0.2",
 	"scripts": {
 		"dev": "vite dev",
@@ -31,7 +31,7 @@
 		}
 	},
 	"bin": {
-		"kuratchi": "./bin/kuratchi.mjs"
+		"kuratchi-sdk": "./bin/kuratchi.mjs"
 	},
 	"peerDependencies": {
 		"svelte": "^5.0.0"

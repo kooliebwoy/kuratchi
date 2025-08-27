@@ -10,7 +10,7 @@ Kuratchi ships 2 complementary pieces:
 You typically won’t import the runtime module directly. Use the high‑level clients:
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
 
@@ -184,13 +184,13 @@ migrations-<dir>/
 
 ### Generate migrations (CLI)
 
-- Initial bundle: `kuratchi admin generate-migrations --schema-json-file ./schema-json/admin.json --out-dir ./migrations-admin --tag initial`
+- Initial bundle: `kuratchi-sdk admin generate-migrations --schema-json-file ./schema-json/admin.json --out-dir ./migrations-admin --tag initial`
 - Incremental diff: add `--from-schema-json-file ./schema-json/admin.prev.json`
 
 ### Apply migrations at runtime (Vite/SvelteKit)
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
 const db = kuratchi.d1.database({ databaseName, apiToken });
@@ -200,7 +200,7 @@ await db.migrate('admin'); // or 'org'
 Notes:
 
 - Uses Vite `import.meta.glob` under the hood to discover local bundles.
-- For the admin DB, `kuratchi admin migrate` can generate an initial bundle automatically from your JSON schema if none exists.
+- For the admin DB, `kuratchi-sdk admin migrate` can generate an initial bundle automatically from your JSON schema if none exists.
 
 ### Limitations
 

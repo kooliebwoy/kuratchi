@@ -53,7 +53,7 @@ export default {
 The CLI will generate or update bundles for you and keep a journal.
 
 Notes:
-- Defaults: `kuratchi org generate-migrations` uses your configured `organizationSchemaFile` (or common defaults) -> `./migrations-org`. `kuratchi admin generate-migrations` uses `adminSchemaFile` -> `./migrations-admin`.
+- Defaults: `kuratchi-sdk org generate-migrations` uses your configured `organizationSchemaFile` (or common defaults) -> `./migrations-org`. `kuratchi-sdk admin generate-migrations` uses `adminSchemaFile` -> `./migrations-admin`.
 - The CLI auto-creates directories and maintains both `meta/_journal.json` (diff baseline) and writes a convenience normalized schema cache in `schema/<kind>.json`.
 - When your schema file is `.ts`, a transient transpile file is emitted under `migrations-*/schema/.tmp/` during generation.
 - Working from this repo? Run `npm run build` before using the CLI so dist files are available.
@@ -61,13 +61,13 @@ Notes:
 ### Organization DB — initial bundle (org alias)
 
 ```sh
-kuratchi org generate-migrations --tag initial
+kuratchi-sdk org generate-migrations --tag initial
 ```
 
 ### Organization DB — incremental diff (after editing the schema)
 
 ```sh
-kuratchi org generate-migrations --tag add-sessions
+kuratchi-sdk org generate-migrations --tag add-sessions
 ```
 
 Snapshotting: the generator automatically stores the latest schema at `migrations-org/meta/_schema.json` and will diff from it next time. You can override the baseline with `--from-schema-file <path>` if needed (pass a module that exports the schema DSL).
@@ -75,7 +75,7 @@ Snapshotting: the generator automatically stores the latest schema at `migration
 Override schema file explicitly (optional):
 
 ```sh
-kuratchi org generate-migrations \
+kuratchi-sdk org generate-migrations \
   --schema-file ./src/lib/schema/organization.ts \
   --tag add-sessions
 ```
@@ -85,7 +85,7 @@ kuratchi org generate-migrations \
 At runtime we load the generated bundles via Vite (`import.meta.glob`) and apply any unapplied tags.
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({
   apiToken: process.env.CLOUDFLARE_API_TOKEN!,
@@ -110,7 +110,7 @@ Under the hood this:
 Just edit your schema JSON and rerun the generator with a new `--tag`. The CLI snapshots the schema, updates the journal, and writes the SQL file for you. Example:
 
 ```sh
-kuratchi org generate-migrations \
+kuratchi-sdk org generate-migrations \
   --schema-json-file ./src/lib/schema-json/organization.json \
   --tag add-sessions
 ```
@@ -125,10 +125,10 @@ You can fully manage the Admin DB with the CLI:
 
 ```sh
 # Generate or update the admin bundle from your configured schema DSL
-kuratchi admin generate-migrations --out-dir ./migrations-admin --tag initial
+kuratchi-sdk admin generate-migrations --out-dir ./migrations-admin --tag initial
 
 # Apply the bundle to the Admin DB (reads from filesystem)
-kuratchi admin migrate \
+kuratchi-sdk admin migrate \
   --name kuratchi-admin \
   --token "$KURATCHI_ADMIN_DB_TOKEN" \
   --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN"
@@ -141,7 +141,7 @@ For diffs, add `--from-schema-file <path-to-schema-module>`.
 If you already maintain SQL files yourself, you can just apply them:
 
 ```sh
-kuratchi admin migrate \
+kuratchi-sdk admin migrate \
   --name kuratchi-admin \
   --token "$KURATCHI_ADMIN_DB_TOKEN" \
   --workers-subdomain "$CLOUDFLARE_WORKERS_SUBDOMAIN" \

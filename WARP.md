@@ -12,27 +12,27 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `npm run prepack` - Build package for publishing (syncs, builds, and publints)
 
 ### Kuratchi CLI Usage Patterns
-The CLI (`kuratchi`) requires a prior build to access dist files:
+The CLI (`kuratchi-sdk`) requires a prior build to access dist files:
 
 **Admin Database Management:**
 ```bash
 # Create admin DB 
-kuratchi admin create --account-id <id> --api-token <token> --workers-subdomain <sub>
+kuratchi-sdk admin create --account-id <id> --api-token <token> --workers-subdomain <sub>
 
 # Migrate admin DB (uses filesystem migrations or JSON schema)
-kuratchi admin migrate --token <admin_db_token> --workers-subdomain <sub>
+kuratchi-sdk admin migrate --token <admin_db_token> --workers-subdomain <sub>
 
 # Destroy admin DB
-kuratchi admin destroy --id <db_uuid> --account-id <id> --api-token <token>
+kuratchi-sdk admin destroy --id <db_uuid> --account-id <id> --api-token <token>
 ```
 
 **Migration Generation:**
 ```bash
 # Generate admin migrations from schema
-kuratchi admin generate-migrations --schema-file ./schema/admin.mjs --tag initial
+kuratchi-sdk admin generate-migrations --schema-file ./schema/admin.mjs --tag initial
 
 # Generate org migrations from schema  
-kuratchi org generate-migrations --schema-file ./schema/organization.mjs --tag initial
+kuratchi-sdk org generate-migrations --schema-file ./schema/organization.mjs --tag initial
 ```
 
 ## Architecture Overview

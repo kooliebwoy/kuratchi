@@ -2,7 +2,7 @@
 
 Provision and manage the Kuratchi Admin D1 database, and generate/apply migrations.
 
-- Binary: `kuratchi` (see `package.json` → `bin`)
+- Binary: `kuratchi-sdk` (see `package.json` → `bin`)
 - Output: always JSON to stdout
 - Progress: spinner on TTY by default; pass `--no-spinner` to disable
 - Zero‑config discovery: `kuratchi.config.json|.mjs|.js` or `package.json` → `{ "kuratchi": { accountId, apiToken, workersSubdomain, adminSchemaFile, organizationSchemaFile } }`
@@ -59,7 +59,7 @@ Create the admin D1 database under your Cloudflare account.
 Usage:
 
 ```bash
-kuratchi admin create \
+kuratchi-sdk admin create \
   [--name <db>] [--no-spinner] \
   --account-id <id> --api-token <token> --workers-subdomain <sub>
 ```
@@ -71,7 +71,7 @@ Notes:
 Example:
 ```bash
 CF_ACCOUNT_ID=... CF_API_TOKEN=... CF_WORKERS_SUBDOMAIN=example.workers.dev \
-kuratchi admin create --name kuratchi-admin
+kuratchi-sdk admin create --name kuratchi-admin
 ```
 
 Example output:
@@ -92,7 +92,7 @@ Apply migrations to the admin database. Requires the admin DB token.
 Usage:
 
 ```bash
-kuratchi admin migrate \
+kuratchi-sdk admin migrate \
   [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] \
   [--migrations-dir <name>] [--migrations-path <path>] \
   [--schema-json-file <path>] [--no-spinner]
@@ -112,7 +112,7 @@ Flags:
 Example (filesystem migrations):
 ```bash
 KURATCHI_ADMIN_DB_TOKEN=... CF_WORKERS_SUBDOMAIN=example.workers.dev \
-kuratchi admin migrate --migrations-dir admin
+kuratchi-sdk admin migrate --migrations-dir admin
 ```
 
 Directory layout expected by the filesystem loader:
@@ -130,14 +130,14 @@ Delete the admin D1 database by UUID.
 Usage:
 
 ```bash
-kuratchi admin destroy --id <dbuuid> [--no-spinner] \
+kuratchi-sdk admin destroy --id <dbuuid> [--no-spinner] \
   --account-id <id> --api-token <token>
 ```
 
 Example:
 ```bash
 CF_ACCOUNT_ID=... CF_API_TOKEN=... \
-kuratchi admin destroy --id 11111111-2222-3333-4444-555555555555
+kuratchi-sdk admin destroy --id 11111111-2222-3333-4444-555555555555
 ```
 
 ### admin generate-migrations
@@ -146,7 +146,7 @@ Generate SQL + journal entries from a JSON schema with automatic snapshotting.
 Usage:
 
 ```bash
-kuratchi admin generate-migrations \
+kuratchi-sdk admin generate-migrations \
   [--out-dir <path>] [--schema-json-file <path>] \
   [--from-schema-json-file <path>] [--tag <string>]
 ```
@@ -171,23 +171,23 @@ Defaults:
 - Create admin DB with env fallbacks:
 ```bash
 CF_ACCOUNT_ID=... CF_API_TOKEN=... CF_WORKERS_SUBDOMAIN=example.workers.dev \
-kuratchi admin create
+kuratchi-sdk admin create
 ```
 
 - Migrate using local filesystem bundle:
 ```bash
 KURATCHI_ADMIN_DB_TOKEN=... CF_WORKERS_SUBDOMAIN=example.workers.dev \
-kuratchi admin migrate --migrations-dir admin
+kuratchi-sdk admin migrate --migrations-dir admin
 ```
 
 - Generate admin migration from JSON schema:
 ```bash
-kuratchi admin generate-migrations --schema-json-file ./schema-json/admin.json
+kuratchi-sdk admin generate-migrations --schema-json-file ./schema-json/admin.json
 ```
 
 - Generate org migration bundle:
 ```bash
-kuratchi org generate-migrations --schema-json-file ./schema-json/organization.json
+kuratchi-sdk org generate-migrations --schema-json-file ./schema-json/organization.json
 ```
 
 ## Exit codes

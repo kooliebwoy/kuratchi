@@ -5,7 +5,7 @@ Kuratchi can provision a single internal Durable Object worker (`kuratchi-do-int
 ## Quick start
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({ apiToken, accountId, workersSubdomain });
 
@@ -46,7 +46,7 @@ You can create an organization backed by Durable Objects using the high-level au
 - Optionally run migrations for the organization schema (DO handles initial schema during provisioning when `migrate: true`).
 
 ```ts
-import { Kuratchi } from 'kuratchi';
+import { Kuratchi } from 'kuratchi-sdk';
 
 const kuratchi = new Kuratchi({
   apiToken: process.env.CLOUDFLARE_API_TOKEN!,
