@@ -25,8 +25,10 @@ export interface KuratchiOptions {
         origin: string;
         resendAudience?: string;
         authSecret: string;
-        // Bound D1 database for admin (e.g., platform.env.DB)
-        adminDb: any;
+        // Admin DB credentials - will auto-create HTTP client
+        adminDbName: string;
+        adminDbToken: string;
+        adminDbId: string;
         // Optional: master gateway key for DO-backed org databases
         gatewayKey?: string;
     };
@@ -123,7 +125,12 @@ export class Kuratchi {
                 ...config.auth,
                 workersSubdomain: config.workersSubdomain,
                 accountId: config.accountId,
-                apiToken: config.apiToken
+                apiToken: config.apiToken,
+                // Pass through admin DB credentials
+                adminDbName: config.auth.adminDbName,
+                adminDbToken: config.auth.adminDbToken,
+                adminDbId: config.auth.adminDbId,
+                gatewayKey: config.auth.gatewayKey
             });
         } else {
             // Fallback: expose only SvelteKit handle to keep API ergonomic

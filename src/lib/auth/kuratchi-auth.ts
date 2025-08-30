@@ -34,6 +34,7 @@ export type AuthHandleEnv = {
   AUTH_WEBHOOK_SECRET?: string;
   KURATCHI_ADMIN_DB_NAME?: string;
   KURATCHI_ADMIN_DB_TOKEN?: string;
+  KURATCHI_ADMIN_DB_ID?: string;
   // Optional: master gateway key for DO-backed org databases
   KURATCHI_GATEWAY_KEY?: string;
 };
@@ -75,6 +76,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       AUTH_WEBHOOK_SECRET: pick('AUTH_WEBHOOK_SECRET'),
       KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
       KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN'),
+      KURATCHI_ADMIN_DB_ID: pick('KURATCHI_ADMIN_DB_ID'),
       KURATCHI_GATEWAY_KEY: pick('KURATCHI_GATEWAY_KEY')
     } as any;
   });
@@ -180,7 +182,9 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
           origin: env.ORIGIN || '',
           resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
           authSecret: env.KURATCHI_AUTH_SECRET,
-          adminDb,
+          adminDbName: env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin',
+          adminDbToken: env.KURATCHI_ADMIN_DB_TOKEN || '',
+          adminDbId: env.KURATCHI_ADMIN_DB_ID || '',
           // Wire DO gateway key when present so DO-backed org flows work
           gatewayKey: env.KURATCHI_GATEWAY_KEY
         }
@@ -471,8 +475,10 @@ interface AuthConfig {
     workersSubdomain: string;
     accountId: string;
     apiToken: string;
-    // Bound admin D1 database (e.g., platform.env.DB)
-    adminDb: any;
+    // Admin DB credentials - will auto-create HTTP client
+    adminDbName: string;
+    adminDbToken: string;
+    adminDbId: string;
     // Optional master gateway key for DO-backed org databases (required if using DO)
     gatewayKey?: string;
 }
@@ -519,7 +525,7 @@ public signIn: {
         this.organizationServices = new Map();
         this.organizationOrmClients = new Map();
         
-        // Initialize Kuratchi D1 router (v2) instance
+        // Initialize Kuratchi D1 router (v2) instance first
         this.kuratchiD1 = new KuratchiD1({
             apiToken: config.apiToken,
             accountId: config.accountId,
@@ -532,10 +538,27 @@ public signIn: {
                         .orderBy({ created_at: 'asc' })
                         .many();
                     const rows = ((res as any)?.data ?? []) as Array<any>;
-                    return rows
+                    const orgDbs = rows
                         .filter((r) => r && r.name && r.dbuuid)
                         .map((r) => ({ name: r.name as string, uuid: r.dbuuid as string }));
+                    
+                    // Always include the admin database itself in bindings
+                    const adminDbName = config.adminDbName;
+                    const adminDbUuid = config.adminDbId;
+                    if (adminDbName && adminDbUuid) {
+                        orgDbs.unshift({ name: adminDbName, uuid: adminDbUuid });
+                    }
+                    
+                    return orgDbs;
                 } catch {
+                    // Fallback: at least include admin DB if we can't query org DBs
+                    try {
+                        const adminDbName = config.adminDbName;
+                        const adminDbUuid = config.adminDbId;
+                        if (adminDbName && adminDbUuid) {
+                            return [{ name: adminDbName, uuid: adminDbUuid }];
+                        }
+                    } catch {}
                     return [];
                 }
             }
@@ -563,18 +586,23 @@ public signIn: {
             workersSubdomain: config.workersSubdomain
         });
         
-        // Initialize admin DB runtime client (Kuratchi HTTP client only)
-        const admin = config.adminDb as any;
-        const isKuratchiClient = !!(admin && typeof admin.query === 'function');
-        if (isKuratchiClient) {
-            const adminSchema = normalizeSchema(adminSchemaDsl as any);
-            this.adminDb = createClientFromJsonSchema(
-                (sql, params) => admin.query(sql, params || []),
-                adminSchema as any
-            ) as Record<string, TableApi>;
-        } else {
-            throw new Error('Unsupported adminDb: expected KuratchiHttpClient');
+        // Initialize admin DB runtime client after KuratchiD1 - auto-create from credentials
+        if (!config.adminDbName || !config.adminDbToken || !config.gatewayKey) {
+            throw new Error('KuratchiAuth requires adminDbName, adminDbToken, and gatewayKey');
         }
+        
+        console.log(`[kuratchi] Creating admin DB client: name=${config.adminDbName}, token=${config.adminDbToken?.slice(0, 20)}..., gatewayKey=${config.gatewayKey?.slice(0, 20)}...`);
+        const adminClient = this.kuratchiD1.getClient({
+            databaseName: config.adminDbName,
+            dbToken: config.adminDbToken,
+            gatewayKey: config.gatewayKey
+        });
+        
+        const schema = normalizeSchema(adminSchemaDsl as any);
+        this.adminDb = createClientFromJsonSchema(
+            (sql, params) => adminClient.query(sql, params || []),
+            schema as any
+        ) as Record<string, TableApi>;
 
         // Batteries-included sign-in API (organization-aware)
         // Usage:
@@ -845,27 +873,22 @@ public signIn: {
             }
 
             // 2) Determine engine and provision database idempotently
-            const dbName = (org as any).organizationSlug || (org as any).organizationName || `org-${(org as any).id}`;
+            const dbName = (org as any).organizationName || `org-${(org as any).id}`;
             const useDO = options?.do === true;
             const useD1 = options?.d1 !== false && !useDO; // default D1 unless DO explicitly selected
 
-            // Insert database row first to enforce name uniqueness and enable idempotency
+            // First check if database with this name already exists
             let dbRow: any | null = null;
             const dbId = crypto.randomUUID();
-            try {
-                await (this.adminDb as any).databases.insert({
-                    id: dbId,
-                    name: String(dbName),
-                    dbuuid: useD1 ? '' : null,
-                    organizationId: org.id
-                });
-                const sel = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
-                dbRow = (sel as any)?.data || { id: dbId, name: String(dbName), dbuuid: useD1 ? '' : null, organizationId: org.id };
-            } catch (e: any) {
-                // If name is unique and already exists, fetch it
-                const existing = await (this.adminDb as any).databases.where({ name: String(dbName), deleted_at: { is: null } } as any).first();
-                dbRow = (existing as any)?.data;
-                if (!dbRow) throw e;
+            console.log(`[kuratchi] Checking for existing database with name: ${dbName}`);
+            
+            const existing = await (this.adminDb as any).databases
+                .where({ name: String(dbName), deleted_at: { is: null } } as any)
+                .first();
+                
+            if ((existing as any)?.data) {
+                console.log(`[kuratchi] Found existing database record`);
+                dbRow = (existing as any).data;
             }
 
             // Check for existing valid API token to avoid re-provisioning
@@ -908,36 +931,76 @@ public signIn: {
                     apiToken = res.token;
                     database = { name: res.databaseName };
                     provisioned = true;
-                    // Ensure dbuuid remains null/empty for DO to signal engine type
-                    await (this.adminDb as any).databases.update({ id: dbRow.id } as any, { name: String(dbName) } as any);
+                    
+                    // Insert database record with null dbuuid for DO
+                    await (this.adminDb as any).databases.insert({
+                        id: dbId,
+                        name: String(dbName),
+                        dbuuid: null,
+                        organizationId: org.id,
+                        isActive: true
+                    });
+                    
+                    // Get the inserted record
+                    const inserted = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
+                    dbRow = (inserted as any)?.data;
                 } else {
                     // D1 router v2 path (default)
                     const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
                     if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create D1 database');
+                    
+                    console.log(`[kuratchi] Creating D1 database with name: "${String(dbName)}"`);
                     const created = await this.kuratchiD1.createDatabase({
                         databaseName: String(dbName),
                         gatewayKey,
                         migrate: options?.migrate !== false,
                         schema: organizationSchemaDsl as any,
                     });
+                    
                     database = created.database;
                     apiToken = created.token;
                     provisioned = true;
-                    // Update db row with real D1 uuid
-                    await (this.adminDb as any).databases.update(
-                        { id: dbRow.id } as any,
-                        { name: database?.name ?? String(dbName), dbuuid: (database as any)?.uuid ?? (database as any)?.id } as any
-                    );
+                    const dbUuid = (database as any)?.uuid ?? (database as any)?.id;
+                    
+                    console.log(`[kuratchi] D1 createDatabase returned UUID: ${dbUuid} for database name: "${String(dbName)}"`);
+                    
+                    // Check for existing record with this UUID
+                    const existingWithUuid = await (this.adminDb as any).databases
+                        .where({ dbuuid: dbUuid, deleted_at: { is: null } } as any)
+                        .first();
+                    
+                    if ((existingWithUuid as any)?.data) {
+                        console.log(`[kuratchi] UUID ${dbUuid} already exists in record ${(existingWithUuid as any).data.id}, using existing record`);
+                        dbRow = (existingWithUuid as any).data;
+                    } else {
+                        // Insert database record with the actual UUID
+                        await (this.adminDb as any).databases.insert({
+                            id: dbId,
+                            name: database?.name ?? String(dbName),
+                            dbuuid: dbUuid,
+                            organizationId: org.id,
+                            isActive: true
+                        });
+                        
+                        // Get the inserted record
+                        const inserted = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
+                        dbRow = (inserted as any)?.data;
+                    }
                 }
 
-                // Persist API token for the org DB
+                // Insert API token for the org DB
+                const tokenId = crypto.randomUUID();
                 tokenRow = {
-                    id: crypto.randomUUID(),
+                    id: tokenId,
                     token: apiToken!,
                     name: 'primary',
                     databaseId: dbRow.id,
-                    revoked: false
+                    revoked: false,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 };
+                
+                console.log(`[kuratchi] Inserting API token: databaseId=${dbRow.id}`);
                 await (this.adminDb as any).dbApiTokens.insert(tokenRow);
             }
 
@@ -1016,6 +1079,16 @@ public signIn: {
 
             // 7) Seed initial organization user and create a session
             // Build an organization-scoped AuthService using the just-provisioned DB
+            // Debug: verify database record exists before calling getOrganizationAuthService
+            console.log(`[kuratchi] Looking for database record for org ${(org as any).id}`);
+            const debugDbCheck = await (this.adminDb as any).databases
+                .where({ organizationId: (org as any).id, deleted_at: { is: null } })
+                .first();
+            console.log(`[kuratchi] Database record found:`, (debugDbCheck as any)?.data ? 'YES' : 'NO');
+            if ((debugDbCheck as any)?.data) {
+                console.log(`[kuratchi] Database record:`, JSON.stringify((debugDbCheck as any).data, null, 2));
+            }
+            
             const orgAuth = await this.getOrganizationAuthService((org as any).id);
             let createdUser: any = null;
             let sessionCookie: string | null = null;
