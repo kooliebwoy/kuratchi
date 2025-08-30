@@ -146,6 +146,8 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         const adminMissing = required.filter((k) => !env?.[k]);
         if (!GW) adminMissing.push('KURATCHI_GATEWAY_KEY');
         if (adminMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${adminMissing.join(', ')}`);
+        
+        // Use proper KuratchiHttpClient for admin DB
         adminDbInst = new KuratchiHttpClient({
           databaseName: env.KURATCHI_ADMIN_DB_NAME,
           workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,

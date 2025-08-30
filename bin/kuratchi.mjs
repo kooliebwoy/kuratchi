@@ -80,7 +80,15 @@ async function loadNormalizedSchema({ schemaPath, kind, cacheDir }) {
   const importable = await resolveImportableSchemaPath(schemaPath, cacheDir && path.join(cacheDir, '.tmp'));
   if (!importable || !fs.existsSync(importable)) throw new Error(`Schema file not found or not importable: ${schemaPath}`);
   const mod = await import(pathToFileURL(importable).href);
-  const dsl = (kind === 'admin' ? (mod.adminSchemaDsl || mod.schema) : (mod.organizationSchemaDsl || mod.schema)) || mod.default || mod;
+  // Find the first export that looks like a valid schema DSL (has name, version, tables)
+  let dsl = null;
+  const candidates = [mod.default, ...Object.values(mod)];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && candidate.tables && candidate.name) {
+      dsl = candidate;
+      break;
+    }
+  }
   if (!dsl || typeof dsl !== 'object' || !dsl.tables) throw new Error('Schema module must export a DSL with { name, version, tables }');
   // normalizeSchema is exported from the package root (dist/index.js)
   const root = await importRootLib();
@@ -108,6 +116,9 @@ async function adminGenerateMigrations(opts) {
   if (!schemaPath) {
     // try default locations for built schema modules
     const candidates = [
+      // Check migration builder output first
+      path.join(process.cwd(), 'migrations-admin', 'schema', 'admin.json'),
+      // Then check traditional schema locations
       path.join(process.cwd(), 'schema', 'admin.mjs'),
       path.join(process.cwd(), 'schema', 'admin.js'),
       path.join(process.cwd(), 'dist', 'lib', 'schema', 'admin.js'),
@@ -339,7 +350,7 @@ async function loadConfig(cwd = process.cwd()) {
 
 async function importKuratchiD1() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const distPath = path.join(here, '..', 'dist', 'd1', 'index.js');
+  const distPath = path.join(here, '..', 'dist', 'd1', 'kuratchi-d1.js');
   if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
   // Fallback error with hint
   throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
@@ -351,6 +362,75 @@ async function importInternalHttpClient() {
   const distPath = path.join(here, '..', 'dist', 'd1', 'internal-http-client.js');
   if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
   throw new Error('Kuratchi dist files not found. Build the package first (npm run build).');
+}
+
+// Load admin schema for database creation
+async function loadAdminSchema() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, '..', 'dist', 'schema', 'admin.js'),
+    path.join(here, '..', 'src', 'lib', 'schema', 'admin.js')
+  ];
+  
+  for (const schemaPath of candidates) {
+    if (fs.existsSync(schemaPath)) {
+      const mod = await import(pathToFileURL(schemaPath).href);
+      const adminSchemaDsl = mod.adminSchemaDsl || mod.default;
+      if (adminSchemaDsl) return adminSchemaDsl;
+    }
+  }
+  // Fallback to basic admin schema if not found
+  return {
+    tables: {
+      organizations: {
+        columns: {
+          id: { type: 'text', primaryKey: true },
+          organizationName: { type: 'text', unique: true },
+          organizationSlug: { type: 'text' },
+          email: { type: 'text' },
+          status: { type: 'text', default: 'active' },
+          created_at: { type: 'text' },
+          updated_at: { type: 'text' },
+          deleted_at: { type: 'text' }
+        }
+      },
+      databases: {
+        columns: {
+          id: { type: 'text', primaryKey: true },
+          name: { type: 'text' },
+          dbuuid: { type: 'text' },
+          organizationId: { type: 'text' },
+          created_at: { type: 'text' },
+          updated_at: { type: 'text' },
+          deleted_at: { type: 'text' }
+        }
+      },
+      dbApiTokens: {
+        columns: {
+          id: { type: 'text', primaryKey: true },
+          token: { type: 'text' },
+          name: { type: 'text' },
+          databaseId: { type: 'text' },
+          created_at: { type: 'text' },
+          updated_at: { type: 'text' },
+          deleted_at: { type: 'text' },
+          revoked: { type: 'integer', default: 0 },
+          expires: { type: 'text' }
+        }
+      },
+      organizationUsers: {
+        columns: {
+          id: { type: 'text', primaryKey: true },
+          email: { type: 'text' },
+          organizationId: { type: 'text' },
+          organizationSlug: { type: 'text' },
+          created_at: { type: 'text' },
+          updated_at: { type: 'text' },
+          deleted_at: { type: 'text' }
+        }
+      }
+    }
+  };
 }
 
 
@@ -365,8 +445,16 @@ async function importOrmMigrator() {
 // Optional: import full ORM index (includes diff utilities)
 async function importOrm() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const distPath = path.join(here, '..', 'dist', 'orm', 'index.js');
-  if (fs.existsSync(distPath)) return import(pathToFileURL(distPath).href);
+  const candidates = [
+    path.join(here, '..', 'dist', 'orm', 'index.js'),
+    path.join(here, '..', 'dist', 'orm', 'kuratchi-orm.js')
+  ];
+  
+  for (const distPath of candidates) {
+    if (fs.existsSync(distPath)) {
+      return import(pathToFileURL(distPath).href);
+    }
+  }
   return null;
 }
 
@@ -378,31 +466,32 @@ async function importRootLib() {
   return null;
 }
 
-// Filesystem migration loader: reads ./migrations-<dir>/meta/_journal.json and <tag>.sql files
+// Load migrations using the proper ORM migration loader
 async function loadMigrationsFromFs(dirName, basePath) {
   const root = basePath || path.join(process.cwd(), `migrations-${dirName}`);
   const journalPath = path.join(root, 'meta', '_journal.json');
   if (!fs.existsSync(journalPath)) return null;
-  let journal;
+  
   try {
-    journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
-  } catch {
-    throw new Error(`Invalid journal JSON at ${journalPath}`);
-  }
-  if (!journal || !Array.isArray(journal.entries)) {
-    throw new Error(`Invalid journal format at ${journalPath}`);
-  }
-  const migrations = {};
-  for (const entry of journal.entries) {
-    const key = `m${String(entry.idx).padStart(4, '0')}`;
-    const sqlFile = path.join(root, `${entry.tag}.sql`);
-    if (!fs.existsSync(sqlFile)) {
-      throw new Error(`SQL file not found for migration tag ${entry.tag} at ${sqlFile}`);
+    // Use the ORM's createFsMigrationLoader
+    const orm = await importOrm();
+    if (!orm || typeof orm.createFsMigrationLoader !== 'function') {
+      throw new Error('ORM createFsMigrationLoader not available. Build the package first (npm run build).');
     }
-    const sqlText = fs.readFileSync(sqlFile, 'utf8');
-    migrations[key] = async () => sqlText;
+    
+    const loader = await orm.createFsMigrationLoader(root);
+    const journal = await loader.loadJournal(dirName);
+    const migrations = {};
+    
+    for (const entry of journal.entries) {
+      const key = `m${String(entry.idx).padStart(4, '0')}`;
+      migrations[key] = async () => await loader.loadSql(dirName, entry.tag);
+    }
+    
+    return { journal, migrations };
+  } catch (e) {
+    throw new Error(`Failed to load migrations: ${e.message}`);
   }
-  return { journal, migrations };
 }
 
 function randSuffix(len = 6) {
@@ -424,17 +513,35 @@ async function adminCreate(opts) {
 
   const { KuratchiD1 } = await importKuratchiD1();
   const d1 = new KuratchiD1({ accountId, apiToken, workersSubdomain });
-  const { database, apiToken: dbToken } = await d1.createDatabase(name);
+  
+  // Create admin database and ensure internal worker is deployed
+  const { database, token: dbToken, worker } = await d1.createDatabase({
+    databaseName: name,
+    gatewayKey: process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY || 'default-gateway-key',
+    deployWorker: true  // This deploys the shared kuratchi-d1-internal worker
+  });
+  
+  // Run admin migrations using the proper migration system
+  await adminMigrate({
+    name,
+    workersSubdomain,
+    token: dbToken
+  });
+  
   const dbName = database?.name || name;
   const dbId = database?.uuid || database?.id || null;
-  const endpoint = `https://${dbName}.${workersSubdomain}`;
+  const internalWorkerEndpoint = `https://kuratchi-d1-internal.${workersSubdomain}`;
+  
   return {
     ok: true,
     databaseId: dbId,
     databaseName: dbName,
     apiToken: dbToken,
     workersSubdomain,
-    endpoint,
+    internalWorker: {
+      endpoint: internalWorkerEndpoint,
+      deployed: !!worker
+    }
   };
 }
 
@@ -466,19 +573,28 @@ async function adminMigrate(opts) {
   if (!token) throw new Error('Missing admin DB token. Provide --token or set KURATCHI_ADMIN_DB_TOKEN.');
 
   const { KuratchiHttpClient } = await importInternalHttpClient();
-  const client = new KuratchiHttpClient({ databaseName: name, workersSubdomain, apiToken: token });
+  const client = new KuratchiHttpClient({ 
+    databaseName: name, 
+    workersSubdomain, 
+    dbToken: token,
+    gatewayKey: process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY || 'default-gateway-key'
+  });
 
   // Preferred path: attempt to load migrations from filesystem (local CLI)
   try {
     const fsBundle = await loadMigrationsFromFs(migrationsDir, migrationsPath);
     if (fsBundle) {
+      console.log(`[kuratchi] Found ${Object.keys(fsBundle.migrations).length} migrations in filesystem bundle`);
       const ok = await client.migrate(fsBundle);
       if (ok) {
         return { ok: true, databaseName: name, workersSubdomain, strategy: 'fs-migrations', dir: migrationsDir, path: migrationsPath || path.join(process.cwd(), `migrations-${migrationsDir}`) };
       }
+    } else {
+      console.log('[kuratchi] No filesystem bundle found, trying schema-based migration');
     }
   } catch (e) {
-    // Ignore and continue to next strategy
+    console.error('[kuratchi] Filesystem migration loading failed:', e.message);
+    // Continue to next strategy
   }
 
   // Tertiary path: attempt Schema-DSL-based migration (single initial bundle)
@@ -490,6 +606,9 @@ async function adminMigrate(opts) {
       if (opts.schemaFile) candidates.push(opts.schemaFile);
       const cfg = await loadConfig();
       if (cfg.adminSchemaFile) candidates.push(cfg.adminSchemaFile);
+      // Check migration builder output first
+      candidates.push(path.join(process.cwd(), 'migrations-admin', 'schema', 'admin.json'));
+      // Then check traditional schema locations
       candidates.push(path.join(process.cwd(), 'schema', 'admin.mjs'));
       candidates.push(path.join(process.cwd(), 'schema', 'admin.js'));
       candidates.push(path.join(process.cwd(), 'dist', 'lib', 'schema', 'admin.js'));
@@ -500,6 +619,8 @@ async function adminMigrate(opts) {
         const cacheDir = path.join(process.cwd(), `migrations-${migrationsDir}`, 'schema');
         const { toSchema: schema } = await loadNormalizedSchema({ schemaPath: schemaFile, kind: 'admin', cacheDir });
         const bundle = om.generateInitialMigrationBundle(schema, { tag: 'initial' });
+        
+        // Execute migration bundle using client
         const ok = await client.migrate(bundle);
         if (ok) {
           return { ok: true, databaseName: name, workersSubdomain, strategy: 'schema-dsl', schemaFile };

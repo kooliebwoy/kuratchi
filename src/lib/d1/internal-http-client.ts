@@ -138,4 +138,47 @@ export class KuratchiD1v2HttpClient {
   async first<T>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>> {
     return this.makeRequest('/api/first', { query, params, columnName });
   }
+  
+  async migrate(bundle: { journal: any; migrations: Record<string, () => Promise<string> | string> }): Promise<boolean> {
+    try {
+      for (const [key, migrationFn] of Object.entries(bundle.migrations)) {
+        const sql = typeof migrationFn === 'function' ? await migrationFn() : migrationFn;
+        if (sql && sql.trim()) {
+          console.log(`[kuratchi] Executing migration ${key}, SQL length: ${sql.length}`);
+          // Split multi-statement SQL into individual statements for batch execution
+          const statements = sql
+            .split(';')
+            .map(stmt => stmt.trim())
+            .filter(stmt => stmt.length > 0);
+          
+          console.log(`[kuratchi] Split into ${statements.length} statements, executing as batch`);
+          
+          // Use batch to execute all statements in one request
+          const batch = statements.map(query => ({ query, params: [] }));
+          const result = await this.batch(batch);
+          
+          // Batch returns an array of results, check each one
+          if (!Array.isArray(result)) {
+            console.error(`[kuratchi] Migration ${key} batch failed: unexpected response format`, result);
+            return false;
+          }
+          
+          // Check if any statement failed
+          for (let i = 0; i < result.length; i++) {
+            const stmtResult = result[i];
+            if (!stmtResult.success) {
+              console.error(`[kuratchi] Migration ${key} statement ${i + 1} failed:`, stmtResult.error);
+              return false;
+            }
+          }
+          
+          console.log(`[kuratchi] Migration ${key} completed successfully`);
+        }
+      }
+      return true;
+    } catch (e: any) {
+      console.error('[kuratchi] Migration execution failed:', e.message);
+      return false;
+    }
+  }
 }

@@ -98,6 +98,15 @@ export class CloudflareClient {
         });
     }
 
+    /** Query a D1 database directly via REST API */
+    async queryD1Database(databaseId: string, sql: string, params: any[] = []): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/accounts/${this.accountId}/d1/database/${databaseId}/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql, params })
+        });
+    }
+
     /** Enable read replication on a D1 database */
     async enableReadReplication(databaseId: string): Promise<CloudflareAPIResponse<any>> {
         // https://developers.cloudflare.com/d1/best-practices/read-replication/#enable-read-replication-via-rest-api
