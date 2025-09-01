@@ -18,6 +18,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// Load environment variables from .env file if it exists
+try {
+  const { config } = await import('dotenv');
+  // Try to load from current working directory first, then from project root
+  config({ path: '.env' });
+  config({ path: path.join(process.cwd(), '.env') });
+} catch (e) {
+  // dotenv not installed or .env file doesn't exist, continue without it
+}
+
 // Utilities
 const ensureDir = (p) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -262,7 +272,47 @@ async function orgGenerateMigrations(opts) {
 }
 
 function usage() {
-  console.log(`Kuratchi CLI\n\nUsage:\n  kuratchi admin create   [--name <db>] [--no-spinner] --account-id <id> --api-token <token> --workers-subdomain <sub>\n  kuratchi admin migrate  [--name <db>] [--token <admin_db_token>] [--workers-subdomain <sub>] [--migrations-dir <name>] [--migrations-path <path>] [--schema-file <path>] [--no-spinner]\n  kuratchi admin destroy  --id <dbuuid> [--no-spinner] --account-id <id> --api-token <token>\n  kuratchi admin generate-migrations [--out-dir <path>] [--schema-file <path>] [--from-schema-file <path>] [--tag <string>]\n  kuratchi org   generate-migrations [--out-dir <path>] [--schema-file <path>] [--from-schema-file <path>] [--tag <string>]\n\nZero-config:\n   Reads defaults from kuratchi.config.json|.mjs|.js or package.json { kuratchi: { accountId, apiToken, workersSubdomain } }\n\nEnv vars (either set works):\n   CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID\n   CF_API_TOKEN | CLOUDFLARE_API_TOKEN\n   CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN\n   KURATCHI_ADMIN_DB_TOKEN (for admin migrate)\n\nNotes:\n   - If --name is omitted, create/migrate uses 'kuratchi-admin'.\n   - admin migrate tries, in order: filesystem loader (./migrations-<dir> or --migrations-path), then Schema module (via --schema-file or ./schema/admin.(mjs|js)).\n   - --migrations-dir defaults to 'admin' (expects /migrations-admin/...).\n   - --migrations-path defaults to ./migrations-<dir> if not provided.\n   - admin/org generate-migrations writes SQL to <out-dir>/<tag>.sql and updates <out-dir>/meta/_journal.json.\n   - Snapshotting: we auto-snapshot the latest schema to <out-dir>/meta/_schema.json and diff from it next time. Pass --from-schema-file to override the baseline.\n   - Defaults: admin uses schema/admin.(mjs|js) -> migrations-admin; org uses schema/organization.(mjs|js) -> migrations-org.\n   - Shows a progress spinner on TTY by default; pass --no-spinner to disable.\n`);
+  return `Kuratchi CLI
+
+Usage:
+  # Admin database operations
+  kuratchi admin create  [--name <db>] --account-id <id> --api-token <token> --workers-subdomain <sub>
+  kuratchi admin destroy --id <dbuuid> --account-id <id> --api-token <token>
+  kuratchi admin migrate [--name <db>] --token <admin-db-token> [--workers-subdomain <sub>] [--migrations-dir <dir>]
+  kuratchi admin generate-migrations --schema <path> --out-dir <dir> [--from-schema-file <path>] [--workers-subdomain <sub>] [--migrations-dir <dir>]
+  
+  # Organization database operations
+  kuratchi migrate all [--migrations-dir <dir>] [--workers-subdomain <sub>]
+  kuratchi migrate admin [--migrations-dir <dir>] [--workers-subdomain <sub>]
+  kuratchi migrate orgs [--migrations-dir <dir>] [--workers-subdomain <sub>]
+  kuratchi migrate org --id <orgId> [--migrations-dir <dir>] [--workers-subdomain <sub>]
+  kuratchi org generate-migrations --schema <path> --out-dir <dir> [--from-schema-file <path>] [--workers-subdomain <sub>] [--migrations-dir <dir>]
+  
+  # Version
+  kuratchi --version | -v
+
+Environment variables:
+  CF_ACCOUNT_ID | CLOUDFLARE_ACCOUNT_ID
+  CF_API_TOKEN | CLOUDFLARE_API_TOKEN
+  CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN
+  KURATCHI_ADMIN_DB_TOKEN (for admin operations)
+  KURATCHI_GATEWAY_KEY (for database access)
+
+Examples:
+  # Migrate all databases (admin + all orgs)
+  kuratchi migrate all
+  
+  # Migrate only admin database
+  kuratchi migrate admin
+  
+  # Migrate all organization databases
+  kuratchi migrate orgs
+  
+  # Migrate a specific organization
+  kuratchi migrate org --id org-123
+  
+  # Specify custom migrations directory
+  kuratchi migrate all --migrations-dir my-migrations`;
 }
 
 function parseArgs(argv) {
@@ -562,11 +612,249 @@ async function adminDestroy(opts) {
 }
 
 // Create admin tables/indexes if they do not exist
+async function migrateOrgDatabase(opts) {
+  const cfg = await loadConfig();
+  const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
+  const adminDBToken = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN || cfg.adminToken || cfg.adminDBToken;
+  const migrationsDir = opts.migrationsDir || 'org';
+  const orgId = opts.orgId;
+  const adminDBName = process.env.KURATCHI_ADMIN_DB_NAME || cfg.adminDBName || 'kuratchi-admin';
+  
+  if (!workersSubdomain) throw new Error('Missing workers subdomain');
+  if (!adminDBToken) throw new Error('Missing admin DB token. Set KURATCHI_ADMIN_DB_TOKEN or use --token');
+  if (!orgId) throw new Error('Organization ID is required');
+
+  // Get database info from admin - use KuratchiD1 client like the main function
+  const { KuratchiD1 } = await importKuratchiD1();
+  const gatewayKey = process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY || cfg.gatewayKey || 'default-gateway-key';
+  
+  const kuratchiD1 = new KuratchiD1({
+    apiToken: cfg.apiToken,
+    accountId: cfg.accountId,
+    workersSubdomain,
+    listDbsForBindings: async () => {
+      const adminDbUuid = cfg.adminDbId || cfg.adminDBId;
+      if (adminDBName && adminDbUuid) {
+        return [{ name: adminDBName, uuid: adminDbUuid }];
+      }
+      return [];
+    }
+  });
+  
+  const adminClient = kuratchiD1.getClient({
+    databaseName: adminDBName,
+    dbToken: adminDBToken,
+    gatewayKey
+  });
+
+  // Get database details - query by organizationId
+  const dbQueryResult = await adminClient.query(
+    'SELECT id, name, dbuuid, organizationId FROM databases WHERE organizationId = ? AND deleted_at IS NULL',
+    [orgId]
+  );
+  console.log('Database query result:', dbQueryResult);
+  
+  const dbResult = dbQueryResult?.data || [];
+  if (!dbResult || !dbResult.length) {
+    throw new Error(`No active database found for organization ${orgId}`);
+  }
+
+  const db = dbResult[0];
+  if (!db.dbuuid) {
+    throw new Error(`Database ${db.name} has no dbuuid`);
+  }
+
+  // Get API token for this database
+  const tokenQueryResult = await adminClient.query(
+    'SELECT token FROM dbApiTokens WHERE databaseId = ? AND revoked = 0 AND deleted_at IS NULL',
+    [db.id]
+  );
+  console.log('Token query result:', tokenQueryResult);
+  
+  const tokenResult = tokenQueryResult?.data || [];
+  if (!tokenResult || !tokenResult.length) {
+    throw new Error(`No active API token found for database ${db.name}`);
+  }
+
+  const dbToken = tokenResult[0].token;
+
+  // Deploy router with ALL database bindings to ensure they're accessible
+  console.log('Deploying KuratchiD1 router with all database bindings...');
+  const adminDbUuid = cfg.adminDbId || cfg.adminDBId;
+  const bindings = [];
+  
+  // Add admin database binding
+  if (adminDBName && adminDbUuid) {
+    bindings.push({ name: adminDBName, uuid: adminDbUuid });
+  }
+  
+  // Get ALL active databases and bind them
+  const allDbsResult = await adminClient.query(
+    'SELECT name, dbuuid FROM databases WHERE deleted_at IS NULL AND dbuuid IS NOT NULL'
+  );
+  const allDbs = allDbsResult?.data || [];
+  
+  for (const database of allDbs) {
+    bindings.push({ name: database.name, uuid: database.dbuuid });
+  }
+  
+  console.log(`Binding ${bindings.length} databases:`, bindings.map(b => b.name));
+  await kuratchiD1.deployRouterWithBindings(gatewayKey, bindings);
+  console.log('Router deployed successfully with all database bindings');
+
+  // Apply migrations - use direct HTTP client for org database
+  const { KuratchiHttpClient } = await importInternalHttpClient();
+  const orgClient = new KuratchiHttpClient({
+    databaseName: db.name,
+    workersSubdomain,
+    dbToken,
+    gatewayKey: process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY || cfg.gatewayKey || 'default-gateway-key'
+  });
+
+  const fsBundle = await loadMigrationsFromFs(migrationsDir, opts.migrationsPath);
+  if (!fsBundle) {
+    throw new Error(`No migrations found in ${migrationsDir}`);
+  }
+
+  console.log(`Applying ${Object.keys(fsBundle.migrations).length} migrations to ${db.name}...`);
+  const ok = await orgClient.migrate(fsBundle);
+  if (!ok) {
+    throw new Error('Migration failed');
+  }
+
+  return { 
+    ok: true, 
+    databaseName: db.name,
+    databaseId: db.id,
+    dbuuid: db.dbuuid,
+    orgId,
+    migrationsApplied: Object.keys(fsBundle.migrations).length
+  };
+}
+
+async function migrateAllOrgs(opts) {
+  const cfg = await loadConfig();
+  console.log('Config loaded:', { adminToken: cfg.adminToken ? 'present' : 'missing', adminDBToken: cfg.adminDBToken ? 'present' : 'missing' });
+  console.log('Environment vars:', { 
+    KURATCHI_ADMIN_DB_TOKEN: process.env.KURATCHI_ADMIN_DB_TOKEN ? 'present' : 'missing',
+    KURATCHI_ADMIN_DB_NAME: process.env.KURATCHI_ADMIN_DB_NAME || 'not set'
+  });
+  
+  const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
+  const adminDBToken = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN || cfg.adminToken || cfg.adminDBToken;
+  const adminDBName = process.env.KURATCHI_ADMIN_DB_NAME || cfg.adminDBName || 'kuratchi-admin';
+  
+  if (!workersSubdomain) throw new Error('Missing workers subdomain');
+  if (!adminDBToken) throw new Error('Missing admin DB token. Set KURATCHI_ADMIN_DB_TOKEN or use --token');
+
+  // Get all organizations - use KuratchiD1 with proper admin DB setup like KuratchiAuth
+  const { KuratchiD1 } = await importKuratchiD1();
+  const gatewayKey = process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY || cfg.gatewayKey || 'default-gateway-key';
+  
+  console.log('Gateway key being used:', gatewayKey === 'default-gateway-key' ? 'default-gateway-key' : `${gatewayKey.slice(0, 20)}...`);
+  
+  console.log('KuratchiD1 config:', {
+    apiToken: cfg.apiToken ? 'present' : 'missing',
+    accountId: cfg.accountId ? 'present' : 'missing',
+    workersSubdomain,
+    adminDbName: adminDBName,
+    adminDbId: cfg.adminDbId || cfg.adminDBId || 'missing',
+    gatewayKey: gatewayKey ? 'present' : 'missing'
+  });
+  
+  console.log('Full config keys:', Object.keys(cfg));
+  
+  // Create KuratchiD1 instance with admin DB bindings like KuratchiAuth does
+  const kuratchiD1 = new KuratchiD1({
+    apiToken: cfg.apiToken,
+    accountId: cfg.accountId,
+    workersSubdomain,
+    listDbsForBindings: async () => {
+      // Include admin database in bindings
+      const adminDbName = adminDBName;
+      const adminDbUuid = cfg.adminDbId || cfg.adminDBId;
+      if (adminDbName && adminDbUuid) {
+        return [{ name: adminDbName, uuid: adminDbUuid }];
+      }
+      return [];
+    }
+  });
+  
+  // Deploy router with admin database binding to ensure authentication works
+  console.log('Deploying KuratchiD1 router with admin database binding...');
+  const adminDbUuid = cfg.adminDbId || cfg.adminDBId;
+  if (adminDbUuid) {
+    await kuratchiD1.deployRouterWithBindings(gatewayKey, [
+      { name: adminDBName, uuid: adminDbUuid }
+    ]);
+    console.log('Router deployed successfully');
+  }
+  
+  const adminClient = kuratchiD1.getClient({
+    databaseName: adminDBName,
+    dbToken: adminDBToken,
+    gatewayKey
+  });
+
+  console.log(`Connecting to admin database: ${adminDBName} with token ending in ...${adminDBToken.slice(-8)}`);
+  console.log(`Workers subdomain: ${workersSubdomain}`);
+  
+  // Let's see all tables in the database
+  const allTables = await adminClient.query("SELECT name FROM sqlite_master WHERE type='table'");
+  console.log('All tables query result:', allTables);
+  const tableNames = allTables?.data ? allTables.data.map(t => t.name) : [];
+  console.log('All tables in database:', tableNames);
+  
+  // First, let's check if the organizations table exists
+  const tableCheck = await adminClient.query("SELECT name FROM sqlite_master WHERE type='table' AND name='organizations'");
+  console.log('Organizations table exists:', tableCheck?.data?.length > 0);
+  
+  let orgs = [];
+  if (tableCheck?.data?.length > 0) {
+    const orgsResult = await adminClient.query('SELECT id, organizationName as name FROM organizations');
+    console.log('Organizations query result:', orgsResult);
+    orgs = orgsResult?.data || [];
+    console.log(`Found ${orgs?.length || 0} organizations in admin database`);
+    
+    if (orgs?.length > 0) {
+      console.log('Organizations:', orgs.map(o => `${o.name} (${o.id})`));
+    }
+  } else {
+    console.log('Organizations table does not exist - this suggests wrong database connection');
+  }
+  
+  if (!orgs || !orgs.length) {
+    console.log('No organizations found');
+    return { ok: true, migrated: [] };
+  }
+
+  console.log(`Found ${orgs.length} organizations to migrate`);
+  
+  const results = [];
+  for (const org of orgs) {
+    try {
+      console.log(`Migrating organization: ${org.name} (${org.id})`);
+      const result = await migrateOrgDatabase({
+        ...opts,
+        orgId: org.id,
+        orgName: org.name,
+        token: adminDBToken // Pass the admin token through
+      });
+      results.push({ orgId: org.id, orgName: org.name, ...result });
+    } catch (error) {
+      console.error(`Error migrating organization ${org.name} (${org.id}):`, error.message);
+      results.push({ orgId: org.id, orgName: org.name, error: error.message });
+    }
+  }
+
+  return { ok: true, results };
+}
+
 async function adminMigrate(opts) {
   const cfg = await loadConfig();
-  const name = opts.name || 'kuratchi-admin';
+  const name = opts.name || cfg.adminDBName || 'kuratchi-admin';
   const workersSubdomain = opts.workersSubdomain || process.env.CF_WORKERS_SUBDOMAIN || process.env.CLOUDFLARE_WORKERS_SUBDOMAIN || cfg.workersSubdomain;
-  const token = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN;
+  const token = opts.token || process.env.KURATCHI_ADMIN_DB_TOKEN || cfg.adminToken || cfg.adminDBToken;
   const migrationsDir = opts.migrationsDir || 'admin';
   const migrationsPath = opts.migrationsPath; // optional override
   if (!workersSubdomain) throw new Error('Missing workers subdomain. Provide --workers-subdomain or set CF_WORKERS_SUBDOMAIN | CLOUDFLARE_WORKERS_SUBDOMAIN or config file.');
@@ -676,6 +964,35 @@ async function main() {
     } else if (scope === 'org' && cmd === 'generate-migrations') {
       // Org alias for generating org bundles
       const res = await orgGenerateMigrations(argv);
+      console.log(JSON.stringify(res, null, 2));
+    } else if (scope === 'migrate') {
+      const sp = createSpinner('Running migrations', spinnerEnabled);
+      let res;
+      try {
+        if (cmd === 'all') {
+          // Migrate admin first
+          console.log('Migrating admin database...');
+          await adminMigrate({ ...argv, migrationsDir: 'admin' });
+          
+          // Then migrate all orgs
+          console.log('\nMigrating all organization databases...');
+          res = await migrateAllOrgs({ ...argv, migrationsDir: 'org' });
+        } else if (cmd === 'admin') {
+          res = await adminMigrate({ ...argv, migrationsDir: 'admin' });
+        } else if (cmd === 'orgs' || cmd === 'organizations') {
+          res = await migrateAllOrgs({ ...argv, migrationsDir: 'org' });
+        } else if (cmd === 'org' && argv.id) {
+          res = await migrateOrgDatabase({
+            ...argv,
+            orgId: argv.id,
+            migrationsDir: 'org'
+          });
+        } else {
+          throw new Error(`Unknown migration target: ${cmd}. Use 'all', 'admin', 'orgs', or 'org --id <orgId>'`);
+        }
+      } finally {
+        sp.stop();
+      }
       console.log(JSON.stringify(res, null, 2));
     } else {
       usage();
