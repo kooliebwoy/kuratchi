@@ -1,17 +1,53 @@
-import { KuratchiD1 } from '../d1/kuratchi-d1.js';
-import { CloudflareClient } from '../cloudflare.js';
 import { KuratchiDO } from '../do/kuratchi-do.js';
-import { KuratchiKV } from '../kv/kuratchi-kv.js';
-import { KuratchiR2 } from '../r2/kuratchi-r2.js';
-import { KuratchiQueues } from '../queues/kuratchi-queues.js';
-import { AuthService } from './AuthService.js';
+import { AuthService } from './auth-helper.js';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
-import { parseSessionCookie, signState, verifyState } from './utils.js';
+import { parseSessionCookie, signState, verifyState } from '../utils/auth.js';
 import { adminSchemaDsl } from '../schema/admin.js';
 import { organizationSchemaDsl } from '../schema/organization.js';
-import { normalizeSchema } from '../schema/normalize.js';
+import { normalizeSchema } from '../orm/normalize.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
-import { KuratchiHttpClient } from '../d1/internal-http-client.js';
+
+// Minimal DO-backed HTTP client for admin DB access (avoids missing D1 client)
+class MinimalDoHttpClient {
+  private endpoint: string;
+  private dbName: string;
+  private dbToken?: string;
+  private gatewayKey?: string;
+
+  constructor(cfg: { workersSubdomain: string; databaseName: string; dbToken?: string; gatewayKey?: string; scriptName?: string }) {
+    const script = cfg.scriptName || 'kuratchi-do-internal';
+    this.endpoint = `https://${script}.${cfg.workersSubdomain}`;
+    this.dbName = cfg.databaseName;
+    this.dbToken = cfg.dbToken;
+    this.gatewayKey = cfg.gatewayKey;
+
+    try {
+      Object.defineProperty(this, 'dbToken', { enumerable: false, configurable: false, writable: true });
+      Object.defineProperty(this, 'gatewayKey', { enumerable: false, configurable: false, writable: true });
+    } catch {}
+  }
+
+  async query(sql: string, params: any[] = []) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-db-name': this.dbName };
+    if (this.gatewayKey) headers['Authorization'] = `Bearer ${this.gatewayKey}`;
+    if (this.dbToken) headers['x-db-token'] = this.dbToken;
+
+    const res = await fetch(`${this.endpoint}/api/run`, { method: 'POST', headers, body: JSON.stringify({ query: sql, params }) });
+
+    if (!res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const json = await res.json();
+        return { success: false, error: JSON.stringify(json) } as any;
+      }
+
+      const text = await res.text();
+      return { success: false, error: `API ${res.status}: ${text.slice(0, 200)}...` } as any;
+    }
+
+    return res.json();
+  }
+}
 
 // Consolidated SvelteKit handle and types (previously in sveltekit.ts)
 export const KURATCHI_SESSION_COOKIE = 'kuratchi_session';
@@ -31,7 +67,6 @@ export type AuthHandleEnv = {
   CLOUDFLARE_API_TOKEN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  AUTH_WEBHOOK_SECRET?: string;
   KURATCHI_ADMIN_DB_NAME?: string;
   KURATCHI_ADMIN_DB_TOKEN?: string;
   KURATCHI_ADMIN_DB_ID?: string;
@@ -73,7 +108,6 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       CLOUDFLARE_API_TOKEN: pick('KURATCHI_CLOUDFLARE_API_TOKEN') || pick('CLOUDFLARE_API_TOKEN')!,
       GOOGLE_CLIENT_ID: pick('GOOGLE_CLIENT_ID'),
       GOOGLE_CLIENT_SECRET: pick('GOOGLE_CLIENT_SECRET'),
-      AUTH_WEBHOOK_SECRET: pick('AUTH_WEBHOOK_SECRET'),
       KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
       KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN'),
       KURATCHI_ADMIN_DB_ID: pick('KURATCHI_ADMIN_DB_ID'),
@@ -148,14 +182,15 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         const adminMissing = required.filter((k) => !env?.[k]);
         if (!GW) adminMissing.push('KURATCHI_GATEWAY_KEY');
         if (adminMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${adminMissing.join(', ')}`);
-        
-        // Use proper KuratchiHttpClient for admin DB
-        adminDbInst = new KuratchiHttpClient({
+        // Use minimal DO-backed HTTP client for admin DB
+        const http = new MinimalDoHttpClient({
           databaseName: env.KURATCHI_ADMIN_DB_NAME,
           workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
           dbToken: env.KURATCHI_ADMIN_DB_TOKEN,
           gatewayKey: GW
         } as any);
+        const schema = normalizeSchema(adminSchemaDsl as any);
+        adminDbInst = createClientFromJsonSchema((sql, params) => http.query(sql, params || []), schema as any);
       }
       return adminDbInst;
     };
@@ -171,24 +206,23 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       const cfMissing = ['CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'].filter((k) => !env?.[k]);
       if (cfMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${cfMissing.join(', ')}`);
       const adminDb = await getAdminDbLazy();
-      const { Kuratchi } = await import('../kuratchi.js');
-      sdk = new Kuratchi({
+      // Build minimal SDK object inline to avoid relying on missing ../kuratchi.js during dev
+      const auth = new KuratchiAuth({
         apiToken: env.CLOUDFLARE_API_TOKEN,
         accountId: env.CLOUDFLARE_ACCOUNT_ID,
         workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-        auth: {
-          resendApiKey: env.RESEND_API_KEY || '',
-          emailFrom: env.EMAIL_FROM || '',
-          origin: env.ORIGIN || '',
-          resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
-          authSecret: env.KURATCHI_AUTH_SECRET,
-          adminDbName: env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin',
-          adminDbToken: env.KURATCHI_ADMIN_DB_TOKEN || '',
-          adminDbId: env.KURATCHI_ADMIN_DB_ID || '',
-          // Wire DO gateway key when present so DO-backed org flows work
-          gatewayKey: env.KURATCHI_GATEWAY_KEY
-        }
-      });
+        resendApiKey: env.RESEND_API_KEY || '',
+        emailFrom: env.EMAIL_FROM || '',
+        origin: env.ORIGIN || '',
+        resendAudience: env.RESEND_CLUTCHCMS_AUDIENCE,
+        authSecret: env.KURATCHI_AUTH_SECRET,
+        adminDbName: env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin',
+        adminDbToken: env.KURATCHI_ADMIN_DB_TOKEN || '',
+        adminDbId: env.KURATCHI_ADMIN_DB_ID || '',
+        // Wire DO gateway key when present so DO-backed org flows work
+        gatewayKey: env.KURATCHI_GATEWAY_KEY
+      } as any);
+      sdk = { auth } as any;
       // Expose the SDK instance under locals.kuratchi, preserving existing helpers
       Object.assign(locals.kuratchi, sdk);
       // Batteries-included: wrap credentials.authenticate to set cookie automatically
@@ -263,15 +297,15 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       (locals.kuratchi as any).auth = await getAuthApi();
     } catch {}
 
-    // Helper: look up organizationId by email in admin DB (Kuratchi HTTP client only)
+    // Helper: look up organizationId by email in admin DB
     const findOrganizationIdByEmail = async (email: string): Promise<string | null> => {
       try {
         const adminDb = await getAdminDbLazy().catch(() => null);
-        if (!adminDb || typeof (adminDb as any).query !== 'function') return null;
-        const sql = 'SELECT organizationId FROM organizationUsers WHERE email = ? AND deleted_at IS NULL LIMIT 1';
-        const res = await (adminDb as KuratchiHttpClient).query(sql, [email]);
-        const rows = (res && (res.results ?? res.data)) || [];
-        const row = Array.isArray(rows) ? rows[0] : null;
+        if (!adminDb) return null;
+        const res = await (adminDb as any).organizationUsers
+          .where({ email, deleted_at: { is: null } } as any)
+          .first();
+        const row = (res as any)?.data;
         return row?.organizationId || null;
       } catch {
         return null;
@@ -293,7 +327,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (!orgId) orgId = await findOrganizationIdByEmail(email);
         if (!orgId) return new Response(JSON.stringify({ success: false, error: 'organization_not_found_for_email' }), { status: 404, headers: { 'content-type': 'application/json' } });
 
-        const auth = await (await getAuthApi()).forOrganization(orgId);
+        const auth = await (await getAuthApi() as any).forOrganization(orgId);
         const tokenData = await auth.createMagicLinkToken(email, redirectTo);
         const origin = env.ORIGIN || `${url.protocol}//${url.host}`;
         const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(tokenData.token)}&org=${encodeURIComponent(orgId)}`;
@@ -310,7 +344,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       const orgId = url.searchParams.get('org') || '';
       if (!token || !orgId) return new Response('Bad Request', { status: 400 });
       try {
-        const auth = await (await getAuthApi()).forOrganization(orgId);
+        const auth = await (await getAuthApi() as any).forOrganization(orgId);
         const result = await auth.verifyMagicLink(token);
         if (!result.success || !result.cookie) return new Response('Unauthorized', { status: 401 });
         // 30d cookie expiry
@@ -399,7 +433,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         if (!orgId) return new Response('organization_not_found_for_email', { status: 404 });
 
         // Link or create user, then create session
-        const auth = await (await getAuthApi()).forOrganization(orgId);
+        const auth = await (await getAuthApi() as any).forOrganization(orgId);
         const user = await auth.getOrCreateUserFromOAuth({
           provider: 'google',
           providerAccountId,
@@ -430,7 +464,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         const parsed = await parseSessionCookie(env.KURATCHI_AUTH_SECRET, cookieVal);
         const orgId = parsed?.orgId;
         if (orgId && orgId !== 'admin') {
-          const authService = await (await getAuthApi()).forOrganization(orgId);
+          const authService = await (await getAuthApi() as any).forOrganization(orgId);
           const { sessionData, user } = await authService.validateSessionToken(cookieVal);
           if (sessionData && user) {
             // Expose current org-scoped AuthService under kuratchi.auth.org
@@ -466,7 +500,7 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
   };
 }
 
-interface AuthConfig {
+export interface AuthConfig {
     resendApiKey: string;
     emailFrom: string;
     origin: string;
@@ -484,11 +518,7 @@ interface AuthConfig {
 }
 
 export class KuratchiAuth {
-private kuratchiD1: KuratchiD1;
 private kuratchiDO: KuratchiDO;
-private kuratchiKV: KuratchiKV;
-private kuratchiR2: KuratchiR2;
-private kuratchiQueues: KuratchiQueues;
 private adminDb: any;
 private organizationServices: Map<string, AuthService>;
 private organizationOrmClients: Map<string, Record<string, TableApi>>;
@@ -525,82 +555,27 @@ public signIn: {
         this.organizationServices = new Map();
         this.organizationOrmClients = new Map();
         
-        // Initialize Kuratchi D1 router (v2) instance first
-        this.kuratchiD1 = new KuratchiD1({
-            apiToken: config.apiToken,
-            accountId: config.accountId,
-            workersSubdomain: config.workersSubdomain,
-            // Provide Admin DB as the source of truth for initial router bindings
-            listDbsForBindings: async () => {
-                try {
-                    const res = await (this.adminDb as any).databases
-                        .where({ deleted_at: { is: null } })
-                        .orderBy({ created_at: 'asc' })
-                        .many();
-                    const rows = ((res as any)?.data ?? []) as Array<any>;
-                    const orgDbs = rows
-                        .filter((r) => r && r.name && r.dbuuid)
-                        .map((r) => ({ name: r.name as string, uuid: r.dbuuid as string }));
-                    
-                    // Always include the admin database itself in bindings
-                    const adminDbName = config.adminDbName;
-                    const adminDbUuid = config.adminDbId;
-                    if (adminDbName && adminDbUuid) {
-                        orgDbs.unshift({ name: adminDbName, uuid: adminDbUuid });
-                    }
-                    
-                    return orgDbs;
-                } catch {
-                    // Fallback: at least include admin DB if we can't query org DBs
-                    try {
-                        const adminDbName = config.adminDbName;
-                        const adminDbUuid = config.adminDbId;
-                        if (adminDbName && adminDbUuid) {
-                            return [{ name: adminDbName, uuid: adminDbUuid }];
-                        }
-                    } catch {}
-                    return [];
-                }
-            }
-        });
-        // Initialize KuratchiDO instance (available for DO-backed orgs)
+        // Initialize KuratchiDO instance (DO-only)
         this.kuratchiDO = new KuratchiDO({
             apiToken: config.apiToken,
             accountId: config.accountId,
             workersSubdomain: config.workersSubdomain
         });
-        // Initialize other Cloudflare services (KV, R2, Queues)
-        this.kuratchiKV = new KuratchiKV({
-            apiToken: config.apiToken,
-            accountId: config.accountId,
-            workersSubdomain: config.workersSubdomain
-        });
-        this.kuratchiR2 = new KuratchiR2({
-            apiToken: config.apiToken,
-            accountId: config.accountId,
-            workersSubdomain: config.workersSubdomain
-        });
-        this.kuratchiQueues = new KuratchiQueues({
-            apiToken: config.apiToken,
-            accountId: config.accountId,
-            workersSubdomain: config.workersSubdomain
-        });
         
-        // Initialize admin DB runtime client after KuratchiD1 - auto-create from credentials
+        // Initialize admin DB runtime client (DO-backed HTTP client)
         if (!config.adminDbName || !config.adminDbToken || !config.gatewayKey) {
             throw new Error('KuratchiAuth requires adminDbName, adminDbToken, and gatewayKey');
         }
-        
-        console.log(`[kuratchi] Creating admin DB client: name=${config.adminDbName}, token=${config.adminDbToken?.slice(0, 20)}..., gatewayKey=${config.gatewayKey?.slice(0, 20)}...`);
-        const adminClient = this.kuratchiD1.getClient({
+        console.log(`[kuratchi] Creating admin DB client (DO): name=${config.adminDbName}`);
+        const adminHttp = new MinimalDoHttpClient({
+            workersSubdomain: config.workersSubdomain,
             databaseName: config.adminDbName,
             dbToken: config.adminDbToken,
             gatewayKey: config.gatewayKey
-        });
-        
+        } as any);
         const schema = normalizeSchema(adminSchemaDsl as any);
         this.adminDb = createClientFromJsonSchema(
-            (sql, params) => adminClient.query(sql, params || []),
+            (sql, params) => adminHttp.query(sql, params || []),
             schema as any
         ) as Record<string, TableApi>;
 
@@ -740,43 +715,19 @@ public signIn: {
                 }
                 const effectiveToken = (valid as any).token as string;
 
-                // Decide engine based on presence of dbuuid: if present => D1 (router v2), else assume DO
-                const isD1 = !!(dbRecord as any).dbuuid;
-                let exec: (sql: string, params?: any[]) => Promise<any>;
-                if (isD1) {
-                    if (!this.config.gatewayKey) {
-                        throw new Error('[KuratchiAuth] gatewayKey is required in config to use D1 router');
-                    }
-                    const organizationClient = this.kuratchiD1.getClient({
-                        databaseName,
-                        dbToken: effectiveToken!,
-                        gatewayKey: this.config.gatewayKey
-                    });
-                    exec = (sql: string, params?: any[]) => organizationClient.query(sql, params || []);
-                } else {
-                    if (!this.config.gatewayKey) {
-                        throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
-                    }
-                    const doClient = this.kuratchiDO.getClient({
-                        databaseName,
-                        dbToken: effectiveToken!,
-                        gatewayKey: this.config.gatewayKey
-                    });
-                    exec = (sql: string, params?: any[]) => doClient.query(sql, params || []);
+                // DO-only: build runtime ORM client using KuratchiDO.database()
+                if (!this.config.gatewayKey) {
+                    throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
                 }
-
-                // Build runtime ORM client for organization DB
-                const orgSchema = normalizeSchema(organizationSchemaDsl as any);
-                const orgClient = createClientFromJsonSchema(
-                    (sql, params) => exec(sql, params),
-                    orgSchema as any
-                ) as Record<string, TableApi>;
+                const orgClient = await this.kuratchiDO.database({
+                    databaseName,
+                    dbToken: effectiveToken!,
+                    gatewayKey: this.config.gatewayKey!,
+                    schema: organizationSchemaDsl as any
+                });
                 const authService = new AuthService(
                     orgClient as any,
-                    this.buildEnv(isD1
-                        ? this.kuratchiD1.getClient({ databaseName, dbToken: effectiveToken!, gatewayKey: this.config.gatewayKey! })
-                        : this.kuratchiDO.getClient({ databaseName, dbToken: effectiveToken!, gatewayKey: this.config.gatewayKey! })
-                    )
+                    this.buildEnv(this.adminDb)
                 );
                 
                 this.organizationServices.set(organizationId, authService);
@@ -792,18 +743,6 @@ public signIn: {
             data: any,
             options?: {
                 migrate?: boolean; // default true
-                migrationsDir?: string; // default 'org' (expects /migrations-org/ when using Vite loader)
-                migrationsPath?: string; // optional absolute/relative FS path to migrations folder (./migrations-org)
-                // Optional resource provisioning
-                provisionKV?: boolean;
-                provisionR2?: boolean;
-                provisionQueues?: boolean;
-                kvTitle?: string;
-                r2BucketName?: string;
-                queueName?: string;
-                // Engine selection
-                d1?: boolean; // default true
-                do?: boolean; // if true, uses Durable Objects engine
                 // Optional gateway key for DO; if omitted, uses config.gatewayKey
                 gatewayKey?: string;
             }
@@ -872,10 +811,8 @@ public signIn: {
                 }
             }
 
-            // 2) Determine engine and provision database idempotently
+            // 2) Provision database idempotently (DO-only)
             const dbName = (org as any).organizationName || `org-${(org as any).id}`;
-            const useDO = options?.do === true;
-            const useD1 = options?.d1 !== false && !useDO; // default D1 unless DO explicitly selected
 
             // First check if database with this name already exists
             let dbRow: any | null = null;
@@ -919,76 +856,32 @@ public signIn: {
             let provisioned = false;
 
             if (!apiToken) {
-                if (useDO) {
-                    const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
-                    if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create DO-backed database');
-                    const res = await this.kuratchiDO.createDatabase({
-                        databaseName: String(dbName),
-                        gatewayKey,
-                        migrate: options?.migrate !== false,
-                        schema: organizationSchemaDsl as any
-                    });
-                    apiToken = res.token;
-                    database = { name: res.databaseName };
-                    provisioned = true;
-                    
-                    // Insert database record with null dbuuid for DO
-                    await (this.adminDb as any).databases.insert({
-                        id: dbId,
-                        name: String(dbName),
-                        dbuuid: null,
-                        organizationId: org.id,
-                        isActive: true
-                    });
-                    
-                    // Get the inserted record
-                    const inserted = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
-                    dbRow = (inserted as any)?.data;
-                } else {
-                    // D1 router v2 path (default)
-                    const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
-                    if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create D1 database');
-                    
-                    console.log(`[kuratchi] Creating D1 database with name: "${String(dbName)}"`);
-                    const created = await this.kuratchiD1.createDatabase({
-                        databaseName: String(dbName),
-                        gatewayKey,
-                        migrate: options?.migrate !== false,
-                        schema: organizationSchemaDsl as any,
-                    });
-                    
-                    database = created.database;
-                    apiToken = created.token;
-                    provisioned = true;
-                    const dbUuid = (database as any)?.uuid ?? (database as any)?.id;
-                    
-                    console.log(`[kuratchi] D1 createDatabase returned UUID: ${dbUuid} for database name: "${String(dbName)}"`);
-                    
-                    // Check for existing record with this UUID
-                    const existingWithUuid = await (this.adminDb as any).databases
-                        .where({ dbuuid: dbUuid, deleted_at: { is: null } } as any)
-                        .first();
-                    
-                    if ((existingWithUuid as any)?.data) {
-                        console.log(`[kuratchi] UUID ${dbUuid} already exists in record ${(existingWithUuid as any).data.id}, using existing record`);
-                        dbRow = (existingWithUuid as any).data;
-                    } else {
-                        // Insert database record with the actual UUID
-                        await (this.adminDb as any).databases.insert({
-                            id: dbId,
-                            name: database?.name ?? String(dbName),
-                            dbuuid: dbUuid,
-                            organizationId: org.id,
-                            isActive: true
-                        });
-                        
-                        // Get the inserted record
-                        const inserted = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
-                        dbRow = (inserted as any)?.data;
-                    }
-                }
+                const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
+                if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create DO-backed database');
+                const res = await this.kuratchiDO.createDatabase({
+                    databaseName: String(dbName),
+                    gatewayKey,
+                    migrate: options?.migrate !== false,
+                    schema: organizationSchemaDsl as any
+                });
+                apiToken = res.token;
+                database = { name: res.databaseName };
+                provisioned = true;
+                
+                // Insert database record with null dbuuid for DO
+                await (this.adminDb as any).databases.insert({
+                    id: dbId,
+                    name: String(dbName),
+                    dbuuid: null,
+                    organizationId: org.id,
+                    isActive: true
+                });
+                
+                // Get the inserted record
+                const inserted = await (this.adminDb as any).databases.where({ id: dbId } as any).first();
+                dbRow = (inserted as any)?.data;
 
-                // Insert API token for the org DB
+                // Insert API token for the org DB (since we just created it)
                 const tokenId = crypto.randomUUID();
                 tokenRow = {
                     id: tokenId,
@@ -999,83 +892,14 @@ public signIn: {
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 };
-                
                 console.log(`[kuratchi] Inserting API token: databaseId=${dbRow.id}`);
                 await (this.adminDb as any).dbApiTokens.insert(tokenRow);
             }
 
-            // 5) Optionally provision Cloudflare resources (KV, R2, Queues) and persist admin records
-            const doKV = options?.provisionKV === true;
-            const doR2 = options?.provisionR2 === true;
-            const doQueues = options?.provisionQueues === true;
-            const baseName = String((org as any).organizationSlug || (org as any).organizationName || `org-${org.id}`);
-
-            if (doKV && (this.adminDb as any).kvNamespaces && (this.adminDb as any).kvApiTokens) {
-                const kvTitle = (options?.kvTitle || `${baseName}-kv`).toString();
-                const { namespace, apiToken: kvApiToken } = await this.kuratchiKV.createNamespace(kvTitle);
-                const kvRowId = crypto.randomUUID();
-                await (this.adminDb as any).kvNamespaces.insert({
-                    id: kvRowId,
-                    namespaceId: (namespace as any)?.id,
-                    title: (namespace as any)?.title || kvTitle,
-                    organizationId: org.id
-                });
-                await (this.adminDb as any).kvApiTokens.insert({
-                    id: crypto.randomUUID(),
-                    token: kvApiToken,
-                    name: 'primary',
-                    kvNamespaceId: kvRowId
-                });
-            }
-
-            if (doR2 && (this.adminDb as any).r2Buckets && (this.adminDb as any).r2ApiTokens) {
-                const r2Name = (options?.r2BucketName || `${baseName}-r2`).toString().toLowerCase();
-                const { bucket, apiToken: r2ApiToken } = await this.kuratchiR2.createBucket(r2Name);
-                const r2RowId = crypto.randomUUID();
-                await (this.adminDb as any).r2Buckets.insert({
-                    id: r2RowId,
-                    name: (bucket as any)?.name || r2Name,
-                    organizationId: org.id
-                });
-                await (this.adminDb as any).r2ApiTokens.insert({
-                    id: crypto.randomUUID(),
-                    token: r2ApiToken,
-                    name: 'primary',
-                    r2BucketId: r2RowId
-                });
-            }
-
-            if (doQueues && (this.adminDb as any).queues && (this.adminDb as any).queueApiTokens) {
-                const qName = (options?.queueName || `${baseName}-queue`).toString();
-                const { queue, apiToken: qApiToken } = await this.kuratchiQueues.createQueue(qName);
-                const qRowId = crypto.randomUUID();
-                await (this.adminDb as any).queues.insert({
-                    id: qRowId,
-                    cfid: (queue as any)?.id || (queue as any)?.queue_id || null,
-                    name: (queue as any)?.queue_name || (queue as any)?.name || qName,
-                    organizationId: org.id
-                });
-                await (this.adminDb as any).queueApiTokens.insert({
-                    id: crypto.randomUUID(),
-                    token: qApiToken,
-                    name: 'primary',
-                    queueId: qRowId
-                });
-            }
+            // 5) DO-only: no KV/R2/Queues provisioning
 
             // 6) Optionally migrate the organization's database schema
-            const shouldMigrate = options?.migrate !== false;
-            const migrationsDir = options?.migrationsDir || 'org';
-            let migrationStrategy: 'vite' | 'router-init' | 'do-init' | 'skipped' | 'failed' = 'skipped';
-            if (shouldMigrate) {
-                if (useD1) {
-                    // D1v2 path: migrations applied during createDatabase() via schema
-                    migrationStrategy = 'router-init';
-                } else if (useDO) {
-                    // DO path: migrations applied during DO createDatabase()
-                    migrationStrategy = 'do-init';
-                }
-            }
+            // 6) Migrations applied during DO createDatabase() when migrate !== false
 
             // 7) Seed initial organization user and create a session
             // Build an organization-scoped AuthService using the just-provisioned DB
@@ -1155,16 +979,6 @@ public signIn: {
                 .first();
             const db = (dbRes as any)?.data;
 
-            // Best-effort delete in Cloudflare if we have a uuid
-            if (db?.dbuuid) {
-                try {
-                    const cf = new CloudflareClient({ apiToken: this.config.apiToken, accountId: this.config.accountId });
-                    await cf.deleteDatabase(db.dbuuid);
-                } catch (e) {
-                    console.error('Failed to delete Cloudflare D1 database for org', organizationId, e);
-                }
-            }
-
             const now = new Date().toISOString();
 
             // Soft-delete DB tokens for this DB
@@ -1173,59 +987,7 @@ public signIn: {
                 await (this.adminDb as any).databases.update({ id: db.id } as any, { deleted_at: now as any });
             }
 
-            // Best-effort delete KV namespaces
-            if ((this.adminDb as any).kvNamespaces) {
-            const kvNsRes = await (this.adminDb as any).kvNamespaces.where({ organizationId, deleted_at: { is: null } }).many();
-            const kvNamespaces = ((kvNsRes as any)?.data ?? []) as any[];
-            for (const ns of kvNamespaces) {
-                const nsId = (ns as any).namespaceId;
-                if (nsId) {
-                    try { await this.kuratchiKV.deleteNamespace(nsId); } catch (e) {
-                        console.error('Failed to delete KV namespace for org', organizationId, nsId, e);
-                    }
-                }
-                if ((this.adminDb as any).kvApiTokens) {
-                    await (this.adminDb as any).kvApiTokens.update({ kvNamespaceId: (ns as any).id } as any, { revoked: true as any, deleted_at: now as any });
-                }
-                await (this.adminDb as any).kvNamespaces.update({ id: (ns as any).id } as any, { deleted_at: now as any });
-            }
-            }
-
-            // Best-effort delete R2 buckets
-            if ((this.adminDb as any).r2Buckets) {
-            const r2Res = await (this.adminDb as any).r2Buckets.where({ organizationId, deleted_at: { is: null } }).many();
-            const r2Buckets = ((r2Res as any)?.data ?? []) as any[];
-            for (const b of r2Buckets) {
-                const name = (b as any).name;
-                if (name) {
-                    try { await this.kuratchiR2.deleteBucket(name); } catch (e) {
-                        console.error('Failed to delete R2 bucket for org', organizationId, name, e);
-                    }
-                }
-                if ((this.adminDb as any).r2ApiTokens) {
-                    await (this.adminDb as any).r2ApiTokens.update({ r2BucketId: (b as any).id } as any, { revoked: true as any, deleted_at: now as any });
-                }
-                await (this.adminDb as any).r2Buckets.update({ id: (b as any).id } as any, { deleted_at: now as any });
-            }
-            }
-
-            // Best-effort delete Queues
-            if ((this.adminDb as any).queues) {
-            const qRes = await (this.adminDb as any).queues.where({ organizationId, deleted_at: { is: null } }).many();
-            const queues = ((qRes as any)?.data ?? []) as any[];
-            for (const q of queues) {
-                const target = (q as any).cfid || (q as any).name;
-                if (target) {
-                    try { await this.kuratchiQueues.deleteQueue(String(target)); } catch (e) {
-                        console.error('Failed to delete Queue for org', organizationId, target, e);
-                    }
-                }
-                if ((this.adminDb as any).queueApiTokens) {
-                    await (this.adminDb as any).queueApiTokens.update({ queueId: (q as any).id } as any, { revoked: true as any, deleted_at: now as any });
-                }
-                await (this.adminDb as any).queues.update({ id: (q as any).id } as any, { deleted_at: now as any });
-            }
-            }
+            // DO-only: no KV/R2/Queues resources to delete
 
             // Soft-delete organization
             await (this.adminDb as any).organizations.update({ id: organizationId } as any, { deleted_at: now as any });

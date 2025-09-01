@@ -1,8 +1,7 @@
-import { comparePassword, hashPassword, generateSessionToken, hashToken, buildSessionCookie, parseSessionCookie } from "./utils.js";
-import { EmailService } from "../email/EmailService.js";
-import { OrgService } from "../org/OrgService.js";
+import { comparePassword, hashPassword, generateSessionToken, hashToken, buildSessionCookie, parseSessionCookie } from "../utils/auth.js";
+import { EmailService } from "./email-helper.js";
+import { OrgService } from "./organization-helper.js";
 import type { TableApi } from "../orm/kuratchi-orm.js";
-import type { D1Database } from "@cloudflare/workers-types";
 
 // Session data built from DB on demand
 export interface SessionData {
@@ -34,7 +33,7 @@ export interface SessionValidationResult {
 }
 
 interface Env {
-    ADMIN_DB: D1Database;
+    ADMIN_DB: any;
     RESEND_API_KEY: string;
     EMAIL_FROM: string;
     ORIGIN: string;
@@ -91,7 +90,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
         this.env = env;
         this.emailService = new EmailService(env as any); // Centralized templated email sender
         // Always initialize OrgService with the same runtime client
-        this.orgService = new OrgService(client as any, env);
+        this.orgService = new OrgService(client as any);
         // Prevent accidental exposure of sensitive internals via console.log / JSON
         try {
             Object.defineProperty(this, 'env', { enumerable: false, configurable: false, writable: true });

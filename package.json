@@ -1,6 +1,9 @@
 {
-	"name": "kuratchi-sdk",
-	"version": "0.0.2",
+	"name": "kuratchi-sdk-v2",
+	"version": "0.0.1",
+	"bin": {
+		"kuratchi-sdk-v2": "bin/kuratchi-sdk.mjs"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run prepack",
@@ -10,11 +13,11 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"cli": "node bin/kuratchi-sdk.mjs"
 	},
 	"files": [
 		"dist",
-		"bin",
 		"!dist/**/*.test.*",
 		"!dist/**/*.spec.*"
 	],
@@ -30,19 +33,15 @@
 			"svelte": "./dist/index.js"
 		}
 	},
-	"bin": {
-		"kuratchi-sdk": "./bin/kuratchi.mjs"
-	},
 	"peerDependencies": {
 		"svelte": "^5.0.0"
 	},
-	"peerDependenciesMeta": {},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20250816.0",
 		"@sveltejs/adapter-auto": "^6.0.0",
 		"@sveltejs/kit": "^2.22.0",
 		"@sveltejs/package": "^2.0.0",
 		"@sveltejs/vite-plugin-svelte": "^6.0.0",
+		"@types/node": "^24.3.0",
 		"publint": "^0.3.2",
 		"svelte": "^5.0.0",
 		"svelte-check": "^4.0.0",

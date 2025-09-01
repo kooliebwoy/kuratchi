@@ -1,4 +1,4 @@
-import { renderTemplate, type TemplateName } from './templates.js';
+import { renderTemplate, type TemplateName } from '../utils/email-templates.js';
 
 interface Env {
   RESEND_API_KEY: string;

@@ -1,14 +1,87 @@
-import { CloudflareClient } from '../cloudflare.js';
+import { CloudflareClient } from '../utils/cloudflare.js';
 import { DEFAULT_DO_WORKER_SCRIPT } from './worker-template.js';
-import { KuratchiDoHttpClient } from './internal-http-client.js';
-import { createSignedDbToken } from './token.js';
+import { createSignedDbToken } from '../utils/token.js';
 import type { DatabaseSchema } from '../orm/json-schema.js';
-import type { SchemaDsl } from '../schema/types.js';
-import { normalizeSchema } from '../schema/normalize.js';
+import type { SchemaDsl } from '../utils/types.js';
+import { normalizeSchema } from '../orm/normalize.js';
 import { generateInitialMigrationBundle } from '../orm/migrator.js';
+import { loadMigrations } from '../orm/loader.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
-// Convenience re-exports for normalized standard schemas
-export { adminSchema, organizationSchema } from '../index.js';
+
+export type QueryResult<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+  results?: any;
+};
+
+interface KuratchiDoConfig {
+  databaseName: string;
+  workersSubdomain: string;
+  dbToken?: string;
+  gatewayKey?: string;
+  scriptName?: string;
+}
+
+class KuratchiDoHttpClient {
+  private endpoint: string;
+  private dbToken?: string;
+  private gatewayKey?: string;
+  private dbName: string;
+
+  constructor(config: KuratchiDoConfig) {
+    const script = config.scriptName || 'kuratchi-do-internal';
+    this.endpoint = `https://${script}.${config.workersSubdomain}`;
+    this.dbToken = config.dbToken;
+    this.gatewayKey = config.gatewayKey;
+    this.dbName = config.databaseName;
+    try {
+      Object.defineProperty(this, 'dbToken', { enumerable: false, configurable: false, writable: true });
+      Object.defineProperty(this, 'gatewayKey', { enumerable: false, configurable: false, writable: true });
+    } catch {}
+  }
+
+  private async makeRequest(path: string, body: any): Promise<QueryResult<any>> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-db-name': this.dbName };
+      if (this.gatewayKey) headers['Authorization'] = `Bearer ${this.gatewayKey}`;
+      if (this.dbToken) headers['x-db-token'] = this.dbToken;
+      const res = await fetch(`${this.endpoint}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const json = await res.json();
+          return { success: false, error: JSON.stringify(json) };
+        }
+        const text = await res.text();
+        return { success: false, error: `API ${res.status}: ${text.slice(0, 200)}...` };
+      }
+      return res.json();
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async query<T>(query: string, params: any[] = []): Promise<QueryResult<T>> {
+    return this.makeRequest('/api/run', { query, params });
+  }
+
+  async exec(query: string): Promise<QueryResult<any>> {
+    return this.makeRequest('/api/exec', { query });
+  }
+
+  async batch(queries: { query: string; params?: any[] }[]): Promise<QueryResult<any>> {
+    return this.makeRequest('/api/batch', { batch: queries });
+  }
+
+  async raw(query: string, params?: any[], columnNames: boolean = false): Promise<QueryResult<any>> {
+    return this.makeRequest('/api/raw', { query, params, columnNames });
+  }
+
+  async first<T>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>> {
+    return this.makeRequest('/api/first', { query, params, columnName });
+  }
+}
 
 // Note: DO client accepts DatabaseSchema or SchemaDsl (normalized internally). String aliases are not supported.
 
@@ -75,7 +148,7 @@ export class KuratchiDO {
       const normalized = ensureDbSchema(opts.schema);
       const { migrations } = generateInitialMigrationBundle(normalized);
       const initialSql = await migrations.m0001();
-      const client = this.getClient({ databaseName, dbToken: token, gatewayKey });
+      const client = this.workerClient({ databaseName, dbToken: token, gatewayKey });
       // Split into statements for atomic batch execution
       const statements = initialSql
         .split(';')
@@ -125,8 +198,8 @@ export class KuratchiDO {
     await this.cf.enableWorkerSubdomain(this.scriptName);
   }
 
-  getClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string; bookmark?: string }) {
-    // bookmark is unused for DO
+  // Internal: centralized Worker HTTP client factory
+  private workerClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string }): KuratchiDoHttpClient {
     return new KuratchiDoHttpClient({
       databaseName: cfg.databaseName,
       workersSubdomain: this.workersSubdomain,
@@ -136,33 +209,69 @@ export class KuratchiDO {
     });
   }
 
-  // Top-level sugar: property client with explicit TS DatabaseSchema only
-  client(
-    cfg: { databaseName: string; dbToken: string; gatewayKey: string },
-    options: { schema: DatabaseSchema | SchemaDsl }
-  ): Record<string, TableApi> {
-    const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-    if (!options?.schema) throw new Error('KuratchiDO.client requires a schema (DatabaseSchema or SchemaDsl)');
-    const normalized = ensureDbSchema(options.schema);
+  // Public API: returns ORM client and ensures migrations are applied on connect
+  async database(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<Record<string, TableApi>> {
+    const { databaseName, dbToken, gatewayKey, schema } = args;
+    if (!databaseName || !dbToken || !gatewayKey) throw new Error('KuratchiDO.database requires databaseName, dbToken, and gatewayKey');
+    if (!schema) throw new Error('KuratchiDO.database requires a schema (DatabaseSchema or SchemaDsl)');
+
+    const http = this.workerClient({ databaseName, dbToken, gatewayKey });
+
+    const exec = (sql: string, params?: any[]) => http.query(sql, params);
+    const normalized = ensureDbSchema(schema);
+
+    // Apply migrations from bundle for this schema (expects /migrations-<name>)
+    await this.applyMigrations(http, normalized.name);
+
     return createClientFromJsonSchema(exec, normalized);
   }
 
-  database(cfg: { databaseName: string; dbToken: string; gatewayKey: string }) {
-    return {
-      query: <T>(sql: string, params: any[] = []) => this.getClient(cfg as any).query<T>(sql, params),
-      getClient: () => this.getClient(cfg as any),
-      client: (options: { schema: DatabaseSchema | SchemaDsl }): Record<string, TableApi> => {
-        const exec = (sql: string, params?: any[]) => this.getClient(cfg as any).query(sql, params);
-        if (!options?.schema) throw new Error('KuratchiDO.database().client requires a schema (DatabaseSchema or SchemaDsl)');
-        const normalized = ensureDbSchema(options.schema);
-        return createClientFromJsonSchema(exec, normalized);
-      },
-    };
+  // Internal: apply migrations using Vite-bundled loader and track in migrations_history
+  private async applyMigrations(http: KuratchiDoHttpClient, dirName: string): Promise<void> {
+    const { journal, migrations } = await loadMigrations(dirName);
+
+    const createTable = await http.exec(
+      'CREATE TABLE IF NOT EXISTS migrations_history (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, created_at INTEGER);'
+    );
+    if (!createTable || createTable.success === false) {
+      throw new Error(`Failed to ensure migrations_history table: ${createTable?.error || 'unknown error'}`);
+    }
+
+    const appliedRes = await http.query<{ tag: string }>('SELECT tag FROM migrations_history');
+    if (!appliedRes || appliedRes.success === false) {
+      throw new Error(`Failed to read migrations history: ${appliedRes?.error || 'unknown error'}`);
+    }
+    const applied = new Set<string>((appliedRes.results as any[] | undefined)?.map((r: any) => r.tag) || []);
+
+    for (const entry of journal.entries) {
+      const key = `m${String(entry.idx).padStart(4, '0')}`;
+      const tag = entry.tag as string;
+      if (applied.has(tag)) continue;
+      const getSql = migrations[key];
+      if (!getSql) throw new Error(`Missing migration loader for ${key} (${tag})`);
+      let sql = await getSql();
+      if (typeof sql === 'object' && (sql as any)?.default) sql = (sql as any).default;
+
+      // Our migrator emits semicolon-terminated statements
+      const statements = String(sql)
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length)
+        .map((s) => (s.endsWith(';') ? s : s + ';'));
+
+      const batch = statements.map((q) => ({ query: q, params: [] as any[] }));
+      batch.push({ query: 'INSERT INTO migrations_history (tag, created_at) VALUES (?, ?);', params: [tag, Date.now()] });
+
+      const res = await http.batch(batch);
+      if (!res || res.success === false) {
+        throw new Error(`Migration ${key}/${tag} failed: ${res?.error || 'unknown error'}`);
+      }
+    }
   }
 
   // Ensure Worker endpoint is reachable before returning from createDatabase
   private async waitForWorkerEndpoint(databaseName: string, dbToken: string, gatewayKey: string): Promise<boolean> {
-    const client = this.getClient({ databaseName, dbToken, gatewayKey });
+    const client = this.workerClient({ databaseName, dbToken, gatewayKey });
     const deadline = Date.now() + 30_000; // up to 30s
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     

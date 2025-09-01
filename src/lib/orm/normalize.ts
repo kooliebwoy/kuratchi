@@ -1,5 +1,5 @@
-import type { SchemaDsl, TableDsl } from './types.js';
-import type { DatabaseSchema, Column, Table } from '../orm/json-schema.js';
+import type { DatabaseSchema, Column, Table } from './json-schema.js';
+import type { SchemaDsl, TableDsl } from '../utils/types.js';
 
 function parseEnum(arg: string): string[] | null {
   const m = arg.match(/^enum\((.*)\)$/i);

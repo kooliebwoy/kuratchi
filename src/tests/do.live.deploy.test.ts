@@ -3,6 +3,7 @@
 declare const process: any;
 import { describe, it, expect } from 'vitest';
 import { KuratchiDO } from '../lib/do/kuratchi-do.js';
+import { adminSchemaDsl } from '../lib/schema/admin.js';
 import { env } from '$env/dynamic/private';
 
 // Allow dynamic env via SvelteKit (process.env) with multiple naming schemes.
@@ -44,7 +45,9 @@ if (!shouldRun) {
     });
 
     const databaseName = `live_${Date.now()}`;
-    const { token } = await doSvc.createDatabase({ databaseName, gatewayKey: GATEWAY_KEY! });
+    // Use the shared admin schema DSL
+    const schema = adminSchemaDsl;
+    const { token } = await doSvc.createDatabase({ databaseName, gatewayKey: GATEWAY_KEY!, migrate: true, schema });
 
     // Log the expected Worker URL so you can check the dashboard
     const url = `https://${SCRIPT_NAME}.${CF_WORKERS_SUBDOMAIN}`;
@@ -55,7 +58,7 @@ if (!shouldRun) {
     // eslint-disable-next-line no-console
     console.log(`[LIVE] Gateway Key: ${GATEWAY_KEY}`);
 
-    const db = doSvc.database({ databaseName, dbToken: token, gatewayKey: GATEWAY_KEY! });
+    const db = await doSvc.database({ databaseName, dbToken: token, gatewayKey: GATEWAY_KEY!, schema });
     
     // Poll for worker readiness before testing queries
     // eslint-disable-next-line no-console
@@ -66,14 +69,15 @@ if (!shouldRun) {
     
     let res;
     while (Date.now() < deadline) {
-      res = await db.query('SELECT 1 as ok');
-      if (res.success) {
+      // Use a lightweight ORM call on an existing table to check readiness
+      res = await db.users.count();
+      if (res && res.success) {
         // eslint-disable-next-line no-console
         console.log('[LIVE] Worker is ready!');
         break;
       }
       // eslint-disable-next-line no-console
-      console.log(`[LIVE] Worker not ready yet, retrying... (${res.error?.slice(0, 100)})`);
+      console.log(`[LIVE] Worker not ready yet, retrying... (${res?.error?.slice(0, 100)})`);
       await sleep(2000); // Wait 2s between attempts
     }
 

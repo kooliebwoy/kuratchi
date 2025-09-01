@@ -1,4 +1,4 @@
-import type { SchemaDsl } from './types.js';
+import type { SchemaDsl } from '../utils/types.js';
 
 export const adminSchemaDsl: SchemaDsl = {
   name: 'admin',

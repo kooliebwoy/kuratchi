@@ -1,6 +1,6 @@
 // Lightweight schema contract validation for admin and organization databases
 // Expects a D1 client that implements query(sql: string, params?: any[]): Promise<{ success: boolean; results: any[] }>
-import type { QueryResult } from '../d1/internal-http-client.js';
+import type { QueryResult } from '../do/kuratchi-do.js';
 
 export type D1LikeClient = {
   query: (sql: string, params?: any[]) => Promise<QueryResult<any>>
@@ -35,12 +35,7 @@ export async function validateAdminSchema(client: D1LikeClient): Promise<void> {
     databases: ['id', 'organizationId'],
     dbApiTokens: ['id', 'token', 'databaseId'],
     activity: ['id', 'action'],
-    // Newly required resource tracking tables
-    kvNamespaces: ['id', 'namespaceId', 'organizationId'],
-    kvApiTokens: ['id', 'token', 'kvNamespaceId'],
-    r2Buckets: ['id', 'name', 'organizationId'],
-    r2ApiTokens: ['id', 'token', 'r2BucketId'],
-    queues: ['id', 'name', 'organizationId'],
+    // DO-only: no KV/R2/Queues tracking required
   };
 
   for (const [table, requiredCols] of Object.entries(requiredTables)) {
