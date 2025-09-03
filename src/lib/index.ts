@@ -1,4 +1,3 @@
-// Reexport your entry components here
 // Public API surface
-export { KuratchiDO } from './do/kuratchi-do.js';
-export { KuratchiAuth, createAuthHandle, type AuthConfig, type AuthHandleEnv } from './auth/kuratchi-auth.js';
+export { database } from './database/kuratchi-database.js';
+export { auth } from './auth/kuratchi-auth.js';

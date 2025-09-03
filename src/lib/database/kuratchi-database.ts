@@ -7,6 +7,8 @@ import { normalizeSchema } from '../orm/normalize.js';
 import { generateInitialMigrationBundle } from '../orm/migrator.js';
 import { loadMigrations } from '../orm/loader.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
+import { env } from '$env/dynamic/private';
+import { adminSchemaDsl } from '../schema/admin.js';
 
 export type QueryResult<T> = {
   success: boolean;
@@ -23,30 +25,26 @@ interface KuratchiDoConfig {
   scriptName?: string;
 }
 
-class KuratchiDoHttpClient {
-  private endpoint: string;
-  private dbToken?: string;
-  private gatewayKey?: string;
-  private dbName: string;
+type DoHttp = {
+  query<T = any>(query: string, params?: any[]): Promise<QueryResult<T>>;
+  exec(query: string): Promise<QueryResult<any>>;
+  batch(items: { query: string; params?: any[] }[]): Promise<QueryResult<any>>;
+  raw(query: string, params?: any[], columnNames?: boolean): Promise<QueryResult<any>>;
+  first<T = any>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>>;
+};
 
-  constructor(config: KuratchiDoConfig) {
-    const script = config.scriptName || 'kuratchi-do-internal';
-    this.endpoint = `https://${script}.${config.workersSubdomain}`;
-    this.dbToken = config.dbToken;
-    this.gatewayKey = config.gatewayKey;
-    this.dbName = config.databaseName;
+function makeHttpClient(config: KuratchiDoConfig): DoHttp {
+  const script = config.scriptName || 'kuratchi-do-internal';
+  const endpoint = `https://${script}.${config.workersSubdomain}`;
+  const dbToken = config.dbToken;
+  const gatewayKey = config.gatewayKey;
+  const dbName = config.databaseName;
+  const makeRequest = async (path: string, body: any): Promise<QueryResult<any>> => {
     try {
-      Object.defineProperty(this, 'dbToken', { enumerable: false, configurable: false, writable: true });
-      Object.defineProperty(this, 'gatewayKey', { enumerable: false, configurable: false, writable: true });
-    } catch {}
-  }
-
-  private async makeRequest(path: string, body: any): Promise<QueryResult<any>> {
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-db-name': this.dbName };
-      if (this.gatewayKey) headers['Authorization'] = `Bearer ${this.gatewayKey}`;
-      if (this.dbToken) headers['x-db-token'] = this.dbToken;
-      const res = await fetch(`${this.endpoint}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-db-name': dbName };
+      if (gatewayKey) headers['Authorization'] = `Bearer ${gatewayKey}`;
+      if (dbToken) headers['x-db-token'] = dbToken;
+      const res = await fetch(`${endpoint}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
       if (!res.ok) {
         const ct = res.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
@@ -60,27 +58,14 @@ class KuratchiDoHttpClient {
     } catch (e: any) {
       return { success: false, error: e.message };
     }
-  }
-
-  async query<T>(query: string, params: any[] = []): Promise<QueryResult<T>> {
-    return this.makeRequest('/api/run', { query, params });
-  }
-
-  async exec(query: string): Promise<QueryResult<any>> {
-    return this.makeRequest('/api/exec', { query });
-  }
-
-  async batch(queries: { query: string; params?: any[] }[]): Promise<QueryResult<any>> {
-    return this.makeRequest('/api/batch', { batch: queries });
-  }
-
-  async raw(query: string, params?: any[], columnNames: boolean = false): Promise<QueryResult<any>> {
-    return this.makeRequest('/api/raw', { query, params, columnNames });
-  }
-
-  async first<T>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>> {
-    return this.makeRequest('/api/first', { query, params, columnName });
-  }
+  };
+  return {
+    query: (query, params = []) => makeRequest('/api/run', { query, params }),
+    exec: (query) => makeRequest('/api/exec', { query }),
+    batch: (queries) => makeRequest('/api/batch', { batch: queries }),
+    raw: (query, params, columnNames = false) => makeRequest('/api/raw', { query, params, columnNames }),
+    first: (query, params, columnName) => makeRequest('/api/first', { query, params, columnName }),
+  } as DoHttp;
 }
 
 // Note: DO client accepts DatabaseSchema or SchemaDsl (normalized internally). String aliases are not supported.
@@ -100,10 +85,8 @@ export interface DOOptions {
   scriptName?: string; // default: 'kuratchi-do-internal'
 }
 
-// token creation now imported from ./token
-
-/** KuratchiDO — Durable Objects backed SQLite with instant logical DBs (per-DO idFromName). */
-export class KuratchiDO {
+/** KuratchiDatabase — Durable Objects backed SQLite with instant logical DBs (per-DO idFromName). */
+export class KuratchiDatabase {
   private cf: CloudflareClient;
   private workersSubdomain: string;
   private scriptName: string;
@@ -143,7 +126,7 @@ export class KuratchiDO {
     if (opts.migrate) {
       // DO runtime requires a concrete schema; accept DSL and normalize it
       if (!opts.schema) {
-        throw new Error('KuratchiDO.createDatabase: migrate:true requires a schema (DatabaseSchema or SchemaDsl).');
+        throw new Error('KuratchiDatabase.createDatabase: migrate:true requires a schema (DatabaseSchema or SchemaDsl).');
       }
       const normalized = ensureDbSchema(opts.schema);
       const { migrations } = generateInitialMigrationBundle(normalized);
@@ -199,21 +182,26 @@ export class KuratchiDO {
   }
 
   // Internal: centralized Worker HTTP client factory
-  private workerClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string }): KuratchiDoHttpClient {
-    return new KuratchiDoHttpClient({
+  private workerClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string }): DoHttp {
+    return makeHttpClient({
       databaseName: cfg.databaseName,
       workersSubdomain: this.workersSubdomain,
-      dbToken: cfg.dbToken,
-      gatewayKey: cfg.gatewayKey,
       scriptName: this.scriptName,
+      dbToken: cfg.dbToken,
+      gatewayKey: cfg.gatewayKey
     });
   }
 
+  // Public API: returns HTTP client for direct SQL access (no schema required)
+  httpClient(cfg: { databaseName: string; dbToken: string; gatewayKey: string }): DoHttp {
+    return this.workerClient(cfg);
+  }
+
   // Public API: returns ORM client and ensures migrations are applied on connect
-  async database(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<Record<string, TableApi>> {
+  async client(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<Record<string, TableApi>> {
     const { databaseName, dbToken, gatewayKey, schema } = args;
-    if (!databaseName || !dbToken || !gatewayKey) throw new Error('KuratchiDO.database requires databaseName, dbToken, and gatewayKey');
-    if (!schema) throw new Error('KuratchiDO.database requires a schema (DatabaseSchema or SchemaDsl)');
+    if (!databaseName || !dbToken || !gatewayKey) throw new Error('KuratchiDatabase.client requires databaseName, dbToken, and gatewayKey');
+    if (!schema) throw new Error('KuratchiDatabase.client requires a schema (DatabaseSchema or SchemaDsl)');
 
     const http = this.workerClient({ databaseName, dbToken, gatewayKey });
 
@@ -226,8 +214,23 @@ export class KuratchiDO {
     return createClientFromJsonSchema(exec, normalized);
   }
 
+  // Public API: returns both ORM client and bound direct SQL helpers
+  async connect(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<{
+    orm: Record<string, TableApi>;
+    query: DoHttp['query'];
+    exec: DoHttp['exec'];
+    batch: DoHttp['batch'];
+    raw: DoHttp['raw'];
+    first: DoHttp['first'];
+  }> {
+    const { databaseName, dbToken, gatewayKey, schema } = args;
+    const http = this.workerClient({ databaseName, dbToken, gatewayKey });
+    const orm = await this.client({ databaseName, dbToken, gatewayKey, schema });
+    return { orm, query: http.query, exec: http.exec, batch: http.batch, raw: http.raw, first: http.first };
+  }
+
   // Internal: apply migrations using Vite-bundled loader and track in migrations_history
-  private async applyMigrations(http: KuratchiDoHttpClient, dirName: string): Promise<void> {
+  private async applyMigrations(http: DoHttp, dirName: string): Promise<void> {
     const { journal, migrations } = await loadMigrations(dirName);
 
     const createTable = await http.exec(
@@ -299,3 +302,93 @@ export class KuratchiDO {
   [Symbol.for('nodejs.util.inspect.custom')]() { return this.toJSON(); }
 }
 
+// Convenience namespace API, colocated with the class to avoid polluting index.ts
+type OrmSchema = DatabaseSchema | SchemaDsl;
+
+function getDoEnv() {
+  const workersSubdomain = env.CF_WORKERS_SUBDOMAIN || env.CLOUDFLARE_WORKERS_SUBDOMAIN || env.KURATCHI_CF_WORKERS_SUBDOMAIN;
+  const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+  const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+  const scriptName = env.SCRIPT_NAME || env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal';
+  const gatewayKey = env.GATEWAY_KEY || env.KURATCHI_GATEWAY_KEY;
+  return { workersSubdomain, accountId, apiToken, scriptName, gatewayKey };
+}
+
+function getAdminEnv() {
+  const databaseName = env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin';
+  const dbToken = env.KURATCHI_ADMIN_DB_TOKEN;
+  return { databaseName, dbToken };
+}
+
+export const database = {
+  // Create a DO client instance (reads env by default)
+  instance(cfg?: { workersSubdomain?: string; accountId?: string; apiToken?: string; scriptName?: string }): KuratchiDatabase {
+    const doEnv = getDoEnv();
+    return new KuratchiDatabase({
+      workersSubdomain: cfg?.workersSubdomain || doEnv.workersSubdomain!,
+      accountId: cfg?.accountId || doEnv.accountId!,
+      apiToken: cfg?.apiToken || doEnv.apiToken!,
+      scriptName: cfg?.scriptName || doEnv.scriptName,
+    } as any);
+  },
+
+  // Build an ORM client for a specific logical database
+  async client(args: { databaseName: string; dbToken: string; schema: OrmSchema; gatewayKey?: string; instance?: KuratchiDatabase }) {
+    const doEnv = getDoEnv();
+    const inst = args.instance || database.instance();
+    const gatewayKey = args.gatewayKey || doEnv.gatewayKey!;
+    return inst.client({ databaseName: args.databaseName, dbToken: args.dbToken, gatewayKey, schema: args.schema });
+  },
+
+  // For any database (admin, orgs, etc.) - schema-less HTTP client access
+  forDatabase(args: { 
+    databaseName: string; 
+    dbToken: string; 
+    gatewayKey?: string;
+    instance?: KuratchiDatabase;
+  }) {
+    const doEnv = getDoEnv();
+    const gatewayKey = args.gatewayKey || doEnv.gatewayKey;
+    if (!gatewayKey) throw new Error('KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required');
+    
+    const instance = args.instance || database.instance();
+    const http = instance.httpClient({
+      databaseName: args.databaseName,
+      dbToken: args.dbToken,
+      gatewayKey
+    });
+    
+    return { 
+      query: http.query.bind(http),
+      exec: http.exec.bind(http),
+      batch: http.batch.bind(http),
+      raw: http.raw.bind(http),
+      first: http.first.bind(http)
+    };
+  },
+
+
+  // Admin database helper: auto-config from env (returns orm + http + instance)
+  async admin() {
+    const doEnv = getDoEnv();
+    const adminEnv = getAdminEnv();
+    if (!doEnv.gatewayKey) throw new Error('KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required');
+    if (!adminEnv.dbToken) throw new Error('KURATCHI_ADMIN_DB_TOKEN is required');
+    const instance = database.instance();
+    const { orm, query, exec, batch, raw, first } = await instance.connect({ databaseName: adminEnv.databaseName, dbToken: adminEnv.dbToken, gatewayKey: doEnv.gatewayKey, schema: adminSchemaDsl as any });
+    return { instance, orm, query, exec, batch, raw, first };
+  },
+
+  // Provision a new logical database (returns token)
+  async create(args: { name: string; migrate?: boolean; schema?: OrmSchema; instance?: KuratchiDatabase }) {
+    const doEnv = getDoEnv();
+    if (!doEnv.gatewayKey) throw new Error('KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required');
+    const instance = args.instance || database.instance();
+    return instance.createDatabase({ databaseName: args.name, gatewayKey: doEnv.gatewayKey, migrate: !!args.migrate, schema: args.schema });
+  },
+
+  // Placeholder for future logical DB deletion
+  async delete(_args: { name: string; instance?: KuratchiDatabase }) {
+    throw new Error('kuratchi.database.delete is not implemented yet');
+  },
+};

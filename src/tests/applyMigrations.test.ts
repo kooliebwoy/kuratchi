@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { KuratchiDO } from '../lib/do/kuratchi-do.js';
+import { KuratchiDatabase } from '../lib/database/kuratchi-database.js';
 
 // Mock the migration loader to control journal + migrations content
 vi.mock('../lib/orm/loader', () => {
@@ -50,7 +50,7 @@ function createFakeHttpClient(opts?: { alreadyApplied?: boolean }) {
 }
 
 // Helper to get at the private method for testing
-function getApplyMigrations(doSvc: KuratchiDO) {
+function getApplyMigrations(doSvc: KuratchiDatabase) {
   return (doSvc as any).applyMigrations.bind(doSvc) as (http: any, dirName: string) => Promise<void>;
 }
 
@@ -60,7 +60,7 @@ describe('applyMigrations', () => {
   });
 
   it('applies new migrations and records history', async () => {
-    const doSvc = new KuratchiDO({ workersSubdomain: 'x', scriptName: 'y', apiToken: 't', accountId: 'acc' } as any);
+    const doSvc = new KuratchiDatabase({ workersSubdomain: 'x', scriptName: 'y', apiToken: 't', accountId: 'acc' } as any);
     const { http, calls } = createFakeHttpClient({ alreadyApplied: false });
 
     const apply = getApplyMigrations(doSvc);
@@ -81,7 +81,7 @@ describe('applyMigrations', () => {
   });
 
   it('skips already-applied migrations based on history', async () => {
-    const doSvc = new KuratchiDO({ workersSubdomain: 'x', scriptName: 'y', apiToken: 't', accountId: 'acc' } as any);
+    const doSvc = new KuratchiDatabase({ workersSubdomain: 'x', scriptName: 'y', apiToken: 't', accountId: 'acc' } as any);
     const { http, calls } = createFakeHttpClient({ alreadyApplied: true });
 
     const apply = getApplyMigrations(doSvc);

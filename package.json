@@ -1,8 +1,8 @@
 {
-	"name": "kuratchi-sdk-v2",
+	"name": "kuratchi-sdk",
 	"version": "0.0.1",
 	"bin": {
-		"kuratchi-sdk-v2": "bin/kuratchi-sdk.mjs"
+		"kuratchi-sdk": "bin/kuratchi-sdk.mjs"
 	},
 	"scripts": {
 		"dev": "vite dev",

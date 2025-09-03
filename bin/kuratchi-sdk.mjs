@@ -250,20 +250,20 @@ async function cmdGenerateMigrations(args) {
   console.log(JSON.stringify({ ok: true, outDir, tag, sqlFile, journalPath, snapshotPath, idx: nextIdx, warnings, usedSnapshot }, null, 2));
 }
 
-async function loadKuratchiDO() {
+async function loadKuratchiDatabase() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const pkgRoot = path.resolve(__dirname, '..');
   const cands = [
-    path.join(pkgRoot, 'dist', 'lib', 'do', 'kuratchi-do.js'),
-    path.join(pkgRoot, 'dist', 'do', 'kuratchi-do.js'),
+    path.join(pkgRoot, 'dist', 'lib', 'database', 'kuratchi-database.js'),
+    path.join(pkgRoot, 'dist', 'database', 'kuratchi-database.js'),
     path.join(pkgRoot, 'dist', 'index.js'),
   ];
   const mod = await importFromCandidates(cands);
-  if (!mod) throw new Error('KuratchiDO not available. Build the package first (npm run build).');
-  const KuratchiDO = mod.KuratchiDO || mod.default?.KuratchiDO;
-  if (typeof KuratchiDO !== 'function') throw new Error('KuratchiDO not found in dist. Build the package (npm run build).');
-  return { KuratchiDO };
+  if (!mod) throw new Error('KuratchiDatabase not available. Build the package first (npm run build).');
+  const KuratchiDatabase = mod.KuratchiDatabase || mod.default?.KuratchiDatabase;
+  if (typeof KuratchiDatabase !== 'function') throw new Error('KuratchiDatabase not found in dist. Build the package (npm run build).');
+  return { KuratchiDatabase };
 }
 
 async function loadAdminSchemaDsl() {
@@ -319,10 +319,10 @@ async function cmdInitAdminDb(args) {
     process.exit(1);
   }
 
-  const { KuratchiDO } = await loadKuratchiDO();
+  const { KuratchiDatabase } = await loadKuratchiDatabase();
   const { adminSchemaDsl } = await loadAdminSchemaDsl();
 
-  const doClient = new KuratchiDO({
+  const doClient = new KuratchiDatabase({
     accountId,
     apiToken,
     workersSubdomain,

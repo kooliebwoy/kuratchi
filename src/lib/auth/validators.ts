@@ -1,6 +1,6 @@
 // Lightweight schema contract validation for admin and organization databases
 // Expects a D1 client that implements query(sql: string, params?: any[]): Promise<{ success: boolean; results: any[] }>
-import type { QueryResult } from '../do/kuratchi-do.js';
+import type { QueryResult } from '../database/kuratchi-database.js';
 
 export type D1LikeClient = {
   query: (sql: string, params?: any[]) => Promise<QueryResult<any>>

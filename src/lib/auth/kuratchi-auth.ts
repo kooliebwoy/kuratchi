@@ -1,4 +1,5 @@
-import { KuratchiDO } from '../do/kuratchi-do.js';
+import { KuratchiDatabase } from '../database/kuratchi-database.js';
+import { env } from '$env/dynamic/private';
 import { AuthService } from './auth-helper.js';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { parseSessionCookie, signState, verifyState } from '../utils/auth.js';
@@ -518,7 +519,7 @@ export interface AuthConfig {
 }
 
 export class KuratchiAuth {
-private kuratchiDO: KuratchiDO;
+private kuratchiDO: KuratchiDatabase;
 private adminDb: any;
 private organizationServices: Map<string, AuthService>;
 private organizationOrmClients: Map<string, Record<string, TableApi>>;
@@ -555,8 +556,8 @@ public signIn: {
         this.organizationServices = new Map();
         this.organizationOrmClients = new Map();
         
-        // Initialize KuratchiDO instance (DO-only)
-        this.kuratchiDO = new KuratchiDO({
+        // Initialize KuratchiDatabase instance (DO-only)
+        this.kuratchiDO = new KuratchiDatabase({
             apiToken: config.apiToken,
             accountId: config.accountId,
             workersSubdomain: config.workersSubdomain
@@ -715,11 +716,11 @@ public signIn: {
                 }
                 const effectiveToken = (valid as any).token as string;
 
-                // DO-only: build runtime ORM client using KuratchiDO.database()
+                // DO-only: build runtime ORM client using KuratchiDatabase.client()
                 if (!this.config.gatewayKey) {
                     throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
                 }
-                const orgClient = await this.kuratchiDO.database({
+                const orgClient = await this.kuratchiDO.client({
                     databaseName,
                     dbToken: effectiveToken!,
                     gatewayKey: this.config.gatewayKey!,
@@ -1041,3 +1042,93 @@ public signIn: {
         return createAuthHandle({ ...options });
     }
 }
+
+// Convenience namespace API, colocated with the class to avoid polluting index.ts
+function getAuthEnv() {
+  const pick = (key: string) => {
+    const v = env?.[key];
+    return v !== undefined && v !== null && String(v).length > 0 ? String(v) : undefined;
+  };
+  return {
+    RESEND_API_KEY: pick('RESEND_EMAIL_API_KEY') || pick('KURATCHI_RESEND_API_KEY') || pick('RESEND_API_KEY'),
+    EMAIL_FROM: pick('KURATCHI_EMAIL_FROM') || pick('EMAIL_FROM'),
+    ORIGIN: pick('KURATCHI_ORIGIN') || pick('ORIGIN'),
+    RESEND_CLUTCHCMS_AUDIENCE: pick('KURATCHI_RESEND_CLUTCHCMS_AUDIENCE') || pick('RESEND_CLUTCHCMS_AUDIENCE'),
+    KURATCHI_AUTH_SECRET: pick('KURATCHI_AUTH_SECRET')!,
+    CLOUDFLARE_WORKERS_SUBDOMAIN: pick('KURATCHI_CLOUDFLARE_WORKERS_SUBDOMAIN') || pick('CLOUDFLARE_WORKERS_SUBDOMAIN')!,
+    CLOUDFLARE_ACCOUNT_ID: pick('KURATCHI_CLOUDFLARE_ACCOUNT_ID') || pick('CLOUDFLARE_ACCOUNT_ID')!,
+    CLOUDFLARE_API_TOKEN: pick('KURATCHI_CLOUDFLARE_API_TOKEN') || pick('CLOUDFLARE_API_TOKEN')!,
+    GOOGLE_CLIENT_ID: pick('GOOGLE_CLIENT_ID'),
+    GOOGLE_CLIENT_SECRET: pick('GOOGLE_CLIENT_SECRET'),
+    KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
+    KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN'),
+    KURATCHI_ADMIN_DB_ID: pick('KURATCHI_ADMIN_DB_ID'),
+    KURATCHI_GATEWAY_KEY: pick('KURATCHI_GATEWAY_KEY')
+  };
+}
+
+export const auth = {
+  // Create an auth instance (reads env by default)
+  instance(cfg?: Partial<AuthConfig>): KuratchiAuth {
+    const authEnv = getAuthEnv();
+    const required = ['KURATCHI_AUTH_SECRET', 'CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'];
+    const missing = required.filter(k => !authEnv[k as keyof typeof authEnv]);
+    if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    
+    return new KuratchiAuth({
+      resendApiKey: cfg?.resendApiKey || authEnv.RESEND_API_KEY || '',
+      emailFrom: cfg?.emailFrom || authEnv.EMAIL_FROM || '',
+      origin: cfg?.origin || authEnv.ORIGIN || '',
+      resendAudience: cfg?.resendAudience || authEnv.RESEND_CLUTCHCMS_AUDIENCE,
+      authSecret: cfg?.authSecret || authEnv.KURATCHI_AUTH_SECRET!,
+      workersSubdomain: cfg?.workersSubdomain || authEnv.CLOUDFLARE_WORKERS_SUBDOMAIN!,
+      accountId: cfg?.accountId || authEnv.CLOUDFLARE_ACCOUNT_ID!,
+      apiToken: cfg?.apiToken || authEnv.CLOUDFLARE_API_TOKEN!,
+      adminDbName: cfg?.adminDbName || authEnv.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin',
+      adminDbToken: cfg?.adminDbToken || authEnv.KURATCHI_ADMIN_DB_TOKEN || '',
+      adminDbId: cfg?.adminDbId || authEnv.KURATCHI_ADMIN_DB_ID || '',
+      gatewayKey: cfg?.gatewayKey || authEnv.KURATCHI_GATEWAY_KEY
+    });
+  },
+
+  // Admin auth helper: auto-config from env
+  async admin(cfg?: Partial<AuthConfig>) {
+    const instance = auth.instance(cfg);
+    return {
+      instance,
+      createOrganization: instance.createOrganization.bind(instance),
+      listOrganizations: instance.listOrganizations.bind(instance),
+      getOrganization: instance.getOrganization.bind(instance),
+      deleteOrganization: instance.deleteOrganization.bind(instance),
+      authenticate: instance.authenticate.bind(instance),
+      forOrganization: instance.forOrganization.bind(instance)
+    };
+  },
+
+  // SvelteKit handle helper
+  handle(options: CreateAuthHandleOptions = {}) {
+    return createAuthHandle(options);
+  },
+
+  // Sign-in helpers that auto-resolve organization
+  signIn: {
+    async magicLink(email: string, options?: { redirectTo?: string; organizationId?: string; instance?: KuratchiAuth }) {
+      const instance = options?.instance || auth.instance();
+      return instance.signIn.magicLink.send(email, options);
+    },
+    
+    async credentials(email: string, password: string, options?: { organizationId?: string; ipAddress?: string; userAgent?: string; redirectTo?: string; instance?: KuratchiAuth }) {
+      const instance = options?.instance || auth.instance();
+      return instance.signIn.credentials.authenticate(email, password, options);
+    },
+    
+    oauth: {
+      google: {
+        startUrl(params: { organizationId: string; redirectTo?: string; instance?: KuratchiAuth }) {
+          const instance = params.instance || auth.instance();
+          return instance.signIn.oauth.google.startUrl(params);
+        }
+      }
+    }
+  }
+};

@@ -2,7 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const process: any;
 import { describe, it, expect } from 'vitest';
-import { KuratchiDO } from '../lib/do/kuratchi-do.js';
+import { KuratchiDatabase } from '../lib/database/kuratchi-database.js';
 import { adminSchemaDsl } from '../lib/schema/admin.js';
 import { env } from '$env/dynamic/private';
 
@@ -37,7 +37,7 @@ if (!shouldRun) {
 
 (shouldRun ? describe : describe.skip)('DO live deploy (real Cloudflare)', () => {
   it('deploys the worker, creates a db token, and responds to a query', async () => {
-    const doSvc = new KuratchiDO({
+    const doSvc = new KuratchiDatabase({
       apiToken: CF_API_TOKEN!,
       accountId: CF_ACCOUNT_ID!,
       workersSubdomain: CF_WORKERS_SUBDOMAIN!,
