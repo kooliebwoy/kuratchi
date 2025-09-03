@@ -1,10 +1,12 @@
 # Kuratchi SDK for SvelteKit
 
-End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D1 via Durable Objects gateway). This package includes:
+End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D1 via Durable Objects gateway). This package provides clean namespace APIs for:
 
-- __SvelteKit auth handle__ `createAuthHandle()` for cookie/session, magic links, credentials, and Google OAuth.
-- __Admin DB provisioning CLI__ to create the admin database and token.
-- __Organization-aware APIs__ to create orgs and sign users in to the correct org.
+- __Database operations__ via `database` namespace with schema-less and ORM clients
+- __Authentication__ via `auth` namespace with magic links, credentials, and OAuth
+- __SvelteKit integration__ with automatic cookie/session management
+- __Admin DB provisioning CLI__ to create the admin database and token
+- __Organization-aware APIs__ to create orgs and sign users in to the correct org
 
 Below is a quickstart for SvelteKit, required environment variables, admin DB setup, migrations, and how organizations work.
 
@@ -52,9 +54,9 @@ Create `src/hooks.server.ts`:
 ```ts
 // src/hooks.server.ts
 import type { Handle } from '@sveltejs/kit';
-import { createAuthHandle } from 'kuratchi-sdk-v2';
+import { auth } from 'kuratchi-sdk';
 
-export const handle: Handle = createAuthHandle();
+export const handle: Handle = auth.handle();
 ```
 
 You now get:
@@ -84,9 +86,9 @@ export const load = async ({ locals }) => {
 
 // Google OAuth start URL (server)
 import { redirect } from '@sveltejs/kit';
-export const GET = async ({ url, locals }) => {
+import { auth } from 'kuratchi-sdk';
+export const GET = async ({ url }) => {
   const orgId = url.searchParams.get('org')!; // resolve per your app
-  const auth = locals.kuratchi.auth;
   const href = auth.signIn.oauth.google.startUrl({ organizationId: orgId, redirectTo: '/' });
   throw redirect(302, href);
 };
@@ -131,7 +133,87 @@ node bin/kuratchi-sdk.mjs generate-migrations --schema path/to/schema.ts --outDi
 
 Builds will package your library (`dist/`). At runtime the SDK applies the required migrations during DB creation flows.
 
-## Organizations model
+## API Reference
+
+### Database Namespace
+
+```ts
+import { database } from 'kuratchi-sdk';
+
+// Create a database instance (auto-reads env)
+const instance = database.instance();
+
+// Schema-less database access - direct SQL operations
+const orgDb = database.forDatabase({
+  databaseName: 'my-org-db',
+  dbToken: 'token-here'
+});
+
+// Use HTTP client methods
+const users = await orgDb.query('SELECT * FROM users WHERE active = ?', [true]);
+await orgDb.exec('UPDATE users SET last_login = ? WHERE id = ?', [new Date(), userId]);
+await orgDb.batch([
+  { query: 'INSERT INTO logs (message) VALUES (?)', params: ['User logged in'] },
+  { query: 'UPDATE users SET login_count = login_count + 1 WHERE id = ?', params: [userId] }
+]);
+
+// ORM client with schema (for type safety)
+const ormClient = await database.client({
+  databaseName: 'my-org-db',
+  dbToken: 'token-here',
+  schema: mySchema
+});
+
+// Admin database helper (auto-configured from env)
+const admin = await database.admin();
+const orgs = await admin.orm.organizations.many();
+
+// Create new database
+const result = await database.create({
+  name: 'new-org-db',
+  migrate: true,
+  schema: orgSchema
+});
+```
+
+### Auth Namespace
+
+```ts
+import { auth } from 'kuratchi-sdk';
+
+// Create auth instance (auto-reads env)
+const authInstance = auth.instance();
+
+// Admin operations
+const adminAuth = await auth.admin();
+const newOrg = await adminAuth.createOrganization({
+  organizationName: 'Acme Corp',
+  organizationSlug: 'acme',
+  email: 'admin@acme.com',
+  password: 'secure-password'
+});
+
+// Sign-in helpers
+await auth.signIn.magicLink('user@example.com', {
+  organizationId: 'org-123',
+  redirectTo: '/dashboard'
+});
+
+const result = await auth.signIn.credentials('user@example.com', 'password', {
+  organizationId: 'org-123'
+});
+
+// OAuth URLs
+const googleUrl = auth.signIn.oauth.google.startUrl({
+  organizationId: 'org-123',
+  redirectTo: '/dashboard'
+});
+
+// SvelteKit handle
+export const handle = auth.handle();
+```
+
+## Organizations Model
 
 - Each __organization__ has its own database. Users belong to one or more orgs via admin DB relations.
 - Session cookies include an `organizationId` and are validated per org.
@@ -144,43 +226,3 @@ Typical flows:
 - Users sign in via magic link, credentials, or Google OAuth; the SDK resolves org by email mapping in the admin DB.
 
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-Everything inside `src/lib` is part of your library, everything inside `src/routes` can be used as a showcase or preview app.
-
-## Building
-
-To build your library:
-
-```sh
-npm pack
-```
-
-To create a production version of your showcase app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
-
-## Publishing
-
-Go into the `package.json` and give your package the desired name through the `"name"` option. Also consider adding a `"license"` field and point it to a `LICENSE` file which you can create from a template (one popular option is the [MIT license](https://opensource.org/license/mit/)).
-
-To publish your library to [npm](https://www.npmjs.com):
-
-```sh
-npm publish
-```
