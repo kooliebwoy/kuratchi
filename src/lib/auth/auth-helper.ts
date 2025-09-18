@@ -195,7 +195,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns Updated user
      */
     async updateUser(id: string, userData: Partial<UserRow<C>> & Record<string, any>): Promise<UserRow<C> | undefined> {
-        await this.client.users.update({ id } as any, { ...userData, updated_at: new Date().toISOString() });
+        await this.client.users.where({ id } as any).update({ ...userData, updated_at: new Date().toISOString() });
         const res = await this.client.users.where({ id } as any).first();
         return (res as any)?.data as UserRow<C> | undefined;
     }
@@ -463,7 +463,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             if (!row) throw new Error('Session to refresh not found');
             userId = row.userId;
 
-            await this.client.session.update({ sessionToken: tokenHash } as any, { expires, updated_at: now.toISOString() });
+            await this.client.session.where({ sessionToken: tokenHash } as any).update({ expires, updated_at: now.toISOString() });
             return sessionId; // opaque cookie remains the same
         }
 
@@ -535,7 +535,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
             // Extend TTL for all sessions belonging to this user
             const now = new Date();
             const newExpires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            await this.client.session.update({ userId } as any, { expires: newExpires, updated_at: now.toISOString() });
+            await this.client.session.where({ userId } as any).update({ expires: newExpires, updated_at: now.toISOString() });
 
             return { success: true, refreshedCount: sessions.length };
         } catch (error) {
@@ -582,7 +582,7 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
 
         // Extend TTL on access
         const newExpires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        await this.client.session.update({ sessionToken: tokenHash } as any, { expires: newExpires, updated_at: now.toISOString() });
+        await this.client.session.where({ sessionToken: tokenHash } as any).update({ expires: newExpires, updated_at: now.toISOString() });
 
         // Build SessionData on the fly
         const sessionData = await this.buildSessionData(user.id);
@@ -864,7 +864,7 @@ async verifyMagicLink(token: string): Promise<{ success: boolean; cookie?: strin
     if (row.consumed_at) return { success: false, error: 'Token already used' };
 
     // Mark consumed
-    await this.client.magicLinkTokens.update({ id: row.id } as any, { consumed_at: now, updated_at: now.toISOString() });
+    await this.client.magicLinkTokens.where({ id: row.id } as any).update({ consumed_at: now, updated_at: now.toISOString() });
 
     // Ensure user exists
     let user = await this.getUserByEmail(row.email);
@@ -937,7 +937,7 @@ async getOrCreateUserFromOAuth(params: {
         const ensuredUser = user as UserRow<C>;
         const link = await (this.client as any).oauthAccounts.where({ provider, providerAccountId } as any).first();
         if ((link as any)?.data) {
-            await (this.client as any).oauthAccounts.update({ provider, providerAccountId } as any, {
+            await (this.client as any).oauthAccounts.where({ provider, providerAccountId } as any).update({
                 userId: ensuredUser.id,
                 access_token: tokens?.access_token ?? null,
                 refresh_token: tokens?.refresh_token ?? null,

@@ -38,7 +38,7 @@ export class OrgService {
 
   async updateRole(id: string, roleData: Partial<any>): Promise<any | undefined> {
     const now = new Date().toISOString();
-    await this.client.roles.update({ id }, { ...roleData, updated_at: now });
+    await this.client.roles.where({ id }).update({ ...roleData, updated_at: now });
     const res = await this.client.roles.where({ id }).first();
     return (res as any)?.data;
   }

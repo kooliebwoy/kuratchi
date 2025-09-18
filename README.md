@@ -213,6 +213,115 @@ const googleUrl = auth.signIn.oauth.google.startUrl({
 export const handle = auth.handle();
 ```
 
+## Runtime ORM: Quickstart and Includes
+
+The SDK ships a tiny runtime ORM optimized for Workers/DO. You’ll typically obtain a typed client in two ways:
+
+- SvelteKit server: `await locals.kuratchi.orgDatabaseClient()`
+- Programmatic admin helper: `const admin = await auth.admin({ organizationSchema }); const db = admin.getOrganizationDb(orgId)`
+
+Both paths create a JSON-schema based client, so JSON columns declared in your schema (`type: 'json'`) are automatically serialized on writes and deserialized on reads.
+
+### Basic operations
+
+```ts
+// Insert
+await db.users.insert({ id: crypto.randomUUID(), email: 'a@b.co', name: 'Alice' });
+
+// Query many
+const users = await db.users
+  .where({ deleted_at: { is: null } })
+  .orderBy({ created_at: 'desc' })
+  .limit(20)
+  .offset(1) // page 1 when limit set
+  .many();
+
+// Get single
+const one = await db.users.where({ id: 'user_1' }).first();
+
+// Count
+const cnt = await db.users.count({ status: 'active' });
+
+// Delete
+await db.users.delete({ id: 'user_1' });
+```
+
+### Chainable updates (single vs many)
+
+```ts
+// Single-row update: updates the first matched row (by id when present)
+await db.users
+  .where({ email: 'a@b.co', deleted_at: { is: null } })
+  .update({ status: 'active' });
+
+// Multi-row update: updates all rows that match the filter
+await db.users
+  .where({ status: 'pending', deleted_at: { is: null } })
+  .updateMany({ status: 'active' });
+```
+
+### JSON columns
+
+When your schema marks a column with `{ type: 'json' }`, you can pass/receive rich objects:
+
+```ts
+// metadata is a JSON column
+await db.organizations
+  .where({ id: 'org_1' })
+  .update({ metadata: { theme: 'dark', features: ['a', 'b'] } });
+
+const res = await db.organizations.where({ id: 'org_1' }).first();
+// res.data.metadata is an object, not a JSON string
+```
+
+### Includes (schema‑driven, simple)
+
+`include()` lets you eager‑load related tables based on foreign keys defined in your JSON schema. It “just works”:
+
+- If the current table has a foreign key to `users.id`, then `.include({ users: true })` will attach the joined `users` row as `row.users`.
+- For 1‑to‑many, use the related table name; it will attach `row.<table>` as an array.
+
+Basic include (parent):
+
+```ts
+// posts(userId) -> users(id)
+const res = await db.posts
+  .where({ published: true })
+  .include({ users: true })
+  .many();
+
+// res.data[0].users.name -> parent user's name
+```
+
+Basic include (children):
+
+```ts
+// users(id) <- session(userId)
+const res = await db.users
+  .where({ deleted_at: { is: null } })
+  .include({ session: true })
+  .many();
+
+// res.data[0].session -> array of sessions for this user
+```
+
+Select specific columns and alias:
+
+```ts
+const res = await db.orders
+  .include({
+    users: { select: ['id', 'name'], as: 'buyer' },
+  })
+  .many();
+
+// res.data[0].buyer -> { id, name }
+```
+
+Notes:
+
+- Includes are resolved from schema foreign keys; no manual key wiring required.
+- You can combine `include` with `select`, `orderBy`, `limit`, and `offset` on the base query.
+
 ## Organizations Model
 
 - Each __organization__ has its own database. Users belong to one or more orgs via admin DB relations.

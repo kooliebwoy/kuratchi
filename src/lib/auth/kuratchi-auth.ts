@@ -81,6 +81,12 @@ export interface CreateAuthHandleOptions {
   getAdminDb?: (event: RequestEvent) => MaybePromise<any>;
   // Optional override to provide env. Can be async. Defaults to $env/dynamic/private values.
   getEnv?: (event: RequestEvent) => MaybePromise<AuthHandleEnv>;
+  // Optional: allow host app to provide its organization schema directly
+  // Return either a DSL ({ name, tables: {...} }) or a normalized schema
+  getOrganizationSchema?: (event: RequestEvent) => MaybePromise<any>;
+  // Optional: allow host app to provide its admin schema directly
+  // Return either a DSL ({ name, tables: {...} }) or a normalized schema
+  getAdminSchema?: (event: RequestEvent) => MaybePromise<any>;
 }
 
 export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle {
@@ -207,6 +213,19 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       const cfMissing = ['CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'].filter((k) => !env?.[k]);
       if (cfMissing.length) throw new Error(`[Kuratchi] Missing required environment variables: ${cfMissing.join(', ')}`);
       const adminDb = await getAdminDbLazy();
+      // Resolve schemas if host app provides them (preferred over SDK discovery)
+      let orgSchemaOverride: any = undefined;
+      let adminSchemaOverride: any = undefined;
+      if (options.getOrganizationSchema) {
+        try {
+          orgSchemaOverride = await options.getOrganizationSchema(event as any as RequestEvent);
+        } catch {}
+      }
+      if (options.getAdminSchema) {
+        try {
+          adminSchemaOverride = await options.getAdminSchema(event as any as RequestEvent);
+        } catch {}
+      }
       // Build minimal SDK object inline to avoid relying on missing ../kuratchi.js during dev
       const auth = new KuratchiAuth({
         apiToken: env.CLOUDFLARE_API_TOKEN,
@@ -221,7 +240,10 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
         adminDbToken: env.KURATCHI_ADMIN_DB_TOKEN || '',
         adminDbId: env.KURATCHI_ADMIN_DB_ID || '',
         // Wire DO gateway key when present so DO-backed org flows work
-        gatewayKey: env.KURATCHI_GATEWAY_KEY
+        gatewayKey: env.KURATCHI_GATEWAY_KEY,
+        // Prefer host-provided schemas to avoid $lib import resolution from the SDK
+        ...(orgSchemaOverride ? { organizationSchema: orgSchemaOverride } : {}),
+        ...(adminSchemaOverride ? { adminSchema: adminSchemaOverride } : {})
       } as any);
       sdk = { auth } as any;
       // Expose the SDK instance under locals.kuratchi, preserving existing helpers
@@ -516,6 +538,10 @@ export interface AuthConfig {
     adminDbId: string;
     // Optional master gateway key for DO-backed org databases (required if using DO)
     gatewayKey?: string;
+    // Optional: allow consumers to provide their own JSON schema DSLs
+    // These should match the structure used by the runtime ORM (tables/columns)
+    organizationSchema?: any;
+    adminSchema?: any;
 }
 
 export class KuratchiAuth {
@@ -574,7 +600,8 @@ public signIn: {
             dbToken: config.adminDbToken,
             gatewayKey: config.gatewayKey
         } as any);
-        const schema = normalizeSchema(adminSchemaDsl as any);
+        // Prefer a provided admin schema; fallback to bundled default (sync in constructor)
+        const schema = this.resolveAdminSchemaDslSync();
         this.adminDb = createClientFromJsonSchema(
             (sql, params) => adminHttp.query(sql, params || []),
             schema as any
@@ -677,6 +704,48 @@ public signIn: {
                 return undefined;
             }
         }
+        
+        // Schema resolvers
+        private resolveAdminSchemaDslSync() {
+            if ((this as any).config?.adminSchema) {
+                return normalizeSchema((this as any).config.adminSchema as any);
+            }
+            return normalizeSchema(adminSchemaDsl as any);
+        }
+
+        private async resolveOrganizationSchemaDsl(): Promise<any> {
+            if ((this as any).config?.organizationSchema) {
+                console.log('[kuratchi][schema] Using organization schema from config.organizationSchema');
+                return normalizeSchema((this as any).config.organizationSchema as any);
+            }
+            // Try to auto-load from host app using a dynamic evaluator to avoid TS module resolution errors
+            try {
+                const path: any = '$lib/schema/organization';
+                console.log('[kuratchi][schema] Attempting to import organization schema from', path);
+                const mod: any = await (new Function('p', 'return import(p)'))(path);
+                const keys = Object.keys(mod || {});
+                console.log('[kuratchi][schema] Imported module keys:', keys);
+                // Direct hits first (common patterns)
+                const direct = mod?.schema || mod?.default || mod?.organizationSchemaDsl;
+                if (direct && typeof direct === 'object' && direct.tables && typeof direct.tables === 'object') {
+                    const picked = (mod?.schema && 'schema') || (mod?.default && 'default') || (mod?.organizationSchemaDsl && 'organizationSchemaDsl') || 'unknown';
+                    console.log('[kuratchi][schema] Using direct export for organization schema:', picked);
+                    return normalizeSchema(direct as any);
+                }
+                // Heuristic: any named export with { tables: object }
+                for (const [k, v] of Object.entries(mod || {})) {
+                    if (v && typeof v === 'object' && (v as any).tables && typeof (v as any).tables === 'object') {
+                        console.log('[kuratchi][schema] Using heuristic export for organization schema:', k);
+                        return normalizeSchema(v as any);
+                    }
+                }
+                console.log('[kuratchi][schema] No schema-like export detected in $lib/schema/organization');
+            } catch (e: any) {
+                console.log('[kuratchi][schema] Failed to import $lib/schema/organization:', e?.message || String(e));
+            }
+            console.log('[kuratchi][schema] Falling back to bundled organization schema');
+            return normalizeSchema(organizationSchemaDsl as any);
+        }
     
         /**
          * Get or create AuthService for a specific organization
@@ -720,11 +789,17 @@ public signIn: {
                 if (!this.config.gatewayKey) {
                     throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
                 }
+                const orgSchema = await this.resolveOrganizationSchemaDsl();
+                try {
+                    const t = (orgSchema as any)?.tables;
+                    const keys = t && typeof t === 'object' ? Object.keys(t) : [];
+                    console.log('[kuratchi][schema] Resolved organization schema for client. tableCount=', keys.length, 'tables=', keys);
+                } catch {}
                 const orgClient = await this.kuratchiDO.client({
                     databaseName,
                     dbToken: effectiveToken!,
                     gatewayKey: this.config.gatewayKey!,
-                    schema: organizationSchemaDsl as any
+                    schema: orgSchema as any
                 });
                 const authService = new AuthService(
                     orgClient as any,
@@ -859,11 +934,17 @@ public signIn: {
             if (!apiToken) {
                 const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
                 if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create DO-backed database');
+                const orgSchema = await this.resolveOrganizationSchemaDsl();
+                try {
+                    const t = (orgSchema as any)?.tables;
+                    const keys = t && typeof t === 'object' ? Object.keys(t) : [];
+                    console.log('[kuratchi][schema] Resolved organization schema for provisioning. tableCount=', keys.length, 'tables=', keys);
+                } catch {}
                 const res = await this.kuratchiDO.createDatabase({
                     databaseName: String(dbName),
                     gatewayKey,
                     migrate: options?.migrate !== false,
-                    schema: organizationSchemaDsl as any
+                    schema: orgSchema as any
                 });
                 apiToken = res.token;
                 database = { name: res.databaseName };
@@ -984,14 +1065,14 @@ public signIn: {
 
             // Soft-delete DB tokens for this DB
             if (db?.id) {
-                await (this.adminDb as any).dbApiTokens.update({ databaseId: db.id } as any, { revoked: true as any, deleted_at: now as any });
-                await (this.adminDb as any).databases.update({ id: db.id } as any, { deleted_at: now as any });
+                await (this.adminDb as any).dbApiTokens.where({ databaseId: db.id } as any).update({ revoked: true as any, deleted_at: now as any });
+                await (this.adminDb as any).databases.where({ id: db.id } as any).update({ deleted_at: now as any });
             }
 
             // DO-only: no KV/R2/Queues resources to delete
 
             // Soft-delete organization
-            await (this.adminDb as any).organizations.update({ id: organizationId } as any, { deleted_at: now as any });
+            await (this.adminDb as any).organizations.where({ id: organizationId } as any).update({ deleted_at: now as any });
 
             return true;
         }
@@ -1017,6 +1098,14 @@ public signIn: {
             throw new Error('[KuratchiAuth] forOrganization() is server-only. Call this on the server (load, actions, endpoints).');
         }
         return this.getOrganizationAuthService(organizationId);
+    }
+
+    // Server-only accessor for admin ORM client
+    getAdminDb(): Record<string, TableApi> {
+        if (typeof window !== 'undefined') {
+            throw new Error('[KuratchiAuth] getAdminDb() is server-only. Call this on the server (load, actions, endpoints).');
+        }
+        return this.adminDb as Record<string, TableApi>;
     }
 
     // Server-only accessor for organization ORM client
@@ -1074,7 +1163,6 @@ export const auth = {
     const required = ['KURATCHI_AUTH_SECRET', 'CLOUDFLARE_WORKERS_SUBDOMAIN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN'];
     const missing = required.filter(k => !authEnv[k as keyof typeof authEnv]);
     if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-    
     return new KuratchiAuth({
       resendApiKey: cfg?.resendApiKey || authEnv.RESEND_API_KEY || '',
       emailFrom: cfg?.emailFrom || authEnv.EMAIL_FROM || '',
@@ -1087,7 +1175,10 @@ export const auth = {
       adminDbName: cfg?.adminDbName || authEnv.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin',
       adminDbToken: cfg?.adminDbToken || authEnv.KURATCHI_ADMIN_DB_TOKEN || '',
       adminDbId: cfg?.adminDbId || authEnv.KURATCHI_ADMIN_DB_ID || '',
-      gatewayKey: cfg?.gatewayKey || authEnv.KURATCHI_GATEWAY_KEY
+      gatewayKey: cfg?.gatewayKey || authEnv.KURATCHI_GATEWAY_KEY,
+      // Allow callers to provide schema overrides when using admin()/instance() outside SvelteKit handle
+      ...(cfg?.organizationSchema ? { organizationSchema: cfg.organizationSchema } : {}),
+      ...(cfg?.adminSchema ? { adminSchema: cfg.adminSchema } : {})
     });
   },
 
@@ -1101,14 +1192,18 @@ export const auth = {
       getOrganization: instance.getOrganization.bind(instance),
       deleteOrganization: instance.deleteOrganization.bind(instance),
       authenticate: instance.authenticate.bind(instance),
-      forOrganization: instance.forOrganization.bind(instance)
+      forOrganization: instance.forOrganization.bind(instance),
+      // Direct access to the organization's ORM client (server-only)
+      getOrganizationDb: instance.getOrganizationDb.bind(instance),
+      // Direct access to the admin ORM client (server-only)
+      client: () => instance.getAdminDb()
     };
   },
 
-  // SvelteKit handle helper
-  handle(options: CreateAuthHandleOptions = {}) {
-    return createAuthHandle(options);
-  },
+    // SvelteKit handle helper
+    handle(options: CreateAuthHandleOptions = {}) {
+        return createAuthHandle(options);
+    },
 
   // Sign-in helpers that auto-resolve organization
   signIn: {

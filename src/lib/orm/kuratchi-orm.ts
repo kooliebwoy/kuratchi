@@ -276,6 +276,24 @@ class QueryBuilder<Row = any> {
     return this.execute(sql, [...setParams, ...w.params]);
   }
 
+  async update(values: Record<string, any>): Promise<QueryResult<any>> {
+    // Single-row update: resolve first row, then update by id when present; otherwise fallback to current filter
+    const one = await this.first();
+    if (!one || (one as any).success === false) return one as any;
+    const row = (one as any).data as any | undefined;
+    if (!row) return { success: false, error: 'Not found' } as any;
+    const id = (row as any)?.id;
+    if (typeof id === 'undefined') {
+      return this.updateMany(values || {});
+    }
+    const setCols = Object.keys(values || {});
+    if (!setCols.length) return { success: true } as any;
+    const setSql = setCols.map((c) => `${c} = ?`).join(', ');
+    const setParams = setCols.map((c) => (values as any)[c]);
+    const sql = `UPDATE ${this.tableName} SET ${setSql} WHERE id = ?`;
+    return this.execute(sql, [...setParams, id]);
+  }
+
   async exists(): Promise<boolean> {
     const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
     const sql = `SELECT 1 FROM ${this.tableName} ${w.sql} LIMIT 1`;
@@ -412,18 +430,7 @@ export function createRuntimeOrm(execute: SqlExecutor) {
         const ret = await execute(baseSql, params);
         return ret as QueryResult<Row | Row[]>;
       },
-      async update(where: Where, values: Record<string, any>): Promise<QueryResult<any>> {
-        const setCols = Object.keys(values);
-        if (!setCols.length) return { success: true };
-        const setSql = setCols.map((c) => `${c} = ?`).join(', ');
-        const setParams = setCols.map((c) => values[c]);
-        const w = compileWhere(where);
-        const sql = `UPDATE ${tableName} SET ${setSql} ${w.sql}`;
-        return execute(sql, [...setParams, ...w.params]);
-      },
-      async updateMany(values: Record<string, any>): Promise<QueryResult<any>> {
-        return builderFactory().updateMany(values);
-      },
+      // Updates are performed via the chainable builder only: where(...).update(values) or where(...).updateMany(values)
       async delete(where: Where): Promise<QueryResult<any>> {
         const w = compileWhere(where);
         const sql = `DELETE FROM ${tableName} ${w.sql}`;
@@ -466,8 +473,6 @@ export interface TableApi<Row = any> {
   one(): Promise<QueryResult<Row>>;
   exists(): Promise<boolean>;
   insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>>;
-  update(where: Where, values: Record<string, any>): Promise<QueryResult<any>>;
-  updateMany(values: Record<string, any>): Promise<QueryResult<any>>;
   delete(where: Where): Promise<QueryResult<any>>;
   count(where?: Where): Promise<QueryResult<{ count: number }[]>>;
   // New chainable builder
@@ -497,6 +502,9 @@ export interface TableQuery<Row = any> {
   one(): Promise<QueryResult<Row>>;
   exists(): Promise<boolean>;
   updateMany(values: Record<string, any>): Promise<QueryResult<any>>;
+  // Single-row update convenience: updates the first matched row by primary key 'id';
+  // if no 'id' present, falls back to updateMany (may affect multiple rows)
+  update(values: Record<string, any>): Promise<QueryResult<any>>;
 }
 
 export function createClientFromMapping<T extends Record<string, string>>(execute: SqlExecutor, mapping: T): { [K in keyof T]: TableApi } {
@@ -515,9 +523,161 @@ export function createClientFromTableNames(execute: SqlExecutor, tables: string[
 }
 
 export function createClientFromJsonSchema(execute: SqlExecutor, schema: Pick<DatabaseSchema, 'tables'>): Record<string, TableApi> {
-  const mapping: Record<string, string> = {};
-  for (const t of schema.tables) mapping[t.name] = t.name;
-  return createClientFromMapping(execute, mapping);
+  // Build per-table JSON column sets
+  const jsonColsByTable = new Map<string, Set<string>>();
+  for (const t of schema.tables) {
+    const s = new Set<string>();
+    for (const col of t.columns) {
+      if ((col as any).type === 'json') s.add(col.name);
+    }
+    jsonColsByTable.set(t.name, s);
+  }
+
+  const base = createRuntimeOrm(execute);
+
+  const serializeForTable = (table: string, values: Record<string, any>): Record<string, any> => {
+    const jsonCols = jsonColsByTable.get(table) || new Set<string>();
+    if (!values || !jsonCols.size) return values;
+    const out: Record<string, any> = { ...values };
+    for (const col of jsonCols) {
+      if (!(col in out)) continue;
+      const v = out[col];
+      if (v === undefined || v === null) continue;
+      // If already a string, assume caller serialized. Otherwise JSON.stringify.
+      out[col] = typeof v === 'string' ? v : JSON.stringify(v);
+    }
+    return out;
+  };
+
+  const deserializeRowsForTable = <R = any>(table: string, rows: R[]): R[] => {
+    const jsonCols = jsonColsByTable.get(table) || new Set<string>();
+    if (!Array.isArray(rows) || !rows.length || !jsonCols.size) return rows;
+    return rows.map((row: any) => {
+      const copy: any = { ...row };
+      for (const col of jsonCols) {
+        const v = copy[col];
+        if (v === undefined || v === null) continue;
+        if (typeof v === 'string') {
+          try { copy[col] = JSON.parse(v); } catch { /* leave as string if not valid JSON */ }
+        }
+      }
+      return copy as R;
+    });
+  };
+
+  const wrapTable = <Row = any>(tableName: string): TableApi<Row> => {
+    const raw = base.table<Row>(tableName);
+
+    const wrapQuery = (q: TableQuery<Row>): TableQuery<Row> => {
+      return {
+        where: (f) => wrapQuery(q.where(f)),
+        whereIn: (c, v) => wrapQuery(q.whereIn(c, v)),
+        orWhere: (f) => wrapQuery(q.orWhere(f)),
+        orderBy: (o) => wrapQuery(q.orderBy(o)),
+        limit: (n) => wrapQuery(q.limit(n)),
+        offset: (n) => wrapQuery(q.offset(n)),
+        include: (s) => wrapQuery(q.include(s)),
+        select: (cols) => wrapQuery(q.select(cols)),
+        sql: (cond) => wrapQuery(q.sql(cond)),
+        async update(values: Record<string, any>) {
+          // Single-row update: fetch first row, then update by id when available
+          const one = await q.first();
+          if (!one || one.success === false) return one as any;
+          const row = (one as any).data as any | undefined;
+          if (!row) return { success: false, error: 'Not found' } as any;
+          const id = row?.id;
+          const v2 = serializeForTable(tableName, values || {});
+          if (typeof id === 'undefined') {
+            return q.updateMany(v2);
+          }
+          // Perform targeted update by id using an ad-hoc statement
+          const setCols = Object.keys(v2 || {});
+          if (!setCols.length) return { success: true } as any;
+          const setSql = setCols.map((c) => `${c} = ?`).join(', ');
+          const setParams = setCols.map((c) => (v2 as any)[c]);
+          const sql = `UPDATE ${tableName} SET ${setSql} WHERE id = ?`;
+          return execute(sql, [...setParams, id]);
+        },
+        async many() {
+          const res = await q.many();
+          if (!res || res.success === false) return res as any;
+          const data = ((res as any).data ?? (res as any).results ?? []) as Row[];
+          const parsed = deserializeRowsForTable<Row>(tableName, data);
+          return { success: true, data: parsed } as QueryResult<Row[]>;
+        },
+        async first() {
+          const res = await q.first();
+          if (!res || res.success === false) return res as any;
+          const row = (res as any).data as Row | undefined;
+          const parsed = row ? deserializeRowsForTable<Row>(tableName, [row])[0] : undefined;
+          return { success: true, data: parsed } as QueryResult<Row | undefined>;
+        },
+        async one() {
+          const res = await q.one();
+          if (!res || res.success === false) return res as any;
+          const row = (res as any).data as Row;
+          const parsed = deserializeRowsForTable<Row>(tableName, [row])[0];
+          return { success: true, data: parsed } as QueryResult<Row>;
+        },
+        async exists() {
+          return q.exists();
+        },
+        async updateMany(values: Record<string, any>) {
+          const v2 = serializeForTable(tableName, values || {});
+          return q.updateMany(v2);
+        }
+      } as TableQuery<Row>;
+    };
+
+    return {
+      async many() {
+        const res = await raw.many();
+        if (!res || res.success === false) return res as any;
+        const data = ((res as any).data ?? (res as any).results ?? []) as Row[];
+        const parsed = deserializeRowsForTable<Row>(tableName, data);
+        return { success: true, data: parsed } as QueryResult<Row[]>;
+      },
+      async first() {
+        const res = await raw.first();
+        if (!res || res.success === false) return res as any;
+        const row = (res as any).data as Row | undefined;
+        const parsed = row ? deserializeRowsForTable<Row>(tableName, [row])[0] : undefined;
+        return { success: true, data: parsed } as QueryResult<Row | undefined>;
+      },
+      async one() {
+        const res = await raw.one();
+        if (!res || res.success === false) return res as any;
+        const row = (res as any).data as Row;
+        const parsed = deserializeRowsForTable<Row>(tableName, [row])[0];
+        return { success: true, data: parsed } as QueryResult<Row>;
+      },
+      async exists() { return raw.exists(); },
+      async insert(values: Partial<Row> | Partial<Row>[]) {
+        const arr = Array.isArray(values) ? values : [values];
+        const transformed = arr.map((v) => serializeForTable(tableName, v as any));
+        const payload = Array.isArray(values) ? transformed : transformed[0];
+        return raw.insert(payload as any);
+      },
+      // No direct updates on the table; use the chainable builder: where(...).update / updateMany
+      async delete(where: Where) { return raw.delete(where); },
+      async count(where?: Where) { return raw.count(where); },
+      where(filter: Where) { return wrapQuery(raw.where(filter)); },
+      whereIn(column: string, values: any[]) { return wrapQuery(raw.whereIn(column, values)); },
+      orWhere(filter: Where) { return wrapQuery(raw.orWhere(filter)); },
+      orderBy(order: OrderBy | string) { return wrapQuery(raw.orderBy(order)); },
+      limit(n: number) { return wrapQuery(raw.limit(n)); },
+      offset(n: number) { return wrapQuery(raw.offset(n)); },
+      include(spec: IncludeSpec) { return wrapQuery(raw.include(spec)); },
+      select(cols: string[]) { return wrapQuery(raw.select(cols)); },
+      sql(condition: SqlCondition) { return wrapQuery(raw.sql(condition)); },
+    } as TableApi<Row> as any;
+  };
+
+  const out: Record<string, TableApi> = {};
+  for (const t of schema.tables) {
+    out[t.name] = wrapTable(t.name);
+  }
+  return out as any;
 }
 
 /**
