@@ -209,7 +209,10 @@ export class KuratchiDatabase {
     const normalized = ensureDbSchema(schema);
 
     // Apply migrations from bundle for this schema (expects /migrations-<name>)
-    await this.applyMigrations(http, normalized.name);
+    // If the bundle isn't available (e.g., package used as a dependency on Workers where
+    // import.meta.glob wasn't applied to node_modules), fallback to generating and applying
+    // the initial migration from the provided schema.
+    await this.applyMigrations(http, normalized.name, normalized);
 
     return createClientFromJsonSchema(exec, normalized);
   }
@@ -230,8 +233,23 @@ export class KuratchiDatabase {
   }
 
   // Internal: apply migrations using Vite-bundled loader and track in migrations_history
-  private async applyMigrations(http: DoHttp, dirName: string): Promise<void> {
-    const { journal, migrations } = await loadMigrations(dirName);
+  private async applyMigrations(http: DoHttp, dirName: string, schema?: DatabaseSchema): Promise<void> {
+    let journal: any;
+    let migrations: Record<string, () => Promise<string>> | undefined;
+    let usedFallback = false;
+    try {
+      const loaded = await loadMigrations(dirName);
+      journal = loaded.journal;
+      migrations = loaded.migrations;
+    } catch (err: any) {
+      // Fallback: if we have a schema, synthesize an initial migration bundle on the fly
+      // and apply it only if no history is present.
+      if (!schema) throw err;
+      usedFallback = true;
+      const bundle = generateInitialMigrationBundle(schema);
+      journal = bundle.journal;
+      migrations = bundle.migrations as any;
+    }
 
     const createTable = await http.exec(
       'CREATE TABLE IF NOT EXISTS migrations_history (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, created_at INTEGER);'
@@ -250,7 +268,7 @@ export class KuratchiDatabase {
       const key = `m${String(entry.idx).padStart(4, '0')}`;
       const tag = entry.tag as string;
       if (applied.has(tag)) continue;
-      const getSql = migrations[key];
+      const getSql = (migrations as any)[key];
       if (!getSql) throw new Error(`Missing migration loader for ${key} (${tag})`);
       let sql = await getSql();
       if (typeof sql === 'object' && (sql as any)?.default) sql = (sql as any).default;
@@ -264,6 +282,11 @@ export class KuratchiDatabase {
 
       const batch = statements.map((q) => ({ query: q, params: [] as any[] }));
       batch.push({ query: 'INSERT INTO migrations_history (tag, created_at) VALUES (?, ?);', params: [tag, Date.now()] });
+
+      // If using fallback (generated initial), only allow applying m0001 when no history exists
+      if (usedFallback && entry.idx !== 1 && applied.size > 0) {
+        throw new Error('Only the initial migration can be auto-generated at runtime. Please include a Vite-bundled migrations directory for subsequent migrations.');
+      }
 
       const res = await http.batch(batch);
       if (!res || res.success === false) {
