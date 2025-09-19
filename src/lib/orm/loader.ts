@@ -15,8 +15,15 @@ export async function loadMigrations(dirName: string): Promise<{
   journal: MigrationJournal;
   migrations: Record<string, () => Promise<string>>;
 }> {
-  if (!(import.meta as any).glob) {
-    throw new Error('loadMigrations() requires Vite (import.meta.glob). In Node/CLI, load migrations from the filesystem bundle.');
+  // Note: In Vite-built bundles (including SvelteKit on Cloudflare Workers), import.meta.glob
+  // calls are compiled away at build time into static objects. That means at runtime
+  // `(import.meta as any).glob` may be undefined, but the pre-generated glob maps above
+  // (allJournalModules, allSqlMigrationModules) will contain the resolved modules.
+  // Therefore, do NOT gate on the presence of import.meta.glob at runtime. Instead, verify
+  // that the glob maps have entries. If they are empty, it means we weren't bundled by Vite
+  // and the loader cannot function in this environment.
+  if (Object.keys(allJournalModules).length === 0 || Object.keys(allSqlMigrationModules).length === 0) {
+    throw new Error('loadMigrations() requires a Vite-bundled environment with preloaded migration assets. In Node/CLI, load migrations from the filesystem bundle.');
   }
 
   const migrations: Record<string, () => Promise<string>> = {};
