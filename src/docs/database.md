@@ -1,0 +1,152 @@
+# Database Guide
+
+The `database` namespace provides Durable Object–backed SQLite provisioning and typed runtime clients. Use it to create logical databases for each organization, connect to them with JSON-schema ORM clients, and run SQL when needed.
+
+---
+
+## Environment Requirements
+
+Before instantiating the database API, set these environment variables (typically via `.env`).
+
+| Key | Purpose |
+| --- | --- |
+| `CLOUDFLARE_WORKERS_SUBDOMAIN` | Workers subdomain hosting the Kuratchi Durable Object worker |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID used for Worker deployments |
+| `CLOUDFLARE_API_TOKEN` | API token with permissions to deploy Workers and access D1 |
+| `KURATCHI_GATEWAY_KEY` | Master gateway key injected into the worker (needed for per-database tokens) |
+| `KURATCHI_ADMIN_DB_TOKEN` | Token for the admin database if you plan to call `database.admin()` |
+| `KURATCHI_ADMIN_DB_NAME` | Admin database name (default `kuratchi-admin`) |
+
+The CLI `init-admin-db` command returns both the admin database token and confirms the name. Store them in your secrets manager and `.env`.
+
+---
+
+## Instantiate KuratchiDatabase
+
+```ts
+import { database } from 'kuratchi-sdk';
+
+const db = database.instance();
+```
+
+`database.instance()` reads the environment automatically and returns a `KuratchiDatabase` class. Override any field by passing a partial config:
+
+```ts
+const db = database.instance({
+  workersSubdomain: 'custom-subdomain',
+  scriptName: 'custom-do-script'
+});
+```
+
+---
+
+## Provisioning a Logical Database
+
+Use `database.create()` to provision a new Durable Object–backed database and optionally run initial migrations from a schema.
+
+```ts
+import { database } from 'kuratchi-sdk';
+import { organizationSchema } from '$lib/schema/organization';
+
+const created = await database.create({
+  name: 'org-acme-db',
+  migrate: true,
+  schema: organizationSchema
+});
+
+console.log(created.databaseName, created.token);
+```
+
+- Requires `KURATCHI_GATEWAY_KEY` to be present.
+- When `migrate: true`, a JSON schema is required (`DatabaseSchema` or DSL). The method applies the generated SQL to the new database.
+- Returns `{ databaseName, token }`. Persist the token in the admin database so future requests can authenticate.
+
+---
+
+## Typed ORM Client
+
+Use `database.client()` to obtain a JSON-schema ORM client for an existing database.
+
+```ts
+import { database } from 'kuratchi-sdk';
+import { organizationSchema } from '$lib/schema/organization';
+
+const orm = await database.client({
+  databaseName: 'org-acme-db',
+  dbToken: 'token-from-admin-db',
+  schema: organizationSchema
+});
+
+const users = await orm.users.many();
+```
+
+- Accepts an optional `instance` parameter if you want to reuse a specific `KuratchiDatabase` instance.
+- Auto-applies bundled migrations using `loadMigrations(dirName)` (expects Vite-built assets such as `/migrations-organization`). When not available, falls back to generating the initial migration bundle from the schema.
+
+### Combined ORM + SQL Helpers
+
+`database.instance().connect()` returns both the typed ORM and raw SQL helpers.
+
+```ts
+const instance = database.instance();
+const { orm, query, exec, batch } = await instance.connect({
+  databaseName: 'org-acme-db',
+  dbToken: 'token',
+  gatewayKey: process.env.KURATCHI_GATEWAY_KEY!,
+  schema: organizationSchema
+});
+
+await exec('INSERT INTO logs(message) VALUES (?)', ['hello from DO']);
+const active = await orm.users.where({ deleted_at: { is: null } }).many();
+```
+
+---
+
+## Admin Database Helper
+
+`database.admin()` constructs a connection to the admin database and returns:
+
+```ts
+const { instance, orm, query, exec, batch, raw, first } = await database.admin();
+```
+
+- `orm`: typed client based on the built-in admin schema (`organizations`, `databases`, `dbApiTokens`, etc.).
+- `query/exec/batch/raw/first`: direct SQL helpers against the admin database.
+- Requires `KURATCHI_GATEWAY_KEY`, `KURATCHI_ADMIN_DB_TOKEN`, and `KURATCHI_ADMIN_DB_NAME`.
+
+Use this helper when building custom admin utilities (for example, dashboards or automated cleanup jobs).
+
+---
+
+## Direct SQL Access
+
+If you only need SQL helpers without ORM features, call `database.forDatabase()`.
+
+```ts
+const sql = database.forDatabase({
+  databaseName: 'org-acme-db',
+  dbToken: 'token'
+});
+
+await sql.exec('PRAGMA journal_mode = WAL;');
+const result = await sql.query('SELECT * FROM users WHERE status = ?', ['active']);
+```
+
+This still enforces authentication via the per-database token and gateway key.
+
+---
+
+## Worker Deployment Notes
+
+- `KuratchiDatabase` ensures the Durable Object worker (`kuratchi-do-internal` by default) is deployed before creating databases.
+- When the worker already exists, the upload is idempotent. Migration errors trigger a second attempt with DO migrations skipped.
+- After provisioning a database, `waitForWorkerEndpoint()` polls the worker endpoint to improve first-run reliability.
+
+---
+
+## Troubleshooting
+
+- **`KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required`** — provide the gateway key via env or passthrough config.
+- **`normalizeSchema not available`** — build the package (`npm run build`) so the CLI/runtime can import compiled helpers.
+- **`Missing migration loader`** — ensure `migrations-<schema>` assets are bundled in your deployment. For Workers, use Vite bundling or fall back to runtime-generated initial migrations.
+- **Slow endpoint warm-up** — the helper already retries, but you can add additional `await` loops before hitting the database for the first time in production workflows.

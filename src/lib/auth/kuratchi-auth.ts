@@ -202,6 +202,29 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       return adminDbInst;
     };
 
+    // Helpers: request info and subscription status (handle scope)
+    const getRequestInfo = () => {
+      const ip = (event as any).getClientAddress?.()
+        || event.request.headers.get('cf-connecting-ip')
+        || event.request.headers.get('x-forwarded-for')
+        || undefined;
+      const userAgent = event.request.headers.get('user-agent') || undefined;
+      return { ipAddress: ip, userAgent } as { ipAddress?: string; userAgent?: string };
+    };
+    const getIsSubscribed = async (organizationId?: string | null): Promise<boolean> => {
+      try {
+        if (!organizationId || organizationId === 'admin') return false;
+        const adminDb = await getAdminDbLazy().catch(() => null);
+        if (!adminDb) return false;
+        const res = await (adminDb as any).organizations.where({ id: organizationId } as any).first();
+        const org = (res as any)?.data;
+        if (!org) return false;
+        const subId = (org as any)?.stripeSubscriptionId;
+        const status = (org as any)?.status;
+        return !!subId && status !== 'inactive';
+      } catch { return false; }
+    };
+
     let sdk: any = null;
     const getKuratchi = async (): Promise<any> => {
       if (sdk) {
@@ -265,7 +288,9 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
                 locals.user = safeUser;
               }
               if (res.session) {
-                const merged = { ...res.session, user: sanitizeUser(res.user) };
+                const reqInfo = getRequestInfo();
+                const isSubscribed = await getIsSubscribed((res.session as any)?.organizationId);
+                const merged = { ...res.session, ...reqInfo, isSubscribed, user: sanitizeUser(res.user) };
                 locals.kuratchi.session = merged;
                 locals.session = merged;
               }
@@ -499,7 +524,9 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
             (locals.kuratchi as any).auth.org = authService;
             const safeUser = sanitizeUser(user);
             locals.kuratchi.user = safeUser;
-            const merged = { ...sessionData, organizationId: sessionData.organizationId || orgId, user: safeUser };
+            const reqInfo = getRequestInfo();
+            const isSubscribed = await getIsSubscribed(sessionData.organizationId || orgId);
+            const merged = { ...sessionData, ...reqInfo, isSubscribed, organizationId: sessionData.organizationId || orgId, user: safeUser };
             locals.kuratchi.session = merged;
             // populate mirrors
             locals.user = safeUser;

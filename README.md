@@ -10,6 +10,8 @@ End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D
 
 Below is a quickstart for SvelteKit, required environment variables, admin DB setup, migrations, and how organizations work.
 
+> Full in-repo guides live under `src/docs/`. Start with [`src/docs/README.md`](./src/docs/README.md) for navigation to auth, database, ORM, and CLI documentation.
+
 ## Quickstart (SvelteKit)
 
 1) __Install and build__
