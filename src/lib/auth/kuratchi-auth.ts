@@ -620,7 +620,6 @@ public signIn: {
         if (!config.adminDbName || !config.adminDbToken || !config.gatewayKey) {
             throw new Error('KuratchiAuth requires adminDbName, adminDbToken, and gatewayKey');
         }
-        console.log(`[kuratchi] Creating admin DB client (DO): name=${config.adminDbName}`);
         const adminHttp = new MinimalDoHttpClient({
             workersSubdomain: config.workersSubdomain,
             databaseName: config.adminDbName,
@@ -742,35 +741,26 @@ public signIn: {
 
         private async resolveOrganizationSchemaDsl(): Promise<any> {
             if ((this as any).config?.organizationSchema) {
-                console.log('[kuratchi][schema] Using organization schema from config.organizationSchema');
                 return normalizeSchema((this as any).config.organizationSchema as any);
             }
             // Try to auto-load from host app using a dynamic evaluator to avoid TS module resolution errors
             try {
                 const path: any = '$lib/schema/organization';
-                console.log('[kuratchi][schema] Attempting to import organization schema from', path);
                 const mod: any = await (new Function('p', 'return import(p)'))(path);
-                const keys = Object.keys(mod || {});
-                console.log('[kuratchi][schema] Imported module keys:', keys);
                 // Direct hits first (common patterns)
                 const direct = mod?.schema || mod?.default || mod?.organizationSchemaDsl;
                 if (direct && typeof direct === 'object' && direct.tables && typeof direct.tables === 'object') {
-                    const picked = (mod?.schema && 'schema') || (mod?.default && 'default') || (mod?.organizationSchemaDsl && 'organizationSchemaDsl') || 'unknown';
-                    console.log('[kuratchi][schema] Using direct export for organization schema:', picked);
                     return normalizeSchema(direct as any);
                 }
                 // Heuristic: any named export with { tables: object }
                 for (const [k, v] of Object.entries(mod || {})) {
                     if (v && typeof v === 'object' && (v as any).tables && typeof (v as any).tables === 'object') {
-                        console.log('[kuratchi][schema] Using heuristic export for organization schema:', k);
                         return normalizeSchema(v as any);
                     }
                 }
-                console.log('[kuratchi][schema] No schema-like export detected in $lib/schema/organization');
             } catch (e: any) {
                 console.log('[kuratchi][schema] Failed to import $lib/schema/organization:', e?.message || String(e));
             }
-            console.log('[kuratchi][schema] Falling back to bundled organization schema');
             return normalizeSchema(organizationSchemaDsl as any);
         }
     
@@ -817,11 +807,6 @@ public signIn: {
                     throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
                 }
                 const orgSchema = await this.resolveOrganizationSchemaDsl();
-                try {
-                    const t = (orgSchema as any)?.tables;
-                    const keys = t && typeof t === 'object' ? Object.keys(t) : [];
-                    console.log('[kuratchi][schema] Resolved organization schema for client. tableCount=', keys.length, 'tables=', keys);
-                } catch {}
                 const orgClient = await this.kuratchiDO.client({
                     databaseName,
                     dbToken: effectiveToken!,
@@ -920,14 +905,12 @@ public signIn: {
             // First check if database with this name already exists
             let dbRow: any | null = null;
             const dbId = crypto.randomUUID();
-            console.log(`[kuratchi] Checking for existing database with name: ${dbName}`);
             
             const existing = await (this.adminDb as any).databases
                 .where({ name: String(dbName), deleted_at: { is: null } } as any)
                 .first();
                 
             if ((existing as any)?.data) {
-                console.log(`[kuratchi] Found existing database record`);
                 dbRow = (existing as any).data;
             }
 
@@ -962,11 +945,6 @@ public signIn: {
                 const gatewayKey = options?.gatewayKey || this.config.gatewayKey;
                 if (!gatewayKey) throw new Error('[KuratchiAuth] gatewayKey required to create DO-backed database');
                 const orgSchema = await this.resolveOrganizationSchemaDsl();
-                try {
-                    const t = (orgSchema as any)?.tables;
-                    const keys = t && typeof t === 'object' ? Object.keys(t) : [];
-                    console.log('[kuratchi][schema] Resolved organization schema for provisioning. tableCount=', keys.length, 'tables=', keys);
-                } catch {}
                 const res = await this.kuratchiDO.createDatabase({
                     databaseName: String(dbName),
                     gatewayKey,
@@ -1001,7 +979,6 @@ public signIn: {
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 };
-                console.log(`[kuratchi] Inserting API token: databaseId=${dbRow.id}`);
                 await (this.adminDb as any).dbApiTokens.insert(tokenRow);
             }
 
@@ -1012,16 +989,6 @@ public signIn: {
 
             // 7) Seed initial organization user and create a session
             // Build an organization-scoped AuthService using the just-provisioned DB
-            // Debug: verify database record exists before calling getOrganizationAuthService
-            console.log(`[kuratchi] Looking for database record for org ${(org as any).id}`);
-            const debugDbCheck = await (this.adminDb as any).databases
-                .where({ organizationId: (org as any).id, deleted_at: { is: null } })
-                .first();
-            console.log(`[kuratchi] Database record found:`, (debugDbCheck as any)?.data ? 'YES' : 'NO');
-            if ((debugDbCheck as any)?.data) {
-                console.log(`[kuratchi] Database record:`, JSON.stringify((debugDbCheck as any).data, null, 2));
-            }
-            
             const orgAuth = await this.getOrganizationAuthService((org as any).id);
             let createdUser: any = null;
             let sessionCookie: string | null = null;

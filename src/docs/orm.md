@@ -72,6 +72,11 @@ const orm = await database.client({
   dbToken: 'token-from-admin-db',
   schema: organizationSchema
 });
+
+// Optional: interact with Durable Object KV alongside tables
+await orm.kv?.put({ key: 'org-acme:settings', value: { theme: 'dark' } });
+const kvSettings = await orm.kv?.get({ key: 'org-acme:settings' });
+console.log(kvSettings?.value?.theme); // 'dark'
 ```
 
 The client exposes tables as properties and ensures request/response types match the schema definition. JSON columns are automatically serialized and hydrated.
@@ -155,6 +160,15 @@ org?.data?.metadata?.plan; // 'pro'
 ```
 
 The ORM transparently stringifies values on write and parses on read using schema metadata.
+
+---
+
+## KV Helpers
+
+- **Shared API surface**: `orm.kv` mirrors the Durable Object synchronous KV API (`get`, `put`, `delete`, `list`). Each method accepts the same options described in [Cloudflare’s docs](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#synchronous-kv-api).
+- **Binary data**: values stored as `ArrayBuffer`/`Uint8Array` are returned to the client as `Uint8Array` instances. Strings and objects are preserved as-is.
+- **Use cases**: cache derived query results, store lightweight metadata, or coordinate background tasks without adding dedicated tables.
+- **Availability**: `orm.kv` is present when the client is created through `KuratchiDatabase` (DO-backed). When connecting to other backends, it may be `undefined`; guard with optional chaining as shown above.
 
 ---
 

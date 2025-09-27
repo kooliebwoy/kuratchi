@@ -195,6 +195,14 @@ export class KuratchiDoInternal extends DurableObject {
           return await this.handleRaw(request);
         case '/do/api/first':
           return await this.handleFirst(request);
+        case '/do/api/kv/get':
+          return await this.handleKvGet(request);
+        case '/do/api/kv/put':
+          return await this.handleKvPut(request);
+        case '/do/api/kv/delete':
+          return await this.handleKvDelete(request);
+        case '/do/api/kv/list':
+          return await this.handleKvList(request);
         default:
           return new Response(JSON.stringify({ error: 'Invalid endpoint' }), {
             status: 404,
@@ -267,6 +275,161 @@ export class KuratchiDoInternal extends DurableObject {
     const row = cursor.one();
     const value = columnName ? (row ? row[columnName] : undefined) : row;
     return new Response(JSON.stringify({ success: true, results: value }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async handleKvGet(request) {
+    const body = await request.json();
+    const key = body?.key;
+    if (!key) {
+      return new Response(JSON.stringify({ success: false, error: 'Key is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const type = body?.type || 'json';
+    const allowConcurrency = body?.allowConcurrency;
+    const noCache = body?.noCache;
+    const withMetadata = body?.withMetadata;
+
+    const optsKv: any = {};
+    if (allowConcurrency !== undefined) optsKv.allowConcurrency = !!allowConcurrency;
+    if (noCache !== undefined) optsKv.noCache = !!noCache;
+
+    let value;
+    let metadata;
+    if (withMetadata) {
+      const result = this.ctx.storage.kv.get(key, { ...optsKv, metadata: true });
+      value = result?.value;
+      metadata = result?.metadata;
+    } else {
+      value = this.ctx.storage.kv.get(key, optsKv);
+    }
+
+    let responseValue = null;
+    let encoding = type;
+    if (value !== undefined && value !== null) {
+      if (type === 'json' || typeof value === 'object') {
+        responseValue = value;
+        encoding = 'json';
+      } else if (type === 'text' || typeof value === 'string') {
+        responseValue = String(value);
+        encoding = 'text';
+      } else if (type === 'arrayBuffer' || value instanceof ArrayBuffer || value instanceof Uint8Array) {
+        const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        responseValue = btoa(binary);
+        encoding = 'base64';
+      } else {
+        responseValue = value;
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true, value: responseValue, metadata, encoding }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async handleKvPut(request) {
+    const body = await request.json();
+    const key = body?.key;
+    if (!key) {
+      return new Response(JSON.stringify({ success: false, error: 'Key is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const encoding = body?.encoding || 'json';
+    const metadata = body?.metadata;
+    const allowConcurrency = body?.allowConcurrency;
+    const allowUnconfirmed = body?.allowUnconfirmed;
+    const expiration = body?.expiration;
+    const expirationTtl = body?.expirationTtl;
+    const value = body?.value;
+
+    let storedValue = value;
+    if (encoding === 'text') {
+      storedValue = value == null ? '' : String(value);
+    } else if (encoding === 'base64' && typeof value === 'string') {
+      const binary = atob(value);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      storedValue = bytes;
+    }
+
+    const optsKv: any = {};
+    if (metadata !== undefined) optsKv.metadata = metadata;
+    if (allowConcurrency !== undefined) optsKv.allowConcurrency = !!allowConcurrency;
+    if (allowUnconfirmed !== undefined) optsKv.allowUnconfirmed = !!allowUnconfirmed;
+    if (typeof expiration === 'number') optsKv.expiration = expiration;
+    if (typeof expirationTtl === 'number') optsKv.expirationTtl = expirationTtl;
+
+    this.ctx.storage.kv.put(key, storedValue, optsKv);
+
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async handleKvDelete(request) {
+    const body = await request.json();
+    const key = body?.key;
+    if (!key) {
+      return new Response(JSON.stringify({ success: false, error: 'Key is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const allowConcurrency = body?.allowConcurrency;
+    const optsKv: any = {};
+    if (allowConcurrency !== undefined) optsKv.allowConcurrency = !!allowConcurrency;
+    const deleted = this.ctx.storage.kv.delete(key, optsKv);
+    return new Response(JSON.stringify({ success: true, deleted }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async handleKvList(request) {
+    const body = await request.json();
+    const prefix = body?.prefix;
+    const start = body?.start;
+    const startAfter = body?.startAfter;
+    const end = body?.end;
+    const limit = body?.limit;
+    const cursor = body?.cursor;
+    const allowConcurrency = body?.allowConcurrency;
+    const reverse = body?.reverse;
+
+    const optsKv: any = {};
+    if (prefix !== undefined) optsKv.prefix = prefix;
+    if (start !== undefined) optsKv.start = start;
+    if (startAfter !== undefined) optsKv.startAfter = startAfter;
+    if (end !== undefined) optsKv.end = end;
+    if (limit !== undefined) optsKv.limit = limit;
+    if (cursor !== undefined) optsKv.cursor = cursor;
+    if (allowConcurrency !== undefined) optsKv.allowConcurrency = !!allowConcurrency;
+    if (reverse !== undefined) optsKv.reverse = !!reverse;
+
+    const result = this.ctx.storage.kv.list(optsKv);
+    const keys = Array.isArray(result?.keys)
+      ? result.keys.map((k) => ({ name: k.name, expiration: k.expiration, metadata: k.metadata }))
+      : [];
+
+    return new Response(JSON.stringify({
+      success: true,
+      keys,
+      list_complete: result?.list_complete ?? true,
+      cursor: result?.cursor ?? null,
+      cacheStatus: result?.cacheStatus || null
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });

@@ -17,6 +17,84 @@ export type QueryResult<T> = {
   results?: any;
 };
 
+type KvEncoding = 'json' | 'text' | 'base64';
+
+export type KvGetOptions = {
+  key: string;
+  type?: 'json' | 'text' | 'arrayBuffer';
+  allowConcurrency?: boolean;
+  noCache?: boolean;
+  withMetadata?: boolean;
+};
+
+export type KvGetResult = {
+  success: boolean;
+  value?: any;
+  metadata?: any;
+  encoding?: KvEncoding;
+  error?: string;
+};
+
+export type KvPutOptions = {
+  key: string;
+  value: any;
+  encoding?: 'json' | 'text' | 'base64';
+  metadata?: any;
+  allowConcurrency?: boolean;
+  allowUnconfirmed?: boolean;
+  expiration?: number;
+  expirationTtl?: number;
+};
+
+export type KvPutResult = {
+  success: boolean;
+  error?: string;
+};
+
+export type KvDeleteOptions = {
+  key: string;
+  allowConcurrency?: boolean;
+};
+
+export type KvDeleteResult = {
+  success: boolean;
+  deleted?: boolean;
+  error?: string;
+};
+
+export type KvListOptions = {
+  prefix?: string;
+  start?: string;
+  startAfter?: string;
+  end?: string;
+  limit?: number;
+  cursor?: string;
+  allowConcurrency?: boolean;
+  reverse?: boolean;
+};
+
+export type KvListKey = {
+  name: string;
+  expiration?: number | null;
+  metadata?: any;
+};
+
+export type KvListResult = {
+  success: boolean;
+  keys: KvListKey[];
+  list_complete: boolean;
+  cursor: string | null;
+  cacheStatus?: string | null;
+  error?: string;
+};
+
+export type DoKvClient = {
+  get(opts: KvGetOptions): Promise<KvGetResult>;
+  put(opts: KvPutOptions): Promise<KvPutResult>;
+  delete(opts: KvDeleteOptions): Promise<KvDeleteResult>;
+  list(opts?: KvListOptions): Promise<KvListResult>;
+};
+
 interface KuratchiDoConfig {
   databaseName: string;
   workersSubdomain: string;
@@ -31,6 +109,7 @@ type DoHttp = {
   batch(items: { query: string; params?: any[] }[]): Promise<QueryResult<any>>;
   raw(query: string, params?: any[], columnNames?: boolean): Promise<QueryResult<any>>;
   first<T = any>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>>;
+  kv: DoKvClient;
 };
 
 function makeHttpClient(config: KuratchiDoConfig): DoHttp {
@@ -59,12 +138,68 @@ function makeHttpClient(config: KuratchiDoConfig): DoHttp {
       return { success: false, error: e.message };
     }
   };
+  const decodeBase64 = (b64: string): Uint8Array => {
+    const binary = atob(b64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
+
+  const kv: DoKvClient = {
+    async get(opts) {
+      const res = await makeRequest('/api/kv/get', opts ?? {});
+      if (!res.success) {
+        return { success: false, error: res.error };
+      }
+      const encoding = (res as any).encoding as KvEncoding | undefined;
+      let value = (res as any).value;
+      if (encoding === 'base64' && typeof value === 'string') {
+        value = decodeBase64(value);
+      }
+      return {
+        success: true,
+        value,
+        metadata: (res as any).metadata,
+        encoding: encoding ?? 'json',
+      };
+    },
+    async put(opts) {
+      const res = await makeRequest('/api/kv/put', opts ?? {});
+      return { success: !!res.success, error: res.success ? undefined : res.error };
+    },
+    async delete(opts) {
+      const res = await makeRequest('/api/kv/delete', opts ?? {});
+      return {
+        success: !!res.success,
+        deleted: (res as any).deleted,
+        error: res.success ? undefined : res.error,
+      };
+    },
+    async list(opts = {}) {
+      const res = await makeRequest('/api/kv/list', opts);
+      if (!res.success) {
+        return { success: false, keys: [], list_complete: true, cursor: null, error: res.error };
+      }
+      const rawKeys = Array.isArray((res as any).keys) ? (res as any).keys : [];
+      const keys: KvListKey[] = rawKeys.map((k: any) => ({ name: k.name, expiration: k.expiration ?? null, metadata: k.metadata }));
+      return {
+        success: true,
+        keys,
+        list_complete: (res as any).list_complete ?? true,
+        cursor: (res as any).cursor ?? null,
+        cacheStatus: (res as any).cacheStatus ?? null,
+      };
+    },
+  };
+
   return {
     query: (query, params = []) => makeRequest('/api/run', { query, params }),
     exec: (query) => makeRequest('/api/exec', { query }),
     batch: (queries) => makeRequest('/api/batch', { batch: queries }),
     raw: (query, params, columnNames = false) => makeRequest('/api/raw', { query, params, columnNames }),
     first: (query, params, columnName) => makeRequest('/api/first', { query, params, columnName }),
+    kv,
   } as DoHttp;
 }
 
@@ -198,7 +333,7 @@ export class KuratchiDatabase {
   }
 
   // Public API: returns ORM client and ensures migrations are applied on connect
-  async client(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<Record<string, TableApi>> {
+  async client(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<Record<string, TableApi> & { kv?: DoKvClient }> {
     const { databaseName, dbToken, gatewayKey, schema } = args;
     if (!databaseName || !dbToken || !gatewayKey) throw new Error('KuratchiDatabase.client requires databaseName, dbToken, and gatewayKey');
     if (!schema) throw new Error('KuratchiDatabase.client requires a schema (DatabaseSchema or SchemaDsl)');
@@ -214,22 +349,23 @@ export class KuratchiDatabase {
     // the initial migration from the provided schema.
     await this.applyMigrations(http, normalized.name, normalized);
 
-    return createClientFromJsonSchema(exec, normalized);
+    return createClientFromJsonSchema(exec, normalized, { kv: http.kv });
   }
 
   // Public API: returns both ORM client and bound direct SQL helpers
   async connect(args: { databaseName: string; dbToken: string; gatewayKey: string; schema: DatabaseSchema | SchemaDsl }): Promise<{
-    orm: Record<string, TableApi>;
+    orm: Record<string, TableApi> & { kv?: DoKvClient };
     query: DoHttp['query'];
     exec: DoHttp['exec'];
     batch: DoHttp['batch'];
     raw: DoHttp['raw'];
     first: DoHttp['first'];
+    kv: DoKvClient;
   }> {
     const { databaseName, dbToken, gatewayKey, schema } = args;
     const http = this.workerClient({ databaseName, dbToken, gatewayKey });
     const orm = await this.client({ databaseName, dbToken, gatewayKey, schema });
-    return { orm, query: http.query, exec: http.exec, batch: http.batch, raw: http.raw, first: http.first };
+    return { orm, query: http.query, exec: http.exec, batch: http.batch, raw: http.raw, first: http.first, kv: http.kv };
   }
 
   // Internal: apply migrations using Vite-bundled loader and track in migrations_history
@@ -369,24 +505,25 @@ export const database = {
     dbToken: string; 
     gatewayKey?: string;
     instance?: KuratchiDatabase;
-  }) {
+  }): { query: DoHttp['query'], exec: DoHttp['exec'], batch: DoHttp['batch'], raw: DoHttp['raw'], first: DoHttp['first'], kv: DoKvClient } {
     const doEnv = getDoEnv();
     const gatewayKey = args.gatewayKey || doEnv.gatewayKey;
     if (!gatewayKey) throw new Error('KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required');
-    
+
     const instance = args.instance || database.instance();
     const http = instance.httpClient({
       databaseName: args.databaseName,
       dbToken: args.dbToken,
       gatewayKey
     });
-    
-    return { 
+
+    return {
       query: http.query.bind(http),
       exec: http.exec.bind(http),
       batch: http.batch.bind(http),
       raw: http.raw.bind(http),
-      first: http.first.bind(http)
+      first: http.first.bind(http),
+      kv: http.kv
     };
   },
 
@@ -398,8 +535,8 @@ export const database = {
     if (!doEnv.gatewayKey) throw new Error('KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required');
     if (!adminEnv.dbToken) throw new Error('KURATCHI_ADMIN_DB_TOKEN is required');
     const instance = database.instance();
-    const { orm, query, exec, batch, raw, first } = await instance.connect({ databaseName: adminEnv.databaseName, dbToken: adminEnv.dbToken, gatewayKey: doEnv.gatewayKey, schema: adminSchemaDsl as any });
-    return { instance, orm, query, exec, batch, raw, first };
+    const { orm, query, exec, batch, raw, first, kv } = await instance.connect({ databaseName: adminEnv.databaseName, dbToken: adminEnv.dbToken, gatewayKey: doEnv.gatewayKey, schema: adminSchemaDsl as any });
+    return { instance, orm, query, exec, batch, raw, first, kv };
   },
 
   // Provision a new logical database (returns token)

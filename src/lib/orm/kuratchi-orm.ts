@@ -31,6 +31,13 @@ export type SqlExecutor = (sql: string, params?: any[]) => Promise<QueryResult<a
 
 export type SqlCondition = { query: string; params?: any[] };
 
+export interface OrmKvClient {
+  get(opts: any): Promise<any>;
+  put(opts: any): Promise<any>;
+  delete(opts: any): Promise<any>;
+  list(opts?: any): Promise<any>;
+}
+
 function isObject(v: any): v is Record<string, any> {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
@@ -522,7 +529,11 @@ export function createClientFromTableNames(execute: SqlExecutor, tables: string[
   return createClientFromMapping(execute, mapping);
 }
 
-export function createClientFromJsonSchema(execute: SqlExecutor, schema: Pick<DatabaseSchema, 'tables'>): Record<string, TableApi> {
+export function createClientFromJsonSchema(
+  execute: SqlExecutor,
+  schema: Pick<DatabaseSchema, 'tables'>,
+  opts?: { kv?: OrmKvClient }
+): Record<string, TableApi> & { kv?: OrmKvClient } {
   // Build per-table JSON column sets
   const jsonColsByTable = new Map<string, Set<string>>();
   for (const t of schema.tables) {
@@ -673,11 +684,19 @@ export function createClientFromJsonSchema(execute: SqlExecutor, schema: Pick<Da
     } as TableApi<Row> as any;
   };
 
-  const out: Record<string, TableApi> = {};
+  const out: Record<string, TableApi> & { kv?: OrmKvClient } = {} as any;
   for (const t of schema.tables) {
     out[t.name] = wrapTable(t.name);
   }
-  return out as any;
+  if (opts?.kv) {
+    Object.defineProperty(out, 'kv', {
+      value: opts.kv,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+  return out;
 }
 
 /**

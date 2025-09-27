@@ -721,52 +721,26 @@ export class AuthService<C extends AuthClientTables & Record<string, TableApi> =
      * @returns Success status and email ID
      */
     async sendVerificationToken(email: string, emailFrom: string): Promise<{ success: boolean; data?: any; error?: string }> {
-        console.log('[AuthService.sendVerificationToken] Starting for email:', email, 'emailFrom:', emailFrom);
-        
-        console.log('[AuthService.sendVerificationToken] Runtime client initialized:', !!this.client);
-        
         try {
-            console.log('[AuthService.sendVerificationToken] Searching for user in database with email:', email);
             // Find the user by email to get their userId
             const user = await this.getUserByEmail(email);
-            
-            console.log('[AuthService.sendVerificationToken] User lookup result:', {
-                userFound: !!user,
-                userId: user?.id,
-                userEmail: user?.email,
-                emailVerified: user?.emailVerified
-            });
-            
             if (!user) {
-                console.log('[AuthService.sendVerificationToken] ERROR: User not found in database');
                 return {
                     success: false,
                     error: 'User not found'
                 };
             }
-            
-            console.log('[AuthService.sendVerificationToken] Creating email verification token for userId:', user.id);
             // Create and store the verification token
             const tokenData = await this.createEmailVerificationToken(user.id, email);
-            
-            console.log('[AuthService.sendVerificationToken] Token creation result:', {
-                tokenCreated: !!tokenData,
-                token: tokenData?.token,
-                tokenLength: tokenData?.token?.length
-            });
-            
             if (!tokenData) {
-                console.log('[AuthService.sendVerificationToken] ERROR: Failed to create verification token');
                 return {
                     success: false,
                     error: 'Failed to create verification token'
                 };
             }
 
-            console.log('[AuthService.sendVerificationToken] Sending via EmailService templated email with token:', tokenData.token);
             const sent = await this.emailService.sendVerification(email, tokenData.token, { from: emailFrom });
             const emailId = (sent as any)?.id;
-            console.log('[AuthService.sendVerificationToken] EmailService result:', { emailId });
             return {
                 success: true,
                 data: { message: 'Verification token sent successfully', emailId }

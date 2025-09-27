@@ -87,11 +87,19 @@ export function diffSchemas(from: DatabaseSchema, to: DatabaseSchema): DiffResul
     if (!tFrom) continue;
 
     const fromCols = byName(tFrom.columns);
+    const toCols = byName(tTo.columns);
     for (const col of tTo.columns) {
       if (!fromCols.has(col.name)) {
         const { sql, warning } = safeAddColumnSql(tTo, col);
         statements.push(sql + ';');
         if (warning) warnings.push(warning);
+      }
+    }
+
+    for (const [colName, colFrom] of fromCols) {
+      if (!toCols.has(colName)) {
+        statements.push(`ALTER TABLE ${tname} DROP COLUMN ${colName};`);
+        warnings.push(`Dropping column ${tname}.${colName} removes existing data. Verify SQLite version (>=3.35) supports DROP COLUMN${colFrom.primaryKey ? ' and ensure a new primary key is defined' : ''}.`);
       }
     }
 
@@ -110,9 +118,11 @@ export function diffSchemas(from: DatabaseSchema, to: DatabaseSchema): DiffResul
     }
 
     // Optional: dropping indexes not present in 'to'
-    for (const [iname] of fromIdx) {
+    for (const [iname, idxFrom] of fromIdx) {
       if (!toIdx.has(iname)) {
-        warnings.push(`Index ${iname} on ${tname} exists in 'from' but not in 'to'. Consider DROP INDEX IF EXISTS ${iname};`);
+        statements.push(`DROP INDEX IF EXISTS ${iname};`);
+        const droppedCols = idxFrom.columns.join(', ');
+        warnings.push(`Index ${iname} on ${tname} referencing columns (${droppedCols}) removed to match target schema.`);
       }
     }
 

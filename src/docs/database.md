@@ -78,18 +78,27 @@ const orm = await database.client({
 });
 
 const users = await orm.users.many();
+
+// Optional: store metadata alongside relational data
+if (users.data?.length) {
+  await orm.kv?.put({ key: `org:${users.data[0].id}:settings`, value: { theme: 'light' } });
+  const settings = await orm.kv?.get({ key: `org:${users.data[0].id}:settings` });
+  console.log(settings?.value?.theme); // 'light'
+}
 ```
 
 - Accepts an optional `instance` parameter if you want to reuse a specific `KuratchiDatabase` instance.
 - Auto-applies bundled migrations using `loadMigrations(dirName)` (expects Vite-built assets such as `/migrations-organization`). When not available, falls back to generating the initial migration bundle from the schema.
+- `orm.kv` mirrors the Durable Object synchronous KV API (`get`, `put`, `delete`, `list`). Values are returned exactly as stored; binary payloads come back as `Uint8Array`. See [Cloudflare’s docs](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#synchronous-kv-api) for detailed options (`metadata`, `expiration`, cursors, and so on).
+- The client also exposes raw helpers via `database.instance().connect()` described below.
 
-### Combined ORM + SQL Helpers
+---
 
-`database.instance().connect()` returns both the typed ORM and raw SQL helpers.
+## Combined ORM + SQL Helpers
 
 ```ts
 const instance = database.instance();
-const { orm, query, exec, batch } = await instance.connect({
+const { orm, query, exec, batch, kv } = await instance.connect({
   databaseName: 'org-acme-db',
   dbToken: 'token',
   gatewayKey: process.env.KURATCHI_GATEWAY_KEY!,
@@ -98,6 +107,10 @@ const { orm, query, exec, batch } = await instance.connect({
 
 await exec('INSERT INTO logs(message) VALUES (?)', ['hello from DO']);
 const active = await orm.users.where({ deleted_at: { is: null } }).many();
+
+// Direct KV access via the standalone helper returned by connect()
+await kv.put({ key: 'cache:activeUsers', value: active.data });
+const cached = await kv.get({ key: 'cache:activeUsers' });
 ```
 
 ---
