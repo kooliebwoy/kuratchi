@@ -157,14 +157,14 @@ export function createAuthHandle(options: CreateAuthHandleOptions = {}): Handle 
       event.cookies.delete(cookieName, { path: '/' });
     };
     // Server-only helper to get org ORM client
-    locals.kuratchi.orgDatabaseClient = async (orgIdOverride?: string) => {
+    locals.kuratchi.orgDatabaseClient = async (orgIdOverride?: string, options?: { schema?: any }) => {
       if (typeof window !== 'undefined') throw new Error('[Kuratchi] orgDatabaseClient() is server-only');
       const rawCookie = event.cookies.get(cookieName);
       const parsed = rawCookie ? await parseSessionCookie((await getEnv(event as any)).KURATCHI_AUTH_SECRET, rawCookie) : null;
       const currentOrg = orgIdOverride || locals.kuratchi?.session?.organizationId || parsed?.orgId;
       if (!currentOrg || currentOrg === 'admin') throw new Error('[Kuratchi] organizationId is required');
       const auth = await getAuthApi();
-      return await (auth as any).getOrganizationDb(currentOrg);
+      return await (auth as any).getOrganizationDb(currentOrg, options);
     };
     // No top-level mirrors; use locals.kuratchi only
 
@@ -767,62 +767,69 @@ public signIn: {
         /**
          * Get or create AuthService for a specific organization
          */
-        private async getOrganizationAuthService(organizationId: string): Promise<AuthService> {
-            if (!this.organizationServices.has(organizationId)) {
-                // Resolve the organization's database name from admin DB
-                const dbRes = await (this.adminDb as any).databases
-                    .where({ organizationId, deleted_at: { is: null } })
-                    .orderBy({ created_at: 'desc' })
-                    .first();
-                const dbRecord = (dbRes as any)?.data;
-                if (!dbRecord || !dbRecord.name) {
-                    throw new Error(`No database found for organization ${organizationId}`);
-                }
+        private async getOrganizationContext(organizationId: string, schemaOverride?: any): Promise<{ authService: AuthService; client: Record<string, TableApi> }> {
+            const useCache = !schemaOverride;
 
-                const databaseName = dbRecord.name;
-
-                // Determine API token by looking up latest valid DB token
-                const tokenRes = await (this.adminDb as any).dbApiTokens
-                    .where({ databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false })
-                    .orderBy({ created_at: 'desc' })
-                    .many();
-                const tokenCandidates = (tokenRes as any)?.data ?? [];
-                const nowMs = Date.now();
-                const isNotExpired = (exp: any) => {
-                    if (!exp) return true; // no expiry
-                    if (exp instanceof Date) return exp.getTime() > nowMs;
-                    if (typeof exp === 'number') return exp > nowMs;
-                    // attempt to parse if string
-                    const t = new Date(exp as any).getTime();
-                    return !Number.isNaN(t) ? t > nowMs : true;
+            if (useCache && this.organizationServices.has(organizationId) && this.organizationOrmClients.has(organizationId)) {
+                return {
+                    authService: this.organizationServices.get(organizationId)!,
+                    client: this.organizationOrmClients.get(organizationId)!
                 };
-                const valid = tokenCandidates.find((t: any) => isNotExpired((t as any).expires));
-                if (!valid) {
-                    throw new Error(`No valid API token found for organization database ${dbRecord.id}`);
-                }
-                const effectiveToken = (valid as any).token as string;
+            }
 
-                // DO-only: build runtime ORM client using KuratchiDatabase.client()
-                if (!this.config.gatewayKey) {
-                    throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
-                }
-                const orgSchema = await this.resolveOrganizationSchemaDsl();
-                const orgClient = await this.kuratchiDO.client({
-                    databaseName,
-                    dbToken: effectiveToken!,
-                    gatewayKey: this.config.gatewayKey!,
-                    schema: orgSchema as any
-                });
-                const authService = new AuthService(
-                    orgClient as any,
-                    this.buildEnv(this.adminDb)
-                );
-                
+            const dbRes = await (this.adminDb as any).databases
+                .where({ organizationId, deleted_at: { is: null } })
+                .orderBy({ created_at: 'desc' })
+                .first();
+            const dbRecord = (dbRes as any)?.data;
+            if (!dbRecord || !dbRecord.name) {
+                throw new Error(`No database found for organization ${organizationId}`);
+            }
+
+            const databaseName = dbRecord.name;
+
+            const tokenRes = await (this.adminDb as any).dbApiTokens
+                .where({ databaseId: dbRecord.id, deleted_at: { is: null }, revoked: false })
+                .orderBy({ created_at: 'desc' })
+                .many();
+            const tokenCandidates = (tokenRes as any)?.data ?? [];
+            const nowMs = Date.now();
+            const isNotExpired = (exp: any) => {
+                if (!exp) return true;
+                if (exp instanceof Date) return exp.getTime() > nowMs;
+                if (typeof exp === 'number') return exp > nowMs;
+                const t = new Date(exp as any).getTime();
+                return !Number.isNaN(t) ? t > nowMs : true;
+            };
+            const valid = tokenCandidates.find((t: any) => isNotExpired((t as any).expires));
+            if (!valid) {
+                throw new Error(`No valid API token found for organization database ${dbRecord.id}`);
+            }
+            const effectiveToken = (valid as any).token as string;
+
+            if (!this.config.gatewayKey) {
+                throw new Error('[KuratchiAuth] gatewayKey is required in config to use DO-backed organization databases');
+            }
+            const orgSchema = schemaOverride ? normalizeSchema(schemaOverride as any) : await this.resolveOrganizationSchemaDsl();
+            const orgClient = await this.kuratchiDO.client({
+                databaseName,
+                dbToken: effectiveToken!,
+                gatewayKey: this.config.gatewayKey!,
+                schema: orgSchema as any
+            });
+            const authService = new AuthService(orgClient as any, this.buildEnv(this.adminDb));
+
+            if (useCache) {
                 this.organizationServices.set(organizationId, authService);
                 this.organizationOrmClients.set(organizationId, orgClient);
             }
-            
-            return this.organizationServices.get(organizationId)!;
+
+            return { authService, client: orgClient };
+        }
+
+        private async getOrganizationAuthService(organizationId: string, schemaOverride?: any): Promise<AuthService> {
+            const { authService } = await this.getOrganizationContext(organizationId, schemaOverride);
+            return authService;
         }
     
         // Admin operations using adminDb directly
@@ -1085,13 +1092,14 @@ public signIn: {
      * Usage: const auth = await kuratchi.auth.forOrganization(organizationId); await auth.createUser(...)
      */
     async forOrganization(
-        organizationId: string
+        organizationId: string,
+        options?: { schema?: any }
     ): Promise<AuthService> {
         // Prevent client-side usage which could expose credentials via instantiation side-effects
         if (typeof window !== 'undefined') {
             throw new Error('[KuratchiAuth] forOrganization() is server-only. Call this on the server (load, actions, endpoints).');
         }
-        return this.getOrganizationAuthService(organizationId);
+        return this.getOrganizationAuthService(organizationId, options?.schema);
     }
 
     // Server-only accessor for admin ORM client
@@ -1103,15 +1111,11 @@ public signIn: {
     }
 
     // Server-only accessor for organization ORM client
-    async getOrganizationDb(organizationId: string): Promise<Record<string, TableApi>> {
+    async getOrganizationDb(organizationId: string, options?: { schema?: any }): Promise<Record<string, TableApi>> {
         if (typeof window !== 'undefined') {
             throw new Error('[KuratchiAuth] getOrganizationDb() is server-only. Call this on the server (load, actions, endpoints).');
         }
-        if (!this.organizationOrmClients.has(organizationId)) {
-            await this.getOrganizationAuthService(organizationId);
-        }
-        const client = this.organizationOrmClients.get(organizationId);
-        if (!client) throw new Error(`[KuratchiAuth] Organization ORM client not available for ${organizationId}`);
+        const { client } = await this.getOrganizationContext(organizationId, options?.schema);
         return client;
     }
 
