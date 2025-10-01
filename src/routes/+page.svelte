@@ -1,71 +1,5 @@
 <script lang="ts">
   import "../app.css";
-  const { createHighlighter } = await import("shiki");
-  const highlighter = await createHighlighter({
-    themes: ["github-dark"],
-    langs: ["bash", "ts"]
-  });
-
-  const highlight = (code: string, lang: string) =>
-    highlighter.codeToHtml(code, { lang, theme: "github-dark" });
-
-  const setupCommandsHtml = highlight(
-    `$ npm install kuratchi-sdk
-$ npx kuratchi admin create
-$ npm run dev`,
-    "bash"
-  );
-
-  const authHandleHtml = highlight(
-    `// src/hooks.server.ts
-import {
-  createAuthHandle,
-  sessionPlugin,
-  emailAuthPlugin
-} from 'kuratchi-sdk/auth';
-
-export const handle = createAuthHandle({
-  plugins: [
-    sessionPlugin(),
-    emailAuthPlugin({ provider: 'resend' })
-  ]
-});`,
-    "ts"
-  );
-
-  const schemaHtml = highlight(
-    `// src/lib/schema/app.ts
-export const appSchema = {
-  name: 'app',
-  version: 1,
-  tables: {
-    users: {
-      id: 'text primary key',
-      email: 'text not null unique',
-      name: 'text'
-    }
-  }
-};`,
-    "ts"
-  );
-
-  const loadHtml = highlight(
-    `// src/routes/+page.server.ts
-import { d1 } from 'kuratchi-sdk';
-import { appSchema } from '$lib/schema/app';
-
-export async function load() {
-  const orm = await d1.client('MY_DB', appSchema);
-  const users = await orm.users
-    .where({ active: true })
-    .orderBy('created_at', 'desc')
-    .limit(10)
-    .many();
-
-  return { users: users.data ?? [] };
-}`,
-    "ts"
-  );
 </script>
 
 <div class="min-h-screen bg-base-100">
@@ -131,8 +65,10 @@ export async function load() {
             Star on GitHub
           </a>
         </div>
-        <div class="prose prose-lg max-w-2xl mx-auto shiki-wrapper">
-          {@html setupCommandsHtml}
+        <div class="mockup-code bg-base-300 shadow-xl max-w-2xl mx-auto">
+          <pre data-prefix="$"><code>npm install kuratchi-sdk</code></pre>
+          <pre data-prefix="$"><code>npx kuratchi admin create</code></pre>
+          <pre data-prefix="$"><code>npm run dev</code></pre>
         </div>
       </div>
     </div>
@@ -189,8 +125,20 @@ export async function load() {
         <div class="card bg-base-100 shadow-sm border border-base-300/40">
           <div class="card-body">
             <h3 class="card-title text-base-content">Auth handle</h3>
-            <div class="prose prose-sm max-w-none shiki-wrapper">
-              {@html authHandleHtml}
+            <div class="mockup-code bg-base-300 text-xs">
+              <pre data-prefix=""><code>// src/hooks.server.ts</code></pre>
+              <pre data-prefix=""><code>import &#123;</code></pre>
+              <pre data-prefix=""><code>  createAuthHandle,</code></pre>
+              <pre data-prefix=""><code>  sessionPlugin,</code></pre>
+              <pre data-prefix=""><code>  emailAuthPlugin</code></pre>
+              <pre data-prefix=""><code>&#125; from 'kuratchi-sdk/auth';</code></pre>
+              <pre data-prefix=""><code></code></pre>
+              <pre data-prefix=""><code>export const handle = createAuthHandle(&#123;</code></pre>
+              <pre data-prefix=""><code>  plugins: [</code></pre>
+              <pre data-prefix=""><code>    sessionPlugin(),</code></pre>
+              <pre data-prefix=""><code>    emailAuthPlugin(&#123; provider: 'resend' &#125;)</code></pre>
+              <pre data-prefix=""><code>  ]</code></pre>
+              <pre data-prefix=""><code>&#125;);</code></pre>
             </div>
           </div>
         </div>
@@ -198,8 +146,19 @@ export async function load() {
         <div class="card bg-base-100 shadow-sm border border-base-300/40">
           <div class="card-body">
             <h3 class="card-title text-base-content">Schema + ORM</h3>
-            <div class="prose prose-sm max-w-none shiki-wrapper">
-              {@html schemaHtml}
+            <div class="mockup-code bg-base-300 text-xs">
+              <pre data-prefix=""><code>// src/lib/schema/app.ts</code></pre>
+              <pre data-prefix=""><code>export const appSchema = &#123;</code></pre>
+              <pre data-prefix=""><code>  name: 'app',</code></pre>
+              <pre data-prefix=""><code>  version: 1,</code></pre>
+              <pre data-prefix=""><code>  tables: &#123;</code></pre>
+              <pre data-prefix=""><code>    users: &#123;</code></pre>
+              <pre data-prefix=""><code>      id: 'text primary key',</code></pre>
+              <pre data-prefix=""><code>      email: 'text not null unique',</code></pre>
+              <pre data-prefix=""><code>      name: 'text'</code></pre>
+              <pre data-prefix=""><code>    &#125;</code></pre>
+              <pre data-prefix=""><code>  &#125;</code></pre>
+              <pre data-prefix=""><code>&#125;;</code></pre>
             </div>
           </div>
         </div>
@@ -207,8 +166,21 @@ export async function load() {
         <div class="card bg-base-100 shadow-sm border border-base-300/40">
           <div class="card-body">
             <h3 class="card-title text-base-content">Page load</h3>
-            <div class="prose prose-sm max-w-none shiki-wrapper">
-              {@html loadHtml}
+            <div class="mockup-code bg-base-300 text-xs">
+              <pre data-prefix=""><code>// src/routes/+page.server.ts</code></pre>
+              <pre data-prefix=""><code>import &#123; d1 &#125; from 'kuratchi-sdk';</code></pre>
+              <pre data-prefix=""><code>import &#123; appSchema &#125; from '$lib/schema/app';</code></pre>
+              <pre data-prefix=""><code></code></pre>
+              <pre data-prefix=""><code>export async function load() &#123;</code></pre>
+              <pre data-prefix=""><code>  const orm = await d1.client('MY_DB', appSchema);</code></pre>
+              <pre data-prefix=""><code>  const users = await orm.users</code></pre>
+              <pre data-prefix=""><code>    .where(&#123; active: true &#125;)</code></pre>
+              <pre data-prefix=""><code>    .orderBy('created_at', 'desc')</code></pre>
+              <pre data-prefix=""><code>    .limit(10)</code></pre>
+              <pre data-prefix=""><code>    .many();</code></pre>
+              <pre data-prefix=""><code></code></pre>
+              <pre data-prefix=""><code>  return &#123; users: users.data ?? [] &#125;;</code></pre>
+              <pre data-prefix=""><code>&#125;</code></pre>
             </div>
           </div>
         </div>

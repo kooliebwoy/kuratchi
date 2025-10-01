@@ -1,7 +1,6 @@
 import adapter from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { mdsvex } from 'mdsvex';
-import { codeToHtml } from 'shiki';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -10,20 +9,7 @@ const config = {
 	preprocess: [
 		vitePreprocess(),
 		mdsvex({
-			extensions: ['.md'],
-			highlight: {
-				highlighter: async (code, lang = 'text') => {
-					const html = await codeToHtml(code, {
-						lang,
-						theme: 'github-dark'
-					});
-					// Escape the HTML properly for Svelte
-					const escaped = html
-						.replace(/`/g, '\\`')
-						.replace(/\$/g, '\\$');
-					return `{@html \`${escaped}\` }`;
-				}
-			}
+			extensions: ['.md']
 		})
 	],
 

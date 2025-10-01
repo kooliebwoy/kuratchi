@@ -46,7 +46,6 @@
 		"daisyui": "^5.1.25",
 		"mdsvex": "^0.12.6",
 		"publint": "^0.3.2",
-		"shiki": "^3.13.0",
 		"svelte": "^5.39.7",
 		"svelte-check": "^4.0.0",
 		"tailwindcss": "^4.1.13",
