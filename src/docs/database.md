@@ -2,6 +2,17 @@
 
 The `database` namespace provides Durable Object–backed SQLite provisioning and typed runtime clients. Use it to create logical databases for each organization, connect to them with JSON-schema ORM clients, and run SQL when needed.
 
+## Architecture
+
+The database module uses a **modular, plugin-based architecture** with clear separation of concerns:
+
+- **Core**: Main orchestration class and type definitions
+- **Clients**: HTTP, KV, and ORM client implementations
+- **Deployment**: Worker deployment and readiness checks
+- **Migrations**: Schema management and migration application
+
+This modular design provides better testability, maintainability, and tree-shaking while maintaining 100% backward compatibility.
+
 ---
 
 ## Environment Requirements
@@ -23,6 +34,8 @@ The CLI `init-admin-db` command returns both the admin database token and confir
 
 ## Instantiate KuratchiDatabase
 
+### Option 1: Convenience Namespace (Recommended for Most Cases)
+
 ```ts
 import { database } from 'kuratchi-sdk';
 
@@ -37,6 +50,52 @@ const db = database.instance({
   scriptName: 'custom-do-script'
 });
 ```
+
+### Option 2: Direct Class Import
+
+```ts
+import { KuratchiDatabase } from 'kuratchi-sdk/database';
+
+const db = new KuratchiDatabase({
+  apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  workersSubdomain: process.env.CLOUDFLARE_WORKERS_SUBDOMAIN!,
+  scriptName: 'kuratchi-do-internal' // optional
+});
+```
+
+### Option 3: Modular Functions (Advanced)
+
+For maximum flexibility, import individual functions:
+
+```ts
+import { 
+  createHttpClient,
+  createOrmClient,
+  deployWorker,
+  applyMigrations 
+} from 'kuratchi-sdk/database';
+
+// Create HTTP client
+const httpClient = createHttpClient({
+  databaseName: 'org-acme-db',
+  dbToken: 'token',
+  gatewayKey: process.env.KURATCHI_GATEWAY_KEY!,
+  workersSubdomain: process.env.CLOUDFLARE_WORKERS_SUBDOMAIN!
+});
+
+// Create ORM client
+const orm = await createOrmClient({
+  httpClient,
+  schema: organizationSchema,
+  databaseName: 'org-acme-db'
+});
+```
+
+This modular approach is useful for:
+- Testing individual components
+- Custom integration scenarios
+- Fine-grained control over initialization
 
 ---
 
@@ -157,9 +216,65 @@ This still enforces authentication via the per-database token and gateway key.
 
 ---
 
+## Module Structure
+
+The database package is organized into focused modules:
+
+### Core (`src/lib/database/core/`)
+- **types.ts**: All TypeScript type definitions
+- **config.ts**: Environment variable resolution and validation
+- **database.ts**: Main `KuratchiDatabase` orchestration class
+
+### Clients (`src/lib/database/clients/`)
+- **http-client.ts**: HTTP communication with DO worker
+- **kv-client.ts**: KV operations (get, put, delete, list)
+- **orm-client.ts**: ORM client creation and adapter selection
+
+### Deployment (`src/lib/database/deployment/`)
+- **worker-deployment.ts**: DO worker script upload and configuration
+- **worker-wait.ts**: Endpoint readiness checks and retry logic
+
+### Migrations (`src/lib/database/migrations/`)
+- **migration-utils.ts**: Schema normalization and SQL splitting
+- **migration-runner.ts**: Migration application with history tracking
+
+### Public API (`src/lib/database/index.ts`)
+Clean exports of all public functions, types, and the convenience `database` namespace.
+
+This modular structure allows you to:
+- Import only what you need (tree-shaking)
+- Test individual components in isolation
+- Extend functionality without modifying core code
+- Understand the codebase more easily
+
+---
+
 ## Troubleshooting
 
 - **`KURATCHI_GATEWAY_KEY/GATEWAY_KEY is required`** — provide the gateway key via env or passthrough config.
 - **`normalizeSchema not available`** — build the package (`npm run build`) so the CLI/runtime can import compiled helpers.
 - **`Missing migration loader`** — ensure `migrations-<schema>` assets are bundled in your deployment. For Workers, use Vite bundling or fall back to runtime-generated initial migrations.
 - **Slow endpoint warm-up** — the helper already retries, but you can add additional `await` loops before hitting the database for the first time in production workflows.
+
+---
+
+## Migration from Legacy API
+
+All existing code continues to work! The refactored module maintains 100% backward compatibility.
+
+### Legacy Import (Still Works)
+```ts
+import { KuratchiDatabase } from 'kuratchi-sdk/database/kuratchi-database';
+```
+
+### Recommended Import
+```ts
+import { KuratchiDatabase, database } from 'kuratchi-sdk/database';
+```
+
+### New Method Names
+The class now has clearer method names:
+- ✅ `ormClient()` - Get ORM client (recommended)
+- ⚠️ `client()` - Legacy alias for `ormClient()` (still works)
+
+Both methods are identical; `ormClient()` is just more explicit about what it returns.
