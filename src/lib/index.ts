@@ -7,6 +7,9 @@ export { kv } from './kv/index.js';
 export { r2 } from './r2/index.js';
 // D1 utilities (for standalone usage or fallback)
 export { d1 } from './d1/index.js';
+// Studio hook (optional UI)
+export { kuratchiStudio } from './studio/hooks.js';
+export type { StudioConfig } from './studio/hooks.js';
 
 // Re-export auth types for convenience
 export type {

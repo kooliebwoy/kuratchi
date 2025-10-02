@@ -282,6 +282,77 @@ async function loadAdminSchemaDsl() {
   return { adminSchemaDsl };
 }
 
+async function cmdAddStudio(args) {
+  const targetPath = args.path || '/kuratchi';
+  const force = args.force === 'true' || args.force === true;
+
+  console.log('🎨 Installing Kuratchi Studio...\n');
+
+  // Resolve paths
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const pkgRoot = path.resolve(__dirname, '..');
+  const studioSourceDir = path.join(pkgRoot, 'src', 'lib', 'studio', 'routes', '(studio)');
+  const projectRoot = process.cwd();
+  const targetDir = path.join(projectRoot, 'src/routes', targetPath.replace(/^\//, ''));
+
+  // Check if target exists
+  if (fs.existsSync(targetDir) && !force) {
+    console.error(`❌ Error: Directory ${targetDir} already exists.`);
+    console.log('   Use --force to overwrite.\n');
+    process.exit(1);
+  }
+
+  // Check if source exists
+  if (!fs.existsSync(studioSourceDir)) {
+    console.error('❌ Error: Studio source files not found.');
+    console.log(`   Expected at: ${studioSourceDir}`);
+    console.log('   Make sure kuratchi-sdk is properly installed.\n');
+    process.exit(1);
+  }
+
+  try {
+    // Copy studio files recursively
+    function copyRecursive(src, dest) {
+      ensureDir(dest);
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+          copyRecursive(srcPath, destPath);
+        } else {
+          if (fs.existsSync(destPath) && !force) {
+            console.warn(`⚠️  Skipping ${destPath} (already exists)`);
+            continue;
+          }
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    }
+
+    copyRecursive(studioSourceDir, targetDir);
+
+    console.log(`✅ Studio installed at: ${targetPath}`);
+    console.log(`   Files copied to: ${targetDir}\n`);
+
+    // Print next steps
+    console.log('📋 Next Steps:\n');
+    console.log('1. Ensure auth is configured in src/hooks.server.ts');
+    console.log('2. Set required environment variables:');
+    console.log('   - KURATCHI_ADMIN_DB_NAME');
+    console.log('   - KURATCHI_ADMIN_DB_TOKEN');
+    console.log('   - KURATCHI_GATEWAY_KEY\n');
+    console.log(`3. Visit http://localhost:5173${targetPath}\n`);
+    console.log('📖 Full docs: node_modules/kuratchi-sdk/src/lib/studio/README.md\n');
+
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error installing studio:', error.message);
+    process.exit(1);
+  }
+}
+
 async function cmdInitAdminDb(args) {
   const name = args.name || args.databaseName || args.dbName || process.env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin';
   const gatewayKey = args.gatewayKey || args.apiKey || process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY;
@@ -360,6 +431,9 @@ Usage:
     Env fallbacks: KURATCHI_GATEWAY_KEY/GATEWAY_KEY, (KURATCHI_)CLOUDFLARE_WORKERS_SUBDOMAIN/WORKERS_SUBDOMAIN, (KURATCHI_)CLOUDFLARE_ACCOUNT_ID/CF_ACCOUNT_ID, (KURATCHI_)CLOUDFLARE_API_TOKEN/CF_API_TOKEN, KURATCHI_ADMIN_DB_NAME
     Behavior: tries migrate=true; if migration fails and migrate is not explicitly false, retries without migration
     Also loads .env and .env.local from CWD and package root unless KURATCHI_SKIP_DOTENV=true
+  kuratchi-sdk add-studio [--path <path>] [--force]
+    Install Kuratchi Studio admin dashboard to your SvelteKit app
+    Defaults: --path /kuratchi
 `);
     process.exit(0);
   }
@@ -368,6 +442,8 @@ Usage:
       await cmdGenerateMigrations(args);
     } else if (cmd === 'init-admin-db' || cmd === 'create-admin-db' || cmd === 'admin-init') {
       await cmdInitAdminDb(args);
+    } else if (cmd === 'add-studio' || cmd === 'install-studio') {
+      await cmdAddStudio(args);
     } else {
       console.error(`Unknown command: ${cmd}`);
       process.exit(1);
