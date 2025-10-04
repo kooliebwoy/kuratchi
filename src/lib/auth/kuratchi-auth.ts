@@ -3,8 +3,9 @@ import { env } from '$env/dynamic/private';
 import { AuthService } from './auth-helper.js';
 import { normalizeSchema } from '../orm/normalize.js';
 import { createClientFromJsonSchema, type TableApi } from '../orm/kuratchi-orm.js';
-import { adminSchemaDsl } from '../schema/admin.js';
-import { organizationSchemaDsl } from '../schema/organization.js';
+// Legacy v1 API - uses example schemas as defaults for backward compatibility
+import { adminSchemaDsl } from '../schema/admin.example.js';
+import { organizationSchemaDsl } from '../schema/organization.example.js';
 import type { AuthConfig, CreateAuthHandleOptions } from './types.js';
 import { createAuthHandle } from './handle.js';
 import type { Handle } from '@sveltejs/kit';

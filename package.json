@@ -31,6 +31,30 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"svelte": "./dist/index.js"
+		},
+		"./auth": {
+			"types": "./dist/auth/index-v2.d.ts",
+			"svelte": "./dist/auth/index-v2.js"
+		},
+		"./database": {
+			"types": "./dist/database/index.d.ts",
+			"svelte": "./dist/database/index.js"
+		},
+		"./kv": {
+			"types": "./dist/kv/index.d.ts",
+			"svelte": "./dist/kv/index.js"
+		},
+		"./r2": {
+			"types": "./dist/r2/index.d.ts",
+			"svelte": "./dist/r2/index.js"
+		},
+		"./d1": {
+			"types": "./dist/d1/index.d.ts",
+			"svelte": "./dist/d1/index.js"
+		},
+		"./orm": {
+			"types": "./dist/orm/index.d.ts",
+			"svelte": "./dist/orm/index.js"
 		}
 	},
 	"peerDependencies": {

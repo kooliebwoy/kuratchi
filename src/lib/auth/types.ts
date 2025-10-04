@@ -40,6 +40,7 @@ export type AuthHandleEnv = {
   KURATCHI_ADMIN_DB_TOKEN?: string;
   KURATCHI_ADMIN_DB_ID?: string;
   KURATCHI_GATEWAY_KEY?: string;
+  KURATCHI_DO_SCRIPT_NAME?: string;
 };
 
 // Options for creating auth handle

@@ -2,8 +2,9 @@ import { dev } from '$app/environment';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { KuratchiDatabase } from '../database/kuratchi-database.js';
 import { parseSessionCookie, signState, verifyState } from '../utils/auth.js';
-import { adminSchemaDsl } from '../schema/admin.js';
-import { organizationSchemaDsl } from '../schema/organization.js';
+// Legacy v1 handle - uses example schemas as defaults for backward compatibility
+import { adminSchemaDsl } from '../schema/admin.example.js';
+import { organizationSchemaDsl } from '../schema/organization.example.js';
 import { normalizeSchema } from '../orm/normalize.js';
 import { createClientFromJsonSchema } from '../orm/kuratchi-orm.js';
 import { ensurePlatformEnv, runWithPlatform } from '../utils/platform-context.js';

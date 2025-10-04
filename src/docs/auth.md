@@ -11,17 +11,105 @@ This guide covers all scenarios with the new v2 plugin architecture.
 
 ## Table of Contents
 
-1. [Environment Variables](#environment-variables)
-2. [Auth Provider Plugins (NEW)](#auth-provider-plugins)
+1. [Getting Started](#getting-started)
+   - [Unified API (Recommended)](#unified-api)
+   - [Modular API](#modular-api)
+2. [Environment Variables](#environment-variables)
+3. [Auth Provider Plugins (NEW)](#auth-provider-plugins)
    - [Email Auth (Magic Links)](#email-auth-plugin)
    - [OAuth (Google, GitHub, etc.)](#oauth-plugin)
    - [Credentials (Email/Password)](#credentials-plugin)
-3. [Scenario 1: Simple Auth Only](#scenario-1-simple-auth-only)
-4. [Scenario 2: Auth + Storage](#scenario-2-auth--storage)
-5. [Scenario 3: Multi-tenant (Admin + Organizations)](#scenario-3-multi-tenant-admin--organizations)
-6. [Scenario 4: Full Stack with Guards](#scenario-4-full-stack-with-guards)
-7. [Scenario 5: Custom Plugins](#scenario-5-custom-plugins)
-8. [Legacy v1 API](#legacy-v1-api)
+4. [Scenario 1: Simple Auth Only](#scenario-1-simple-auth-only)
+5. [Scenario 2: Auth + Storage](#scenario-2-auth--storage)
+6. [Scenario 3: Multi-tenant (Admin + Organizations)](#scenario-3-multi-tenant-admin--organizations)
+7. [Scenario 4: Full Stack with Guards](#scenario-4-full-stack-with-guards)
+8. [Scenario 5: Custom Plugins](#scenario-5-custom-plugins)
+9. [Legacy v1 API](#legacy-v1-api)
+
+---
+
+## Getting Started
+
+Kuratchi SDK offers two ways to configure your application: **Unified API** (recommended for most cases) or **Modular API** (for more granular control).
+
+### Unified API
+
+```typescript
+// src/hooks.server.ts
+import { kuratchi } from 'kuratchi-sdk';
+import { sessionPlugin, adminPlugin, organizationPlugin, emailAuthPlugin, oauthPlugin } from 'kuratchi-sdk/auth';
+import { adminSchema } from '$lib/schemas/admin';
+import { organizationSchema } from '$lib/schemas/organization';
+
+const app = kuratchi({
+  auth: {
+    plugins: [
+      sessionPlugin(),
+      adminPlugin({ adminSchema }),
+      organizationPlugin({ organizationSchema }),
+      emailAuthPlugin({
+        provider: 'resend',
+        apiKey: process.env.RESEND_API_KEY!,
+        from: process.env.EMAIL_FROM!
+      }),
+      oauthPlugin({
+        providers: [
+          {
+            name: 'google',
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!
+          }
+        ]
+      })
+    ]
+  }
+});
+
+export const handle = app.handle;
+```
+
+> **Important:** `adminSchema` and `organizationSchema` are REQUIRED. Copy reference examples from `node_modules/kuratchi-sdk/src/lib/schema/*.example.ts` and customize for your needs.
+
+### Modular API
+
+Import only what you need from subpath exports (`kuratchi-sdk/auth`, `kuratchi-sdk/database`, etc.).
+
+```typescript
+// src/hooks.server.ts
+import { createAuthHandle, sessionPlugin, adminPlugin } from 'kuratchi-sdk/auth';
+
+export const handle = createAuthHandle({
+  plugins: [
+    sessionPlugin(),
+    adminPlugin()
+  ],
+  // Storage bindings
+  kvNamespaces: { default: 'MY_KV' },
+  r2Buckets: { uploads: 'USER_UPLOADS' },
+  d1Databases: { analytics: 'ANALYTICS_DB' }
+});
+```
+
+```typescript
+// Using database in a route
+import { database } from 'kuratchi-sdk';
+import { organizationSchema } from '$lib/schema/organization';
+
+export async function load() {
+  const orm = await database.client({
+    databaseName: 'my-org-db',
+    dbToken: env.DB_TOKEN,
+    schema: organizationSchema
+  });
+  
+  const { data } = await orm.users.many();
+  return { users: data };
+}
+```
+
+**Choose Based On:**
+- **Unified API**: Best for full-stack apps with auth + database + storage
+- **Modular API**: Best for auth-only apps or when you need fine-grained control
 
 ---
 

@@ -59,15 +59,54 @@ export class KuratchiDatabase {
       throw new Error('gatewayKey is required');
     }
     
+    // Create signed database token
+    // For admin DB, use 100-year TTL to avoid token expiration deadlock
+    // For org DBs, use 1-year TTL (can be refreshed via admin DB)
+    const isAdminDb = databaseName === 'kuratchi-admin' || databaseName.includes('admin');
+    const ttl = isAdminDb 
+      ? 100 * 365 * 24 * 60 * 60 * 1000  // 100 years (essentially permanent)
+      : 365 * 24 * 60 * 60 * 1000;       // 1 year (renewable via admin)
+    const token = await createSignedDbToken(databaseName, gatewayKey, ttl);
+    
+    // Check if we have direct DO binding (ONLY in wrangler dev or production Workers)
+    // Note: Local SvelteKit dev (npm run dev) doesn't have DO bindings - must use HTTP
+    const platform = (globalThis as any).__sveltekit_platform || (globalThis as any).platform;
+    
+    // Detect local SvelteKit dev using $app/environment dev flag or lack of platform.env
+    let isLocalDev = false;
+    try {
+      // Try to import SvelteKit's dev flag (only available in SvelteKit context)
+      const { dev } = await import('$app/environment');
+      isLocalDev = dev && !platform?.env;
+    } catch {
+      // Not in SvelteKit context or import failed - check for platform.env absence
+      isLocalDev = !platform?.env;
+    }
+    
+    if (!isLocalDev) {
+      const doBinding = platform?.env?.[databaseName] || platform?.env?.KURATCHI_DO;
+      
+      if (doBinding && typeof doBinding.sql === 'function') {
+        console.log(`[Kuratchi] Using direct DO binding for ${databaseName} - skipping deploy/wait`);
+        
+        // Apply initial schema migration if requested (using direct binding)
+        if (migrate && schema) {
+          await this.applyInitialMigrationDirect(doBinding, schema);
+        }
+        
+        return { databaseName, token };
+      }
+    }
+    
+    // Fallback: HTTP flow (requires deploy + wait)
+    console.log(`[Kuratchi] No direct binding for ${databaseName} - using HTTP flow`);
+    
     // Deploy worker if needed
     await deployWorker({
       scriptName: this.scriptName,
       gatewayKey,
       cloudflareClient: this.cloudflareClient
     });
-    
-    // Create signed database token
-    const token = await createSignedDbToken(databaseName, gatewayKey);
     
     // Wait for worker to be ready (best effort)
     const httpClient = this.httpClient({ databaseName, dbToken: token, gatewayKey });
@@ -77,12 +116,8 @@ export class KuratchiDatabase {
       // Non-fatal; queries may still succeed shortly after
     }
     
-    // Apply initial schema migration if requested
-    if (migrate) {
-      if (!schema) {
-        throw new Error('migrate:true requires a schema');
-      }
-      
+    // Apply initial schema migration if requested (via HTTP)
+    if (migrate && schema) {
       await this.applyInitialMigration(httpClient, schema);
     }
     
@@ -182,6 +217,25 @@ export class KuratchiDatabase {
       if (!result || result.success === false) {
         throw new Error(`Migration batch failed: ${result?.error || 'unknown error'}`);
       }
+    }
+  }
+
+  /**
+   * Apply initial migration using direct DO binding
+   */
+  private async applyInitialMigrationDirect(doBinding: any, schema: any): Promise<void> {
+    const { generateInitialMigration, ensureNormalizedSchema } = await import('../migrations/migration-utils.js');
+    
+    const normalized = ensureNormalizedSchema(schema);
+    const { migrations } = generateInitialMigration(normalized);
+    const initialSql = await migrations.m0001();
+    
+    // Split into statements
+    const statements = splitSqlStatements(initialSql);
+    
+    // Execute directly on DO binding
+    for (const sql of statements) {
+      await doBinding.sql(sql);
     }
   }
 

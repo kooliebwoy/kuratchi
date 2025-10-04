@@ -3,7 +3,7 @@
 declare const process: any;
 import { describe, it, expect } from 'vitest';
 import { KuratchiDatabase } from '../lib/database/kuratchi-database.js';
-import { adminSchemaDsl } from '../lib/schema/admin.js';
+import { adminSchemaDsl } from '../lib/schema/admin.example.js';
 import { env } from '$env/dynamic/private';
 
 // Allow dynamic env via SvelteKit (process.env) with multiple naming schemes.

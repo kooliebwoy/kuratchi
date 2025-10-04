@@ -282,77 +282,6 @@ async function loadAdminSchemaDsl() {
   return { adminSchemaDsl };
 }
 
-async function cmdAddStudio(args) {
-  const targetPath = args.path || '/kuratchi';
-  const force = args.force === 'true' || args.force === true;
-
-  console.log('🎨 Installing Kuratchi Studio...\n');
-
-  // Resolve paths
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const pkgRoot = path.resolve(__dirname, '..');
-  const studioSourceDir = path.join(pkgRoot, 'src', 'lib', 'studio', 'routes', '(studio)');
-  const projectRoot = process.cwd();
-  const targetDir = path.join(projectRoot, 'src/routes', targetPath.replace(/^\//, ''));
-
-  // Check if target exists
-  if (fs.existsSync(targetDir) && !force) {
-    console.error(`❌ Error: Directory ${targetDir} already exists.`);
-    console.log('   Use --force to overwrite.\n');
-    process.exit(1);
-  }
-
-  // Check if source exists
-  if (!fs.existsSync(studioSourceDir)) {
-    console.error('❌ Error: Studio source files not found.');
-    console.log(`   Expected at: ${studioSourceDir}`);
-    console.log('   Make sure kuratchi-sdk is properly installed.\n');
-    process.exit(1);
-  }
-
-  try {
-    // Copy studio files recursively
-    function copyRecursive(src, dest) {
-      ensureDir(dest);
-      const entries = fs.readdirSync(src, { withFileTypes: true });
-      for (const entry of entries) {
-        const srcPath = path.join(src, entry.name);
-        const destPath = path.join(dest, entry.name);
-        if (entry.isDirectory()) {
-          copyRecursive(srcPath, destPath);
-        } else {
-          if (fs.existsSync(destPath) && !force) {
-            console.warn(`⚠️  Skipping ${destPath} (already exists)`);
-            continue;
-          }
-          fs.copyFileSync(srcPath, destPath);
-        }
-      }
-    }
-
-    copyRecursive(studioSourceDir, targetDir);
-
-    console.log(`✅ Studio installed at: ${targetPath}`);
-    console.log(`   Files copied to: ${targetDir}\n`);
-
-    // Print next steps
-    console.log('📋 Next Steps:\n');
-    console.log('1. Ensure auth is configured in src/hooks.server.ts');
-    console.log('2. Set required environment variables:');
-    console.log('   - KURATCHI_ADMIN_DB_NAME');
-    console.log('   - KURATCHI_ADMIN_DB_TOKEN');
-    console.log('   - KURATCHI_GATEWAY_KEY\n');
-    console.log(`3. Visit http://localhost:5173${targetPath}\n`);
-    console.log('📖 Full docs: node_modules/kuratchi-sdk/src/lib/studio/README.md\n');
-
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error installing studio:', error.message);
-    process.exit(1);
-  }
-}
-
 async function cmdInitAdminDb(args) {
   const name = args.name || args.databaseName || args.dbName || process.env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin';
   const gatewayKey = args.gatewayKey || args.apiKey || process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY;
@@ -414,6 +343,42 @@ async function cmdInitAdminDb(args) {
   console.log(JSON.stringify({ ok: true, databaseName: res.databaseName, token: res.token }, null, 2));
 }
 
+async function cmdRefreshAdminToken(args) {
+  const mask = (s) => s ? s.slice(0, 8) + '***' : undefined;
+  const name = args.name || process.env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin';
+  const gatewayKey = args.gatewayKey || process.env.KURATCHI_GATEWAY_KEY || process.env.GATEWAY_KEY;
+  const debug = args.debug === 'true';
+
+  if (debug) {
+    console.log('[kuratchi-sdk refresh-admin-token] Config:', JSON.stringify({
+      name,
+      gatewayKey: mask(gatewayKey),
+    }, null, 2));
+  }
+
+  if (!gatewayKey) {
+    console.error('Missing required config: KURATCHI_GATEWAY_KEY/GATEWAY_KEY or --gatewayKey');
+    console.error('Usage: kuratchi-sdk refresh-admin-token [--name <dbName>] [--gatewayKey <key>]');
+    process.exit(1);
+  }
+
+  const { createSignedDbToken } = await import('../dist/utils/token.js');
+  
+  // Generate new admin token with 100-year TTL (essentially permanent)
+  const newToken = await createSignedDbToken(
+    name, 
+    gatewayKey,
+    100 * 365 * 24 * 60 * 60 * 1000 // 100 years
+  );
+
+  console.log(JSON.stringify({ 
+    ok: true, 
+    databaseName: name, 
+    token: newToken,
+    message: 'Update KURATCHI_ADMIN_DB_TOKEN in your environment with this new token'
+  }, null, 2));
+}
+
 async function main() {
   // Auto-load .env unless explicitly disabled
   if (process.env.KURATCHI_SKIP_DOTENV !== 'true') {
@@ -430,20 +395,22 @@ Usage:
     Defaults: --name kuratchi-admin, --scriptName kuratchi-do-internal, --migrate true
     Env fallbacks: KURATCHI_GATEWAY_KEY/GATEWAY_KEY, (KURATCHI_)CLOUDFLARE_WORKERS_SUBDOMAIN/WORKERS_SUBDOMAIN, (KURATCHI_)CLOUDFLARE_ACCOUNT_ID/CF_ACCOUNT_ID, (KURATCHI_)CLOUDFLARE_API_TOKEN/CF_API_TOKEN, KURATCHI_ADMIN_DB_NAME
     Behavior: tries migrate=true; if migration fails and migrate is not explicitly false, retries without migration
-    Also loads .env and .env.local from CWD and package root unless KURATCHI_SKIP_DOTENV=true
-  kuratchi-sdk add-studio [--path <path>] [--force]
-    Install Kuratchi Studio admin dashboard to your SvelteKit app
-    Defaults: --path /kuratchi
+  
+  kuratchi-sdk refresh-admin-token [--name <dbName>] [--gatewayKey <key>] [--debug]
+    Regenerate admin database token (if expired or compromised)
+    Defaults: --name kuratchi-admin
+    Env fallbacks: KURATCHI_GATEWAY_KEY/GATEWAY_KEY, KURATCHI_ADMIN_DB_NAME
+    Important: Update KURATCHI_ADMIN_DB_TOKEN with the new token after running this command
 `);
-    process.exit(0);
+    return;
   }
   try {
     if (cmd === 'generate-migrations' || cmd === 'gen-migrations' || cmd === 'migrations') {
       await cmdGenerateMigrations(args);
     } else if (cmd === 'init-admin-db' || cmd === 'create-admin-db' || cmd === 'admin-init') {
       await cmdInitAdminDb(args);
-    } else if (cmd === 'add-studio' || cmd === 'install-studio') {
-      await cmdAddStudio(args);
+    } else if (cmd === 'refresh-admin-token' || cmd === 'refresh-token') {
+      await cmdRefreshAdminToken(args);
     } else {
       console.error(`Unknown command: ${cmd}`);
       process.exit(1);

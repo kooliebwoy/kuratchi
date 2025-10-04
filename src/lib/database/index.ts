@@ -63,7 +63,8 @@ export type { EnvironmentConfig, AdminEnvironmentConfig } from './core/config.js
 // Convenience namespace API
 import { getDoEnvironment, getAdminEnvironment } from './core/config.js';
 import { KuratchiDatabase } from './core/database.js';
-import { adminSchemaDsl } from '../schema/admin.js';
+// Uses example schema as default for database.admin() helper (legacy convenience)
+import { adminSchemaDsl } from '../schema/admin.example.js';
 import type { SchemaType, DoHttpClient, DoKvClient, OrmClient } from './core/types.js';
 
 /**

@@ -1,16 +1,17 @@
 # Kuratchi SDK for SvelteKit
 
-End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D1 via Durable Objects gateway). This package provides clean namespace APIs for:
+End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D1 via Durable Objects gateway). This package provides:
 
-- __Database operations__ via `database` namespace with schema-less and ORM clients
-- __Authentication__ via `auth` namespace with magic links, credentials, and OAuth
-- __SvelteKit integration__ with automatic cookie/session management
-- __Admin DB provisioning CLI__ to create the admin database and token
-- __Organization-aware APIs__ to create orgs and sign users in to the correct org
+- 🔐 **Authentication** - Magic links, OAuth (Google, GitHub, Microsoft), email/password
+- 🗄️ **Database** - Durable Objects-backed SQLite with HTTP client and typed ORM
+- 💾 **Storage** - KV, R2, D1 bindings with unified access
+- 🏢 **Multi-tenancy** - Organization management with per-org databases
+- 🛠️ **CLI** - Admin DB provisioning and migration generation
+- 🎯 **Type-safe ORM** - JSON schema-based with includes, JSON columns, migrations
 
-Below is a quickstart for SvelteKit, required environment variables, admin DB setup, migrations, and how organizations work.
+Below is a quickstart for SvelteKit, required environment variables, admin DB setup, and organization workflows.
 
-> Full in-repo guides live under `src/docs/`. Start with [`src/docs/README.md`](./src/docs/README.md) for navigation to auth, database, ORM, and CLI documentation.
+> **Full Documentation:** [`src/docs/README.md`](./src/docs/README.md) | [Auth](./src/docs/auth.md) | [Database](./src/docs/database.md) | [ORM](./src/docs/orm.md) | [CLI](./src/docs/cli.md)
 
 ## Quickstart (SvelteKit)
 
@@ -51,22 +52,82 @@ Aliases the CLI also understands (if you already have these set): `GATEWAY_KEY`,
 
 3) __Wire the SvelteKit handle__
 
-Create `src/hooks.server.ts`:
+### Option A: Unified API (Recommended)
+
+Configure everything in one place:
 
 ```ts
 // src/hooks.server.ts
-import type { Handle } from '@sveltejs/kit';
-import { auth } from 'kuratchi-sdk';
+import { kuratchi } from 'kuratchi-sdk';
+import { sessionPlugin, adminPlugin, organizationPlugin, emailAuthPlugin, oauthPlugin } from 'kuratchi-sdk/auth';
+import { adminSchema } from '$lib/schemas/admin';
+import { organizationSchema } from '$lib/schemas/organization';
 
-export const handle: Handle = auth.handle();
+const app = kuratchi({
+  auth: {
+    plugins: [
+      sessionPlugin(),
+      adminPlugin({ adminSchema }),
+      organizationPlugin({ organizationSchema }),
+      emailAuthPlugin({
+        provider: 'resend',
+        apiKey: process.env.RESEND_API_KEY!,
+        from: process.env.EMAIL_FROM!
+      }),
+      oauthPlugin({
+        providers: [
+          {
+            name: 'google',
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!
+          }
+        ]
+      })
+    ]
+  },
+  storage: {
+    kv: { default: 'MY_KV' },
+    r2: { uploads: 'USER_UPLOADS' },
+    d1: { analytics: 'ANALYTICS_DB' }
+  }
+});
+
+export const handle = app.handle;
 ```
 
-You now get:
+> **Note:** You must define your own schemas. See `node_modules/kuratchi-sdk/src/lib/schema/*.example.ts` for reference structures.
 
-- Cookies managed under `locals.kuratchi` with mirrors as `locals.user` and `locals.session`.
-- Magic link endpoints: `/auth/magic/send` and `/auth/magic/callback`.
-- Google OAuth: `/auth/oauth/google/start` and `/auth/oauth/google/callback`.
-- Server helper: `locals.kuratchi.orgDatabaseClient(orgId?)` to get an org DB ORM client.
+### Option B: Modular API
+
+Import only what you need:
+
+```ts
+// src/hooks.server.ts
+import { createAuthHandle, sessionPlugin, adminPlugin, emailAuthPlugin } from 'kuratchi-sdk/auth';
+
+export const handle = createAuthHandle({
+  plugins: [
+    sessionPlugin(),
+    adminPlugin(),
+    emailAuthPlugin({
+      provider: 'resend',
+      apiKey: process.env.RESEND_API_KEY!,
+      from: process.env.EMAIL_FROM!
+    })
+  ],
+  // Storage bindings
+  kvNamespaces: { default: 'MY_KV' },
+  r2Buckets: { uploads: 'USER_UPLOADS' }
+});
+```
+
+**What You Get:**
+
+- Session cookies managed under `locals.kuratchi`, `locals.user`, and `locals.session`
+- Magic link endpoints: `/auth/magic/send` and `/auth/magic/callback`
+- OAuth routes: `/auth/oauth/{provider}/start` and `/auth/oauth/{provider}/callback`
+- Storage access: `locals.kuratchi.kv`, `locals.kuratchi.r2`, `locals.kuratchi.d1`
+- Server helper: `locals.kuratchi.orgDatabaseClient(orgId?)` for org DB ORM client
 
 4) __Use in routes__ (examples)
 
@@ -108,8 +169,14 @@ node bin/kuratchi-sdk.mjs init-admin-db --debug
 Output includes a token. Add it to your `.env`:
 
 ```
-KURATCHI_ADMIN_DB_TOKEN=... # from CLI output
+KURATCHI_ADMIN_DB_TOKEN=... # from CLI output (100-year TTL)
 ```
+
+**Important:** Admin tokens have a 100-year TTL to prevent expiration deadlock. If compromised or expired, regenerate with:
+```bash
+npx kuratchi-sdk refresh-admin-token
+```
+See `TOKEN_MANAGEMENT.md` for details.
 
 If envs are not picked up, pass flags explicitly:
 
@@ -137,54 +204,69 @@ Builds will package your library (`dist/`). At runtime the SDK applies the requi
 
 ## API Reference
 
-### Database Namespace
+### Import Paths
+
+The SDK supports two import styles:
+
+```ts
+// Unified API (all features)
+import { kuratchi } from 'kuratchi-sdk';
+import type { KuratchiConfig } from 'kuratchi-sdk';
+
+// Modular imports (subpaths)
+import { createAuthHandle, sessionPlugin, adminPlugin } from 'kuratchi-sdk/auth';
+import { database, KuratchiDatabase } from 'kuratchi-sdk/database';
+import { kv } from 'kuratchi-sdk/kv';
+import { r2 } from 'kuratchi-sdk/r2';
+import { d1 } from 'kuratchi-sdk/d1';
+
+// Legacy namespace imports (backward compatible)
+import { auth, database, kv, r2, d1 } from 'kuratchi-sdk';
+```
+
+### Database Operations
 
 ```ts
 import { database } from 'kuratchi-sdk';
+import { organizationSchema } from '$lib/schema/organization';
 
-// Create a database instance (auto-reads env)
-const instance = database.instance();
+// ORM client with typed schema
+const ormClient = await database.client({
+  databaseName: 'my-org-db',
+  dbToken: 'token-here',
+  schema: organizationSchema
+});
 
-// Schema-less database access - direct SQL operations
-const orgDb = database.forDatabase({
+// Type-safe queries
+const { data: users } = await ormClient.users
+  .where({ deleted_at: { is: null } })
+  .include({ posts: true })
+  .many();
+
+// Direct SQL access (schema-less)
+const httpClient = database.forDatabase({
   databaseName: 'my-org-db',
   dbToken: 'token-here'
 });
 
-// Use HTTP client methods
-const users = await orgDb.query('SELECT * FROM users WHERE active = ?', [true]);
-await orgDb.exec('UPDATE users SET last_login = ? WHERE id = ?', [new Date(), userId]);
-await orgDb.batch([
-  { query: 'INSERT INTO logs (message) VALUES (?)', params: ['User logged in'] },
-  { query: 'UPDATE users SET login_count = login_count + 1 WHERE id = ?', params: [userId] }
-]);
+const result = await httpClient.query('SELECT * FROM users WHERE active = ?', [true]);
 
-// ORM client with schema (for type safety)
-const ormClient = await database.client({
-  databaseName: 'my-org-db',
-  dbToken: 'token-here',
-  schema: mySchema
-});
-
-// Admin database helper (auto-configured from env)
+// Admin database helper
 const admin = await database.admin();
-const orgs = await admin.orm.organizations.many();
+const { data: orgs } = await admin.orm.organizations.many();
 
 // Create new database
-const result = await database.create({
+const newDb = await database.create({
   name: 'new-org-db',
   migrate: true,
-  schema: orgSchema
+  schema: organizationSchema
 });
 ```
 
-### Auth Namespace
+### Auth Operations (Programmatic)
 
 ```ts
 import { auth } from 'kuratchi-sdk';
-
-// Create auth instance (auto-reads env)
-const authInstance = auth.instance();
 
 // Admin operations
 const adminAuth = await auth.admin();
@@ -195,24 +277,14 @@ const newOrg = await adminAuth.createOrganization({
   password: 'secure-password'
 });
 
-// Sign-in helpers
-await auth.signIn.magicLink('user@example.com', {
-  organizationId: 'org-123',
-  redirectTo: '/dashboard'
-});
+// Magic link (requires email auth plugin in handle)
+// POST to /auth/magic/send with { email, organizationId?, redirectTo? }
 
-const result = await auth.signIn.credentials('user@example.com', 'password', {
-  organizationId: 'org-123'
-});
+// Credentials (requires credentials plugin)
+// POST to /auth/credentials/login with { email, password, organizationId? }
 
-// OAuth URLs
-const googleUrl = auth.signIn.oauth.google.startUrl({
-  organizationId: 'org-123',
-  redirectTo: '/dashboard'
-});
-
-// SvelteKit handle
-export const handle = auth.handle();
+// OAuth (requires oauth plugin)
+// Redirect to /auth/oauth/google/start?org=xxx&redirectTo=/dashboard
 ```
 
 ## Runtime ORM: Quickstart and Includes

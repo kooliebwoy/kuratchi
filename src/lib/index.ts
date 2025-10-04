@@ -1,17 +1,24 @@
-// Public API surface
+/**
+ * Kuratchi SDK - Public API
+ * 
+ * Unified SDK for Cloudflare Workers with auth, database, storage, and ORM
+ */
+
+// === UNIFIED API (NEW) ===
+// Single entry point for all configuration
+export { kuratchi } from './kuratchi.js';
+export type { KuratchiConfig, KuratchiSDK } from './kuratchi.js';
+
+// === MODULAR API (BACKWARD COMPATIBLE) ===
+// Individual module exports for granular control
 export { database } from './database/kuratchi-database.js';
 export { auth } from './auth/kuratchi-auth.js';
-// KV utilities (for standalone usage or fallback)
 export { kv } from './kv/index.js';
-// R2 utilities (for standalone usage or fallback)
 export { r2 } from './r2/index.js';
-// D1 utilities (for standalone usage or fallback)
 export { d1 } from './d1/index.js';
-// Studio hook (optional UI)
-export { kuratchiStudio } from './studio/hooks.js';
-export type { StudioConfig } from './studio/hooks.js';
 
-// Re-export auth types for convenience
+// === TYPES ===
+// Re-export commonly used types
 export type {
   SessionMutatorContext,
   SessionMutator,

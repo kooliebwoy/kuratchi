@@ -64,7 +64,9 @@ async function loadOrGenerateMigrations(
 }> {
   try {
     // Try to load Vite-bundled migrations
+    console.log(`[Kuratchi Migrations] Loading migrations for ${schemaName}...`);
     const loaded = await loadMigrations(schemaName);
+    console.log(`[Kuratchi Migrations] ✓ Loaded ${loaded.journal.entries.length} migration(s) from /migrations-${schemaName}`);
     return {
       journal: loaded.journal,
       migrations: loaded.migrations,
@@ -72,11 +74,13 @@ async function loadOrGenerateMigrations(
     };
   } catch (error: any) {
     // Fallback: generate initial migration from schema if available
+    console.log(`[Kuratchi Migrations] No bundled migrations found for ${schemaName}, using fallback...`);
     if (!schema) {
       throw new Error(`No migrations found for ${schemaName} and no schema provided for fallback generation`);
     }
     
     const bundle = generateInitialMigration(schema);
+    console.log(`[Kuratchi Migrations] ✓ Generated initial migration from schema`);
     return {
       journal: bundle.journal,
       migrations: bundle.migrations as any,
@@ -132,12 +136,14 @@ export async function applyMigrations(options: ApplyMigrationsOptions): Promise<
   const { journal, migrations, usedFallback } = await loadOrGenerateMigrations(schemaName, schema);
   
   // Apply pending migrations
+  let appliedCount = 0;
   for (const entry of journal.entries) {
     const migrationKey = `m${String(entry.idx).padStart(4, '0')}`;
     const tag = entry.tag as string;
     
     // Skip if already applied
     if (appliedTags.has(tag)) {
+      console.log(`[Kuratchi Migrations] ⊘ Skipping ${migrationKey} (${tag}) - already applied`);
       continue;
     }
     
@@ -156,7 +162,16 @@ export async function applyMigrations(options: ApplyMigrationsOptions): Promise<
     }
     
     // Apply migration
+    console.log(`[Kuratchi Migrations] → Applying ${migrationKey} (${tag})...`);
     await applyMigration(client, migrationKey, tag, getSql);
+    console.log(`[Kuratchi Migrations] ✓ Applied ${migrationKey} (${tag})`);
+    appliedCount++;
+  }
+  
+  if (appliedCount === 0 && journal.entries.length > 0) {
+    console.log(`[Kuratchi Migrations] ✓ All ${journal.entries.length} migration(s) already applied`);
+  } else if (appliedCount > 0) {
+    console.log(`[Kuratchi Migrations] ✓ Applied ${appliedCount} new migration(s)`);
   }
 }
 
