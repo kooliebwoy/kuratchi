@@ -125,7 +125,7 @@ export default {
       str += String.fromCharCode(bytes[i]);
     }
     let b64 = btoa(str);
-    b64 = b64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    b64 = b64.replace(/=/g, '').replace(/\\+/g, '-').replace(/\\//g, '_');
     
     if (b64 !== sigB64) {
       return new Response(JSON.stringify({ error: 'Invalid token signature' }), {

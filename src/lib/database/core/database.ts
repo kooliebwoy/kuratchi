@@ -15,8 +15,6 @@ import { CloudflareClient } from '../../utils/cloudflare.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { createHttpClient } from '../clients/http-client.js';
 import { createOrmClient } from '../clients/orm-client.js';
-import { deployWorker } from '../deployment/worker-deployment.js';
-import { waitForWorker } from '../deployment/worker-wait.js';
 import { splitSqlStatements } from '../migrations/migration-utils.js';
 
 /**
@@ -98,23 +96,13 @@ export class KuratchiDatabase {
       }
     }
     
-    // Fallback: HTTP flow (requires deploy + wait)
+    // Fallback: HTTP flow
+    // Note: Worker should already be deployed via CLI (kuratchi-cli admin create)
+    // Each database is just a new DO instance accessed via the same worker
     console.log(`[Kuratchi] No direct binding for ${databaseName} - using HTTP flow`);
     
-    // Deploy worker if needed
-    await deployWorker({
-      scriptName: this.scriptName,
-      gatewayKey,
-      cloudflareClient: this.cloudflareClient
-    });
-    
-    // Wait for worker to be ready (best effort)
+    // Create HTTP client for this database (new DO instance)
     const httpClient = this.httpClient({ databaseName, dbToken: token, gatewayKey });
-    try {
-      await waitForWorker({ client: httpClient, timeoutMs: 30000 });
-    } catch {
-      // Non-fatal; queries may still succeed shortly after
-    }
     
     // Apply initial schema migration if requested (via HTTP)
     if (migrate && schema) {

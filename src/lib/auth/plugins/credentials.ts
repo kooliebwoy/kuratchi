@@ -4,8 +4,12 @@
  */
 
 import type { AuthPlugin, PluginContext } from '../core/plugin.js';
+import { comparePassword, hashToken, buildSessionCookie, parseSessionCookie, generateSessionToken } from '../../utils/auth.js';
 
 export interface CredentialsPluginOptions {
+  /** Cookie name for session storage (default: 'kuratchi_session') */
+  cookieName?: string;
+  
   /** Login route (default: '/auth/credentials/login') */
   loginRoute?: string;
   
@@ -36,67 +40,16 @@ async function findOrganizationIdByEmail(adminDb: any, email: string): Promise<s
       .where({ email })
       .first();
     
-    return orgUsers?.organization_id || null;
+    // Use camelCase to match admin plugin schema
+    return orgUsers?.organizationId || null;
   } catch (error) {
     console.warn('[Credentials] Failed to find organization for email:', error);
     return null;
   }
 }
 
-async function verifyPassword(storedHash: string, password: string): Promise<boolean> {
-  // Use Web Crypto API for password verification
-  // This assumes passwords are hashed with PBKDF2
-  // In production, you'd want to support bcrypt, argon2, etc.
-  
-  try {
-    // Parse stored hash format: algorithm:iterations:salt:hash
-    const parts = storedHash.split(':');
-    if (parts.length !== 4) return false;
-    
-    const [algorithm, iterationsStr, saltHex, hashHex] = parts;
-    if (algorithm !== 'pbkdf2') return false;
-    
-    const iterations = parseInt(iterationsStr, 10);
-    const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-    const expectedHash = new Uint8Array(hashHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-    
-    // Hash the provided password with the same salt
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(password),
-      'PBKDF2',
-      false,
-      ['deriveBits']
-    );
-    
-    const derivedBits = await crypto.subtle.deriveBits(
-      {
-        name: 'PBKDF2',
-        salt,
-        iterations,
-        hash: 'SHA-256'
-      },
-      keyMaterial,
-      256 // 32 bytes
-    );
-    
-    const derivedHash = new Uint8Array(derivedBits);
-    
-    // Constant-time comparison
-    if (derivedHash.length !== expectedHash.length) return false;
-    
-    let result = 0;
-    for (let i = 0; i < derivedHash.length; i++) {
-      result |= derivedHash[i] ^ expectedHash[i];
-    }
-    
-    return result === 0;
-  } catch (error) {
-    console.error('[Credentials] Password verification failed:', error);
-    return false;
-  }
-}
+// Use shared password comparison utility
+const verifyPassword = comparePassword;
 
 async function checkRateLimit(
   kv: any,
@@ -155,8 +108,6 @@ async function clearAttempts(kv: any, email: string): Promise<void> {
 }
 
 export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthPlugin {
-  const loginRoute = options.loginRoute || '/auth/credentials/login';
-  const logoutRoute = options.logoutRoute || '/auth/credentials/logout';
   const maxAttempts = options.maxAttempts || 5;
   const lockoutDuration = options.lockoutDuration || 900000; // 15 min
   
@@ -165,186 +116,275 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
     priority: 50, // After session and admin
     
     async onRequest(ctx: PluginContext) {
-      const url = new URL(ctx.event.request.url);
-      const pathname = url.pathname;
+      // Expose credentials API on ctx.locals.kuratchi.auth.credentials
+      ctx.locals.kuratchi = ctx.locals.kuratchi || {} as any;
+      ctx.locals.kuratchi.auth = ctx.locals.kuratchi.auth || {} as any;
       
-      // POST /auth/credentials/login
-      if (pathname === loginRoute && ctx.event.request.method === 'POST') {
-        try {
-          const body = await ctx.event.request.json().catch(() => ({}));
-          const email = (body?.email || '').trim();
-          const password = body?.password || '';
-          let orgId = body?.organizationId || url.searchParams.get('org');
-          
-          if (!email || !password) {
-            return new Response(
-              JSON.stringify({ success: false, error: 'email_and_password_required' }),
-              { status: 400, headers: { 'content-type': 'application/json' } }
-            );
-          }
-          
-          // Check rate limiting (if KV available)
-          const kv = ctx.locals.kuratchi?.kv?.default;
-          if (kv) {
-            const rateLimit = await checkRateLimit(kv, email, maxAttempts, lockoutDuration);
-            if (!rateLimit.allowed) {
-              return new Response(
-                JSON.stringify({
+      ctx.locals.kuratchi.auth.credentials = {
+        /**
+         * Sign in with email/password
+         * - If admin + organizations: authenticates against organization DB
+         * - If admin only (no orgs): authenticates against admin DB
+         * - Creates session and sets session cookie automatically
+         */
+        signIn: async (
+          email: string,
+          password: string,
+          authOptions?: { organizationId?: string; ipAddress?: string; userAgent?: string }
+        ): Promise<
+          | { success: true; cookie: string; user: any; session: any }
+          | { success: false; error: string; message?: string }
+        > => {
+          try {
+            if (!email || !password) {
+              return { success: false, error: 'email_and_password_required' };
+            }
+            
+            // Check rate limiting (if KV available)
+            const kv = ctx.locals.kuratchi?.kv?.default;
+            if (kv) {
+              const rateLimit = await checkRateLimit(kv, email, maxAttempts, lockoutDuration);
+              if (!rateLimit.allowed) {
+                return {
                   success: false,
                   error: 'too_many_attempts',
                   message: 'Account temporarily locked. Please try again later.'
-                }),
-                { status: 429, headers: { 'content-type': 'application/json' } }
-              );
+                };
+              }
             }
-          }
-          
-          // Find organization if not provided
-          if (!orgId) {
+            
+            let orgId: string | undefined = authOptions?.organizationId;
+            let targetDb: any;
+            
+            // Determine target database: Organization DB or Admin DB
             const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
-            if (getAdminDb) {
-              const adminDb = await getAdminDb();
-              orgId = await findOrganizationIdByEmail(adminDb, email);
+            const getOrgDb = ctx.locals.kuratchi?.orgDatabaseClient;
+            
+            // If organizations are enabled, authenticate against org DB
+            if (getOrgDb && getAdminDb) {
+              // Find organization if not provided
+              if (!orgId) {
+                const adminDb = await getAdminDb();
+                const foundOrgId = await findOrganizationIdByEmail(adminDb, email);
+                orgId = foundOrgId || undefined;
+              }
+              
+              if (!orgId) {
+                if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
+                if (options.onFailure) await options.onFailure(email);
+                return { success: false, error: 'invalid_credentials' };
+              }
+              
+              // Get organization database
+              targetDb = await getOrgDb(orgId);
+              if (!targetDb) {
+                return { success: false, error: 'organization_database_not_found' };
+              }
+            } else if (getAdminDb) {
+              // Single-tenant mode: authenticate against admin DB
+              targetDb = await getAdminDb();
+              if (!targetDb) {
+                return { success: false, error: 'admin_database_not_found' };
+              }
+            } else {
+              return { success: false, error: 'no_database_configured' };
             }
-          }
-          
-          if (!orgId) {
-            // Record failed attempt
-            if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
-            if (options.onFailure) await options.onFailure(email);
             
-            return new Response(
-              JSON.stringify({ success: false, error: 'invalid_credentials' }),
-              { status: 401, headers: { 'content-type': 'application/json' } }
-            );
-          }
-          
-          // Get organization database
-          const orgDb = await ctx.locals.kuratchi?.orgDatabaseClient?.(orgId);
-          if (!orgDb) {
-            return new Response(
-              JSON.stringify({ success: false, error: 'organization_database_not_found' }),
-              { status: 404, headers: { 'content-type': 'application/json' } }
-            );
-          }
-          
-          let user;
-          
-          // Custom authenticate function
-          if (options.authenticate) {
-            user = await options.authenticate(email, password, ctx);
-          } else {
-            // Default: verify against stored password hash
-            const { data: existingUser } = await orgDb.users
-              .where({ email })
-              .first();
+            let user;
             
-            if (!existingUser || !existingUser.password_hash) {
-              // Record failed attempt
+            // Custom authenticate function
+            if (options.authenticate) {
+              user = await options.authenticate(email, password, ctx);
+            } else {
+              // Default: verify against stored password hash
+              const { data: existingUser } = await targetDb.users
+                .where({ email })
+                .first();
+              
+              if (!existingUser || !existingUser.password_hash) {
+                if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
+                if (options.onFailure) await options.onFailure(email);
+                return { success: false, error: 'invalid_credentials' };
+              }
+              
+              // Verify password (with pepper from auth secret)
+              const authSecret = ctx.env.KURATCHI_AUTH_SECRET;
+              const isValid = await verifyPassword(password, existingUser.password_hash, authSecret);
+              
+              if (!isValid) {
+                if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
+                if (options.onFailure) await options.onFailure(email);
+                return { success: false, error: 'invalid_credentials' };
+              }
+              
+              user = existingUser;
+            }
+            
+            if (!user) {
               if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
               if (options.onFailure) await options.onFailure(email);
-              
-              return new Response(
-                JSON.stringify({ success: false, error: 'invalid_credentials' }),
-                { status: 401, headers: { 'content-type': 'application/json' } }
-              );
+              return { success: false, error: 'invalid_credentials' };
             }
             
-            // Verify password
-            const isValid = await verifyPassword(existingUser.password_hash, password);
-            if (!isValid) {
-              // Record failed attempt
-              if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
-              if (options.onFailure) await options.onFailure(email);
-              
-              return new Response(
-                JSON.stringify({ success: false, error: 'invalid_credentials' }),
-                { status: 401, headers: { 'content-type': 'application/json' } }
-              );
+            // Clear failed attempts on success
+            if (kv) await clearAttempts(kv, email);
+            
+            // Create session with proper token and encryption
+            const authSecret = ctx.env.KURATCHI_AUTH_SECRET;
+            if (!authSecret) {
+              return { success: false, error: 'auth_secret_not_configured' };
             }
             
-            user = existingUser;
-          }
-          
-          if (!user) {
-            // Record failed attempt
-            if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
-            if (options.onFailure) await options.onFailure(email);
+            const now = new Date();
+            const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
             
-            return new Response(
-              JSON.stringify({ success: false, error: 'invalid_credentials' }),
-              { status: 401, headers: { 'content-type': 'application/json' } }
+            // Generate session token and hash it
+            const sessionToken = `${orgId || 'admin'}.${generateSessionToken()}`;
+            const sessionTokenHash = await hashToken(sessionToken);
+            
+            // Store session in database with hashed token
+            const insertResult = await targetDb.session.insert({
+              sessionToken: sessionTokenHash,
+              userId: user.id,
+              expires: expires.getTime(), // Convert Date to timestamp (milliseconds)
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+              deleted_at: null
+            });
+            
+            if (!insertResult?.success) {
+              return { success: false, error: 'failed_to_create_session', message: insertResult?.error };
+            }
+            
+            // Build encrypted session cookie
+            const sessionCookie = await buildSessionCookie(
+              authSecret,
+              (orgId || 'admin') as any,
+              sessionTokenHash
             );
-          }
-          
-          // Clear failed attempts on success
-          if (kv) await clearAttempts(kv, email);
-          
-          // Create session
-          const sessionId = crypto.randomUUID();
-          const sessionData = {
-            userId: user.id,
-            email: user.email,
-            organizationId: orgId,
-            createdAt: Date.now()
-          };
-          
-          await orgDb.sessions.insert({
-            id: sessionId,
-            user_id: user.id,
-            organization_id: orgId,
-            created_at: Date.now(),
-            expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          // Set session cookie
-          const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-          const sessionCookie = JSON.stringify(sessionData);
-          ctx.locals.kuratchi?.setSessionCookie?.(sessionCookie, { expires });
-          
-          // Callback after success
-          if (options.onSuccess) {
-            await options.onSuccess(user);
-          }
-          
-          return new Response(
-            JSON.stringify({
-              success: true,
+            
+            // Sanitize user (remove password_hash)
+            const { password_hash, ...safeUser } = user;
+            
+            // Build enriched session data (batteries included)
+            const sessionData = {
+              userId: user.id,
+              email: user.email,
+              organizationId: orgId || 'admin',
+              roles: user.role ? [user.role] : [],
+              isEmailVerified: !!user.emailVerified,
               user: {
                 id: user.id,
                 email: user.email,
-                name: user.name
+                name: user.name || null,
+                firstName: user.firstName || null,
+                lastName: user.lastName || null,
+                role: user.role || null,
+                image: user.image || null,
+                organizationId: orgId || null
+              },
+              createdAt: now.toISOString(),
+              lastAccessedAt: now.toISOString(),
+              ipAddress: ctx.event.request.headers.get('cf-connecting-ip') 
+              || ctx.event.request.headers.get('x-forwarded-for') 
+              || (ctx.event as any).getClientAddress?.(),
+              userAgent: ctx.event.request.headers.get('user-agent')
+            };
+            
+            // Set session in locals (batteries included - immediate access)
+            ctx.locals.session = sessionData;
+            
+            // Set session cookie using session plugin helper
+            const setCookie = ctx.locals.kuratchi?.auth?.session?.setCookie;
+            if (setCookie) {
+              setCookie(sessionCookie, { expires });
+            }
+            
+            // Callback after success
+            if (options.onSuccess) {
+              await options.onSuccess(user);
+            }
+            
+            return {
+              success: true,
+              cookie: sessionCookie,
+              user: safeUser,
+              session: sessionData
+            };
+          } catch (e: any) {
+            console.error('[Credentials] Authentication failed:', e);
+            return { success: false, error: 'authentication_failed', message: e?.message };
+          }
+        },
+        
+        /**
+         * Sign out current user
+         * - Invalidates session in database
+         * - Clears session cookie
+         */
+        signOut: async (): Promise<{ success: boolean; error?: string }> => {
+          try {
+            const sessionCookie = ctx.event.cookies.get(options.cookieName || 'kuratchi_session');
+            if (!sessionCookie) {
+              return { success: true }; // Already signed out
+            }
+            
+            const authSecret = ctx.env.KURATCHI_AUTH_SECRET;
+            if (!authSecret) {
+              return { success: false, error: 'auth_secret_not_configured' };
+            }
+            
+            // Parse session cookie to get token hash
+            const parsed = await parseSessionCookie(authSecret, sessionCookie);
+            if (parsed) {
+              const { tokenHash } = parsed;
+              
+              // Delete session from database
+              const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
+              const getOrgDb = ctx.locals.kuratchi?.orgDatabaseClient;
+              
+              // Try org DB first, fall back to admin DB
+              let targetDb: any;
+              if (getOrgDb && parsed.orgId !== 'admin') {
+                targetDb = await getOrgDb(parsed.orgId);
+              } else if (getAdminDb) {
+                targetDb = await getAdminDb();
               }
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } }
-          );
-        } catch (e: any) {
-          console.error('[Credentials] Login failed:', e);
-          return new Response(
-            JSON.stringify({ success: false, error: 'login_failed', detail: e?.message || String(e) }),
-            { status: 500, headers: { 'content-type': 'application/json' } }
-          );
+              
+              if (targetDb) {
+                await targetDb.session.delete({ sessionToken: tokenHash });
+              }
+            }
+            
+            // Clear session cookie using session plugin helper
+            const clearCookie = ctx.locals.kuratchi?.auth?.session?.clearCookie;
+            if (clearCookie) {
+              clearCookie();
+            }
+            
+            // Clear session from locals
+            ctx.locals.session = null;
+            
+            return { success: true };
+          } catch (e: any) {
+            console.error('[Credentials] Sign out failed:', e);
+            return { success: false, error: e?.message || 'signout_failed' };
+          }
+        },
+        
+        /**
+         * @deprecated Use signIn instead
+         */
+        authenticate: async (
+          email: string,
+          password: string,
+          authOptions?: { organizationId?: string; ipAddress?: string; userAgent?: string }
+        ) => {
+          console.warn('[Credentials] authenticate() is deprecated. Use signIn() instead.');
+          // @ts-ignore
+          return ctx.locals.kuratchi.auth.credentials.signIn(email, password, authOptions);
         }
-      }
-      
-      // POST /auth/credentials/logout
-      if (pathname === logoutRoute && ctx.event.request.method === 'POST') {
-        try {
-          // Clear session cookie
-          ctx.locals.kuratchi?.clearSessionCookie?.();
-          
-          return new Response(
-            JSON.stringify({ success: true }),
-            { status: 200, headers: { 'content-type': 'application/json' } }
-          );
-        } catch (e: any) {
-          console.error('[Credentials] Logout failed:', e);
-          return new Response(
-            JSON.stringify({ success: false, error: 'logout_failed' }),
-            { status: 500, headers: { 'content-type': 'application/json' } }
-          );
-        }
-      }
+      };
     }
   };
 }

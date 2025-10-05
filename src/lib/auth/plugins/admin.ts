@@ -4,15 +4,16 @@
  */
 
 import type { AuthPlugin, PluginContext } from '../core/plugin.js';
-import { KuratchiDatabase } from '../../database/kuratchi-database.js';
+import { KuratchiDatabase } from '../../database/core/database.js';
 import { createSignedDbToken } from '../../utils/token.js';
-import type { RequestEvent } from '@sveltejs/kit';
+import { hashPassword } from '../../utils/auth.js';
 
 export interface AdminPluginOptions {
   /**
    * Custom function to get admin DB client
    * If not provided, will auto-create from env variables
-  getAdminDb?: (event: RequestEvent) => Promise<any> | any;
+   */
+  getAdminDb?: (event: any) => Promise<any> | any;
   
   /**
    * REQUIRED: Admin database schema
@@ -101,7 +102,10 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
       };
       
       // Batteries-included admin operations namespace
-      ctx.locals.kuratchi.admin = {
+      ctx.locals.kuratchi = ctx.locals.kuratchi || {} as any;
+      ctx.locals.kuratchi.auth = ctx.locals.kuratchi.auth || {} as any;
+      
+      ctx.locals.kuratchi.auth.admin = {
         /**
          * List all organizations
          */
@@ -137,12 +141,19 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
         
         /**
          * Create a new organization with dedicated database.
-         * Only organizationName and email are required. All other fields are optional
-         * and will be passed through to match your admin schema.
+         * Creates the first user in the org database and maps email -> organizationId.
+         * 
+         * @param orgData.organizationName - Organization name (required)
+         * @param orgData.email - First user's email (required)
+         * @param orgData.userName - First user's name (optional)
+         * @param orgData.password - First user's password (optional, for credentials auth)
+         * @param [key: string] - Any additional organization fields from your schema
          */
         createOrganization: async (orgData: {
           organizationName: string;
           email: string;
+          userName?: string;
+          password?: string;
           [key: string]: any;  // Allow any additional fields from schema
         }) => {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
@@ -243,30 +254,66 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             updated_at: now
           });
           
-          // 5. Create organization user mapping (if userId provided)
-          if (orgData.userId) {
-            await adminDb.organizationUsers.insert({
-              id: crypto.randomUUID(),
-              organizationId: organizationId,
-              userId: orgData.userId,
-              email: orgData.email,
-              created_at: now,
-              updated_at: now,
-              deleted_at: null
-            });
+          // 5. Create first user in organization database
+          const getOrgDb = ctx.locals.kuratchi?.orgDatabaseClient;
+          if (!getOrgDb) {
+            throw new Error('[Admin] Organization database client not configured');
           }
+          
+          const orgDb = await getOrgDb(organizationId);
+          if (!orgDb) {
+            throw new Error('[Admin] Failed to get organization database client');
+          }
+          
+          const userId = crypto.randomUUID();
+          let password_hash: string | undefined;
+          
+          // Hash password if provided (for credentials auth)
+          // Use auth secret as pepper for consistency with credentials plugin verification
+          if (orgData.password) {
+            const authSecret = env.KURATCHI_AUTH_SECRET;
+            password_hash = await hashPassword(orgData.password, undefined, authSecret);
+          }
+          
+          // Create first user in organization database
+          await orgDb.users.insert({
+            id: userId,
+            email: orgData.email,
+            name: orgData.userName || orgData.organizationName,
+            password_hash,
+            role: 'owner',
+            created_at: now,
+            updated_at: now,
+            deleted_at: null
+          });
+          
+          // 6. Create organizationUsers mapping (email -> organizationId for auth lookup)
+          await adminDb.organizationUsers.insert({
+            id: crypto.randomUUID(),
+            organizationId: organizationId,
+            email: orgData.email,
+            created_at: now,
+            updated_at: now,
+            deleted_at: null
+          });
           
           return {
             success: true,
             organization: {
-              ...orgData,              // Spread all user fields first
-              id: organizationId,      // Override with system-generated ID
-              name: orgData.organizationName  // Ensure name is set
+              id: organizationId,
+              name: orgData.organizationName,
+              email: orgData.email
             },
             database: {
               id: databaseId,
               name: databaseName,
               token: dbToken
+            },
+            user: {
+              id: userId,
+              email: orgData.email,
+              name: orgData.userName || orgData.organizationName,
+              role: 'owner'
             }
           };
         },

@@ -65,7 +65,8 @@ async function findOrganizationIdByEmail(adminDb: any, email: string): Promise<s
       .where({ email })
       .first();
     
-    return orgUsers?.organization_id || null;
+    // Use camelCase to match admin plugin schema
+    return orgUsers?.organizationId || null;
   } catch (error) {
     console.warn('[OAuth] Failed to find organization for email:', error);
     return null;

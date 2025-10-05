@@ -20,57 +20,116 @@ export function sessionPlugin(options: SessionPluginOptions = {}): AuthPlugin {
   
   return {
     name: 'session',
-    priority: 20, // Run early
+    priority: 45, // Run after admin (30) and organization (40) plugins to access database helpers
     
     async onRequest(ctx: PluginContext) {
       // Initialize session placeholders
       if (!ctx.locals.kuratchi) ctx.locals.kuratchi = {};
-      ctx.locals.kuratchi.user = null;
-      ctx.locals.kuratchi.session = null;
+      ctx.locals.kuratchi.auth = ctx.locals.kuratchi.auth || {} as any;
+      ctx.locals.kuratchi.auth.session = ctx.locals.kuratchi.auth.session || {} as any;
       
-      // Mirror at top level for convenience
-      ctx.locals.user = null;
       ctx.locals.session = null;
       
       // Helper: Set session cookie
-      ctx.locals.kuratchi.setSessionCookie = (value: string, opts?: { expires?: Date }) => {
+      ctx.locals.kuratchi.auth.session.setCookie = (value: string, opts?: { expires?: Date }) => {
         const expires = opts?.expires;
         const isHttps = new URL(ctx.event.request.url).protocol === 'https:';
         ctx.event.cookies.set(cookieName, value, {
-          httpOnly: true,
-          sameSite: 'lax',
-          secure: isHttps,
           path: '/',
-          ...(expires ? { expires } : {})
+          httpOnly: true,
+          secure: isHttps,
+          sameSite: 'lax',
+          expires
         });
       };
       
       // Helper: Clear session cookie
-      ctx.locals.kuratchi.clearSessionCookie = () => {
+      ctx.locals.kuratchi.auth.session.clearCookie = () => {
         ctx.event.cookies.delete(cookieName, { path: '/' });
       };
       
-      // Parse session from cookie
+      // Parse session from cookie and load from database
       const rawCookie = ctx.event.cookies.get(cookieName);
+      
       if (rawCookie && ctx.env.KURATCHI_AUTH_SECRET) {
         try {
-          const session = await parseSession(ctx.env.KURATCHI_AUTH_SECRET, rawCookie);
-          if (session) {
-            ctx.locals.kuratchi.session = session;
-            ctx.locals.session = session;
+          // Parse cookie to get orgId and tokenHash
+          const parsed = await parseSession(ctx.env.KURATCHI_AUTH_SECRET, rawCookie);
+          
+          if (parsed && parsed.tokenHash) {
+            // Get database client based on orgId
+            let db: any;
+            if (parsed.orgId && parsed.orgId !== 'admin') {
+              // Organization database
+              const getOrgDb = ctx.locals.kuratchi?.orgDatabaseClient;
+              if (getOrgDb) {
+                db = await getOrgDb(parsed.orgId);
+              }
+            } else {
+              // Admin database
+              const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
+              if (getAdminDb) {
+                db = await getAdminDb();
+              }
+            }
             
-            // Basic user object from session
-            if (session.userId || session.email) {
-              ctx.locals.kuratchi.user = {
-                id: session.userId,
-                email: session.email,
-                organizationId: session.organizationId
-              };
-              ctx.locals.user = ctx.locals.kuratchi.user;
+            if (db) {
+              // Look up session in database
+              const { data: sessionRecord } = await db.session
+                .where({ sessionToken: parsed.tokenHash })
+                .first();
+              
+              if (sessionRecord) {
+                // Check if session is expired
+                const now = new Date();
+                
+                if (sessionRecord.expires && new Date(sessionRecord.expires) > now) {
+                  // Load user from database
+                  const { data: user } = await db.users
+                    .where({ id: sessionRecord.userId })
+                    .first();
+                  
+                  if (user) {
+                    // Build enriched session (batteries included)
+                    const enrichedSession = {
+                      userId: user.id,
+                      email: user.email,
+                      organizationId: parsed.orgId,
+                      roles: user.role ? [user.role] : [],
+                      isEmailVerified: !!user.emailVerified,
+                      user: {
+                        id: user.id,
+                        email: user.email,
+                        name: user.name || null,
+                        firstName: user.firstName || null,
+                        lastName: user.lastName || null,
+                        role: user.role || null,
+                        image: user.image || null,
+                        organizationId: parsed.orgId || null
+                      },
+                      createdAt: sessionRecord.created_at,
+                      lastAccessedAt: new Date().toISOString(),
+                      ipAddress: ctx.event.request.headers.get('cf-connecting-ip') 
+                        || ctx.event.request.headers.get('x-forwarded-for') 
+                        || (ctx.event as any).getClientAddress?.(),
+                      userAgent: ctx.event.request.headers.get('user-agent')
+                    };
+                    
+                    // Set session in locals (access via locals.session.user)
+                    ctx.locals.session = enrichedSession;
+                  } else {
+                    // User not found - delete session
+                    await db.session.delete({ sessionToken: parsed.tokenHash });
+                  }
+                } else {
+                  // Session expired - delete it
+                  await db.session.delete({ sessionToken: parsed.tokenHash });
+                }
+              }
             }
           }
         } catch (error) {
-          console.warn('[Kuratchi Session] Failed to parse session cookie:', error);
+          console.warn('[Kuratchi Session] Failed to load session:', error);
         }
       }
     },

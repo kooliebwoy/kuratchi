@@ -93,18 +93,29 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
           return null;
         }
         
-        // Lookup organization database record
+        // Lookup organization database record (using camelCase to match schema)
         const { data: databases } = await adminDb.databases
-          .where({ organization_id: organizationId })
+          .where({ organizationId: organizationId })
           .first();
         
-        if (!databases || !databases.db_token) {
+        if (!databases) {
           console.warn(`[Kuratchi Organization] No database found for organization: ${organizationId}`);
           return null;
         }
         
-        const databaseName = databases.database_name;
-        const dbToken = databases.db_token;
+        const databaseName = databases.name;
+        
+        // Get token from dbApiTokens table (query for non-revoked token)
+        const { data: tokenRecord } = await adminDb.dbApiTokens
+          .where({ databaseId: databases.id, revoked: false })
+          .first();
+        
+        if (!tokenRecord || !tokenRecord.token) {
+          console.warn(`[Kuratchi Organization] No valid token found for database: ${databases.id}`);
+          return null;
+        }
+        
+        const dbToken = tokenRecord.token;
         
         // Use schema from call options or plugin config
         const schema = callOptions?.schema || options.organizationSchema;
@@ -115,7 +126,7 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
         }
         
         // Get ORM client (auto-detects D1, DO direct, or HTTP)
-        const orgDb = await dbService.client({
+        const orgDb = await dbService.ormClient({
           databaseName,
           dbToken,
           gatewayKey: gatewayKey || '',
