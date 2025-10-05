@@ -12,9 +12,9 @@ import type { QueryResult } from './kuratchi-orm.js';
 export function createD1Adapter(db: any) {
   return async (sql: string, params?: any[]): Promise<QueryResult<any>> => {
     try {
-      const stmt = db.prepare(sql);
+      let stmt = db.prepare(sql);
       if (params && params.length > 0) {
-        stmt.bind(...params);
+        stmt = stmt.bind(...params);  // ✅ bind() returns a NEW statement
       }
       const result = await stmt.all();
       

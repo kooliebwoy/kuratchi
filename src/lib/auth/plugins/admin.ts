@@ -109,8 +109,9 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
           if (!adminDb) throw new Error('[Admin] Admin DB not configured');
           
+          // Query for non-deleted orgs using isNullish (handles both null and undefined)
           const res = await adminDb.organizations
-            .where({ deleted_at: { is: null } })
+            .where({ deleted_at: { isNullish: true } })
             .orderBy({ created_at: 'desc' })
             .many();
           return res?.data ?? [];
@@ -123,22 +124,26 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
           if (!adminDb) throw new Error('[Admin] Admin DB not configured');
           
+          // Query for non-deleted org using whereAny for proper AND + OR logic
           const res = await adminDb.organizations
-            .where({ id, deleted_at: { is: null } })
+            .where({ id })
+            .whereAny([
+              { deleted_at: { is: null } },
+              { deleted_at: { isNullish: true } }
+            ])
             .first();
           return res?.data;
         },
         
         /**
-         * Create a new organization with dedicated database
-         * Returns organization and database info
+         * Create a new organization with dedicated database.
+         * Only organizationName and email are required. All other fields are optional
+         * and will be passed through to match your admin schema.
          */
         createOrganization: async (orgData: {
           organizationName: string;
-          organizationSlug: string;
           email: string;
-          userId?: string;
-          status?: 'active' | 'inactive' | 'lead';
+          [key: string]: any;  // Allow any additional fields from schema
         }) => {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
           if (!adminDb) throw new Error('[Admin] Admin DB not configured');
@@ -156,19 +161,29 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           // Generate IDs using Web Crypto
           const organizationId = crypto.randomUUID();
           const databaseId = crypto.randomUUID();
-          const databaseName = `org-${orgData.organizationSlug}-${crypto.randomUUID().substring(0, 8)}`;
+          // Generate database name from organizationName (sanitized) or use UUID
+          const sanitizedName = orgData.organizationName
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .substring(0, 32);
+          const databaseName = `org-${sanitizedName}-${crypto.randomUUID().substring(0, 8)}`;
           const now = new Date().toISOString();
           
           // 1. Create organization record
-          await adminDb.organizations.insert({
-            id: organizationId,
-            organizationName: orgData.organizationName,
-            organizationSlug: orgData.organizationSlug,
-            email: orgData.email,
-            status: orgData.status || 'active',
-            created_at: now,
-            updated_at: now
+          // ORM now handles schema validation automatically
+          const insertResult = await adminDb.organizations.insert({
+            ...orgData,                    // Spread all user fields
+            id: organizationId,            // Override with generated ID
+            created_at: now,               // System timestamp
+            updated_at: now,               // System timestamp
+            deleted_at: null               // Explicit null for soft-delete queries
           });
+          
+          if (!insertResult?.success) {
+            const errorMsg = insertResult?.error || 'Unknown error';
+            throw new Error(`[Admin] Failed to insert organization: ${errorMsg}`);
+          }
           
           // 2. Provision database for organization
           let dbToken: string;
@@ -233,20 +248,20 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             await adminDb.organizationUsers.insert({
               id: crypto.randomUUID(),
               organizationId: organizationId,
-              organizationSlug: orgData.organizationSlug,
+              userId: orgData.userId,
               email: orgData.email,
               created_at: now,
-              updated_at: now
+              updated_at: now,
+              deleted_at: null
             });
           }
           
           return {
             success: true,
             organization: {
-              id: organizationId,
-              name: orgData.organizationName,
-              slug: orgData.organizationSlug,
-              email: orgData.email
+              ...orgData,              // Spread all user fields first
+              id: organizationId,      // Override with system-generated ID
+              name: orgData.organizationName  // Ensure name is set
             },
             database: {
               id: databaseId,
@@ -305,9 +320,13 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             throw new Error('[Admin] KURATCHI_GATEWAY_KEY not configured');
           }
           
-          // Get database record
+          // Get database record (non-deleted) using whereAny
           const { data: db } = await adminDb.databases
-            .where({ organizationId: organizationId, deleted_at: { is: null } })
+            .where({ organizationId: organizationId })
+            .whereAny([
+              { deleted_at: { is: null } },
+              { deleted_at: { isNullish: true } }
+            ])
             .first();
           
           if (!db) {

@@ -6,7 +6,7 @@ import type { DatabaseSchema } from './json-schema.js';
 export type Primitive = string | number | boolean | null;
 export type WhereValue =
   | Primitive
-  | { eq?: Primitive; ne?: Primitive; gt?: Primitive; gte?: Primitive; lt?: Primitive; lte?: Primitive; like?: string; in?: Primitive[]; notIn?: Primitive[]; is?: null };
+  | { eq?: Primitive; ne?: Primitive; gt?: Primitive; gte?: Primitive; lt?: Primitive; lte?: Primitive; like?: string; in?: Primitive[]; notIn?: Primitive[]; is?: null; isNull?: boolean; isNullish?: boolean };
 export type Where = Record<string, WhereValue>;
 
 export type OrderItem = string | { [column: string]: 'asc' | 'desc' };
@@ -81,6 +81,14 @@ function compileWhere(where?: Where): { sql: string; params: any[] } {
     if (Object.prototype.hasOwnProperty.call(val, 'is')) {
       // Only supports IS NULL explicitly; use eq for booleans/others
       ops.push(`${col} IS ${val.is === null ? 'NULL' : 'NOT NULL'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(val, 'isNull')) {
+      // isNull: true/false for NULL checking
+      ops.push(`${col} IS ${val.isNull ? 'NULL' : 'NOT NULL'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(val, 'isNullish')) {
+      // isNullish: true/false handles both NULL and undefined (undefined becomes NULL in SQLite)
+      ops.push(`${col} IS ${val.isNullish ? 'NULL' : 'NOT NULL'}`);
     }
     if (ops.length === 0) {
       // fallback eq
@@ -212,6 +220,41 @@ class QueryBuilder<Row = any> {
   orWhere(filter: Where): this {
     this.whereGroups.push({ ...filter });
     this.rawWhereGroups.push([]);
+    return this;
+  }
+
+  /**
+   * Add a parenthetical OR group to the current WHERE clause.
+   * All conditions in the array are OR'd together and wrapped in parentheses.
+   * Example: .where({ status: 'active' }).whereAny([{ role: 'admin' }, { role: 'owner' }])
+   * Generates: WHERE status = 'active' AND (role = 'admin' OR role = 'owner')
+   */
+  whereAny(conditions: Where[]): this {
+    if (!conditions || conditions.length === 0) return this;
+    
+    // Compile each condition to SQL
+    const orParts: string[] = [];
+    const allParams: any[] = [];
+    
+    for (const condition of conditions) {
+      const compiled = compileWhere(condition);
+      if (compiled.sql) {
+        // Remove the 'WHERE ' prefix from each part
+        const sqlPart = compiled.sql.replace(/^WHERE\s+/i, '');
+        orParts.push(sqlPart);
+        allParams.push(...compiled.params);
+      }
+    }
+    
+    if (orParts.length > 0) {
+      // Join with OR and wrap in parentheses
+      const orClause = orParts.length > 1 
+        ? `(${orParts.join(' OR ')})` 
+        : orParts[0];
+      
+      return this.sql({ query: orClause, params: allParams });
+    }
+    
     return this;
   }
 
@@ -410,7 +453,16 @@ class QueryBuilder<Row = any> {
   }
 }
 
-export function createRuntimeOrm(execute: SqlExecutor) {
+export function createRuntimeOrm(execute: SqlExecutor, schema?: Pick<DatabaseSchema, 'tables'>) {
+  // Build column map for schema validation
+  const schemaColumnsByTable = new Map<string, Set<string>>();
+  if (schema?.tables) {
+    for (const table of schema.tables) {
+      const columns = new Set(table.columns.map(col => col.name));
+      schemaColumnsByTable.set(table.name, columns);
+    }
+  }
+
   function table<Row = any>(tableName: string): TableApi<Row> {
     const builderFactory = () => new QueryBuilder<Row>(tableName, execute);
     return {
@@ -429,11 +481,42 @@ export function createRuntimeOrm(execute: SqlExecutor) {
       async insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>> {
         const rows = Array.isArray(values) ? values : [values];
         if (rows.length === 0) return { success: true };
-        const cols = Object.keys(rows[0]);
+        
+        // Schema validation: filter out invalid columns
+        const validColumns = schemaColumnsByTable.get(tableName);
+        let validatedRows: Partial<Row>[] = rows;
+        
+        if (validColumns) {
+          const skippedFields = new Set<string>();
+          validatedRows = rows.map(row => {
+            const validatedRow: Partial<Row> = {};
+            for (const [key, value] of Object.entries(row)) {
+              if (validColumns.has(key)) {
+                (validatedRow as any)[key] = value;
+              } else {
+                skippedFields.add(key);
+              }
+            }
+            return validatedRow;
+          });
+          
+          if (skippedFields.size > 0) {
+            console.warn(
+              `[Kuratchi ORM] Skipping fields not in schema for table '${tableName}': ${Array.from(skippedFields).join(', ')}`
+            );
+          }
+        }
+        
+        const cols = Object.keys(validatedRows[0]);
+        if (cols.length === 0) {
+          return { success: false, error: 'No valid columns to insert' };
+        }
+        
         const placeholders = `(${cols.map(() => '?').join(', ')})`;
-        const allPlaceholders = rows.map(() => placeholders).join(', ');
-        const params = rows.flatMap((r) => cols.map((c) => (r as any)[c]));
+        const allPlaceholders = validatedRows.map(() => placeholders).join(', ');
+        const params = validatedRows.flatMap((r) => cols.map((c) => (r as any)[c]));
         const baseSql = `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES ${allPlaceholders}`;
+        
         const ret = await execute(baseSql, params);
         return ret as QueryResult<Row | Row[]>;
       },
@@ -454,6 +537,7 @@ export function createRuntimeOrm(execute: SqlExecutor) {
       where(filter: Where) { return builderFactory().where(filter); },
       whereIn(column: string, values: any[]) { return builderFactory().whereIn(column, values); },
       orWhere(filter: Where) { return builderFactory().orWhere(filter); },
+      whereAny(conditions: Where[]) { return builderFactory().whereAny(conditions); },
       orderBy(order: OrderBy | string) { return builderFactory().orderBy(order); },
       limit(n: number) { return builderFactory().limit(n); },
       offset(n: number) { return builderFactory().offset(n); },
@@ -486,6 +570,7 @@ export interface TableApi<Row = any> {
   where(filter: Where): TableQuery<Row>;
   whereIn(column: string, values: any[]): TableQuery<Row>;
   orWhere(filter: Where): TableQuery<Row>;
+  whereAny(conditions: Where[]): TableQuery<Row>;
   orderBy(order: OrderBy | string): TableQuery<Row>;
   limit(n: number): TableQuery<Row>;
   offset(n: number): TableQuery<Row>;
@@ -497,6 +582,7 @@ export interface TableApi<Row = any> {
 export interface TableQuery<Row = any> {
   where(filter: Where): TableQuery<Row>;
   whereIn(column: string, values: any[]): TableQuery<Row>;
+  whereAny(conditions: Where[]): TableQuery<Row>;
   orWhere(filter: Where): TableQuery<Row>;
   orderBy(order: OrderBy | string): TableQuery<Row>;
   limit(n: number): TableQuery<Row>;
@@ -544,7 +630,7 @@ export function createClientFromJsonSchema(
     jsonColsByTable.set(t.name, s);
   }
 
-  const base = createRuntimeOrm(execute);
+  const base = createRuntimeOrm(execute, schema);
 
   const serializeForTable = (table: string, values: Record<string, any>): Record<string, any> => {
     const jsonCols = jsonColsByTable.get(table) || new Set<string>();
