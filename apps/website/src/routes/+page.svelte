@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Database, Zap, Code2, Lock, Globe, GitBranch, Github } from 'lucide-svelte';
+  import { Database, Zap, Lock, Globe, GitBranch, Github, Code } from 'lucide-svelte';
 </script>
 
 <svelte:head>
@@ -76,7 +76,7 @@
           <div class="stat place-items-center">
             <div class="stat-title">Built with</div>
             <div class="stat-value text-accent">Svelte 5</div>
-            <div class="stat-desc">Modern stack</div>
+            <div class="stat-desc">Daisy UI & Tailwind CSS</div>
           </div>
         </div>
       </div>
@@ -88,7 +88,7 @@
     <div class="container mx-auto px-4 max-w-6xl">
       <div class="text-center mb-16">
         <h2 class="text-4xl md:text-5xl font-black mb-4">Everything You Need</h2>
-        <p class="text-xl text-base-content/70">Powerful features built for modern web development</p>
+        <p class="text-xl text-base-content/70">Powerful features. Batteries included.</p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -129,7 +129,7 @@
         <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
           <div class="card-body">
             <div class="bg-primary/10 rounded-lg p-3 w-fit">
-              <Code2 class="w-8 h-8 text-primary" />
+              <Code class="w-8 h-8 text-primary" />
             </div>
             <h3 class="card-title">Type Safe SDK</h3>
             <p>Full TypeScript support with generated types from your schemas. Autocomplete everywhere.</p>
