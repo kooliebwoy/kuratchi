@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@plugin "daisyui";
+
+@theme {
+  --font-family-sans: Inter, system-ui, sans-serif;
+}
+
+/* DaisyUI Theme Configuration */
+[data-theme="kuratchi"] {
+  --p: 215 100% 58%;
+  --pf: 219 100% 48%;
+  --pc: 210 40% 98%;
+  --s: 220 26% 18%;
+  --a: 213 94% 68%;
+  --n: 222 47% 11%;
+  --nc: 214 32% 91%;
+  --b1: 222 64% 9%;
+  --b2: 215 28% 17%;
+  --b3: 217 33% 17%;
+  --bc: 222 47% 71%;
+  --in: 199 89% 48%;
+  --su: 158 64% 52%;
+  --wa: 43 96% 56%;
+  --er: 0 72% 71%;
+}
+
+body {
+  font-family: var(--font-family-sans);
+}

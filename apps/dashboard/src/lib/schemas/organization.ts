@@ -1,0 +1,92 @@
+import type { SchemaDsl } from 'kuratchi-sdk';
+
+export const organizationSchema: SchemaDsl = {
+  name: 'organization',
+  version: 1,
+  mixins: {
+    timestamps: {
+      updated_at: 'text default now',
+      created_at: 'text default now',
+      deleted_at: 'text'
+    }
+  },
+  tables: {
+    users: {
+      id: 'text primary key not null',
+      name: 'text',
+      firstName: 'text',
+      lastName: 'text',
+      phone: 'text',
+      email: 'text not null unique',
+      emailVerified: 'timestamp_ms',
+      image: 'text',
+      status: 'boolean',
+      role: 'enum(owner,editor,member)',
+      password_hash: 'text',
+      accessAttempts: 'integer',
+      tenantId: 'text',
+      organization: 'text',
+      '...timestamps': true,
+    },
+    session: {
+      sessionToken: 'text primary key not null',
+      userId: 'text not null -> users.id cascade',
+      expires: 'timestamp_ms not null',
+      '...timestamps': true,
+    },
+    passwordResetTokens: {
+      id: 'text primary key',
+      token: 'text not null',
+      email: 'text not null',
+      expires: 'timestamp_ms not null',
+      '...timestamps': true,
+    },
+    emailVerificationToken: {
+      id: 'text primary key',
+      token: 'text not null',
+      email: 'text not null',
+      userId: 'text not null',
+      expires: 'timestamp_ms not null',
+      '...timestamps': true,
+    },
+    magicLinkTokens: {
+      id: 'text primary key',
+      token: 'text not null',
+      email: 'text not null',
+      redirectTo: 'text',
+      consumed_at: 'timestamp_ms',
+      expires: 'timestamp_ms not null',
+      '...timestamps': true,
+    },
+    activity: {
+      id: 'text primary key',
+      userId: 'text',
+      action: 'text not null',
+      data: 'json default (json_object())',
+      status: 'boolean',
+      ip: 'text',
+      userAgent: 'text',
+      '...timestamps': true,
+    },
+    roles: {
+      id: 'text primary key',
+      name: 'text not null',
+      description: 'text',
+      permissions: 'json',
+      '...timestamps': true,
+    },
+    oauthAccounts: {
+      id: 'text primary key',
+      userId: 'text -> users.id cascade',
+      provider: 'text not null',
+      providerAccountId: 'text not null',
+      access_token: 'text',
+      refresh_token: 'text',
+      expires_at: 'timestamp_ms',
+      scope: 'text',
+      token_type: 'text',
+      id_token: 'text',
+      '...timestamps': true,
+    },
+  },
+} as const;

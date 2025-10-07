@@ -1,0 +1,18 @@
+{
+  "extends": "@kuratchi/config-typescript/svelte.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "$lib/*": ["src/lib/*"],
+      "$components/*": ["src/lib/components/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "svelte.config.js",
+    "vite.config.ts",
+    "tailwind.config.ts",
+    "tsconfig.json.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".svelte-kit"]
+}

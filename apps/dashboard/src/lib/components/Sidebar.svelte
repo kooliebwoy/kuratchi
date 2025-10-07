@@ -1,0 +1,56 @@
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { Home, Database, Users, Shield, Settings, Activity, Globe } from 'lucide-svelte';
+
+  const menu = [
+    { label: 'Overview', icon: Home, href: '/' },
+    { label: 'Database', icon: Database, href: '/database' },
+    { label: 'Authentication', icon: Shield, href: '/auth' },
+    { label: 'Users', icon: Users, href: '/users' },
+    { label: 'Storage', icon: Globe, href: '/storage' },
+    { label: 'Logs', icon: Activity, href: '/activity-logs' },
+    { label: 'Settings', icon: Settings, href: '/settings' }
+  ];
+
+  const isActive = (href: string) => {
+    return $page.url.pathname === href;
+  };
+</script>
+
+<aside class="flex h-full min-w-[260px] flex-col gap-6 border-r border-base-200 bg-base-200/30 px-6 py-6">
+  <div class="flex items-center gap-3">
+    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary">
+      <Globe class="h-5 w-5" />
+    </div>
+    <div>
+      <p class="text-sm uppercase tracking-widest text-primary/70">Kuratchi</p>
+      <h1 class="text-lg font-semibold text-base-content">Dashboard</h1>
+    </div>
+  </div>
+  <nav class="flex flex-1 flex-col gap-1">
+    {#each menu as item}
+      {#if isActive(item.href)}
+        <a
+          href={item.href}
+          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-primary shadow-soft-xl transition hover:bg-primary/15 hover:text-primary"
+        >
+          <item.icon class="h-4 w-4" />
+          <span>{item.label}</span>
+        </a>
+      {:else}
+        <a
+          href={item.href}
+          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-base-content/80 transition hover:bg-primary/10 hover:text-primary"
+        >
+          <item.icon class="h-4 w-4" />
+          <span>{item.label}</span>
+        </a>
+      {/if}
+    {/each}
+  </nav>
+
+  <footer class="mt-auto text-xs text-base-content/60">
+    <p>Project: Orbit SaaS</p>
+    <p class="text-base-content/40">ENV: Production</p>
+  </footer>
+</aside>
