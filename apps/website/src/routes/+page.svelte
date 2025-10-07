@@ -7,244 +7,328 @@
   <meta name="description" content="The open-source backend platform built for speed. Database, Auth, Storage - all optimized for SvelteKit and Cloudflare Workers." />
 </svelte:head>
 
-<div class="min-h-screen">
+<div class="min-h-screen bg-white">
   <!-- Navbar -->
-  <nav class="navbar bg-base-100 border-b border-base-300">
-    <div class="navbar-start">
-      <a href="/" class="btn btn-ghost text-xl font-bold">
-        <Database class="w-6 h-6" />
-        Kuratchi
-      </a>
-    </div>
-    <div class="navbar-center hidden lg:flex">
-      <ul class="menu menu-horizontal px-1">
-        <li><a href="#features">Features</a></li>
-        <li><a href="#why">Why Kuratchi</a></li>
-        <li><a href="https://github.com/kuratchi/kuratchi" target="_blank" rel="noopener">GitHub</a></li>
-      </ul>
-    </div>
-    <div class="navbar-end gap-2">
-      <a href="https://github.com/kuratchi/kuratchi" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
-        <Github class="w-5 h-5" />
-        Star on GitHub
-      </a>
-      <a href="/auth/start" class="btn btn-primary btn-sm">Get Started</a>
+  <nav class="bg-white border-b border-gray-100">
+    <div class="max-w-7xl mx-auto px-6 py-4">
+      <div class="flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2 text-xl font-bold text-gray-900 hover:text-gray-700 transition-colors">
+          <Database class="w-6 h-6" />
+          Kuratchi
+        </a>
+        
+        <div class="hidden md:flex items-center gap-8">
+          <a href="#features" class="text-gray-600 hover:text-gray-900 transition-colors font-medium">Features</a>
+          <a href="#why" class="text-gray-600 hover:text-gray-900 transition-colors font-medium">Why Kuratchi</a>
+          <a href="https://github.com/kooliebwoy/kuratchi" target="_blank" rel="noopener" class="text-gray-600 hover:text-gray-900 transition-colors font-medium">GitHub</a>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <a href="https://github.com/kooliebwoy/kuratchi" target="_blank" rel="noopener" class="hidden sm:flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors">
+            <Github class="w-5 h-5" />
+            <span class="font-medium">Star</span>
+          </a>
+          <a href="/auth/start" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            Get Started
+          </a>
+        </div>
+      </div>
     </div>
   </nav>
 
   <!-- Hero Section -->
-  <section class="hero min-h-[80vh] bg-gradient-to-br from-primary/5 via-base-100 to-secondary/5">
-    <div class="hero-content text-center max-w-5xl">
-      <div>
-        <div class="inline-block mb-4">
-          <div class="badge badge-primary badge-lg">Coming Soon • Open Source • Free Forever</div>
+  <section class="bg-white pt-20 pb-24">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center max-w-4xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium mb-8">
+          <span>Coming Soon</span>
+          <span class="text-blue-400">•</span>
+          <span>Open Source</span>
+          <span class="text-blue-400">•</span>
+          <span>Free Forever</span>
         </div>
         
-        <h1 class="text-5xl md:text-7xl font-black mb-6 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-          Build Faster with<br />Kuratchi
+        <h1 class="text-5xl md:text-7xl font-black mb-6 text-gray-900 leading-tight">
+          Build Faster with<br />
+          <span class="text-blue-600">Kuratchi</span>
         </h1>
         
-        <p class="text-xl md:text-2xl mb-8 text-base-content/80 max-w-3xl mx-auto">
-          The open-source backend platform built for <span class="font-bold text-primary">SvelteKit</span> and <span class="font-bold text-secondary">Cloudflare Workers</span>. 
+        <p class="text-xl md:text-2xl mb-10 text-gray-600 max-w-3xl mx-auto leading-relaxed">
+          The open-source backend platform built for SvelteKit and Cloudflare Workers. 
           Database, Auth, and Storage—all optimized for edge performance.
         </p>
         
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
-          <a href="/auth/start" class="btn btn-primary btn-lg">
-            Start Building
+        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+          <a href="/auth/start" class="flex items-center gap-2 px-7 py-3.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-lg">
+            Get Started
             <Zap class="w-5 h-5" />
           </a>
-          <a href="https://github.com/kuratchi/kuratchi" target="_blank" rel="noopener" class="btn btn-outline btn-lg">
+          <a href="https://github.com/kooliebwoy/kuratchi" target="_blank" rel="noopener" class="flex items-center gap-2 px-7 py-3.5 border-2 border-gray-200 text-gray-700 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-colors font-semibold text-lg">
             <Github class="w-5 h-5" />
             View on GitHub
           </a>
         </div>
 
-        <div class="stats stats-horizontal shadow-lg bg-base-200">
-          <div class="stat place-items-center">
-            <div class="stat-title">Open Source</div>
-            <div class="stat-value text-primary">100%</div>
-            <div class="stat-desc">MIT Licensed</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
+          <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+            <div class="text-sm text-gray-500 font-medium mb-2">Open Source</div>
+            <div class="text-4xl font-bold text-blue-600 mb-1">100%</div>
+            <div class="text-sm text-gray-600">MIT Licensed</div>
           </div>
           
-          <div class="stat place-items-center">
-            <div class="stat-title">SDK</div>
-            <div class="stat-value text-secondary">Free</div>
-            <div class="stat-desc">Always will be</div>
+          <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+            <div class="text-sm text-gray-500 font-medium mb-2">SDK</div>
+            <div class="text-4xl font-bold text-blue-600 mb-1">Free</div>
+            <div class="text-sm text-gray-600">Always will be</div>
           </div>
           
-          <div class="stat place-items-center">
-            <div class="stat-title">Built with</div>
-            <div class="stat-value text-accent">Svelte 5</div>
-            <div class="stat-desc">Daisy UI & Tailwind CSS</div>
+          <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+            <div class="text-sm text-gray-500 font-medium mb-2">Built with</div>
+            <div class="text-4xl font-bold text-blue-600 mb-1">Svelte 5</div>
+            <div class="text-sm text-gray-600">Latest & Greatest</div>
           </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Examples Section -->
+  <section class="py-24 bg-white">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl md:text-5xl font-black mb-4 text-gray-900">Simple to Use</h2>
+        <p class="text-xl text-gray-600">Get started in minutes with our intuitive API</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+        <!-- Setup Example -->
+        <div>
+          <h3 class="text-lg font-bold text-gray-900 mb-4">🚀 Setup in hooks.server.ts</h3>
+          <div class="mockup-code bg-gray-900 text-sm">
+            <pre data-prefix="1"><code class="text-blue-400">import</code> <code class="text-gray-300">{'{ kuratchi }'}</code> <code class="text-blue-400">from</code> <code class="text-green-400">'kuratchi-sdk'</code><code class="text-gray-300">;</code></pre>
+            <pre data-prefix="2"><code class="text-blue-400">import</code> <code class="text-gray-300">{'{'}</code></pre>
+            <pre data-prefix="3"><code class="text-gray-300">  sessionPlugin,</code></pre>
+            <pre data-prefix="4"><code class="text-gray-300">  adminPlugin,</code></pre>
+            <pre data-prefix="5"><code class="text-gray-300">  emailAuthPlugin</code></pre>
+            <pre data-prefix="6"><code class="text-gray-300">{'}'} </code><code class="text-blue-400">from</code> <code class="text-green-400">'kuratchi-sdk/auth'</code><code class="text-gray-300">;</code></pre>
+            <pre data-prefix="7"><code class="text-gray-300"></code></pre>
+            <pre data-prefix="8"><code class="text-blue-400">const</code> <code class="text-yellow-300">app</code> <code class="text-gray-300">= </code><code class="text-yellow-300">kuratchi</code><code class="text-gray-300">({"{"}</code></pre>
+            <pre data-prefix="9"><code class="text-gray-300">  auth: {"{"}</code></pre>
+            <pre data-prefix="10"><code class="text-gray-300">    plugins: [</code></pre>
+            <pre data-prefix="11"><code class="text-gray-300">      </code><code class="text-yellow-300">sessionPlugin</code><code class="text-gray-300">(),</code></pre>
+            <pre data-prefix="12"><code class="text-gray-300">      </code><code class="text-yellow-300">adminPlugin</code><code class="text-gray-300">(),</code></pre>
+            <pre data-prefix="13"><code class="text-gray-300">      </code><code class="text-yellow-300">emailAuthPlugin</code><code class="text-gray-300">({"{ ... }"})</code></pre>
+            <pre data-prefix="14"><code class="text-gray-300">    ]</code></pre>
+            <pre data-prefix="15"><code class="text-gray-300">  {"}"}</code></pre>
+            <pre data-prefix="16"><code class="text-gray-300">{"}"});</code></pre>
+            <pre data-prefix="17"><code class="text-gray-300"></code></pre>
+            <pre data-prefix="18"><code class="text-blue-400">export</code> <code class="text-blue-400">const</code> <code class="text-yellow-300">handle</code> <code class="text-gray-300">= </code><code class="text-yellow-300">app</code><code class="text-gray-300">.handle;</code></pre>
+          </div>
+        </div>
+
+        <!-- Type-Safe Queries -->
+        <div>
+          <h3 class="text-lg font-bold text-gray-900 mb-4">🎯 Type-Safe Database Queries</h3>
+          <div class="mockup-code bg-gray-900 text-sm">
+            <pre data-prefix="1"><code class="text-gray-500">// Get typed ORM client</code></pre>
+            <pre data-prefix="2"><code class="text-blue-400">const</code> <code class="text-yellow-300">db</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-yellow-300">locals</code><code class="text-gray-300">.kuratchi</code></pre>
+            <pre data-prefix="3"><code class="text-gray-300">  .</code><code class="text-yellow-300">orgDatabaseClient</code><code class="text-gray-300">();</code></pre>
+            <pre data-prefix="4"><code class="text-gray-300"></code></pre>
+            <pre data-prefix="5"><code class="text-gray-500">// Query with relationships</code></pre>
+            <pre data-prefix="6"><code class="text-blue-400">const</code> <code class="text-yellow-300">users</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-yellow-300">db</code><code class="text-gray-300">.users</code></pre>
+            <pre data-prefix="7"><code class="text-gray-300">  .</code><code class="text-yellow-300">where</code><code class="text-gray-300">({"{"} deleted_at: {"{ is: null }"} {"}"})</code></pre>
+            <pre data-prefix="8"><code class="text-gray-300">  .</code><code class="text-yellow-300">include</code><code class="text-gray-300">({"{"} posts: </code><code class="text-blue-400">true</code> <code class="text-gray-300">{"}"})</code></pre>
+            <pre data-prefix="9"><code class="text-gray-300">  .</code><code class="text-yellow-300">orderBy</code><code class="text-gray-300">({"{"} created_at: </code><code class="text-green-400">'desc'</code> <code class="text-gray-300">{"}"})</code></pre>
+            <pre data-prefix="10"><code class="text-gray-300">  .</code><code class="text-yellow-300">limit</code><code class="text-gray-300">(</code><code class="text-purple-400">20</code><code class="text-gray-300">)</code></pre>
+            <pre data-prefix="11"><code class="text-gray-300">  .</code><code class="text-yellow-300">many</code><code class="text-gray-300">();</code></pre>
+            <pre data-prefix="12"><code class="text-gray-300"></code></pre>
+            <pre data-prefix="13"><code class="text-gray-500">// Full TypeScript autocomplete ✨</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Load Function Example (Full Width) -->
+      <div>
+        <h3 class="text-lg font-bold text-gray-900 mb-4">⚡ Use in Your SvelteKit Routes</h3>
+        <div class="mockup-code bg-gray-900 text-sm">
+          <pre data-prefix="1"><code class="text-gray-500">// src/routes/+page.server.ts</code></pre>
+          <pre data-prefix="2"><code class="text-blue-400">export</code> <code class="text-blue-400">const</code> <code class="text-yellow-300">load</code> <code class="text-gray-300">= </code><code class="text-blue-400">async</code> <code class="text-gray-300">({"{ locals }"}) </code><code class="text-blue-400">=></code> <code class="text-gray-300">{"{"}</code></pre>
+          <pre data-prefix="3"><code class="text-gray-300">  </code><code class="text-gray-500">// Access authenticated user</code></pre>
+          <pre data-prefix="4"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">user</code><code class="text-gray-300">, </code><code class="text-yellow-300">session</code> <code class="text-gray-300">{"} = "}</code><code class="text-yellow-300">locals</code><code class="text-gray-300">;</code></pre>
+          <pre data-prefix="5"><code class="text-gray-300"></code></pre>
+          <pre data-prefix="6"><code class="text-gray-300">  </code><code class="text-gray-500">// Get org database client</code></pre>
+          <pre data-prefix="7"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-yellow-300">db</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-yellow-300">locals</code><code class="text-gray-300">.kuratchi.</code><code class="text-yellow-300">orgDatabaseClient</code><code class="text-gray-300">();</code></pre>
+          <pre data-prefix="8"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">data</code> <code class="text-gray-300">{"} = "}</code><code class="text-blue-400">await</code> <code class="text-yellow-300">db</code><code class="text-gray-300">.posts.</code><code class="text-yellow-300">where</code><code class="text-gray-300">({"{ published: true }"}).</code><code class="text-yellow-300">many</code><code class="text-gray-300">();</code></pre>
+          <pre data-prefix="9"><code class="text-gray-300"></code></pre>
+          <pre data-prefix="10"><code class="text-gray-300">  </code><code class="text-blue-400">return</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">user</code><code class="text-gray-300">, posts: </code><code class="text-yellow-300">data</code> <code class="text-gray-300">{"}"};</code></pre>
+          <pre data-prefix="11"><code class="text-gray-300">{"}"};</code></pre>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Features Section -->
-  <section id="features" class="py-20 bg-base-200">
-    <div class="container mx-auto px-4 max-w-6xl">
+  <section id="features" class="py-24 bg-gray-50">
+    <div class="max-w-7xl mx-auto px-6">
       <div class="text-center mb-16">
-        <h2 class="text-4xl md:text-5xl font-black mb-4">Everything You Need</h2>
-        <p class="text-xl text-base-content/70">Powerful features. Batteries included.</p>
+        <h2 class="text-4xl md:text-5xl font-black mb-4 text-gray-900">Everything You Need</h2>
+        <p class="text-xl text-gray-600">Powerful features. Batteries included.</p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <!-- Feature 1: Database -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-primary/10 rounded-lg p-3 w-fit">
-              <Database class="w-8 h-8 text-primary" />
-            </div>
-            <h3 class="card-title">Edge Database</h3>
-            <p>Cloudflare D1 powered databases with type-safe ORM. Define schemas, run migrations, and query with full TypeScript support.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <Database class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">Edge Database</h3>
+          <p class="text-gray-600 leading-relaxed">Cloudflare D1 powered databases with type-safe ORM. Define schemas, run migrations, and query with full TypeScript support.</p>
         </div>
 
         <!-- Feature 2: Auth -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-secondary/10 rounded-lg p-3 w-fit">
-              <Lock class="w-8 h-8 text-secondary" />
-            </div>
-            <h3 class="card-title">Authentication</h3>
-            <p>Built-in auth with sessions, OAuth providers, magic links, and role-based access control. Security by default.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <Lock class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">Authentication</h3>
+          <p class="text-gray-600 leading-relaxed">Built-in auth with sessions, OAuth providers, magic links, and role-based access control. Security by default.</p>
         </div>
 
         <!-- Feature 3: Edge Performance -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-accent/10 rounded-lg p-3 w-fit">
-              <Zap class="w-8 h-8 text-accent" />
-            </div>
-            <h3 class="card-title">Edge First</h3>
-            <p>Deploy globally on Cloudflare Workers. Sub-10ms response times from any location in the world.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <Zap class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">Edge First</h3>
+          <p class="text-gray-600 leading-relaxed">Deploy globally on Cloudflare Workers. Sub-10ms response times from any location in the world.</p>
         </div>
 
         <!-- Feature 4: Type Safety -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-primary/10 rounded-lg p-3 w-fit">
-              <Code class="w-8 h-8 text-primary" />
-            </div>
-            <h3 class="card-title">Type Safe SDK</h3>
-            <p>Full TypeScript support with generated types from your schemas. Autocomplete everywhere.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <Code class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">Type Safe SDK</h3>
+          <p class="text-gray-600 leading-relaxed">Full TypeScript support with generated types from your schemas. Autocomplete everywhere.</p>
         </div>
 
         <!-- Feature 5: SvelteKit Native -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-secondary/10 rounded-lg p-3 w-fit">
-              <Globe class="w-8 h-8 text-secondary" />
-            </div>
-            <h3 class="card-title">SvelteKit Native</h3>
-            <p>Built specifically for SvelteKit. Hooks, load functions, and form actions work seamlessly.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <Globe class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">SvelteKit Native</h3>
+          <p class="text-gray-600 leading-relaxed">Built specifically for SvelteKit. Hooks, load functions, and form actions work seamlessly.</p>
         </div>
 
         <!-- Feature 6: Open Source -->
-        <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-          <div class="card-body">
-            <div class="bg-accent/10 rounded-lg p-3 w-fit">
-              <GitBranch class="w-8 h-8 text-accent" />
-            </div>
-            <h3 class="card-title">Open Source</h3>
-            <p>MIT licensed. Inspect the code, contribute, or self-host. You own your data and infrastructure.</p>
+        <div class="bg-white rounded-2xl p-8 border border-gray-100 hover:shadow-lg transition-shadow">
+          <div class="bg-blue-50 rounded-xl p-3 w-fit mb-5">
+            <GitBranch class="w-8 h-8 text-blue-600" />
           </div>
+          <h3 class="text-xl font-bold mb-3 text-gray-900">Open Source</h3>
+          <p class="text-gray-600 leading-relaxed">MIT licensed. Inspect the code, contribute, or self-host. You own your data and infrastructure.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Why Kuratchi Section -->
-  <section id="why" class="py-20 bg-base-100">
-    <div class="container mx-auto px-4 max-w-4xl">
+  <section id="why" class="py-24 bg-white">
+    <div class="max-w-4xl mx-auto px-6">
       <div class="text-center mb-16">
-        <h2 class="text-4xl md:text-5xl font-black mb-4">Why We're Building This</h2>
-        <p class="text-xl text-base-content/70">Fast, transparent, and dogfooded</p>
+        <h2 class="text-4xl md:text-5xl font-black mb-4 text-gray-900">Why We're Building This</h2>
+        <p class="text-xl text-gray-600">Fast, transparent, and dogfooded</p>
       </div>
 
       <div class="space-y-6">
-        <div class="card bg-base-200 shadow-xl">
-          <div class="card-body">
-            <h3 class="card-title text-2xl">🚀 We're Building Fast</h3>
-            <p class="text-lg">
-              We believe in shipping quickly and iterating based on real usage. New features, bug fixes, and improvements land constantly.
-            </p>
-          </div>
+        <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100">
+          <h3 class="text-2xl font-bold mb-3 text-gray-900">🚀 We're Building Fast</h3>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            We believe in shipping quickly and iterating based on real usage. New features, bug fixes, and improvements land constantly.
+          </p>
         </div>
 
-        <div class="card bg-base-200 shadow-xl">
-          <div class="card-body">
-            <h3 class="card-title text-2xl">🍽️ We Dogfood Everything</h3>
-            <p class="text-lg">
-              This entire platform runs on Kuratchi. Our dashboard, authentication, database management—all built with our own SDK. If it's not good enough for us, it's not good enough for you.
-            </p>
-          </div>
+        <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100">
+          <h3 class="text-2xl font-bold mb-3 text-gray-900">🍽️ We Dogfood Everything</h3>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            This entire platform runs on Kuratchi. Our dashboard, authentication, database management—all built with our own SDK. If it's not good enough for us, it's not good enough for you.
+          </p>
         </div>
 
-        <div class="card bg-base-200 shadow-xl">
-          <div class="card-body">
-            <h3 class="card-title text-2xl">💎 Open Source Forever</h3>
-            <p class="text-lg">
-              The SDK is free and always will be. MIT licensed, transparent development, and community-driven. No vendor lock-in, no surprises.
-            </p>
-          </div>
+        <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100">
+          <h3 class="text-2xl font-bold mb-3 text-gray-900">💎 Open Source Forever</h3>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            The SDK is free and always will be. MIT licensed, transparent development, and community-driven. No vendor lock-in, no surprises.
+          </p>
         </div>
 
-        <div class="card bg-base-200 shadow-xl">
-          <div class="card-body">
-            <h3 class="card-title text-2xl">⚡ Built for the Edge</h3>
-            <p class="text-lg">
-              Why compromise? Cloudflare Workers + D1 + SvelteKit = the fastest full-stack development experience. Period.
-            </p>
-          </div>
+        <div class="bg-gray-50 rounded-2xl p-8 border border-gray-100">
+          <h3 class="text-2xl font-bold mb-3 text-gray-900">⚡ Built for the Edge</h3>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            Why compromise? Cloudflare Workers + D1 + SvelteKit = the fastest full-stack development experience. Period.
+          </p>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA Section -->
-  <section class="py-20 bg-gradient-to-br from-primary to-secondary text-primary-content">
-    <div class="container mx-auto px-4 text-center max-w-3xl">
-      <h2 class="text-4xl md:text-5xl font-black mb-6">Ready to Build?</h2>
-      <p class="text-xl mb-8 opacity-90">
-        Join us in building the future of backend development. Open source, free, and blazing fast.
-      </p>
-      <div class="flex flex-col sm:flex-row gap-4 justify-center">
-        <a href="/auth/start" class="btn btn-neutral btn-lg">
-          Get Started Now
-          <Zap class="w-5 h-5" />
-        </a>
-        <a href="https://github.com/kuratchi/kuratchi" target="_blank" rel="noopener" class="btn btn-outline btn-lg text-white border-white hover:bg-white hover:text-primary">
-          <Github class="w-5 h-5" />
-          Star on GitHub
-        </a>
       </div>
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="footer footer-center p-10 bg-base-200 text-base-content">
-    <aside>
-      <div class="flex items-center gap-2 text-2xl font-bold">
-        <Database class="w-8 h-8" />
-        <span>Kuratchi</span>
+  <footer class="py-16 bg-white border-t border-gray-100">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+        <!-- Brand Column -->
+        <div class="md:col-span-1">
+          <div class="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
+            <Database class="w-6 h-6" />
+            <span>Kuratchi</span>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed">
+            Open Source Backend Platform for SvelteKit & Cloudflare Workers
+          </p>
+        </div>
+
+        <!-- Product Column -->
+        <div>
+          <h3 class="font-bold text-gray-900 mb-4">Product</h3>
+          <ul class="space-y-3">
+            <li><a href="#features" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Features</a></li>
+            <li><a href="#why" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Why Kuratchi</a></li>
+            <li><a href="/docs" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Documentation</a></li>
+          </ul>
+        </div>
+
+        <!-- Resources Column -->
+        <div>
+          <h3 class="font-bold text-gray-900 mb-4">Resources</h3>
+          <ul class="space-y-3">
+            <li><a href="https://github.com/kooliebwoy/kuratchi" target="_blank" rel="noopener" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">GitHub</a></li>
+            <li><a href="https://discord.gg/kuratchi" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Discord</a></li>
+            <li><a href="/docs" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Guides</a></li>
+          </ul>
+        </div>
+
+        <!-- Company Column -->
+        <div>
+          <h3 class="font-bold text-gray-900 mb-4">Company</h3>
+          <ul class="space-y-3">
+            <li><a href="/about" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">About</a></li>
+            <li><a href="/blog" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Blog</a></li>
+            <li><a href="https://github.com/kooliebwoy/kuratchi" target="_blank" rel="noopener" class="text-gray-600 hover:text-gray-900 transition-colors text-sm">Contribute</a></li>
+          </ul>
+        </div>
       </div>
-      <p class="font-medium">Open Source Backend Platform</p>
-      <p>Built with 💚 for SvelteKit & Cloudflare Workers</p>
-    </aside>
-    <nav>
-      <div class="grid grid-flow-col gap-4">
-        <a href="https://github.com/kuratchi/kuratchi" target="_blank" rel="noopener" class="link link-hover">GitHub</a>
-        <a href="https://discord.gg/kuratchi" class="link link-hover">Discord</a>
-        <a href="/docs" class="link link-hover">Docs</a>
+
+      <!-- Bottom Bar -->
+      <div class="pt-8 border-t border-gray-100">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+          <p class="text-gray-500 text-sm">© 2024 Kuratchi. All rights reserved.</p>
+          <div class="flex items-center gap-6">
+            <a href="/privacy" class="text-gray-500 hover:text-gray-900 transition-colors text-sm">Privacy Policy</a>
+            <a href="/terms" class="text-gray-500 hover:text-gray-900 transition-colors text-sm">Terms of Service</a>
+          </div>
+        </div>
       </div>
-    </nav>
+    </div>
   </footer>
 </div>
