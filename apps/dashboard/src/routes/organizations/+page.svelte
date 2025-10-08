@@ -1,0 +1,303 @@
+<script lang="ts">
+	import { Building2, Plus, Pencil, Trash2, X } from 'lucide-svelte';
+	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from './organizations.remote';
+
+	// Fetch organizations
+	const organizations = getOrganizations();
+
+	// Modal state
+	let showModal = $state(false);
+	let modalMode = $state<'create' | 'edit'>('create');
+	let editingOrg = $state<any>(null);
+
+	// Form state
+	let formData = $state({
+		organizationName: '',
+		email: '',
+		organizationSlug: '',
+		notes: '',
+		status: 'active' as 'active' | 'inactive' | 'lead'
+	});
+
+	// Reset form
+	function resetForm() {
+		formData = {
+			organizationName: '',
+			email: '',
+			organizationSlug: '',
+			notes: '',
+			status: 'active'
+		};
+		editingOrg = null;
+	}
+
+	// Open create modal
+	function openCreateModal() {
+		resetForm();
+		modalMode = 'create';
+		showModal = true;
+	}
+
+	// Open edit modal
+	function openEditModal(org: any) {
+		editingOrg = org;
+		formData = {
+			organizationName: org.organizationName || '',
+			email: org.email || '',
+			organizationSlug: org.organizationSlug || '',
+			notes: org.notes || '',
+			status: org.status || 'active'
+		};
+		modalMode = 'edit';
+		showModal = true;
+	}
+
+	// Auto-generate slug from name
+	function generateSlug() {
+		if (!formData.organizationSlug && formData.organizationName) {
+			formData.organizationSlug = formData.organizationName
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-+|-+$/g, '');
+		}
+	}
+
+	// Handle submit  
+	function handleFormSubmit(event: SubmitEvent) {
+		// Form submission is handled by the remote form
+		showModal = false;
+		resetForm();
+	}
+
+	// Handle delete
+	function handleDelete(id: string) {
+		if (!confirm('Are you sure you want to delete this organization?')) return;
+		// TODO: Implement delete via form submission
+	}
+
+	// Status badge colors
+	function getStatusColor(status: string) {
+		switch (status) {
+			case 'active': return 'badge-success';
+			case 'inactive': return 'badge-error';
+			case 'lead': return 'badge-warning';
+			default: return 'badge-neutral';
+		}
+	}
+</script>
+
+<div class="p-8">
+	<!-- Header -->
+	<div class="mb-8 flex items-center justify-between">
+		<div class="flex items-center gap-3">
+			<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+				<Building2 class="h-6 w-6 text-primary" />
+			</div>
+			<div>
+				<h1 class="text-2xl font-bold">Organizations</h1>
+				<p class="text-sm text-base-content/70">Manage your organizations</p>
+			</div>
+		</div>
+		<button class="btn btn-primary" onclick={openCreateModal}>
+			<Plus class="h-4 w-4" />
+			New Organization
+		</button>
+	</div>
+
+	<!-- Organizations Table -->
+	<div class="card bg-base-100 shadow-sm">
+		<div class="overflow-x-auto">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>Name</th>
+						<th>Slug</th>
+						<th>Email</th>
+						<th>Status</th>
+						<th>Created</th>
+						<th class="text-right">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#if organizations.loading}
+						<tr>
+							<td colspan="6" class="text-center">
+								<span class="loading loading-spinner loading-md"></span>
+							</td>
+						</tr>
+					{:else if organizations.current && organizations.current.length > 0}
+						{#each organizations.current as org}
+							<tr class="hover">
+								<td class="font-medium">{org.organizationName || 'Unnamed'}</td>
+								<td>
+									<code class="text-xs bg-base-200 px-2 py-1 rounded">{org.organizationSlug}</code>
+								</td>
+								<td>{org.email}</td>
+								<td>
+									<span class="badge {getStatusColor(org.status)} badge-sm">
+										{org.status}
+									</span>
+								</td>
+								<td class="text-sm text-base-content/70">
+									{new Date(org.created_at).toLocaleDateString()}
+								</td>
+								<td class="text-right">
+									<div class="flex justify-end gap-2">
+										<button 
+											class="btn btn-ghost btn-sm btn-square"
+											onclick={() => openEditModal(org)}
+										>
+											<Pencil class="h-4 w-4" />
+										</button>
+										<button 
+											class="btn btn-ghost btn-sm btn-square text-error"
+											onclick={() => handleDelete(org.id)}
+										>
+											<Trash2 class="h-4 w-4" />
+										</button>
+									</div>
+								</td>
+							</tr>
+						{/each}
+					{:else}
+						<tr>
+							<td colspan="6" class="text-center py-8">
+								<div class="flex flex-col items-center gap-2">
+									<Building2 class="h-12 w-12 text-base-content/30" />
+									<p class="text-base-content/70">No organizations yet</p>
+									<button class="btn btn-sm btn-primary" onclick={openCreateModal}>
+										Create your first organization
+									</button>
+								</div>
+							</td>
+						</tr>
+					{/if}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+
+<!-- Create/Edit Modal -->
+{#if showModal}
+	<div class="modal modal-open">
+		<div class="modal-box">
+			<div class="flex items-center justify-between mb-4">
+				<h3 class="font-bold text-lg">
+					{modalMode === 'create' ? 'Create Organization' : 'Edit Organization'}
+				</h3>
+				<button 
+					class="btn btn-ghost btn-sm btn-circle"
+					onclick={() => { showModal = false; resetForm(); }}
+				>
+					<X class="h-4 w-4" />
+				</button>
+			</div>
+
+			<form {...(modalMode === 'create' ? createOrganization : updateOrganization)} onsubmit={handleFormSubmit} class="space-y-4">
+				<!-- Organization Name -->
+				<div class="form-control">
+					<label class="label" for="org-name">
+						<span class="label-text">Organization Name</span>
+					</label>
+					<input
+						id="org-name"
+						name="organizationName"
+						type="text"
+						value={formData.organizationName}
+						oninput={(e) => { formData.organizationName = e.currentTarget.value; generateSlug(); }}
+						class="input input-bordered"
+						placeholder="Acme Corp"
+						required
+					/>
+				</div>
+
+				<!-- Hidden ID for edit mode -->
+				{#if modalMode === 'edit' && editingOrg}
+					<input type="hidden" name="id" value={editingOrg.id} />
+				{/if}
+
+				<!-- Slug -->
+				<div class="form-control">
+					<label class="label" for="org-slug">
+						<span class="label-text">Slug</span>
+					</label>
+					<input
+						id="org-slug"
+						name="organizationSlug"
+						type="text"
+						value={formData.organizationSlug}
+						oninput={(e) => formData.organizationSlug = e.currentTarget.value}
+						class="input input-bordered"
+						placeholder="acme-corp"
+						pattern="[a-z0-9-]+"
+						required
+					/>
+					<label class="label">
+						<span class="label-text-alt">Lowercase letters, numbers, and hyphens only</span>
+					</label>
+				</div>
+
+				<!-- Email -->
+				<div class="form-control">
+					<label class="label" for="org-email">
+						<span class="label-text">Email</span>
+					</label>
+					<input
+						id="org-email"
+						name="email"
+						type="email"
+						value={formData.email}
+						oninput={(e) => formData.email = e.currentTarget.value}
+						class="input input-bordered"
+						placeholder="contact@acme.com"
+						required
+					/>
+				</div>
+
+				<!-- Status -->
+				<div class="form-control">
+					<label class="label" for="org-status">
+						<span class="label-text">Status</span>
+					</label>
+					<select id="org-status" name="status" value={formData.status} class="select select-bordered">
+						<option value="active">Active</option>
+						<option value="inactive">Inactive</option>
+						<option value="lead">Lead</option>
+					</select>
+				</div>
+
+				<!-- Notes -->
+				<div class="form-control">
+					<label class="label" for="org-notes">
+						<span class="label-text">Notes</span>
+					</label>
+					<textarea
+						id="org-notes"
+						name="notes"
+						value={formData.notes}
+						oninput={(e) => formData.notes = e.currentTarget.value}
+						class="textarea textarea-bordered"
+						placeholder="Additional notes..."
+						rows="3"
+					></textarea>
+				</div>
+
+				<!-- Actions -->
+				<div class="modal-action">
+					<button 
+						type="button"
+						class="btn"
+						onclick={() => { showModal = false; resetForm(); }}
+					>
+						Cancel
+					</button>
+					<button type="submit" class="btn btn-primary">
+						{modalMode === 'create' ? 'Create' : 'Save'}
+					</button>
+				</div>
+			</form>
+		</div>
+		<button class="modal-backdrop" type="button" aria-label="Close modal" onclick={() => { showModal = false; resetForm(); }}></button>
+	</div>
+{/if}

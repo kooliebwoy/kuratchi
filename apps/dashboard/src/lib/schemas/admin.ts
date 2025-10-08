@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 1,
+  version: 4,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -74,6 +74,9 @@ export const adminSchema: SchemaDsl = {
       action: 'text not null',
       data: 'json default (json_object())',
       status: 'boolean',
+      isAdminAction: 'boolean default false',
+      isHidden: 'boolean default false',
+      organizationId: 'text',
       ip: 'text',
       userAgent: 'text',
       '...timestamps': true,
@@ -97,6 +100,22 @@ export const adminSchema: SchemaDsl = {
       id_token: 'text',
       '...timestamps': true,
     },
+    roles: {
+      id: 'text primary key not null',
+      name: 'text not null unique',
+      description: 'text',
+      permissions: 'json',
+      isArchived: 'boolean default 0',
+      '...timestamps': true,
+    },
+    permissions: {
+      id: 'text primary key not null',
+      value: 'text not null unique',
+      label: 'text',
+      description: 'text',
+      isArchived: 'boolean default 0',
+      '...timestamps': true,
+    },
     databases: {
       id: 'text primary key not null',
       name: 'text unique',
@@ -107,7 +126,7 @@ export const adminSchema: SchemaDsl = {
       schemaVersion: 'integer default 1',
       needsSchemaUpdate: 'boolean default 0',
       lastSchemaSync: 'timestamp_ms',
-      organizationId: 'text -> organizations.id',
+      organizationId: 'text',
       '...timestamps': true,
     },
     dbApiTokens: {
@@ -117,6 +136,18 @@ export const adminSchema: SchemaDsl = {
       databaseId: 'text -> databases.id',
       expires: 'timestamp_ms',
       revoked: 'boolean',
+      '...timestamps': true,
+    },
+    organizationRoles: {
+      id: 'text primary key not null',
+      organizationId: 'text -> organizations.id',
+      roleId: 'text -> roles.id',
+      '...timestamps': true,
+    },
+    rolePermissions: {
+      id: 'text primary key not null',
+      roleId: 'text -> roles.id',
+      permissionId: 'text -> permissions.id',
       '...timestamps': true,
     },
   },

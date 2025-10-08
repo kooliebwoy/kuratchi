@@ -21,43 +21,51 @@
 	},
 	"files": [
 		"dist",
+		"src",
 		"!dist/**/*.test.*",
 		"!dist/**/*.spec.*"
 	],
 	"sideEffects": [
 		"**/*.css"
 	],
-	"svelte": "./dist/index.js",
-	"types": "./dist/index.d.ts",
+	"svelte": "./src/lib/index.ts",
+	"types": "./src/lib/index.ts",
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"svelte": "./dist/index.js"
+			"types": "./src/lib/index.ts",
+			"svelte": "./src/lib/index.ts",
+			"default": "./src/lib/index.ts"
 		},
 		"./auth": {
-			"types": "./dist/auth/index-v2.d.ts",
-			"svelte": "./dist/auth/index-v2.js"
+			"types": "./src/lib/auth/index-v2.ts",
+			"svelte": "./src/lib/auth/index-v2.ts",
+			"default": "./src/lib/auth/index-v2.ts"
 		},
 		"./database": {
-			"types": "./dist/database/index.d.ts",
-			"svelte": "./dist/database/index.js"
+			"types": "./src/lib/database/index.ts",
+			"svelte": "./src/lib/database/index.ts",
+			"default": "./src/lib/database/index.ts"
 		},
 		"./kv": {
-			"types": "./dist/kv/index.d.ts",
-			"svelte": "./dist/kv/index.js"
+			"types": "./src/lib/kv/index.ts",
+			"svelte": "./src/lib/kv/index.ts",
+			"default": "./src/lib/kv/index.ts"
 		},
 		"./r2": {
-			"types": "./dist/r2/index.d.ts",
-			"svelte": "./dist/r2/index.js"
+			"types": "./src/lib/r2/index.ts",
+			"svelte": "./src/lib/r2/index.ts",
+			"default": "./src/lib/r2/index.ts"
 		},
 		"./d1": {
-			"types": "./dist/d1/index.d.ts",
-			"svelte": "./dist/d1/index.js"
+			"types": "./src/lib/d1/index.ts",
+			"svelte": "./src/lib/d1/index.ts",
+			"default": "./src/lib/d1/index.ts"
 		},
 		"./orm": {
-			"types": "./dist/orm/index.d.ts",
-			"svelte": "./dist/orm/index.js"
+			"types": "./src/lib/orm/index.ts",
+			"svelte": "./src/lib/orm/index.ts",
+			"default": "./src/lib/orm/index.ts"
 		}
 	},
 	"peerDependencies": {
@@ -90,6 +98,7 @@
 		"svelte"
 	],
 	"dependencies": {
-		"@sveltejs/adapter-cloudflare": "^7.2.3"
+		"@sveltejs/adapter-cloudflare": "^7.2.3",
+		"tsx": "^4.19.2"
 	}
 }

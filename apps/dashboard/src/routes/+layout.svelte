@@ -6,20 +6,23 @@
   import type { Snippet } from 'svelte';
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
+
+  const isAuthenticated = data.isAuthenticated;
+  const user = data.user;
   
   const workspace = 'Orbit SaaS Workspace';
-  const user = data.user || {
-    name: 'Guest User',
-    email: 'guest@kuratchi.dev'
-  };
 </script>
 
-<div class="flex min-h-screen bg-base-100 text-base-content">
-  <Sidebar />
-  <div class="flex flex-1 flex-col">
-    <Header {workspace} {user} />
-    <main class="flex-1 overflow-y-auto px-8 py-8">
-      {@render children()}
-    </main>
+{#if isAuthenticated}
+  <div class="flex min-h-screen bg-base-100 text-base-content">
+    <Sidebar />
+    <div class="flex flex-1 flex-col">
+      <Header {workspace} {user} />
+      <main class="flex-1 overflow-y-auto px-8 py-8">
+        {@render children()}
+      </main>
+    </div>
   </div>
-</div>
+{:else}
+  {@render children()}
+{/if}

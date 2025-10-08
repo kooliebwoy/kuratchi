@@ -1,0 +1,380 @@
+<script lang="ts">
+	import { Shield, Plus, Pencil, Trash2, X, Building2, Settings } from 'lucide-svelte';
+	import { Dialog } from '@kuratchi/ui';
+	import {
+		getRoles,
+		getRoleAttachments,
+		getPermissions,
+		getRolePermissions,
+		createRole,
+		updateRole,
+		archiveRole,
+		createPermission,
+		attachPermissionToRole,
+		detachPermissionFromRole
+	} from './roles.remote';
+
+	// Data sources
+	const roles = getRoles();
+	const permissions = getPermissions();
+	const rolePerms = getRolePermissions();
+	const catalog = getRoleAttachments();
+
+	// Normalized lists
+	const rolesList = $derived(
+		roles.current
+			? (Array.isArray(roles.current) ? (roles.current as any[]) : (((roles.current as any).data ?? []) as any[]))
+			: ([] as any[])
+	);
+	const permissionsList = $derived(
+		permissions.current
+			? (Array.isArray(permissions.current) ? (permissions.current as any[]) : (((permissions.current as any).data ?? []) as any[]))
+			: ([] as any[])
+	);
+	const permsByRole = $derived(rolePerms.current?.byRole || {});
+
+	// Modal state
+	let showRoleModal = $state(false);
+	let showPermModal = $state(false);
+	let modalMode = $state<'create' | 'edit'>('create');
+	let editingRole = $state<any>(null);
+	let selectedPermissions = $state<Set<string>>(new Set());
+
+	// Form state
+	let formData = $state({
+		name: '',
+		description: ''
+	});
+
+	function resetForm() {
+		formData = { name: '', description: '' };
+		editingRole = null;
+		selectedPermissions = new Set();
+	}
+
+	function openCreateModal() {
+		resetForm();
+		modalMode = 'create';
+		showRoleModal = true;
+	}
+
+	function openEditModal(role: any) {
+		editingRole = role;
+		formData = {
+			name: role.name || '',
+			description: role.description || ''
+		};
+		// Load current permissions for this role
+		const rolePermissions = permsByRole[role.id] || [];
+		selectedPermissions = new Set(rolePermissions.map((p: any) => p.id));
+		modalMode = 'edit';
+		showRoleModal = true;
+	}
+
+	function handleFormSubmit() {
+		showRoleModal = false;
+		resetForm();
+	}
+
+	function togglePermission(permId: string) {
+		if (selectedPermissions.has(permId)) {
+			selectedPermissions.delete(permId);
+		} else {
+			selectedPermissions.add(permId);
+		}
+		selectedPermissions = selectedPermissions; // trigger reactivity
+	}
+
+	function getRolePermissionCount(roleId: string) {
+		return (permsByRole[roleId] || []).length;
+	}
+
+	function getRoleOrgCount(roleId: string) {
+		const attachments = catalog.current?.attachments || {};
+		return (attachments[roleId] || []).length;
+	}
+</script>
+
+<div class="p-8">
+	<!-- Header -->
+	<div class="mb-8 flex items-center justify-between">
+		<div class="flex items-center gap-3">
+			<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+				<Shield class="h-6 w-6 text-primary" />
+			</div>
+			<div>
+				<h1 class="text-2xl font-bold">Roles & Permissions</h1>
+				<p class="text-sm text-base-content/70">Manage roles, permissions and organization attachments</p>
+			</div>
+		</div>
+		<button class="btn btn-primary" onclick={openCreateModal}>
+			<Plus class="h-4 w-4" />
+			New Role
+		</button>
+	</div>
+
+	<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+		<!-- Roles List -->
+		<div class="card bg-base-100 shadow-sm">
+			<div class="card-body">
+				<h2 class="card-title">Roles</h2>
+				<div class="overflow-x-auto">
+					<table class="table">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Description</th>
+								<th>Permissions</th>
+								<th class="text-right">Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#if roles.loading}
+								<tr><td colspan="4" class="text-center"><span class="loading loading-spinner loading-md"></span></td></tr>
+							{:else if roles.current && roles.current.length > 0}
+								{#each roles.current as role}
+									<tr class="hover">
+										<td class="font-medium">{role.name}</td>
+										<td class="text-sm text-base-content/70">{role.description || '-'}</td>
+										<td>
+											<span class="badge badge-sm">{(role.permissions || []).length} perms</span>
+										</td>
+										<td class="text-right">
+											<div class="flex justify-end gap-2">
+												<button class="btn btn-ghost btn-sm btn-square" onclick={() => openEditModal(role)}>
+													<Pencil class="h-4 w-4" />
+												</button>
+												<form {...archiveRole}>
+													<input type="hidden" name="id" value={role.id} />
+													<button class="btn btn-ghost btn-sm btn-square text-error" aria-label="Archive role">
+														<Trash2 class="h-4 w-4" />
+													</button>
+												</form>
+											</div>
+										</td>
+									</tr>
+								{/each}
+							{:else}
+								<tr><td colspan="4" class="text-center py-8">No roles yet</td></tr>
+							{/if}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+
+		<!-- Attach Roles to Organizations -->
+		<div class="card bg-base-100 shadow-sm">
+			<div class="card-body">
+				<h2 class="card-title">Attach to Organizations</h2>
+				<div class="flex items-center gap-3">
+					<label class="label" for="select-role"><span class="label-text">Role</span></label>
+					<select id="select-role" class="select select-bordered" bind:value={selectedRoleId}>
+						{#each rolesList as role}
+							<option value={role.id}>{role.name}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="mt-4 overflow-x-auto">
+					<table class="table">
+						<thead>
+							<tr>
+								<th>Organization</th>
+								<th>Slug</th>
+								<th class="text-right">Attach</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#if catalog.loading}
+								<tr><td colspan="3" class="text-center"><span class="loading loading-spinner loading-md"></span></td></tr>
+							{:else if organizationsList.length > 0}
+								{#each organizationsList as org}
+									<tr class="hover">
+										<td class="font-medium">{org.organizationName || 'Unnamed'}</td>
+										<td><code class="text-xs bg-base-200 px-2 py-1 rounded">{org.organizationSlug}</code></td>
+										<td class="text-right">
+											{#if selectedRoleId && isAttached(selectedRoleId, org.id)}
+												<form {...detachRoleFromOrganization} class="inline">
+													<input type="hidden" name="roleId" value={selectedRoleId} />
+													<input type="hidden" name="organizationId" value={org.id} />
+													<button class="btn btn-outline btn-error btn-sm">Detach</button>
+												</form>
+											{:else}
+												<form {...attachRoleToOrganization} class="inline">
+													<input type="hidden" name="roleId" value={selectedRoleId} />
+													<input type="hidden" name="organizationId" value={org.id} />
+													<button class="btn btn-outline btn-primary btn-sm">Attach</button>
+												</form>
+											{/if}
+										</td>
+									</tr>
+								{/each}
+							{:else}
+								<tr><td colspan="3" class="text-center py-8">No organizations found</td></tr>
+							{/if}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+
+		<!-- Permissions Registry and Attachments -->
+		<div class="card bg-base-100 shadow-sm">
+			<div class="card-body">
+				<div class="flex items-center justify-between">
+					<h2 class="card-title">Permissions</h2>
+					<button class="btn btn-sm btn-primary" onclick={() => permModalOpen = true} aria-label="New Permission">New</button>
+				</div>
+
+				<!-- Selected role context -->
+				<div class="form-control mt-2">
+					<label class="label" for="perm-role-select"><span class="label-text">Role</span></label>
+					<select id="perm-role-select" class="select select-bordered" bind:value={selectedRoleId}>
+						{#each rolesList as role}
+							<option value={role.id}>{role.name}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="mt-4 grid grid-cols-1 gap-4">
+					<!-- Attached perms for selected role -->
+					<div>
+						<h3 class="font-semibold mb-2">Attached to role</h3>
+						<div class="space-y-2 max-h-56 overflow-auto">
+							{#if rolePerms.loading}
+								<div class="text-sm text-base-content/60">Loading...</div>
+							{:else}
+								{#each (rolePerms.current?.byRole?.[selectedRoleId] || []) as p}
+									<div class="flex items-center justify-between rounded border border-base-200 px-3 py-2">
+										<div class="truncate">
+											<div class="text-sm font-medium">{p.value}</div>
+											<div class="text-xs text-base-content/60 truncate">{p.label || p.description || ''}</div>
+										</div>
+										<form {...detachPermissionFromRole} class="ml-2">
+											<input type="hidden" name="roleId" value={selectedRoleId} />
+											<input type="hidden" name="permissionId" value={p.id} />
+											<button class="btn btn-xs btn-outline btn-error">Detach</button>
+										</form>
+									</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+
+					<!-- All registry perms (attach if not attached) -->
+					<div>
+						<h3 class="font-semibold mb-2">All permissions</h3>
+						<div class="space-y-2 max-h-56 overflow-auto">
+							{#if permissions.loading}
+								<div class="text-sm text-base-content/60">Loading...</div>
+							{:else}
+								{#each (permissions.current || []) as p}
+									<div class="flex items-center justify-between rounded border border-base-200 px-3 py-2">
+										<div class="truncate">
+											<div class="text-sm font-medium">{p.value}</div>
+											<div class="text-xs text-base-content/60 truncate">{p.label || p.description || ''}</div>
+										</div>
+										{#if !(rolePerms.current?.byRole?.[selectedRoleId] || []).some((x:any) => x.id === p.id)}
+											<form {...attachPermissionToRole} class="ml-2">
+												<input type="hidden" name="roleId" value={selectedRoleId} />
+												<input type="hidden" name="permissionId" value={p.id} />
+												<button class="btn btn-xs btn-outline btn-primary">Attach</button>
+											</form>
+										{:else}
+											<span class="badge badge-ghost badge-xs">Attached</span>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Create/Edit Role Modal (kuratchi-ui Dialog) -->
+<Dialog bind:open={showModal} size="xl" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+        <div class="flex items-center justify-between">
+            <h3 class="font-bold text-lg">{modalMode === 'create' ? 'Create Role' : 'Edit Role'}</h3>
+            <button class="btn btn-ghost btn-sm btn-circle" onclick={() => { showModal = false; resetForm(); }} aria-label="Close">
+                <X class="h-4 w-4" />
+            </button>
+        </div>
+    {/snippet}
+    {#snippet children()}
+        {#if modalMode === 'create'}
+            <form {...createRole} onsubmit={handleFormSubmit} class="space-y-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="form-control">
+                        <label class="label" for="role-name"><span class="label-text">Role Name</span></label>
+                        <input id="role-name" {...createRole.fields.name.as('text')} class="input input-bordered" placeholder="editor" required />
+                    </div>
+                    <div class="form-control">
+                        <label class="label" for="role-desc"><span class="label-text">Description</span></label>
+                        <input id="role-desc" {...createRole.fields.description.as('text')} class="input input-bordered" placeholder="Can edit posts and upload media" />
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn" onclick={() => { showModal = false; resetForm(); }}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        {:else}
+            <form {...updateRole} onsubmit={handleFormSubmit} class="space-y-4">
+                <input type="hidden" {...updateRole.fields.id.as('text')} value={editingRole?.id} />
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div class="form-control">
+                        <label class="label" for="role-name-edit"><span class="label-text">Role Name</span></label>
+                        <input id="role-name-edit" {...updateRole.fields.name.as('text')} class="input input-bordered" placeholder="editor" value={formData.name} />
+                    </div>
+                    <div class="form-control">
+                        <label class="label" for="role-desc-edit"><span class="label-text">Description</span></label>
+                        <input id="role-desc-edit" {...updateRole.fields.description.as('text')} class="input input-bordered" placeholder="Can edit posts and upload media" value={formData.description} />
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn" onclick={() => { showModal = false; resetForm(); }}>Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        {/if}
+    {/snippet}
+    
+</Dialog>
+
+<!-- Create Permission Modal (kuratchi-ui Dialog) -->
+<Dialog bind:open={permModalOpen} size="md" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+        <div class="flex items-center justify-between">
+            <h3 class="font-bold text-lg">New Permission</h3>
+            <button class="btn btn-ghost btn-sm btn-circle" onclick={() => { permModalOpen = false; resetPermForm(); }} aria-label="Close">
+                <X class="h-4 w-4" />
+            </button>
+        </div>
+    {/snippet}
+    {#snippet children()}
+        <form {...createPermission} onsubmit={() => { permModalOpen = false; resetPermForm(); }} class="space-y-3">
+            <div class="form-control">
+                <label class="label" for="perm-value"><span class="label-text">Value</span></label>
+                <input id="perm-value" {...createPermission.fields.value.as('text')} class="input input-bordered" placeholder="posts.create" required />
+            </div>
+            <div class="form-control">
+                <label class="label" for="perm-label"><span class="label-text">Label</span></label>
+                <input id="perm-label" {...createPermission.fields.label.as('text')} class="input input-bordered" placeholder="Post Create" />
+            </div>
+            <div class="form-control">
+                <label class="label" for="perm-desc"><span class="label-text">Description</span></label>
+                <input id="perm-desc" {...createPermission.fields.description.as('text')} class="input input-bordered" placeholder="Allows creating posts" />
+            </div>
+            <div class="modal-action">
+                <button type="button" class="btn" onclick={() => { permModalOpen = false; resetPermForm(); }}>Cancel</button>
+                <button type="submit" class="btn btn-primary">Create</button>
+            </div>
+        </form>
+    {/snippet}
+    
+</Dialog>

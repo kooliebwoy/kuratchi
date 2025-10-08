@@ -12,6 +12,7 @@ export {
   sessionPlugin,
   storagePlugin,
   adminPlugin,
+  requireSuperadmin,
   organizationPlugin,
   guardsPlugin,
   requireAuth,
@@ -19,9 +20,7 @@ export {
   oauthPlugin,
   credentialsPlugin,
   rolesPlugin,
-  requireRole,
-  superadminPlugin,
-  requireSuperadmin
+  activityPlugin
 } from './plugins/index.js';
 
 // Also export as namespace for those who prefer it
@@ -46,7 +45,7 @@ export type {
   OAuthProviderConfig,
   CredentialsPluginOptions,
   RolesPluginOptions,
-  SuperadminPluginOptions
+  ActivityLogOptions
 } from './plugins/index.js';
 
 export type {

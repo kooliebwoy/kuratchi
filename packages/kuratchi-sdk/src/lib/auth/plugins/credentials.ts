@@ -155,6 +155,7 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             
             let orgId: string | undefined = authOptions?.organizationId;
             let targetDb: any;
+            let isSuperadmin = false;
             
             // Determine target database: Organization DB or Admin DB
             const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
@@ -162,23 +163,41 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             
             // If organizations are enabled, authenticate against org DB
             if (getOrgDb && getAdminDb) {
-              // Find organization if not provided
+              // FIRST: Check if this is a superadmin in the admin DB
+              // Superadmins exist only in admin DB, not in any organization
               if (!orgId) {
                 const adminDb = await getAdminDb();
-                const foundOrgId = await findOrganizationIdByEmail(adminDb, email);
-                orgId = foundOrgId || undefined;
+                
+                // Check if user exists in admin DB with superadmin role
+                const { data: adminUser } = await adminDb.users
+                  .where({ email })
+                  .first();
+                
+                if (adminUser && adminUser.role === 'superadmin') {
+                  // This is a superadmin - authenticate against admin DB
+                  targetDb = adminDb;
+                  isSuperadmin = true;
+                  orgId = 'admin'; // Mark as admin for session
+                } else {
+                  // Not a superadmin - find their organization
+                  const foundOrgId = await findOrganizationIdByEmail(adminDb, email);
+                  orgId = foundOrgId || undefined;
+                }
               }
               
-              if (!orgId) {
+              // If not superadmin and no org found, fail
+              if (!isSuperadmin && !orgId) {
                 if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
                 if (options.onFailure) await options.onFailure(email);
                 return { success: false, error: 'invalid_credentials' };
               }
               
-              // Get organization database
-              targetDb = await getOrgDb(orgId);
-              if (!targetDb) {
-                return { success: false, error: 'organization_database_not_found' };
+              // Get organization database (if not superadmin)
+              if (!isSuperadmin) {
+                targetDb = await getOrgDb(orgId!);
+                if (!targetDb) {
+                  return { success: false, error: 'organization_database_not_found' };
+                }
               }
             } else if (getAdminDb) {
               // Single-tenant mode: authenticate against admin DB

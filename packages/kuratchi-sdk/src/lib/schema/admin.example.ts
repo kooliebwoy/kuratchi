@@ -107,7 +107,7 @@ export const adminSchemaDsl: SchemaDsl = {
       schemaVersion: 'integer default 1',
       needsSchemaUpdate: 'boolean default 0',
       lastSchemaSync: 'timestamp_ms',
-      organizationId: 'text -> organizations.id',
+      organizationId: 'text', // No FK - flexible linking, can be null or any value
       '...timestamps': true,
     },
     dbApiTokens: {

@@ -1,14 +1,16 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Home, Database, Users, Shield, Settings, Activity, Globe } from 'lucide-svelte';
+  import { Home, Database, Users, Shield, Settings, Activity, Globe, Building2 } from 'lucide-svelte';
 
   const menu = [
     { label: 'Overview', icon: Home, href: '/' },
+    { label: 'Organizations', icon: Building2, href: '/organizations' },
     { label: 'Database', icon: Database, href: '/database' },
     { label: 'Authentication', icon: Shield, href: '/auth' },
     { label: 'Users', icon: Users, href: '/users' },
+    { label: 'Roles', icon: Shield, href: '/roles' },
     { label: 'Storage', icon: Globe, href: '/storage' },
-    { label: 'Logs', icon: Activity, href: '/activity-logs' },
+    { label: 'Activity', icon: Activity, href: '/activity' },
     { label: 'Settings', icon: Settings, href: '/settings' }
   ];
 

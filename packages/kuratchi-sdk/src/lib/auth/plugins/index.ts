@@ -9,7 +9,7 @@ export type { SessionPluginOptions } from './session.js';
 export { storagePlugin } from './storage.js';
 export type { StoragePluginOptions } from './storage.js';
 
-export { adminPlugin } from './admin.js';
+export { adminPlugin, requireSuperadmin } from './admin.js';
 export type { AdminPluginOptions } from './admin.js';
 
 export { organizationPlugin } from './organization.js';
@@ -28,12 +28,12 @@ export { credentialsPlugin } from './credentials.js';
 export type { CredentialsPluginOptions } from './credentials.js';
 
 // Roles plugin
-export { rolesPlugin, requireRole } from './roles.js';
+export { rolesPlugin } from './roles.js';
 export type { RolesPluginOptions } from './roles.js';
 
-// Superadmin plugin
-export { superadminPlugin, requireSuperadmin } from './superadmin.js';
-export type { SuperadminPluginOptions } from './superadmin.js';
+// Activity tracking plugin
+export { activityPlugin } from './activity.js';
+export type { ActivityLogOptions } from './activity.js';
 
 // Re-export plugin types
 export type { AuthPlugin, PluginContext, SessionContext, ResponseContext } from '../core/plugin.js';

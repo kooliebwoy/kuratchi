@@ -6,8 +6,8 @@ import { database } from 'kuratchi-sdk';
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
 	return query(async () => {
-		// const { locals: { session } } = getRequestEvent();
-		// if (!session?.user) error(401, 'Unauthorized');
+		const { locals: { session } } = getRequestEvent();
+		if (!session?.user) error(401, 'Unauthorized');
 
 		return fn();
 	});
@@ -19,8 +19,8 @@ const guardedForm = <R>(
 	fn: (data: any) => Promise<R>
 ) => {
 	return form('unchecked', async (data: any) => {
-		// const { locals: { session } } = getRequestEvent();
-		// if (!session?.user) error(401, 'Unauthorized');
+		const { locals: { session } } = getRequestEvent();
+		if (!session?.user) error(401, 'Unauthorized');
 
 		// Validate with valibot
 		const result = v.safeParse(schema, data);
@@ -49,7 +49,6 @@ export const getDatabases = guardedQuery(async () => {
 		let result: any;
 		if (activeOrgId) {
 			result = await orm.databases
-				.where({ organizationId: { eq: activeOrgId } })
 				.many();
 		} else {
 			// Superadmin with no org selected: list all
@@ -152,9 +151,14 @@ export const createDatabase = guardedForm(
 			// Import organization schema
 			const { organizationSchema } = await import('$lib/schemas/organization');
 
+			// Create database name (system-level or org-level)
+			const dbName = activeOrgId && activeOrgId !== 'admin' 
+				? `org-${activeOrgId}-${name}` 
+				: `sys-${name}`;
+
 			// Create the database
 			const created = await database.create({
-				name: `org-${activeOrgId}-${name}`,
+				name: dbName,
 				migrate: true,
 				schema: organizationSchema
 			});
@@ -165,16 +169,15 @@ export const createDatabase = guardedForm(
 			const { orm: adminOrm } = await database.admin();
 			const now = new Date().toISOString();
 			const dbId = crypto.randomUUID();
-
-			if (!activeOrgId) {
-				error(400, 'No active organization selected');
-			}
+			
+			// organizationId can be null for system-level databases
+			const orgId = activeOrgId && activeOrgId !== 'admin' ? activeOrgId : null;
 			
 			const newDB = await adminOrm.databases.insert({
 				id: dbId,
 				name: created.databaseName,
 				dbuuid: created.databaseName,
-				organizationId: activeOrgId!,
+				organizationId: orgId,
 				isArchived: false,
 				isActive: true,
 				schemaVersion: 1,

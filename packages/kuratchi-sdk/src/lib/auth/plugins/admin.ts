@@ -1,9 +1,10 @@
 /**
- * Admin plugin - Kuratchi admin database management
- * Optional plugin for multi-tenant organization management
+ * Admin plugin - Kuratchi admin database management + superadmin capabilities
+ * Multi-tenant organization management with superadmin role detection
  */
 
-import type { AuthPlugin, PluginContext } from '../core/plugin.js';
+import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
+import type { RouteGuard } from '../types.js';
 import { KuratchiDatabase } from '../../database/core/database.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { hashPassword } from '../../utils/auth.js';
@@ -17,7 +18,7 @@ export interface AdminPluginOptions {
   
   /**
    * REQUIRED: Admin database schema
-   * Must include tables: organizations, databases, dbApiTokens, organizationUsers
+   * Must include tables: organizations, databases, dbApiTokens, organizationUsers, users
    * See src/lib/schema/admin.example.ts for reference structure
    */
   adminSchema: any;
@@ -27,6 +28,22 @@ export interface AdminPluginOptions {
    * If not provided, organization databases won't be auto-provisioned
    */
   organizationSchema?: any;
+  
+  /**
+   * OPTIONAL: Custom superadmin detection
+   * Default: checks if admin users table role === 'superadmin'
+   */
+  isSuperadmin?: (ctx: SessionContext, adminDb: any) => Promise<boolean> | boolean;
+  
+  /**
+   * OPTIONAL: Cookie name for org override (default: 'kuratchi_super_org')
+   */
+  superadminCookieName?: string;
+  
+  /**
+   * OPTIONAL: Seed key for creating superadmins (reads from KURATCHI_SUPERADMIN_KEY env by default)
+   */
+  seedKey?: string;
 }
 
 export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
@@ -48,6 +65,36 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
     
     async onRequest(ctx: PluginContext) {
       if (!ctx.locals.kuratchi) ctx.locals.kuratchi = {};
+      
+      // Initialize superadmin state (will be populated in onSession)
+      const cookieName = options.superadminCookieName || 'kuratchi_super_org';
+      const existing = ctx.event.cookies.get(cookieName) || null;
+      
+      ctx.locals.kuratchi.superadmin = {
+        __isSuperadmin: false,
+        __orgOverride: existing,
+        // Read-only helpers
+        isSuperadmin: () => !!ctx.locals.kuratchi.superadmin.__isSuperadmin,
+        getActiveOrgId: () => ctx.locals.kuratchi.superadmin.__orgOverride || ctx.locals.session?.organizationId || null,
+        // Mutators (per-request only)
+        setOrganization: (orgId: string | null, persist: boolean = true) => {
+          ctx.locals.kuratchi.superadmin.__orgOverride = orgId;
+          if (persist) {
+            if (orgId) {
+              const isHttps = new URL(ctx.event.request.url).protocol === 'https:';
+              ctx.event.cookies.set(cookieName, orgId, {
+                path: '/', httpOnly: true, sameSite: 'lax', secure: isHttps
+              });
+            } else {
+              ctx.event.cookies.delete(cookieName, { path: '/' });
+            }
+          }
+        },
+        clearOrganization: () => {
+          ctx.locals.kuratchi.superadmin.__orgOverride = null;
+          ctx.event.cookies.delete(cookieName, { path: '/' });
+        }
+      };
       
       // Helper to get admin DB (lazy initialization)
       ctx.locals.kuratchi.getAdminDb = async () => {
@@ -401,8 +448,229 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             databaseName: db.name,
             organizationId 
           };
+        },
+        
+        /**
+         * Attach a database to an organization
+         * Allows linking system-level databases to specific organizations
+         */
+        attachDatabase: async (params: {
+          databaseId: string;
+          organizationId: string;
+        }) => {
+          const adminDb = await ctx.locals.kuratchi.getAdminDb();
+          if (!adminDb) throw new Error('[Admin] Admin DB not configured');
+          
+          const { databaseId, organizationId } = params;
+          
+          // Verify organization exists
+          const { data: org } = await adminDb.organizations
+            .where({ id: organizationId })
+            .first();
+          
+          if (!org) {
+            throw new Error(`[Admin] Organization not found: ${organizationId}`);
+          }
+          
+          // Verify database exists
+          const { data: db } = await adminDb.databases
+            .where({ id: databaseId })
+            .first();
+          
+          if (!db) {
+            throw new Error(`[Admin] Database not found: ${databaseId}`);
+          }
+          
+          // Attach database to organization
+          const result = await adminDb.databases
+            .where({ id: databaseId })
+            .update({
+              organizationId: organizationId,
+              updated_at: new Date().toISOString()
+            });
+          
+          if (!result.success) {
+            throw new Error(`[Admin] Failed to attach database: ${result.error}`);
+          }
+          
+          return {
+            success: true,
+            databaseId,
+            organizationId
+          };
+        },
+        
+        /**
+         * Detach a database from its organization
+         * Makes it a system-level database (organizationId = null)
+         */
+        detachDatabase: async (databaseId: string) => {
+          const adminDb = await ctx.locals.kuratchi.getAdminDb();
+          if (!adminDb) throw new Error('[Admin] Admin DB not configured');
+          
+          // Verify database exists
+          const { data: db } = await adminDb.databases
+            .where({ id: databaseId })
+            .first();
+          
+          if (!db) {
+            throw new Error(`[Admin] Database not found: ${databaseId}`);
+          }
+          
+          // Detach database (set organizationId to null)
+          const result = await adminDb.databases
+            .where({ id: databaseId })
+            .update({
+              organizationId: null,
+              updated_at: new Date().toISOString()
+            });
+          
+          if (!result.success) {
+            throw new Error(`[Admin] Failed to detach database: ${result.error}`);
+          }
+          
+          return {
+            success: true,
+            databaseId,
+            previousOrganizationId: db.organizationId
+          };
+        },
+        
+        /**
+         * Seed a superadmin user in the admin database
+         * Protected by seed key for security
+         */
+        seedSuperadmin: async (params: {
+          email: string;
+          password: string;
+          name?: string;
+          seedKey?: string;
+        }): Promise<
+          | { success: true; user: { id: string; email: string; name: string; role: string } }
+          | { success: false; error: string }
+        > => {
+          try {
+            const { email, password, name = 'Super Admin', seedKey: providedKey } = params;
+            
+            // Validate seed key for security
+            const expectedKey = options.seedKey || (ctx.env as any).KURATCHI_SUPERADMIN_KEY;
+            if (!expectedKey) {
+              return { 
+                success: false, 
+                error: 'superadmin_key_not_configured',
+              };
+            }
+            
+            if (!providedKey || providedKey !== expectedKey) {
+              return { 
+                success: false, 
+                error: 'invalid_superadmin_key' 
+              };
+            }
+            
+            if (!email || !password) {
+              return { success: false, error: 'email_and_password_required' };
+            }
+            
+            if (password.length < 8) {
+              return { success: false, error: 'password_too_short' };
+            }
+            
+            const adminDb = await ctx.locals.kuratchi.getAdminDb();
+            if (!adminDb) {
+              return { success: false, error: 'admin_database_not_configured' };
+            }
+            
+            // Check if user already exists
+            const { data: existingUser } = await adminDb.users
+              .where({ email })
+              .first();
+            
+            if (existingUser) {
+              return { success: false, error: 'user_already_exists' };
+            }
+            
+            // Hash password using SDK's method (with pepper)
+            const authSecret = ctx.env.KURATCHI_AUTH_SECRET;
+            const password_hash = await hashPassword(password, undefined, authSecret);
+            
+            // Create superadmin user
+            const userId = crypto.randomUUID();
+            const now = new Date().toISOString();
+            
+            const result = await adminDb.users.insert({
+              id: userId,
+              email,
+              name,
+              password_hash,
+              role: 'superadmin',
+              status: true,
+              emailVerified: Date.now(),
+              created_at: now,
+              updated_at: now,
+              deleted_at: null
+            });
+            
+            if (!result?.success) {
+              return { success: false, error: result?.error || 'failed_to_create_user' };
+            }
+            
+            return {
+              success: true,
+              user: {
+                id: userId,
+                email,
+                name,
+                role: 'superadmin'
+              }
+            };
+          } catch (e: any) {
+            console.error('[AdminPlugin] seedSuperadmin failed:', e);
+            return { success: false, error: e?.message || 'seed_failed' };
+          }
         }
       };
+    },
+    
+    async onSession(ctx: SessionContext) {
+      const locals = ctx.locals as any;
+      const getAdminDb = locals.kuratchi?.getAdminDb;
+      if (!getAdminDb) return;
+
+      let isSuper = false;
+      try {
+        const adminDb = await getAdminDb();
+        if (!adminDb) return;
+
+        if (options.isSuperadmin) {
+          isSuper = !!(await options.isSuperadmin(ctx, adminDb));
+        } else if (ctx.session?.email) {
+          // Default detection: admin users table role === 'superadmin'
+          const { data: adminUser } = await adminDb.users
+            .where({ email: ctx.session.email })
+            .first();
+          isSuper = adminUser?.role === 'superadmin';
+        }
+      } catch (e) {
+        console.warn('[AdminPlugin] Failed to determine superadmin:', e);
+      }
+
+      locals.kuratchi.superadmin.__isSuperadmin = isSuper;
+      
+      // If not superadmin, clear any override cookie for safety
+      if (!isSuper && locals.kuratchi.superadmin.__orgOverride) {
+        locals.kuratchi.superadmin.clearOrganization();
+      }
     }
+  };
+}
+
+/**
+ * Route guard: require superadmin role
+ */
+export function requireSuperadmin(): RouteGuard {
+  return ({ locals }) => {
+    const isSuper = !!locals?.kuratchi?.superadmin?.__isSuperadmin;
+    if (!isSuper) return new Response('Forbidden', { status: 403 });
   };
 }

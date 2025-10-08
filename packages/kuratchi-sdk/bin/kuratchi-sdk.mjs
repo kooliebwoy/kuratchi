@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 
 // ESM-compatible __filename/__dirname for module-scope usage (needed by loadEnvFiles)
 const __filename = fileURLToPath(import.meta.url);
@@ -132,33 +133,30 @@ async function loadNormalizeAndSqlGenerators() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const pkgRoot = path.resolve(__dirname, '..');
+  
+  // Try dist first, then src (with tsx loader)
   const cands = [
-    path.join(pkgRoot, 'dist', 'lib', 'orm', 'normalize.js'),
-    path.join(pkgRoot, 'dist', 'orm', 'normalize.js'),
-    path.join(pkgRoot, 'dist', 'index.js'),
+    path.join(pkgRoot, 'dist', 'lib', 'database', 'migrations', 'schema.js'),
+    path.join(pkgRoot, 'src', 'lib', 'database', 'migrations', 'schema.ts'),
   ];
   const normMod = await importFromCandidates(cands);
-  if (!normMod) throw new Error('normalizeSchema not available. Build the package first (npm run build).');
-  const normalizeSchema = normMod.normalizeSchema || normMod.default?.normalizeSchema || normMod.normalize?.normalizeSchema;
-  if (typeof normalizeSchema !== 'function') throw new Error('normalizeSchema not found in dist. Build the package (npm run build).');
+  if (!normMod) throw new Error('normalizeSchema not available.');
+  const normalizeSchema = normMod.normalizeSchema || normMod.default?.normalizeSchema;
+  if (typeof normalizeSchema !== 'function') throw new Error('normalizeSchema not found.');
 
-  const sqlCands = [
-    path.join(pkgRoot, 'dist', 'lib', 'orm', 'sqlite-generator.js'),
-    path.join(pkgRoot, 'dist', 'orm', 'sqlite-generator.js'),
-    path.join(pkgRoot, 'dist', 'index.js'),
+  // buildInitialSql and buildDiffSql are both in generator.ts
+  const genCands = [
+    path.join(pkgRoot, 'dist', 'lib', 'database', 'migrations', 'generator.js'),
+    path.join(pkgRoot, 'src', 'lib', 'database', 'migrations', 'generator.ts'),
   ];
-  const sqlMod = await importFromCandidates(sqlCands);
-  const buildInitialSql = sqlMod?.buildInitialSql || sqlMod?.default?.buildInitialSql;
-  if (typeof buildInitialSql !== 'function') throw new Error('buildInitialSql not found in dist. Build the package (npm run build).');
+  const genMod = await importFromCandidates(genCands);
+  if (!genMod) throw new Error('SQL generator not available.');
   
-  const diffCands = [
-    path.join(pkgRoot, 'dist', 'lib', 'orm', 'diff.js'),
-    path.join(pkgRoot, 'dist', 'orm', 'diff.js'),
-    path.join(pkgRoot, 'dist', 'index.js'),
-  ];
-  const diffMod = await importFromCandidates(diffCands);
-  const buildDiffSql = diffMod?.buildDiffSql || diffMod?.default?.buildDiffSql;
-  if (typeof buildDiffSql !== 'function') throw new Error('buildDiffSql not found in dist. Build the package (npm run build).');
+  const buildInitialSql = genMod?.buildInitialSql || genMod?.default?.buildInitialSql;
+  if (typeof buildInitialSql !== 'function') throw new Error('buildInitialSql not found.');
+  
+  const buildDiffSql = genMod?.buildDiffSql || genMod?.default?.buildDiffSql;
+  if (typeof buildDiffSql !== 'function') throw new Error('buildDiffSql not found.');
 
   return { normalizeSchema, buildInitialSql, buildDiffSql };
 }
@@ -380,6 +378,41 @@ async function cmdRefreshAdminToken(args) {
 }
 
 async function main() {
+  // Check if we need to re-invoke via tsx for TypeScript support
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const pkgRoot = path.resolve(__dirname, '..');
+  
+  // Check if src/ exists (development mode) and tsx is available
+  const srcExists = fs.existsSync(path.join(pkgRoot, 'src'));
+  const distExists = fs.existsSync(path.join(pkgRoot, 'dist'));
+  
+  if (srcExists && !distExists && !process.env.KURATCHI_TSX_MODE) {
+    // Try to use tsx
+    const tsxPaths = [
+      path.join(pkgRoot, 'node_modules', '.bin', 'tsx'),
+      path.join(process.cwd(), 'node_modules', '.bin', 'tsx'),
+    ];
+    
+    let tsxBin = null;
+    for (const p of tsxPaths) {
+      if (fs.existsSync(p)) {
+        tsxBin = p;
+        break;
+      }
+    }
+    
+    if (tsxBin) {
+      // Re-invoke via tsx
+      const child = spawn(tsxBin, [__filename, ...process.argv.slice(2)], {
+        stdio: 'inherit',
+        env: { ...process.env, KURATCHI_TSX_MODE: 'true' }
+      });
+      child.on('exit', (code) => process.exit(code || 0));
+      return;
+    }
+  }
+  
   // Auto-load .env unless explicitly disabled
   if (process.env.KURATCHI_SKIP_DOTENV !== 'true') {
     try { loadEnvFiles(); } catch {}

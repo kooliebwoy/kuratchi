@@ -64,6 +64,7 @@ export const organizationSchema: SchemaDsl = {
       action: 'text not null',
       data: 'json default (json_object())',
       status: 'boolean',
+      isAdminAction: 'boolean default false',
       ip: 'text',
       userAgent: 'text',
       '...timestamps': true,
