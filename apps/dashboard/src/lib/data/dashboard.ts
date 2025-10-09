@@ -87,10 +87,11 @@ export type ActivityItem = {
 };
 
 export const recentActivity: ActivityItem[] = [
-  { time: '2 minutes ago', action: 'New edge function deployed', project: 'Nebula Forms', status: 'Completed' },
+  { time: '2 minutes ago', action: 'New user registered', project: 'Platform', status: 'Success' },
   { time: '24 minutes ago', action: 'Database migration applied', project: 'Aurora CMS', status: 'Completed' },
   { time: '1 hour ago', action: 'API key rotated', project: 'Orbit Analytics', status: 'Security' },
-  { time: '3 hours ago', action: 'Storage bucket replicated', project: 'Pulse Media', status: 'Syncing' }
+  { time: '3 hours ago', action: 'Organization created', project: 'Pulse Media', status: 'Active' },
+  { time: '5 hours ago', action: 'Role permissions updated', project: 'Platform', status: 'Updated' }
 ];
 
 export type UserInsight = {
@@ -138,16 +139,16 @@ export const projectRegions: RegionStatus[] = [
 
 export const quickActions = [
   {
-    icon: Server,
-    label: 'Deploy Edge Function',
-    variant: 'btn-outline',
-    emphasis: 'text-primary'
-  },
-  {
     icon: Layers,
-    label: 'Create Project',
+    label: 'Create Organization',
     variant: 'btn-primary',
     emphasis: 'text-primary-content'
+  },
+  {
+    icon: Users,
+    label: 'Invite Users',
+    variant: 'btn-outline',
+    emphasis: 'text-primary'
   }
 ];
 

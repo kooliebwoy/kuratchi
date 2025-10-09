@@ -297,14 +297,23 @@ export function rolesPlugin(options: RolesPluginOptions = {}): AuthPlugin {
 
       // 5) Expose advanced API under locals.kuratchi.roles (legacy/advanced + catalogs)
       ctx.locals.kuratchi = ctx.locals.kuratchi || ({} as any);
+      
+      // Helper to get DB connection
+      const getDb = async (source: 'admin' | 'org' = 'admin') => {
+        if (source === 'admin') {
+          return await ctx.locals.kuratchi?.getAdminDb?.();
+        }
+        return await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+      };
+
       ctx.locals.kuratchi.roles = {
-        // Roles
+        // Roles (current user context)
         getRoles: () => roles.slice(),
         hasRole: (role: string) => roles.includes(role),
         hasAnyRole: (...required: string[]) => required.some((r) => roles.includes(r)),
         hasAllRoles: (...required: string[]) => required.every((r) => roles.includes(r)),
 
-        // Permissions
+        // Permissions (current user context)
         getPermissions: () => permissions.slice(), // returns patterns; wildcards may be present
         getPermissionObjects: () => uniquePermObjects.map((p) => ({ ...p })),
         hasPermission: (permission: string) => permissions.some((p) => matchesPermission(permission, p)),
@@ -324,6 +333,330 @@ export function rolesPlugin(options: RolesPluginOptions = {}): AuthPlugin {
             out[role] = uniqueByValue(perms.map(normalizePermission));
           }
           return out;
+        },
+
+        // Management APIs
+        async getAllRoles(source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          const result = await db.roles.where({ deleted_at: { is: null }, isArchived: { eq: false } }).many();
+          return Array.isArray((result as any)?.data) ? (result as any).data : (Array.isArray(result) ? result : []);
+        },
+
+        async getRoleByName(name: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          const result = await db.roles.where({ name: { eq: name }, deleted_at: { is: null } }).one();
+          return (result as any)?.data ?? result ?? null;
+        },
+
+        async getRoleWithAttachments(name: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles || !db?.organizationRoles || !db?.organizations) {
+            throw new Error('Required tables not available');
+          }
+
+          const role = await this.getRoleByName(name, source);
+          if (!role) return null;
+
+          const attachmentsRes = await db.organizationRoles
+            .where({ roleId: { eq: role.id }, deleted_at: { is: null } })
+            .include({ organizations: true })
+            .many();
+
+          const links = Array.isArray((attachmentsRes as any)?.data) 
+            ? (attachmentsRes as any).data 
+            : (Array.isArray(attachmentsRes) ? attachmentsRes : []);
+
+          const organizations = links
+            .filter((link: any) => link.organization)
+            .map((link: any) => ({
+              id: link.organization.id,
+              name: link.organization.organizationName,
+              slug: link.organization.organizationSlug
+            }));
+
+          return { ...role, organizations };
+        },
+
+        async getRoleAttachments(source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles || !db?.organizationRoles || !db?.organizations) {
+            throw new Error('Required tables not available');
+          }
+
+          const [rolesRes, orgsRes, attachesRes] = await Promise.all([
+            db.roles.where({ deleted_at: { is: null }, isArchived: { eq: false } }).many(),
+            db.organizations.where({ deleted_at: { is: null } }).many(),
+            db.organizationRoles
+              .where({ deleted_at: { is: null } })
+              .include({ organizations: true })
+              .many(),
+          ]);
+
+          const rolesList = Array.isArray((rolesRes as any)?.data) ? (rolesRes as any).data : (Array.isArray(rolesRes) ? rolesRes : []);
+          const orgsList = Array.isArray((orgsRes as any)?.data) ? (orgsRes as any).data : (Array.isArray(orgsRes) ? orgsRes : []);
+          const links = Array.isArray((attachesRes as any)?.data) ? (attachesRes as any).data : (Array.isArray(attachesRes) ? attachesRes : []);
+
+          const byRole: Record<string, any[]> = {};
+          for (const link of links) {
+            if (!byRole[link.roleId]) byRole[link.roleId] = [];
+            if (link.organization) {
+              byRole[link.roleId].push({
+                id: link.organization.id,
+                name: link.organization.organizationName,
+                slug: link.organization.organizationSlug
+              });
+            }
+          }
+
+          return { roles: rolesList, organizations: orgsList, attachments: byRole };
+        },
+
+        async getAllPermissions(source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.permissions) throw new Error('Permissions table not available');
+          const result = await db.permissions.where({ deleted_at: { is: null } }).many();
+          return Array.isArray((result as any)?.data) ? (result as any).data : (Array.isArray(result) ? result : []);
+        },
+
+        async getRolePermissions(source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.rolePermissions || !db?.permissions) {
+            throw new Error('Required tables not available');
+          }
+
+          const [rolesRes, permsRes, linksRes] = await Promise.all([
+            db.roles.where({ deleted_at: { is: null }, isArchived: { eq: false } }).many(),
+            db.permissions.where({ deleted_at: { is: null } }).many(),
+            db.rolePermissions.where({ deleted_at: { is: null } }).many(),
+          ]);
+
+          const rolesList = Array.isArray((rolesRes as any)?.data) ? (rolesRes as any).data : (Array.isArray(rolesRes) ? rolesRes : []);
+          const permsList = Array.isArray((permsRes as any)?.data) ? (permsRes as any).data : (Array.isArray(permsRes) ? permsRes : []);
+          const linksList = Array.isArray((linksRes as any)?.data) ? (linksRes as any).data : (Array.isArray(linksRes) ? linksRes : []);
+
+          // Create permission lookup
+          const permById = new Map();
+          for (const perm of permsList) {
+            permById.set(perm.id, perm);
+          }
+
+          // Group permissions by role
+          const byRole: Record<string, any[]> = {};
+          for (const link of linksList) {
+            if (!byRole[link.roleId]) byRole[link.roleId] = [];
+            const perm = permById.get(link.permissionId);
+            if (perm) byRole[link.roleId].push(perm);
+          }
+
+          return { roles: rolesList, permissions: permsList, byRole };
+        },
+
+        // CRUD Operations - Permissions
+        async createPermission(data: { value: string; label?: string; description?: string }, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.permissions) throw new Error('Permissions table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.permissions.insert({
+            id: crypto.randomUUID(),
+            value: data.value,
+            label: data.label ?? null,
+            description: data.description ?? null,
+            isArchived: false,
+            created_at: now,
+            updated_at: now,
+            deleted_at: null
+          });
+          
+          if (!result.success) throw new Error(`Failed to create permission: ${result.error}`);
+          return result;
+        },
+
+        async updatePermission(id: string, data: { value?: string; label?: string; description?: string }, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.permissions) throw new Error('Permissions table not available');
+          
+          const now = new Date().toISOString();
+          const update: any = { updated_at: now };
+          if (data.value !== undefined) update.value = data.value;
+          if (data.label !== undefined) update.label = data.label;
+          if (data.description !== undefined) update.description = data.description;
+          
+          const result = await db.permissions.where({ id }).update(update);
+          if (!result.success) throw new Error(`Failed to update permission: ${result.error}`);
+          return result;
+        },
+
+        async deletePermission(id: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.permissions) throw new Error('Permissions table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.permissions.where({ id }).update({ 
+            deleted_at: now, 
+            updated_at: now 
+          });
+          if (!result.success) throw new Error(`Failed to delete permission: ${result.error}`);
+          return result;
+        },
+
+        async archivePermission(id: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.permissions) throw new Error('Permissions table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.permissions.where({ id }).update({ 
+            isArchived: true, 
+            updated_at: now 
+          });
+          if (!result.success) throw new Error(`Failed to archive permission: ${result.error}`);
+          return result;
+        },
+
+        // CRUD Operations - Roles
+        async createRole(data: { name: string; description?: string; permissions?: any[] }, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          
+          const now = new Date().toISOString();
+          const id = crypto.randomUUID();
+          
+          const result = await db.roles.insert({
+            id,
+            name: data.name,
+            description: data.description ?? null,
+            permissions: data.permissions ?? [],
+            isArchived: false,
+            created_at: now,
+            updated_at: now,
+            deleted_at: null
+          });
+          
+          if (!result.success) throw new Error(`Failed to create role: ${result.error}`);
+          return { ...result, id };
+        },
+
+        async updateRole(id: string, data: { name?: string; description?: string; permissions?: any[] }, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          
+          const now = new Date().toISOString();
+          const update: any = { updated_at: now };
+          if (data.name !== undefined) update.name = data.name;
+          if (data.description !== undefined) update.description = data.description;
+          if (data.permissions !== undefined) update.permissions = data.permissions;
+          
+          const result = await db.roles.where({ id }).update(update);
+          if (!result.success) throw new Error(`Failed to update role: ${result.error}`);
+          return result;
+        },
+
+        async deleteRole(id: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.roles.where({ id }).update({ 
+            deleted_at: now, 
+            updated_at: now 
+          });
+          if (!result.success) throw new Error(`Failed to delete role: ${result.error}`);
+          return result;
+        },
+
+        async archiveRole(id: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.roles) throw new Error('Roles table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.roles.where({ id }).update({ 
+            isArchived: true, 
+            updated_at: now 
+          });
+          if (!result.success) throw new Error(`Failed to archive role: ${result.error}`);
+          return result;
+        },
+
+        // Role-Permission Associations
+        async attachPermissionToRole(roleId: string, permissionId: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.rolePermissions) throw new Error('RolePermissions table not available');
+          
+          // Check if already exists
+          const exists = await db.rolePermissions
+            .where({ roleId, permissionId, deleted_at: { is: null } })
+            .many();
+          const arr = (((exists as any)?.data ?? exists) as any[]) || [];
+          
+          if (!arr[0]) {
+            const now = new Date().toISOString();
+            const result = await db.rolePermissions.insert({
+              id: crypto.randomUUID(),
+              roleId,
+              permissionId,
+              created_at: now,
+              updated_at: now,
+              deleted_at: null
+            });
+            if (!result.success) throw new Error(`Failed to attach permission: ${result.error}`);
+            return result;
+          }
+          
+          return { success: true, message: 'Already attached' };
+        },
+
+        async detachPermissionFromRole(roleId: string, permissionId: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.rolePermissions) throw new Error('RolePermissions table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.rolePermissions
+            .where({ roleId, permissionId, deleted_at: { is: null } })
+            .update({ deleted_at: now, updated_at: now });
+          if (!result.success) throw new Error(`Failed to detach permission: ${result.error}`);
+          return result;
+        },
+
+        // Role-Organization Associations
+        async attachRoleToOrganization(roleId: string, organizationId: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.organizationRoles) throw new Error('OrganizationRoles table not available');
+          
+          // Check if already exists
+          const exists = await db.organizationRoles
+            .where({ roleId, organizationId, deleted_at: { is: null } })
+            .many();
+          const arr = ((exists as any)?.data ?? exists) as any[];
+          
+          if (!arr[0]) {
+            const now = new Date().toISOString();
+            const result = await db.organizationRoles.insert({
+              id: crypto.randomUUID(),
+              roleId,
+              organizationId,
+              created_at: now,
+              updated_at: now,
+              deleted_at: null
+            });
+            if (!result.success) throw new Error(`Failed to attach role: ${result.error}`);
+            return result;
+          }
+          
+          return { success: true, message: 'Already attached' };
+        },
+
+        async detachRoleFromOrganization(roleId: string, organizationId: string, source: 'admin' | 'org' = 'admin') {
+          const db = await getDb(source);
+          if (!db?.organizationRoles) throw new Error('OrganizationRoles table not available');
+          
+          const now = new Date().toISOString();
+          const result = await db.organizationRoles
+            .where({ roleId, organizationId, deleted_at: { is: null } })
+            .update({ deleted_at: now, updated_at: now });
+          if (!result.success) throw new Error(`Failed to detach role: ${result.error}`);
+          return result;
         },
 
         // Legacy aliases (backward compatible)

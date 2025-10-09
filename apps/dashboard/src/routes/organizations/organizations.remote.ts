@@ -2,7 +2,6 @@ import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
 import { database } from 'kuratchi-sdk';
-import { logActivity } from '$lib/server/activity';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -87,7 +86,9 @@ export const createOrganization = guardedForm(
 			}
 
 			// Log activity (dual: admin + org)
-			await logActivity('organization.created', {
+			const { locals } = getRequestEvent();
+			await locals.kuratchi?.activity?.logActivity?.({
+				action: 'organization.created',
 				data: {
 					organizationId: orgId,
 					organizationName: data.organizationName,
@@ -140,7 +141,9 @@ export const updateOrganization = guardedForm(
 			}
 
 			// Log activity (dual: admin + org)
-			await logActivity('organization.updated', {
+			const { locals } = getRequestEvent();
+			await locals.kuratchi?.activity?.logActivity?.({
+				action: 'organization.updated',
 				data: {
 					organizationId: data.id,
 					changes: updateData
@@ -183,12 +186,14 @@ export const deleteOrganization = guardedForm(
 			}
 
 			// Log activity (dual: admin + org, but hidden from org)
-			await logActivity('organization.deleted', {
+			const { locals } = getRequestEvent();
+			await locals.kuratchi?.activity?.logActivity?.({
+				action: 'organization.deleted',
 				data: {
 					organizationId: id
 				},
 				isAdminAction: true,
-				isHidden: true,  // Don't show deletion in org's activity log
+				isHidden: true, // Don't show deletion in org's activity log
 				organizationId: id
 			});
 

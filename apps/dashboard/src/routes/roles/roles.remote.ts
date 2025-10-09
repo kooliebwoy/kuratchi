@@ -50,11 +50,7 @@ const guardedForm = <R>(
 export const getPermissions = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-    const res = await orm.permissions
-      .where({ deleted_at: { is: null }, isArchived: { eq: false } })
-      .many();
-    return ((res as any)?.data ?? res) as any[] || [];
+    return await locals.kuratchi?.roles?.getAllPermissions?.('admin') ?? [];
   } catch (err) {
     console.error('[roles.getPermissions] error:', err);
     return [];
@@ -64,33 +60,10 @@ export const getPermissions = guardedQuery(async () => {
 export const getRolePermissions = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-    
-    // Fetch permissions
-    const permsRes = await orm.permissions
-      .where({ deleted_at: { is: null }, isArchived: { eq: false } })
-      .many();
-    const perms = Array.isArray((permsRes as any)?.data) ? (permsRes as any).data : (Array.isArray(permsRes) ? permsRes : []);
-    
-    // Fetch rolePermissions with included permission data
-    const rpRes = await orm.rolePermissions
-      .where({ deleted_at: { is: null } })
-      .include({ permissions: true })
-      .many();
-    const links = Array.isArray((rpRes as any)?.data) ? (rpRes as any).data : (Array.isArray(rpRes) ? rpRes : []);
-    
-    // Group by roleId
-    const byRole: Record<string, any[]> = {};
-    for (const link of links) {
-      if (!link.permission) continue;
-      if (!byRole[link.roleId]) byRole[link.roleId] = [];
-      byRole[link.roleId].push(link.permission);
-    }
-    
-    return { permissions: perms, byRole };
+    return await locals.kuratchi?.roles?.getRolePermissions?.('admin') ?? { roles: [], permissions: [], byRole: {} };
   } catch (err) {
     console.error('[roles.getRolePermissions] error:', err);
-    return { permissions: [], byRole: {} };
+    return { roles: [], permissions: [], byRole: {} };
   }
 });
 
@@ -103,19 +76,7 @@ export const createPermission = guardedForm(
   async ({ value, label, description }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const result = await orm.permissions.insert({
-        id: crypto.randomUUID(),
-        value,
-        label: label ?? null,
-        description: description ?? null,
-        isArchived: false,
-        created_at: now,
-        updated_at: now,
-        deleted_at: null
-      });
-      if (!result.success) error(500, `Failed to create permission: ${result.error}`);
+      await locals.kuratchi?.roles?.createPermission?.({ value, label, description }, 'admin');
       await getPermissions().refresh();
       return { success: true };
     } catch (err) {
@@ -135,14 +96,7 @@ export const updatePermission = guardedForm(
   async ({ id, value, label, description }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const update: any = { updated_at: now };
-      if (value !== undefined) update.value = value;
-      if (label !== undefined) update.label = label;
-      if (description !== undefined) update.description = description;
-      const result = await orm.permissions.where({ id }).update(update);
-      if (!result.success) error(500, `Failed to update permission: ${result.error}`);
+      await locals.kuratchi?.roles?.updatePermission?.(id, { value, label, description }, 'admin');
       await getPermissions().refresh();
       return { success: true };
     } catch (err) {
@@ -157,10 +111,7 @@ export const archivePermission = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const result = await orm.permissions.where({ id }).update({ isArchived: true, updated_at: now });
-      if (!result.success) error(500, `Failed to archive permission: ${result.error}`);
+      await locals.kuratchi?.roles?.archivePermission?.(id, 'admin');
       await getPermissions().refresh();
       return { success: true };
     } catch (err) {
@@ -175,23 +126,7 @@ export const attachPermissionToRole = guardedForm(
   async ({ roleId, permissionId }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const exists = await orm.rolePermissions
-        .where({ roleId, permissionId, deleted_at: { is: null } })
-        .many();
-      const arr = (((exists as any)?.data ?? exists) as any[]) || [];
-      if (!arr[0]) {
-        const result = await orm.rolePermissions.insert({
-          id: crypto.randomUUID(),
-          roleId,
-          permissionId,
-          created_at: now,
-          updated_at: now,
-          deleted_at: null
-        });
-        if (!result.success) error(500, `Failed to attach permission: ${result.error}`);
-      }
+      await locals.kuratchi?.roles?.attachPermissionToRole?.(roleId, permissionId, 'admin');
       await getRolePermissions().refresh();
       return { success: true };
     } catch (err) {
@@ -206,12 +141,7 @@ export const detachPermissionFromRole = guardedForm(
   async ({ roleId, permissionId }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const result = await orm.rolePermissions
-        .where({ roleId, permissionId, deleted_at: { is: null } })
-        .update({ deleted_at: now, updated_at: now });
-      if (!result.success) error(500, `Failed to detach permission: ${result.error}`);
+      await locals.kuratchi?.roles?.detachPermissionFromRole?.(roleId, permissionId, 'admin');
       await getRolePermissions().refresh();
       return { success: true };
     } catch (err) {
@@ -224,11 +154,7 @@ export const detachPermissionFromRole = guardedForm(
 export const getRoles = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-    const result = await orm.roles
-      .where({ deleted_at: { is: null }, isArchived: { eq: false } })
-      .many();
-    return result?.data ?? result ?? [];
+    return await locals.kuratchi?.roles?.getAllRoles?.('admin') ?? [];
   } catch (err) {
     console.error('[roles.getRoles] error:', err);
     return [];
@@ -238,34 +164,7 @@ export const getRoles = guardedQuery(async () => {
 export const getRoleAttachments = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-    
-    const [rolesRes, orgsRes, attachesRes] = await Promise.all([
-      orm.roles.where({ deleted_at: { is: null }, isArchived: { eq: false } }).many(),
-      orm.organizations.where({ deleted_at: { is: null } }).many(),
-      orm.organizationRoles
-        .where({ deleted_at: { is: null } })
-        .include({ organizations: true })
-        .many(),
-    ]);
-
-    const roles = Array.isArray((rolesRes as any)?.data) ? (rolesRes as any).data : (Array.isArray(rolesRes) ? rolesRes : []);
-    const orgs = Array.isArray((orgsRes as any)?.data) ? (orgsRes as any).data : (Array.isArray(orgsRes) ? orgsRes : []);
-    const links = Array.isArray((attachesRes as any)?.data) ? (attachesRes as any).data : (Array.isArray(attachesRes) ? attachesRes : []);
-
-    const byRole: Record<string, any[]> = {};
-    for (const link of links) {
-      if (!byRole[link.roleId]) byRole[link.roleId] = [];
-      if (link.organization) {
-        byRole[link.roleId].push({ 
-          id: link.organization.id, 
-          name: link.organization.organizationName, 
-          slug: link.organization.organizationSlug 
-        });
-      }
-    }
-
-    return { roles, organizations: orgs, attachments: byRole };
+    return await locals.kuratchi.roles.getRoleAttachments('admin');
   } catch (err) {
     console.error('[roles.getRoleAttachments] error:', err);
     return { roles: [], organizations: [], attachments: {} };
@@ -282,27 +181,10 @@ export const createRole = guardedForm(
   async ({ name, description, permissions }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const id = crypto.randomUUID();
-
       const perms = normalizePermissions(permissions ?? '[]');
-
-      const result = await orm.roles.insert({
-        id,
-        name,
-        description: description ?? null,
-        permissions: perms,
-        isArchived: false,
-        created_at: now,
-        updated_at: now,
-        deleted_at: null
-      });
-
-      if (!result.success) error(500, `Failed to create role: ${result.error}`);
-
+      const result = await locals.kuratchi?.roles?.createRole?.({ name, description, permissions: perms }, 'admin');
       await getRoles().refresh();
-      return { success: true, id };
+      return { success: true, id: result?.id };
     } catch (err) {
       console.error('[roles.createRole] error:', err);
       error(500, 'Failed to create role');
@@ -320,17 +202,12 @@ export const updateRole = guardedForm(
   async ({ id, name, description, permissions }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-
-      const update: any = { updated_at: now };
-      if (name !== undefined) update.name = name;
-      if (description !== undefined) update.description = description;
-      if (permissions !== undefined) update.permissions = normalizePermissions(permissions);
-
-      const result = await orm.roles.where({ id }).update(update);
-      if (!result.success) error(500, `Failed to update role: ${result.error}`);
-
+      const data: any = {};
+      if (name !== undefined) data.name = name;
+      if (description !== undefined) data.description = description;
+      if (permissions !== undefined) data.permissions = normalizePermissions(permissions);
+      
+      await locals.kuratchi?.roles?.updateRole?.(id, data, 'admin');
       await getRoles().refresh();
       return { success: true };
     } catch (err) {
@@ -345,10 +222,7 @@ export const archiveRole = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const result = await orm.roles.where({ id }).update({ isArchived: true, updated_at: now });
-      if (!result.success) error(500, `Failed to archive role: ${result.error}`);
+      await locals.kuratchi?.roles?.archiveRole?.(id, 'admin');
       await getRoles().refresh();
       return { success: true };
     } catch (err) {
@@ -363,22 +237,7 @@ export const attachRoleToOrganization = guardedForm(
   async ({ roleId, organizationId }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const exists = await orm.organizationRoles.where({ roleId, organizationId, deleted_at: { is: null } }).many();
-      const arr = ((exists as any)?.data ?? exists) as any[];
-      const present = arr[0];
-      if (!present) {
-        const result = await orm.organizationRoles.insert({
-          id: crypto.randomUUID(),
-          roleId,
-          organizationId,
-          created_at: now,
-          updated_at: now,
-          deleted_at: null
-        });
-        if (!result.success) error(500, `Failed to attach role: ${result.error}`);
-      }
+      await locals.kuratchi?.roles?.attachRoleToOrganization?.(roleId, organizationId, 'admin');
       await getRoleAttachments().refresh();
       return { success: true };
     } catch (err) {
@@ -393,12 +252,7 @@ export const detachRoleFromOrganization = guardedForm(
   async ({ roleId, organizationId }) => {
     try {
       const { locals } = getRequestEvent();
-    const orm = await locals.kuratchi?.getAdminDb?.();
-      const now = new Date().toISOString();
-      const result = await orm.organizationRoles
-        .where({ roleId, organizationId, deleted_at: { is: null } })
-        .update({ deleted_at: now, updated_at: now });
-      if (!result.success) error(500, `Failed to detach role: ${result.error}`);
+      await locals.kuratchi?.roles?.detachRoleFromOrganization?.(roleId, organizationId, 'admin');
       await getRoleAttachments().refresh();
       return { success: true };
     } catch (err) {

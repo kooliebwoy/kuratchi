@@ -9,6 +9,7 @@
 		updateRole,
 		archiveRole,
 		createPermission,
+		updatePermission,
 		archivePermission,
 		attachPermissionToRole,
 		detachPermissionFromRole
@@ -37,7 +38,9 @@
 	let showPermModal = $state(false);
 	let showDeleteConfirm = $state(false);
 	let modalMode = $state<'create' | 'edit'>('create');
+	let permModalMode = $state<'create' | 'edit'>('create');
 	let editingRole = $state<any>(null);
+	let editingPerm = $state<any>(null);
 	let deletingRole = $state<any>(null);
 	let selectedPermissions = $state<Set<string>>(new Set());
 	let activeTab = $state<'roles' | 'permissions'>('roles');
@@ -48,10 +51,21 @@
 		description: ''
 	});
 
+	let permFormData = $state({
+		value: '',
+		label: '',
+		description: ''
+	});
+
 	function resetForm() {
 		formData = { name: '', description: '' };
 		editingRole = null;
 		selectedPermissions = new Set();
+	}
+
+	function resetPermForm() {
+		permFormData = { value: '', label: '', description: '' };
+		editingPerm = null;
 	}
 
 	function openCreateModal() {
@@ -126,6 +140,23 @@
 		return (permsByRole[roleId] || []).length;
 	}
 
+	function openCreatePermModal() {
+		resetPermForm();
+		permModalMode = 'create';
+		showPermModal = true;
+	}
+
+	function openEditPermModal(perm: any) {
+		editingPerm = perm;
+		permFormData = {
+			value: perm.value || '',
+			label: perm.label || '',
+			description: perm.description || ''
+		};
+		permModalMode = 'edit';
+		showPermModal = true;
+	}
+
 	function openDeleteConfirm(role: any) {
 		deletingRole = role;
 		showDeleteConfirm = true;
@@ -150,7 +181,7 @@
 			</div>
 		</div>
 		<div class="flex gap-2">
-			<button class="btn btn-outline" onclick={() => showPermModal = true}>
+			<button class="btn btn-outline" onclick={openCreatePermModal}>
 				<Plus class="h-4 w-4" />
 				New Permission
 			</button>
@@ -247,6 +278,9 @@
 									<td class="text-sm text-base-content/70">{perm.description || '-'}</td>
 									<td class="text-right">
 										<div class="flex justify-end gap-2">
+											<button class="btn btn-ghost btn-sm btn-square" onclick={() => openEditPermModal(perm)} title="Edit permission">
+												<Pencil class="h-4 w-4" />
+											</button>
 											<button class="btn btn-ghost btn-sm btn-square text-error" onclick={() => openDeleteConfirm(perm)} title="Delete permission">
 												<Trash2 class="h-4 w-4" />
 											</button>
@@ -296,11 +330,11 @@
 				<input type="hidden" name="id" value={editingRole?.id} />
 				<div class="form-control">
 					<label class="label" for="role-name-edit"><span class="label-text">Role Name</span></label>
-					<input id="role-name-edit" type="text" name="name" class="input input-bordered" placeholder="editor" bind:value={formData.name} required />
+					<input id="role-name-edit" {...updateRole.fields.name.as('text')} class="input input-bordered" placeholder="editor" value={formData.name} required />
 				</div>
 				<div class="form-control">
 					<label class="label" for="role-desc-edit"><span class="label-text">Description</span></label>
-					<textarea id="role-desc-edit" name="description" class="textarea textarea-bordered" placeholder="Can edit posts and upload media" bind:value={formData.description} rows="2"></textarea>
+					<textarea id="role-desc-edit" {...updateRole.fields.description.as('text')} class="textarea textarea-bordered" placeholder="Can edit posts and upload media" value={formData.description} rows="2"></textarea>
 				</div>
 				
 				<!-- Permissions Selection -->
@@ -339,36 +373,59 @@
 	{/snippet}
 </Dialog>
 
-<!-- Create Permission Modal -->
+<!-- Create/Edit Permission Modal -->
 <Dialog bind:open={showPermModal} size="md" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
 	{#snippet header()}
 		<div class="flex items-center justify-between">
-			<h3 class="font-bold text-lg">New Permission</h3>
-			<button class="btn btn-ghost btn-sm btn-circle" onclick={() => showPermModal = false} aria-label="Close">
+			<h3 class="font-bold text-lg">{permModalMode === 'create' ? 'New Permission' : 'Edit Permission'}</h3>
+			<button class="btn btn-ghost btn-sm btn-circle" onclick={() => { showPermModal = false; resetPermForm(); }} aria-label="Close">
 				<X class="h-4 w-4" />
 			</button>
 		</div>
 	{/snippet}
 	{#snippet children()}
-		<form {...createPermission} onsubmit={() => showPermModal = false} class="space-y-3">
-			<div class="form-control">
-				<label class="label" for="perm-value"><span class="label-text">Value</span></label>
-				<input id="perm-value" type="text" name="value" class="input input-bordered" placeholder="posts.create" required />
-				<label class="label"><span class="label-text-alt">Unique identifier (e.g., posts.create, users.delete)</span></label>
-			</div>
-			<div class="form-control">
-				<label class="label" for="perm-label"><span class="label-text">Label</span></label>
-				<input id="perm-label" type="text" name="label" class="input input-bordered" placeholder="Create Posts" />
-			</div>
-			<div class="form-control">
-				<label class="label" for="perm-desc"><span class="label-text">Description</span></label>
-				<textarea id="perm-desc" name="description" class="textarea textarea-bordered" placeholder="Allows creating new posts" rows="2"></textarea>
-			</div>
-			<div class="modal-action">
-				<button type="button" class="btn" onclick={() => showPermModal = false}>Cancel</button>
-				<button type="submit" class="btn btn-primary">Create Permission</button>
-			</div>
-		</form>
+		{#if permModalMode === 'create'}
+			<form {...createPermission} onsubmit={() => { showPermModal = false; resetPermForm(); }} class="space-y-3">
+				<div class="form-control">
+					<label class="label" for="perm-value"><span class="label-text">Value</span></label>
+					<input id="perm-value" type="text" name="value" class="input input-bordered" placeholder="posts.create" required />
+					<label class="label"><span class="label-text-alt">Unique identifier (e.g., posts.create, users.delete)</span></label>
+				</div>
+				<div class="form-control">
+					<label class="label" for="perm-label"><span class="label-text">Label</span></label>
+					<input id="perm-label" type="text" name="label" class="input input-bordered" placeholder="Create Posts" />
+				</div>
+				<div class="form-control">
+					<label class="label" for="perm-desc"><span class="label-text">Description</span></label>
+					<textarea id="perm-desc" name="description" class="textarea textarea-bordered" placeholder="Allows creating new posts" rows="2"></textarea>
+				</div>
+				<div class="modal-action">
+					<button type="button" class="btn" onclick={() => { showPermModal = false; resetPermForm(); }}>Cancel</button>
+					<button type="submit" class="btn btn-primary">Create Permission</button>
+				</div>
+			</form>
+		{:else}
+			<form {...updatePermission} onsubmit={() => { showPermModal = false; resetPermForm(); }} class="space-y-3">
+				<input type="hidden" name="id" value={editingPerm?.id} />
+				<div class="form-control">
+					<label class="label" for="perm-value-edit"><span class="label-text">Value</span></label>
+					<input id="perm-value-edit" {...updatePermission.fields.value.as('text')} class="input input-bordered" placeholder="posts.create" value={permFormData.value} required />
+					<label class="label"><span class="label-text-alt">Unique identifier (e.g., posts.create, users.delete)</span></label>
+				</div>
+				<div class="form-control">
+					<label class="label" for="perm-label-edit"><span class="label-text">Label</span></label>
+					<input id="perm-label-edit" {...updatePermission.fields.label.as('text')} class="input input-bordered" placeholder="Create Posts" value={permFormData.label} />
+				</div>
+				<div class="form-control">
+					<label class="label" for="perm-desc-edit"><span class="label-text">Description</span></label>
+					<textarea id="perm-desc-edit" {...updatePermission.fields.description.as('text')} class="textarea textarea-bordered" placeholder="Allows creating new posts" value={permFormData.description} rows="2"></textarea>
+				</div>
+				<div class="modal-action">
+					<button type="button" class="btn" onclick={() => { showPermModal = false; resetPermForm(); }}>Cancel</button>
+					<button type="submit" class="btn btn-primary">Update Permission</button>
+				</div>
+			</form>
+		{/if}
 	{/snippet}
 </Dialog>
 

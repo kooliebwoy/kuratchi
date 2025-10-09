@@ -5,7 +5,8 @@ import {
   organizationPlugin,
   credentialsPlugin,
   activityPlugin,
-  rolesPlugin
+  rolesPlugin,
+  storagePlugin
 } from 'kuratchi-sdk/auth';
 import { adminSchema } from '$lib/schemas/admin';
 import { organizationSchema } from '$lib/schemas/organization';
@@ -17,6 +18,12 @@ export const handle = createAuthHandle({
     organizationPlugin({ organizationSchema }),
     credentialsPlugin(), // Enable email/password auth
     activityPlugin(), // Activity tracking with dual-logging
+    storagePlugin({
+      r2: {
+        default: 'BUCKET'
+      },
+      defaultBucket: 'default'
+    }),
     rolesPlugin({
       // Static defaults (fallbacks)
       define: {
