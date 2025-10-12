@@ -1,3 +1,5 @@
+import Cloudflare from 'cloudflare';
+
 export type PrimaryLocationHint = 'wnam' | 'enam' | 'weur' | 'eeur' | 'apac' | 'oc';
 
 /**
@@ -20,11 +22,13 @@ export class CloudflareClient {
     private apiToken: string;
     private accountId: string;
     private base: string;
+    private cf: Cloudflare;
 
     constructor(config: CloudflareClientConfig) {
         this.apiToken = config.apiToken;
         this.accountId = config.accountId;
         this.base = config.endpointBase || 'https://api.cloudflare.com/client/v4';
+        this.cf = new Cloudflare({ token: this.apiToken });
     }
 
     private async request(path: string, init: RequestInit): Promise<any> {
@@ -130,18 +134,14 @@ export class CloudflareClient {
     // ===== KV Namespaces =====
     /** Create a KV Namespace */
     async createKVNamespace(title: string): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title })
-        });
+        const res = await (this.cf as any).kv.namespaces.create({ title, account_id: this.accountId });
+        return res as any;
     }
 
     /** List KV Namespaces */
     async listKVNamespaces(): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces`, {
-            method: 'GET'
-        });
+        const res = await (this.cf as any).kv.namespaces.list({ account_id: this.accountId });
+        return res as any;
     }
 
     /** Delete a KV Namespace by id and attempt to delete a Worker script named after the title */
@@ -163,26 +163,21 @@ export class CloudflareClient {
             // ignore lookup errors and proceed to KV deletion
         }
 
-        return this.request(`/accounts/${this.accountId}/storage/kv/namespaces/${namespaceId}`, {
-            method: 'DELETE'
-        });
+        const res = await (this.cf as any).kv.namespaces.delete(namespaceId, { account_id: this.accountId });
+        return res as any;
     }
 
     // ===== R2 Buckets =====
     /** Create an R2 bucket */
     async createR2Bucket(name: string): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/r2/buckets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
+        const res = await (this.cf as any).r2.buckets.create({ name, account_id: this.accountId });
+        return res as any;
     }
 
     /** List R2 buckets */
     async listR2Buckets(): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/r2/buckets`, {
-            method: 'GET'
-        });
+        const res = await (this.cf as any).r2.buckets.list({ account_id: this.accountId });
+        return res as any;
     }
 
     /** Delete an R2 bucket by name and attempt to delete a Worker script named after it */
@@ -193,9 +188,8 @@ export class CloudflareClient {
         } catch {
             // ignore worker deletion errors to ensure bucket deletion proceeds
         }
-        return this.request(`/accounts/${this.accountId}/r2/buckets/${encodeURIComponent(name)}`, {
-            method: 'DELETE'
-        });
+        const res = await (this.cf as any).r2.buckets.delete(name, { account_id: this.accountId });
+        return res as any;
     }
 
     /** Upload a Workers script (module syntax) with provided bindings */
@@ -203,17 +197,15 @@ export class CloudflareClient {
         const form = new FormData();
         const mainModule = 'worker.js';
         form.append(mainModule, new File([workerScript], mainModule, { type: 'application/javascript+module' }));
-        
-        // Check if there are any Durable Object bindings to extract class names
+
         const durableObjectClasses: string[] = [];
         const processedBindings = bindings.map((binding: any) => {
             if (binding.type === 'durable_object_namespace' && binding.class_name) {
-                // Store the class name for SQLite storage migrations
                 durableObjectClasses.push(binding.class_name);
             }
             return binding;
         });
-        
+
         const metadata: any = {
             bindings: processedBindings,
             main_module: mainModule,
@@ -221,70 +213,46 @@ export class CloudflareClient {
             placement: { mode: 'smart' },
             compatibility_flags: ['nodejs_compat']
         };
-        
-        // Add migrations for Durable Object classes if any exist and not explicitly skipped
         if (durableObjectClasses.length > 0 && !options?.skipDoMigrations) {
-            metadata.migrations = {
-                new_sqlite_classes: durableObjectClasses
-            };
+            metadata.migrations = { new_sqlite_classes: durableObjectClasses };
         }
-        
         form.append('metadata', JSON.stringify(metadata));
 
-        const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}`, {
-            method: 'PUT',
-            headers: {
-                Authorization: `Bearer ${this.apiToken}`
-            },
-            body: form
-        });
-        if (!res.ok) {
-            const raw = await res.text();
-            let errBody: any = undefined;
-            try { errBody = JSON.parse(raw); } catch { errBody = raw; }
-            throw new Error(`Failed to upload worker: ${typeof errBody === 'string' ? errBody : JSON.stringify(errBody)}`);
-        }
-        return res.json() as Promise<CloudflareAPIResponse<any>>;
+        const res = await (this.cf as any).workers.scripts.update(scriptName, form);
+        return res as any;
     }
 
     /** Enable a Workers.dev subdomain for a script */
     async enableWorkerSubdomain(scriptName: string): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/workers/scripts/${scriptName}/subdomain`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: true, previews_enabled: true })
+        const res = await (this.cf as any).workers.scripts.subdomain.update(scriptName, {
+            enabled: true,
+            previews_enabled: true
         });
+        return res as any;
     }
 
     /** Get a Worker script (metadata or content). Success indicates it exists. */
     async getWorkerScript(scriptName: string): Promise<any> {
-        return this.request(`/accounts/${this.accountId}/workers/scripts/${scriptName}`, {
-            method: 'GET'
-        });
+        const res = await (this.cf as any).workers.scripts.get(scriptName);
+        return res as any;
     }
 
     /** Delete a Worker script by name (force=true to remove along with bindings/objects) */
     async deleteWorkerScript(scriptName: string): Promise<void> {
-        await this.request(`/accounts/${this.accountId}/workers/scripts/${scriptName}?force=true`, {
-            method: 'DELETE'
-        });
+        await (this.cf as any).workers.scripts.delete(scriptName, { force: true });
     }
 
     // ===== Queues =====
     /** Create a Queue */
     async createQueue(queueName: string): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/queues`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ queue_name: queueName })
-        });
+        const res = await (this.cf as any).queues.create({ account_id: this.accountId, queue_name: queueName });
+        return res as any;
     }
 
     /** List Queues */
     async listQueues(): Promise<CloudflareAPIResponse<any>> {
-        return this.request(`/accounts/${this.accountId}/queues`, {
-            method: 'GET'
-        });
+        const res = await (this.cf as any).queues.list({ account_id: this.accountId });
+        return res as any;
     }
 
     /** Delete a Queue by id or name */
@@ -300,8 +268,108 @@ export class CloudflareClient {
         } catch {
             // ignore lookup errors and try with provided value
         }
-        return this.request(`/accounts/${this.accountId}/queues/${encodeURIComponent(target)}`, {
-            method: 'DELETE'
+        const res = await (this.cf as any).queues.delete(target, { account_id: this.accountId });
+        return res as any;
+    }
+
+    // ===== DNS Zones =====
+    /** Create a new DNS zone */
+    async createZone(name: string): Promise<CloudflareAPIResponse<any>> {
+        // Use official SDK for strong typing
+        const res = await this.cf.zones.add({ name, account: { id: this.accountId } } as any);
+        return res as any;
+    }
+
+    /** List all DNS zones */
+    async listZones(options?: { page?: number; per_page?: number; order?: 'name' | 'status' | 'account.id' | 'account.name'; direction?: 'asc' | 'desc'; match?: 'all' | 'any'; name?: string; account?: { id?: string; name?: string }; status?: 'active' | 'pending' | 'initializing' | 'moved' | 'deleted' | 'deactivated' }): Promise<CloudflareAPIResponse<any>> {
+        // Directly use SDK; it returns envelope with result array
+        const res = await this.cf.zones.browse(options as any);
+        return res as any;
+    }
+
+    /** Get zone details by ID */
+    async getZone(zoneId: string): Promise<CloudflareAPIResponse<any>> {
+        // SDK: most resources support a read/get call; fallback to request if missing
+        try {
+            const fn: any = (this.cf as any).zones?.get || (this.cf as any).zones?.read;
+            if (typeof fn === 'function') {
+                const res = await fn.call((this.cf as any).zones, zoneId);
+                return res as any;
+            }
+        } catch {}
+        return this.request(`/zones/${zoneId}`, { method: 'GET' });
+    }
+
+    /** Delete a DNS zone */
+    async deleteZone(zoneId: string): Promise<CloudflareAPIResponse<any>> {
+        const res = await this.cf.zones.del(zoneId as any);
+        return res as any;
+    }
+
+    /** Pause (disable) a DNS zone */
+    async pauseZone(zoneId: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paused: true })
+        });
+    }
+
+    /** Unpause (enable) a DNS zone */
+    async unpauseZone(zoneId: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paused: false })
+        });
+    }
+
+    /** Purge zone cache */
+    async purgeZoneCache(zoneId: string, options?: { purge_everything?: boolean; files?: string[]; tags?: string[]; hosts?: string[]; prefixes?: string[] }): Promise<CloudflareAPIResponse<any>> {
+        const body = options || { purge_everything: true };
+        return this.request(`/zones/${zoneId}/purge_cache`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+    }
+
+    // ===== DNS Records =====
+    /** List DNS records for a zone */
+    async listDnsRecords(zoneId: string, options?: { type?: string; name?: string; content?: string; page?: number; per_page?: number; order?: string; direction?: 'asc' | 'desc'; match?: 'all' | 'any' }): Promise<CloudflareAPIResponse<any>> {
+        const res = await (this.cf as any).dns.records.browse(zoneId, options as any);
+        return res as any;
+    }
+
+    /** Create a DNS record */
+    async createDnsRecord(zoneId: string, record: { type: string; name: string; content: string; ttl?: number; priority?: number; proxied?: boolean; comment?: string; tags?: string[] }): Promise<CloudflareAPIResponse<any>> {
+        const res = await (this.cf as any).dns.records.create(zoneId, record as any);
+        return res as any;
+    }
+
+    /** Update a DNS record */
+    async updateDnsRecord(zoneId: string, recordId: string, record: { type: string; name: string; content: string; ttl?: number; priority?: number; proxied?: boolean; comment?: string; tags?: string[] }): Promise<CloudflareAPIResponse<any>> {
+        const res = await (this.cf as any).dns.records.update(zoneId, recordId, record as any);
+        return res as any;
+    }
+
+    /** Delete a DNS record */
+    async deleteDnsRecord(zoneId: string, recordId: string): Promise<CloudflareAPIResponse<any>> {
+        const res = await (this.cf as any).dns.records.delete(zoneId, recordId);
+        return res as any;
+    }
+
+    /** Get zone settings */
+    async getZoneSettings(zoneId: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}/settings`, { method: 'GET' });
+    }
+
+    /** Update zone setting */
+    async updateZoneSetting(zoneId: string, setting: string, value: any): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}/settings/${setting}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value })
         });
     }
 }

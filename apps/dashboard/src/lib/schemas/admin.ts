@@ -81,6 +81,17 @@ export const adminSchema: SchemaDsl = {
       userAgent: 'text',
       '...timestamps': true,
     },
+    activityTypes: {
+      id: 'text primary key',
+      action: 'text not null unique',
+      label: 'text not null',
+      category: 'text',
+      severity: 'enum(info,warning,critical) default info',
+      description: 'text',
+      isAdminAction: 'boolean default false',
+      isHidden: 'boolean default false',
+      '...timestamps': true,
+    },
     session: {
       sessionToken: 'text primary key not null',
       userId: 'text not null -> users.id cascade',

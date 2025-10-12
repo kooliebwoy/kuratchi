@@ -13,7 +13,7 @@
 		archivePermission,
 		attachPermissionToRole,
 		detachPermissionFromRole
-	} from './roles.remote';
+	} from '../../lib/api/roles.remote';
 
 	// Data sources
 	const roles = getRoles();

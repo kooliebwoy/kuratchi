@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { Home, Database, Users, Shield, Settings, Activity, Globe, Building2, Clock, Mail, File, Folder } from 'lucide-svelte';
 
   const menu = [
@@ -13,11 +13,12 @@
     { label: 'Storage', icon: Folder, href: '/storage' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Activity', icon: Activity, href: '/activity' },
-    { label: 'Settings', icon: Settings, href: '/settings' }
+    { label: 'Settings', icon: Settings, href: '/settings' },
+    { label: 'Super Admin', icon: Shield, href: '/superadmin', role: 'isSuperAdmin' }
   ];
 
   const isActive = (href: string) => {
-    return $page.url.pathname === href;
+    return page.url.pathname === href;
   };
 </script>
 
@@ -52,9 +53,4 @@
       {/if}
     {/each}
   </nav>
-
-  <footer class="mt-auto text-xs text-base-content/60">
-    <p>Project: Orbit SaaS</p>
-    <p class="text-base-content/40">ENV: Production</p>
-  </footer>
 </aside>

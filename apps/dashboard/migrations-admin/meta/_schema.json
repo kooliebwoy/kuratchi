@@ -421,6 +421,81 @@
       ]
     },
     {
+      "name": "activityTypes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "notNull": true,
+          "unique": true
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "notNull": true
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "severity",
+          "type": "text",
+          "default": {
+            "kind": "value",
+            "value": "info"
+          }
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "isAdminAction",
+          "type": "integer",
+          "mode": "boolean",
+          "default": {
+            "kind": "value",
+            "value": "false"
+          }
+        },
+        {
+          "name": "isHidden",
+          "type": "integer",
+          "mode": "boolean",
+          "default": {
+            "kind": "value",
+            "value": "false"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
       "name": "session",
       "columns": [
         {

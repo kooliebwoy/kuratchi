@@ -179,3 +179,159 @@ export const clearOldActivities = guardedForm(
     }
   }
 );
+
+/**
+ * Get all activity types
+ */
+export const getActivityTypes = guardedQuery(async () => {
+  try {
+    const { locals } = getRequestEvent();
+    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    if (!adminDb) error(500, 'Admin database not configured');
+
+    const result = await adminDb.activityTypes
+      .where({ deleted_at: { isNullish: true } })
+      .many();
+
+    return result?.data || [];
+  } catch (err) {
+    console.error('[activity.getActivityTypes] error:', err);
+    return [];
+  }
+});
+
+/**
+ * Create activity type
+ */
+export const createActivityType = guardedForm(
+  v.object({
+    action: v.pipe(v.string(), v.nonEmpty()),
+    label: v.pipe(v.string(), v.nonEmpty()),
+    category: v.optional(v.string()),
+    severity: v.optional(v.picklist(['info', 'warning', 'critical'])),
+    description: v.optional(v.string()),
+    isAdminAction: v.optional(v.boolean()),
+    isHidden: v.optional(v.boolean())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      if (!adminDb) error(500, 'Admin database not configured');
+
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+
+      const result = await adminDb.activityTypes.insert({
+        id,
+        action: data.action,
+        label: data.label,
+        category: data.category || null,
+        severity: data.severity || 'info',
+        description: data.description || null,
+        isAdminAction: data.isAdminAction ?? false,
+        isHidden: data.isHidden ?? false,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null
+      });
+
+      if (!result.success) {
+        console.error('[activity.createActivityType] error:', result.error);
+        error(500, `Failed to create activity type: ${result.error}`);
+      }
+
+      await getActivityTypes().refresh();
+
+      return { success: true, id };
+    } catch (err) {
+      console.error('[activity.createActivityType] error:', err);
+      error(500, 'Failed to create activity type');
+    }
+  }
+);
+
+/**
+ * Update activity type
+ */
+export const updateActivityType = guardedForm(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty()),
+    label: v.optional(v.pipe(v.string(), v.nonEmpty())),
+    category: v.optional(v.string()),
+    severity: v.optional(v.picklist(['info', 'warning', 'critical'])),
+    description: v.optional(v.string()),
+    isAdminAction: v.optional(v.boolean()),
+    isHidden: v.optional(v.boolean())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      if (!adminDb) error(500, 'Admin database not configured');
+
+      const now = new Date().toISOString();
+      const updateData: any = { updated_at: now };
+
+      if (data.label !== undefined) updateData.label = data.label;
+      if (data.category !== undefined) updateData.category = data.category;
+      if (data.severity !== undefined) updateData.severity = data.severity;
+      if (data.description !== undefined) updateData.description = data.description;
+      if (data.isAdminAction !== undefined) updateData.isAdminAction = data.isAdminAction;
+      if (data.isHidden !== undefined) updateData.isHidden = data.isHidden;
+
+      const result = await adminDb.activityTypes
+        .where({ id: data.id })
+        .update(updateData);
+
+      if (!result.success) {
+        console.error('[activity.updateActivityType] error:', result.error);
+        error(500, `Failed to update activity type: ${result.error}`);
+      }
+
+      await getActivityTypes().refresh();
+
+      return { success: true };
+    } catch (err) {
+      console.error('[activity.updateActivityType] error:', err);
+      error(500, 'Failed to update activity type');
+    }
+  }
+);
+
+/**
+ * Delete activity type
+ */
+export const deleteActivityType = guardedForm(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async ({ id }) => {
+    try {
+      const { locals } = getRequestEvent();
+      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      if (!adminDb) error(500, 'Admin database not configured');
+
+      const now = new Date().toISOString();
+
+      const result = await adminDb.activityTypes
+        .where({ id })
+        .update({
+          deleted_at: now,
+          updated_at: now
+        });
+
+      if (!result.success) {
+        console.error('[activity.deleteActivityType] error:', result.error);
+        error(500, `Failed to delete activity type: ${result.error}`);
+      }
+
+      await getActivityTypes().refresh();
+
+      return { success: true };
+    } catch (err) {
+      console.error('[activity.deleteActivityType] error:', err);
+      error(500, 'Failed to delete activity type');
+    }
+  }
+);

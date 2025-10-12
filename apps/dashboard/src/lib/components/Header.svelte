@@ -1,15 +1,12 @@
 <script lang="ts">
-  import { Bell, Search, UserCircle2, Command } from 'lucide-svelte';
+  import { Bell, Search, Command, UserCircle } from 'lucide-svelte';
   export let workspace: string;
   export let user: { name: string; email: string };
 </script>
 
 <header class="flex items-center justify-between border-b border-base-200/60 bg-base-100/60 px-8 py-4 backdrop-blur">
   <div class="flex items-center gap-3">
-    <div class="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-3 py-1 text-primary">
-      <Command class="h-3.5 w-3.5" />
-      <span class="text-xs font-medium uppercase tracking-widest">Command Center</span>
-    </div>
+    <Command class="h-5 w-5" />
     <h2 class="text-lg font-semibold">{workspace}</h2>
   </div>
 
@@ -25,7 +22,7 @@
 
     <div class="flex items-center gap-3 rounded-xl border border-base-200/80 bg-base-200/40 px-3 py-2">
       <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary">
-        <UserCircle2 class="h-6 w-6" />
+        <UserCircle class="h-6 w-6" />
       </div>
       <div>
         <p class="text-sm font-medium">{user.name}</p>

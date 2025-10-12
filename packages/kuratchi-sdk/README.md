@@ -5,6 +5,7 @@ End-to-end auth and multi-tenant org databases backed by Cloudflare (Workers + D
 - 🔐 **Authentication** - Magic links, OAuth (Google, GitHub, Microsoft), email/password
 - 🗄️ **Database** - Durable Objects-backed SQLite with HTTP client and typed ORM
 - 💾 **Storage** - KV, R2, D1 bindings with unified access
+- 🌐 **Domains** - Full DNS zone management via Cloudflare API
 - 🏢 **Multi-tenancy** - Organization management with per-org databases
 - 🛠️ **CLI** - Admin DB provisioning and migration generation
 - 🎯 **Type-safe ORM** - JSON schema-based with includes, JSON columns, migrations
@@ -127,6 +128,7 @@ export const handle = createAuthHandle({
 - Magic link endpoints: `/auth/magic/send` and `/auth/magic/callback`
 - OAuth routes: `/auth/oauth/{provider}/start` and `/auth/oauth/{provider}/callback`
 - Storage access: `locals.kuratchi.kv`, `locals.kuratchi.r2`, `locals.kuratchi.d1`
+- Domains: `domains.zones.createZone()`, `domains.zones.listZones()`, etc.
 - Server helper: `locals.kuratchi.orgDatabaseClient(orgId?)` for org DB ORM client
 
 4) __Use in routes__ (examples)
@@ -219,9 +221,10 @@ import { database, KuratchiDatabase } from 'kuratchi-sdk/database';
 import { kv } from 'kuratchi-sdk/kv';
 import { r2 } from 'kuratchi-sdk/r2';
 import { d1 } from 'kuratchi-sdk/d1';
+import { domains } from 'kuratchi-sdk/domains';
 
 // Legacy namespace imports (backward compatible)
-import { auth, database, kv, r2, d1 } from 'kuratchi-sdk';
+import { auth, database, kv, r2, d1, domains } from 'kuratchi-sdk';
 ```
 
 ### Database Operations
@@ -285,6 +288,119 @@ const newOrg = await adminAuth.createOrganization({
 
 // OAuth (requires oauth plugin)
 // Redirect to /auth/oauth/google/start?org=xxx&redirectTo=/dashboard
+```
+
+### Domains (Cloudflare DNS)
+
+The domains module provides full DNS zone management through Cloudflare's API. It uses your existing Cloudflare API credentials to manage zones and DNS records.
+
+**Required Environment Variables:**
+```
+# Cloudflare credentials (same as used for other CF services)
+CF_API_TOKEN=your-api-token  # or CLOUDFLARE_API_TOKEN
+CF_ACCOUNT_ID=your-account-id  # or CLOUDFLARE_ACCOUNT_ID
+```
+
+**Basic Usage:**
+
+```ts
+import { domains } from 'kuratchi-sdk';
+
+// Create a new DNS zone
+const zone = await domains.zones.createZone('example.com');
+if (zone) {
+  console.log('Zone created:', zone.name, zone.id);
+  console.log('Nameservers:', zone.name_servers);
+}
+
+// List all zones
+const zones = await domains.zones.listZones({ status: 'active' });
+
+// Find a specific zone
+const zone = await domains.zones.findZoneByName('example.com');
+
+// Add DNS records
+if (zone) {
+  // A record
+  await domains.zones.createDnsRecord(zone.id, {
+    type: 'A',
+    name: 'www',
+    content: '192.0.2.1',
+    proxied: true  // Enable Cloudflare proxy
+  });
+  
+  // CNAME record
+  await domains.zones.createDnsRecord(zone.id, {
+    type: 'CNAME',
+    name: 'api',
+    content: 'example.com',
+    ttl: 300
+  });
+  
+  // MX record
+  await domains.zones.createDnsRecord(zone.id, {
+    type: 'MX',
+    name: '@',
+    content: 'mail.example.com',
+    priority: 10
+  });
+}
+
+// List DNS records
+const records = await domains.zones.listDnsRecords(zone.id, { type: 'A' });
+
+// Update DNS record
+if (records && records.length > 0) {
+  await domains.zones.updateDnsRecord(zone.id, records[0].id, {
+    type: 'A',
+    name: 'www',
+    content: '192.0.2.2',  // New IP
+    proxied: true
+  });
+}
+
+// Zone management
+await domains.zones.pauseZone(zone.id);    // Pause zone
+await domains.zones.unpauseZone(zone.id);  // Resume zone
+await domains.zones.purgeZoneCache(zone.id);  // Clear cache
+
+// Zone settings
+const settings = await domains.zones.getZoneSettings(zone.id);
+await domains.zones.updateZoneSetting(zone.id, 'ssl', 'full');
+
+// Delete resources (be careful!)
+await domains.zones.deleteDnsRecord(zone.id, recordId);
+await domains.zones.deleteZone(zone.id);
+```
+
+**Type Safety:**
+
+All functions return properly typed objects with IntelliSense support:
+
+```ts
+import type { Zone, DnsRecord, ListZonesOptions } from 'kuratchi-sdk';
+
+const options: ListZonesOptions = {
+  status: 'active',
+  per_page: 50,
+  order: 'name',
+  direction: 'asc'
+};
+
+const zones: Zone[] | null = await domains.zones.listZones(options);
+```
+
+**Error Handling:**
+
+The domains module gracefully handles missing credentials and API errors by returning `null` instead of throwing. Check console for warnings:
+
+```ts
+const zones = await domains.zones.listZones();
+if (!zones) {
+  console.log('Unable to fetch zones - check credentials or connection');
+} else {
+  console.log(`Found ${zones.length} zones`);
+}
 ```
 
 ## Runtime ORM: Quickstart and Includes

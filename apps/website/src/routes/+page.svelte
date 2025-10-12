@@ -55,7 +55,7 @@
         
         <p class="text-xl md:text-2xl mb-10 text-gray-600 max-w-3xl mx-auto leading-relaxed">
           The open-source backend platform built for SvelteKit and Cloudflare Workers. 
-          Database, Auth, and Storage—all optimized for edge performance.
+          Database, Auth, and Storage, using D1, DOs, KV, and R2.
         </p>
         
         <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
@@ -73,7 +73,7 @@
           <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
             <div class="text-sm text-gray-500 font-medium mb-2">Open Source</div>
             <div class="text-4xl font-bold text-blue-600 mb-1">100%</div>
-            <div class="text-sm text-gray-600">MIT Licensed</div>
+            <div class="text-sm text-gray-600">Self Hosted</div>
           </div>
           
           <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
@@ -85,7 +85,7 @@
           <div class="bg-gray-50 rounded-2xl p-6 border border-gray-100">
             <div class="text-sm text-gray-500 font-medium mb-2">Built with</div>
             <div class="text-4xl font-bold text-blue-600 mb-1">Svelte 5</div>
-            <div class="text-sm text-gray-600">Latest & Greatest</div>
+            <div class="text-sm text-gray-600">Remote functions</div>
           </div>
         </div>
       </div>
@@ -128,9 +128,9 @@
 
         <!-- Type-Safe Queries -->
         <div>
-          <h3 class="text-lg font-bold text-gray-900 mb-4">🎯 Type-Safe Database Queries</h3>
+          <h3 class="text-lg font-bold text-gray-900 mb-4">🎯 Minimal ORM Included</h3>
           <div class="mockup-code bg-gray-900 text-sm">
-            <pre data-prefix="1"><code class="text-gray-500">// Get typed ORM client</code></pre>
+            <pre data-prefix="1"><code class="text-gray-500">// Get minimal ORM client</code></pre>
             <pre data-prefix="2"><code class="text-blue-400">const</code> <code class="text-yellow-300">db</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-yellow-300">locals</code><code class="text-gray-300">.kuratchi</code></pre>
             <pre data-prefix="3"><code class="text-gray-300">  .</code><code class="text-yellow-300">orgDatabaseClient</code><code class="text-gray-300">();</code></pre>
             <pre data-prefix="4"><code class="text-gray-300"></code></pre>
@@ -154,10 +154,10 @@
           <pre data-prefix="1"><code class="text-gray-500">// src/routes/+page.server.ts</code></pre>
           <pre data-prefix="2"><code class="text-blue-400">export</code> <code class="text-blue-400">const</code> <code class="text-yellow-300">load</code> <code class="text-gray-300">= </code><code class="text-blue-400">async</code> <code class="text-gray-300">({"{ locals }"}) </code><code class="text-blue-400">=></code> <code class="text-gray-300">{"{"}</code></pre>
           <pre data-prefix="3"><code class="text-gray-300">  </code><code class="text-gray-500">// Access authenticated user</code></pre>
-          <pre data-prefix="4"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">user</code><code class="text-gray-300">, </code><code class="text-yellow-300">session</code> <code class="text-gray-300">{"} = "}</code><code class="text-yellow-300">locals</code><code class="text-gray-300">;</code></pre>
+          <pre data-prefix="4"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">kuratchi</code><code class="text-gray-300">, </code><code class="text-yellow-300">session</code> <code class="text-gray-300">{"} = "}</code><code class="text-yellow-300">locals</code><code class="text-gray-300">;</code></pre>
           <pre data-prefix="5"><code class="text-gray-300"></code></pre>
           <pre data-prefix="6"><code class="text-gray-300">  </code><code class="text-gray-500">// Get org database client</code></pre>
-          <pre data-prefix="7"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-yellow-300">db</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-yellow-300">locals</code><code class="text-gray-300">.kuratchi.</code><code class="text-yellow-300">orgDatabaseClient</code><code class="text-gray-300">();</code></pre>
+          <pre data-prefix="7"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-yellow-300">db</code> <code class="text-gray-300">= </code><code class="text-blue-400">await</code> <code class="text-gray-300">kuratchi.</code><code class="text-yellow-300">orgDatabaseClient</code><code class="text-gray-300">();</code></pre>
           <pre data-prefix="8"><code class="text-gray-300">  </code><code class="text-blue-400">const</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">data</code> <code class="text-gray-300">{"} = "}</code><code class="text-blue-400">await</code> <code class="text-yellow-300">db</code><code class="text-gray-300">.posts.</code><code class="text-yellow-300">where</code><code class="text-gray-300">({"{ published: true }"}).</code><code class="text-yellow-300">many</code><code class="text-gray-300">();</code></pre>
           <pre data-prefix="9"><code class="text-gray-300"></code></pre>
           <pre data-prefix="10"><code class="text-gray-300">  </code><code class="text-blue-400">return</code> <code class="text-gray-300">{"{ "}</code><code class="text-yellow-300">user</code><code class="text-gray-300">, posts: </code><code class="text-yellow-300">data</code> <code class="text-gray-300">{"}"};</code></pre>

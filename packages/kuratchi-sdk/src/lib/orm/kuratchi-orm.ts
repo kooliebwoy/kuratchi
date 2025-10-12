@@ -625,9 +625,13 @@ export function createClientFromJsonSchema(
   for (const t of schema.tables) {
     const s = new Set<string>();
     for (const col of t.columns) {
-      if ((col as any).type === 'json') s.add(col.name);
+      if ((col as any).type === 'json') {
+        s.add(col.name);
+      }
     }
-    jsonColsByTable.set(t.name, s);
+    if (s.size > 0) {
+      jsonColsByTable.set(t.name, s);
+    }
   }
 
   const base = createRuntimeOrm(execute, schema);
@@ -655,7 +659,11 @@ export function createClientFromJsonSchema(
         const v = copy[col];
         if (v === undefined || v === null) continue;
         if (typeof v === 'string') {
-          try { copy[col] = JSON.parse(v); } catch { /* leave as string if not valid JSON */ }
+          try { 
+            copy[col] = JSON.parse(v);
+          } catch { 
+            /* leave as string if not valid JSON */
+          }
         }
       }
       return copy as R;

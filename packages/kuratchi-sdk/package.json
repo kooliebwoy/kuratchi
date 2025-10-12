@@ -66,6 +66,11 @@
 			"types": "./src/lib/orm/index.ts",
 			"svelte": "./src/lib/orm/index.ts",
 			"default": "./src/lib/orm/index.ts"
+		},
+		"./domains": {
+			"types": "./src/lib/domains/index.ts",
+			"svelte": "./src/lib/domains/index.ts",
+			"default": "./src/lib/domains/index.ts"
 		}
 	},
 	"peerDependencies": {
@@ -99,6 +104,7 @@
 	],
 	"dependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.2.3",
-		"tsx": "^4.19.2"
+		"tsx": "^4.19.2",
+		"cloudflare": "^5.2.0"
 	}
 }

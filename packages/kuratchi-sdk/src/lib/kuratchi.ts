@@ -13,6 +13,7 @@ import { auth as authNamespace } from './auth/kuratchi-auth.js';
 import { kv as kvNamespace } from './kv/index.js';
 import { r2 as r2Namespace } from './r2/index.js';
 import { d1 as d1Namespace } from './d1/index.js';
+import { domains as domainsNamespace } from './domains/index.js';
 
 /**
  * Unified Kuratchi configuration object
@@ -75,6 +76,8 @@ export interface KuratchiSDK {
   r2: typeof r2Namespace;
   /** D1 service */
   d1: typeof d1Namespace;
+  /** Domains (Cloudflare DNS) service */
+  domains: typeof domainsNamespace;
 }
 
 /**
@@ -140,5 +143,6 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
     kv: kvNamespace,
     r2: r2Namespace,
     d1: d1Namespace,
+    domains: domainsNamespace,
   };
 }

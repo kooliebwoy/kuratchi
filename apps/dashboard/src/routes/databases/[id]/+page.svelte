@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { getDatabaseTables, executeQuery } from '../database.remote';
+  import { getDatabaseTables, executeQuery } from '$lib/api/database.remote';
 
   let queryDialog: HTMLDialogElement;
   let queryResults = $state<any[]>([]);

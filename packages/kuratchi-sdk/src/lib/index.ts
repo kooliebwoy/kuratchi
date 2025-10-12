@@ -16,6 +16,11 @@ export { auth } from './auth/kuratchi-auth.js';
 export { kv } from './kv/index.js';
 export { r2 } from './r2/index.js';
 export { d1 } from './d1/index.js';
+export { domains } from './domains/index.js';
+
+// === ACTIVITY ===
+// Activity action constants (auto-populated from DB)
+export { ActivityAction, getActivityActions, isValidAction } from './activity-actions.js';
 
 // === TYPES ===
 // Re-export commonly used types
@@ -28,3 +33,12 @@ export type {
   CreateAuthHandleOptions,
   AuthConfig
 } from './auth/types.js';
+
+// Domains types
+export type {
+  Zone,
+  DnsRecord,
+  ListZonesOptions,
+  ListDnsRecordsOptions,
+  CreateDnsRecordOptions
+} from './domains/index.js';

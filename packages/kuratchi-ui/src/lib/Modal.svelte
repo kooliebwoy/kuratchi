@@ -7,6 +7,7 @@
     boxClass?: string;
     backdropClass?: string;
     children: Snippet;
+    header?: Snippet;
     actions?: Snippet;
     onClose?: () => void;
     closeOnBackdrop?: boolean;
@@ -18,6 +19,7 @@
     boxClass = '',
     backdropClass = '',
     children,
+    header,
     actions,
     onClose,
     closeOnBackdrop = true
@@ -38,6 +40,9 @@
 {#if open}
   <div class="modal modal-open {className}">
     <div class="modal-box {boxClass}">
+      {#if header}
+        {@render header()}
+      {/if}
       {@render children()}
       
       {#if actions}

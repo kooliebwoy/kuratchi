@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Users, Plus, Pencil, Trash2, X, Shield, Building2, UserCheck, UserX, ChevronDown, Search } from 'lucide-svelte';
+  import { Dialog, FormField, FormInput, FormSelect, FormCheckbox } from '@kuratchi/ui';
   import {
     getUsers,
     getAvailableOrganizations,
@@ -10,7 +11,7 @@
     deleteUser,
     addUserToOrganization,
     removeUserFromOrganization
-  } from './users.remote';
+  } from '$lib/api/users.remote';
 
   // Data sources
   const users = getUsers();
@@ -337,6 +338,7 @@
 
 <!-- Create/Edit User Modal -->
 {#if showUserModal}
+  {@const formRef = modalMode === 'create' ? createUser : updateUser}
   <div class="modal modal-open">
     <div class="modal-box max-w-2xl">
       <div class="flex items-center justify-between mb-4">
@@ -346,39 +348,47 @@
         </button>
       </div>
 
-      <form {...(modalMode === 'create' ? createUser : updateUser)} onsubmit={handleUserSubmit} class="space-y-4">
+      <form {...formRef} onsubmit={handleUserSubmit} class="space-y-4">
         {#if modalMode === 'edit'}
           <input type="hidden" name="id" value={editingUser?.id} />
         {/if}
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="form-control">
-            <label class="label" for="user-email"><span class="label-text">Email</span></label>
-            <input
-              id="user-email" type="email" name="email" class="input input-bordered"
-              placeholder="user@example.com" value={formData.email} required
+          <FormField 
+            label="Email" 
+            issues={formRef.fields.email.issues()}
+          >
+            <FormInput 
+              field={formRef.fields.email} 
+              type="email"
+              placeholder="user@example.com"
               disabled={modalMode === 'edit'}
             />
-          </div>
+          </FormField>
           
-          <div class="form-control">
-            <label class="label" for="user-name"><span class="label-text">Name</span></label>
-            <input
-              id="user-name" type="text" name="name" class="input input-bordered"
-              placeholder="John Doe" value={formData.name} required
+          <FormField 
+            label="Name" 
+            issues={formRef.fields.name.issues()}
+          >
+            <FormInput 
+              field={formRef.fields.name} 
+              placeholder="John Doe"
             />
-          </div>
+          </FormField>
         </div>
         
         {#if modalMode === 'create'}
-          <div class="form-control">
-            <label class="label" for="user-password"><span class="label-text">Password (Optional)</span></label>
-            <input
-              id="user-password" type="password" name="password" class="input input-bordered"
-              placeholder="••••••••" bind:value={formData.password} minlength="8"
+          <FormField 
+            label="Password (Optional)" 
+            issues={formRef.fields.password.issues()}
+            hint="Leave empty to let user set via email"
+          >
+            <FormInput 
+              field={formRef.fields.password} 
+              type="password"
+              placeholder="••••••••"
             />
-            <label class="label"><span class="label-text-alt">Leave empty to let user set via email</span></label>
-          </div>
+          </FormField>
         {/if}
         
         <div class="form-control">
@@ -473,21 +483,25 @@
         <form {...addUserToOrganization} onsubmit={() => { showOrgModal = false; resetOrgForm(); }} class="space-y-3">
           <input type="hidden" name="userId" value={selectedUser.id} />
           
-          <div class="form-control">
-            <label class="label" for="org-select"><span class="label-text">Organization</span></label>
-            <select id="org-select" name="organizationId" class="select select-bordered" bind:value={orgFormData.organizationId} required>
+          <FormField 
+            label="Organization" 
+            issues={addUserToOrganization.fields.organizationId.issues()}
+          >
+            <FormSelect field={addUserToOrganization.fields.organizationId}>
               <option value="">Select organization...</option>
               {#each orgsList as org}
                 {#if !selectedUser.organizations?.some((o: any) => o.id === org.id)}
                   <option value={org.id}>{org.organizationName || org.name}</option>
                 {/if}
               {/each}
-            </select>
-          </div>
+            </FormSelect>
+          </FormField>
           
           <div class="modal-action">
             <button type="button" class="btn" onclick={() => { showOrgModal = false; resetOrgForm(); }}>Cancel</button>
-            <button type="submit" class="btn btn-primary">Add to Organization</button>
+            <button type="submit" class="btn btn-primary" aria-busy={!!addUserToOrganization.pending} disabled={!!addUserToOrganization.pending}>
+              Add to Organization
+            </button>
           </div>
         </form>
       </div>

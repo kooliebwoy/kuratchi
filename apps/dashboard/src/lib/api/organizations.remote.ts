@@ -1,7 +1,7 @@
 import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
-import { database } from 'kuratchi-sdk';
+import { database, ActivityAction } from 'kuratchi-sdk';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -85,16 +85,15 @@ export const createOrganization = guardedForm(
 				error(500, `Failed to create organization: ${result.error}`);
 			}
 
-			// Log activity (dual: admin + org)
+			// Log activity (isAdminAction auto-applied from type definition)
 			const { locals } = getRequestEvent();
 			await locals.kuratchi?.activity?.logActivity?.({
-				action: 'organization.created',
+				action: ActivityAction.ORGANIZATION_CREATED,
 				data: {
 					organizationId: orgId,
 					organizationName: data.organizationName,
 					organizationSlug: data.organizationSlug
 				},
-				isAdminAction: true,
 				organizationId: orgId
 			});
 
@@ -140,15 +139,14 @@ export const updateOrganization = guardedForm(
 				error(500, `Failed to update organization: ${result.error}`);
 			}
 
-			// Log activity (dual: admin + org)
+			// Log activity 
 			const { locals } = getRequestEvent();
 			await locals.kuratchi?.activity?.logActivity?.({
-				action: 'organization.updated',
+				action: ActivityAction.ORGANIZATION_UPDATED,
 				data: {
 					organizationId: data.id,
 					changes: updateData
 				},
-				isAdminAction: true,
 				organizationId: data.id
 			});
 
@@ -185,15 +183,13 @@ export const deleteOrganization = guardedForm(
 				error(500, `Failed to delete organization: ${result.error}`);
 			}
 
-			// Log activity (dual: admin + org, but hidden from org)
+			// Log activity 
 			const { locals } = getRequestEvent();
 			await locals.kuratchi?.activity?.logActivity?.({
-				action: 'organization.deleted',
+				action: ActivityAction.ORGANIZATION_DELETED,
 				data: {
 					organizationId: id
 				},
-				isAdminAction: true,
-				isHidden: true, // Don't show deletion in org's activity log
 				organizationId: id
 			});
 

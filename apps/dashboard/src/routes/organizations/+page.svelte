@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { Building2, Plus, Pencil, Trash2, X } from 'lucide-svelte';
-	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from './organizations.remote';
+	import { Dialog, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
+	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from '$lib/api/organizations.remote';
 
 	// Fetch organizations
 	const organizations = getOrganizations();
-
 	// Modal state
 	let showModal = $state(false);
 	let modalMode = $state<'create' | 'edit'>('create');
@@ -172,132 +172,103 @@
 							</td>
 						</tr>
 					{/if}
-				</tbody>
 			</table>
 		</div>
 	</div>
 </div>
 
-<!-- Create/Edit Modal -->
+<!-- Create/Edit Dialog -->
 {#if showModal}
-	<div class="modal modal-open">
-		<div class="modal-box">
-			<div class="flex items-center justify-between mb-4">
-				<h3 class="font-bold text-lg">
-					{modalMode === 'create' ? 'Create Organization' : 'Edit Organization'}
-				</h3>
-				<button 
-					class="btn btn-ghost btn-sm btn-circle"
-					onclick={() => { showModal = false; resetForm(); }}
-				>
-					<X class="h-4 w-4" />
-				</button>
-			</div>
+  <Dialog bind:open={showModal} size="md" onClose={resetForm} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg">
+          {modalMode === 'create' ? 'Create Organization' : 'Edit Organization'}
+        </h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={() => { showModal = false; resetForm(); }}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      {@const formRef = modalMode === 'create' ? createOrganization : updateOrganization}
+      <form {...formRef} class="space-y-4">
+        {#if modalMode === 'edit' && editingOrg}
+          <input type="hidden" name="id" value={editingOrg.id} />
+        {/if}
+        
+        <FormField 
+          label="Organization Name" 
+          issues={formRef.fields.organizationName.issues()}
+        >
+          <FormInput 
+            field={formRef.fields.organizationName} 
+            placeholder="Acme Corp"
+          />
+        </FormField>
 
-			<form {...(modalMode === 'create' ? createOrganization : updateOrganization)} onsubmit={handleFormSubmit} class="space-y-4">
-				<!-- Organization Name -->
-				<div class="form-control">
-					<label class="label" for="org-name">
-						<span class="label-text">Organization Name</span>
-					</label>
-					<input
-						id="org-name"
-						name="organizationName"
-						type="text"
-						value={formData.organizationName}
-						oninput={(e) => { formData.organizationName = e.currentTarget.value; generateSlug(); }}
-						class="input input-bordered"
-						placeholder="Acme Corp"
-						required
-					/>
-				</div>
+        <FormField 
+          label="Organization Slug" 
+          issues={formRef.fields.organizationSlug.issues()}
+          hint="Lowercase letters, numbers, and hyphens only"
+        >
+          <FormInput 
+            field={formRef.fields.organizationSlug} 
+            placeholder="acme-corp"
+          />
+        </FormField>
 
-				<!-- Hidden ID for edit mode -->
-				{#if modalMode === 'edit' && editingOrg}
-					<input type="hidden" name="id" value={editingOrg.id} />
-				{/if}
+        <FormField 
+          label="Email" 
+          issues={formRef.fields.email.issues()}
+        >
+          <FormInput 
+            field={formRef.fields.email} 
+            type="email"
+            placeholder="contact@acme.com"
+          />
+        </FormField>
 
-				<!-- Slug -->
-				<div class="form-control">
-					<label class="label" for="org-slug">
-						<span class="label-text">Slug</span>
-					</label>
-					<input
-						id="org-slug"
-						name="organizationSlug"
-						type="text"
-						value={formData.organizationSlug}
-						oninput={(e) => formData.organizationSlug = e.currentTarget.value}
-						class="input input-bordered"
-						placeholder="acme-corp"
-						pattern="[a-z0-9-]+"
-						required
-					/>
-					<label class="label">
-						<span class="label-text-alt">Lowercase letters, numbers, and hyphens only</span>
-					</label>
-				</div>
+        <FormField 
+          label="Status" 
+          issues={formRef.fields.status.issues()}
+        >
+          <FormSelect field={formRef.fields.status}>
+            <option value="lead">Lead</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </FormSelect>
+        </FormField>
 
-				<!-- Email -->
-				<div class="form-control">
-					<label class="label" for="org-email">
-						<span class="label-text">Email</span>
-					</label>
-					<input
-						id="org-email"
-						name="email"
-						type="email"
-						value={formData.email}
-						oninput={(e) => formData.email = e.currentTarget.value}
-						class="input input-bordered"
-						placeholder="contact@acme.com"
-						required
-					/>
-				</div>
+        <FormField 
+          label="Notes" 
+          issues={formRef.fields.notes.issues()}
+        >
+          <FormTextarea 
+            field={formRef.fields.notes} 
+            placeholder="Additional notes..."
+            rows={3}
+          />
+        </FormField>
 
-				<!-- Status -->
-				<div class="form-control">
-					<label class="label" for="org-status">
-						<span class="label-text">Status</span>
-					</label>
-					<select id="org-status" name="status" value={formData.status} class="select select-bordered">
-						<option value="active">Active</option>
-						<option value="inactive">Inactive</option>
-						<option value="lead">Lead</option>
-					</select>
-				</div>
-
-				<!-- Notes -->
-				<div class="form-control">
-					<label class="label" for="org-notes">
-						<span class="label-text">Notes</span>
-					</label>
-					<textarea
-						id="org-notes"
-						name="notes"
-						value={formData.notes}
-						oninput={(e) => formData.notes = e.currentTarget.value}
-						class="textarea textarea-bordered"
-						placeholder="Additional notes..."
-						rows="3"
-					></textarea>
-				</div>
-
-				<!-- Actions -->
-				<div class="modal-action">
-					<button 
-						type="button"
-						class="btn"
-						onclick={() => { showModal = false; resetForm(); }}
-					>
-						Cancel
-					</button>
-					<button type="submit" class="btn btn-primary">
-						{modalMode === 'create' ? 'Create' : 'Save'}
-					</button>
-				</div>
-			</form>
-		</div>
-		<button class="modal-backdrop" type="button" aria-label="Close modal" onclick={() => { showModal = false; resetForm(); }}></button>
-	</div>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn"
+            onclick={() => { showModal = false; resetForm(); }}
+          >
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary" aria-busy={!!formRef.pending} disabled={!!formRef.pending}>
+            {modalMode === 'create' ? 'Create' : 'Save'}
+          </button>
+        </div>
+      </form>
+    {/snippet}
+  </Dialog>
 {/if}

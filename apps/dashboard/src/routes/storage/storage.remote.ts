@@ -29,6 +29,50 @@ const guardedForm = <R>(
   });
 };
 
+const inferMimeTypeFromKey = (key: string) => {
+  const extension = key?.split('.').pop()?.toLowerCase();
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'svg':
+    case 'svgz':
+      return 'image/svg+xml';
+    case 'bmp':
+      return 'image/bmp';
+    case 'avif':
+      return 'image/avif';
+    case 'mp4':
+      return 'video/mp4';
+    case 'mov':
+    case 'qt':
+      return 'video/quicktime';
+    case 'webm':
+      return 'video/webm';
+    case 'ogg':
+    case 'ogv':
+      return 'video/ogg';
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'pdf':
+      return 'application/pdf';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    default:
+      return 'application/octet-stream';
+  }
+};
+
 // Queries
 export const getAllMedia = guardedQuery(async () => {
   try {
@@ -47,7 +91,7 @@ export const getAllMedia = guardedQuery(async () => {
       size: obj.size,
       uploaded: obj.uploaded,
       created_at: obj.uploaded,
-      mimeType: obj.httpMetadata?.contentType || 'application/octet-stream',
+      mimeType: obj.httpMetadata?.contentType || inferMimeTypeFromKey(obj.key),
       url: `/api/storage/${obj.key}`,
       folder: null,
       alt: null
