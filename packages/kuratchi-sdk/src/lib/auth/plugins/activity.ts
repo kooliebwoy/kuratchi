@@ -4,7 +4,7 @@
  */
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
-import { _updateActivityTypesCache } from '../../activity-actions.js';
+import { _updateActivityTypesCache } from '../utils/activity-actions.js';
 
 export interface ActivityLogOptions {
 	action: string;

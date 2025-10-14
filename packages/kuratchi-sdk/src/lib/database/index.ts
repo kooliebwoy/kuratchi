@@ -8,34 +8,25 @@ export { KuratchiDatabase } from './core/database.js';
 
 // Types
 export type {
-  QueryResult,
-  DoKvClient,
-  DoHttpClient,
   DatabaseConfig,
-  DatabaseInstanceConfig,
-  CreateDatabaseOptions,
+  D1Client,
+  QueryResult,
+  OrmClient,
   ClientOptions,
   HttpClientOptions,
-  OrmClient,
-  SchemaType,
-  KvGetOptions,
-  KvGetResult,
-  KvPutOptions,
-  KvPutResult,
-  KvDeleteOptions,
-  KvDeleteResult,
-  KvListOptions,
-  KvListResult,
-  KvListKey,
-  KvEncoding
+  CreateDatabaseOptions,
+  DatabaseInstanceConfig
 } from './core/types.js';
+
+// Schema types
+export type { SchemaDsl, TableDsl } from '../utils/types.js';
+export type { DatabaseSchema, Table, Column, Index } from './migrations/schema.js';
 
 // Legacy type alias
 export type { DatabaseInstanceConfig as DOOptions } from './core/types.js';
 
 // Client factories
 export { createHttpClient, createValidatedHttpClient } from './clients/http-client.js';
-export { createKvClient } from './clients/kv-client.js';
 export { createOrmClient, createValidatedOrmClient } from './clients/orm-client.js';
 
 // Deployment utilities
@@ -65,7 +56,7 @@ import { getDoEnvironment, getAdminEnvironment } from './core/config.js';
 import { KuratchiDatabase } from './core/database.js';
 // Uses example schema as default for database.admin() helper (legacy convenience)
 import { adminSchemaDsl } from '../schema/admin.example.js';
-import type { SchemaType, DoHttpClient, DoKvClient, OrmClient } from './core/types.js';
+import type { SchemaType, D1Client, OrmClient } from './core/types.js';
 
 /**
  * Convenience namespace for common database operations
@@ -115,18 +106,17 @@ export const database = {
   /**
    * Get HTTP client for schema-less SQL access
    */
-  forDatabase(args: {
+  forDatabaseHttpClient(args: {
     databaseName: string;
     dbToken: string;
     gatewayKey?: string;
     instance?: KuratchiDatabase;
   }): {
-    query: DoHttpClient['query'];
-    exec: DoHttpClient['exec'];
-    batch: DoHttpClient['batch'];
-    raw: DoHttpClient['raw'];
-    first: DoHttpClient['first'];
-    kv: DoKvClient;
+    query: D1Client['query'];
+    exec: D1Client['exec'];
+    batch: D1Client['batch'];
+    raw: D1Client['raw'];
+    first: D1Client['first'];
   } {
     const envConfig = getDoEnvironment();
     const gatewayKey = args.gatewayKey || envConfig.gatewayKey;
@@ -136,19 +126,14 @@ export const database = {
     }
     
     const instance = args.instance || database.instance();
-    const httpClient = instance.httpClient({
-      databaseName: args.databaseName,
-      dbToken: args.dbToken,
-      gatewayKey
-    });
+    const httpClient = instance.httpClient({ databaseName: args.databaseName, dbToken: args.dbToken, gatewayKey });
     
     return {
       query: httpClient.query.bind(httpClient),
       exec: httpClient.exec.bind(httpClient),
       batch: httpClient.batch.bind(httpClient),
       raw: httpClient.raw.bind(httpClient),
-      first: httpClient.first.bind(httpClient),
-      kv: httpClient.kv
+      first: httpClient.first.bind(httpClient)
     };
   },
 
@@ -158,12 +143,11 @@ export const database = {
   async admin(): Promise<{
     instance: KuratchiDatabase;
     orm: OrmClient;
-    query: DoHttpClient['query'];
-    exec: DoHttpClient['exec'];
-    batch: DoHttpClient['batch'];
-    raw: DoHttpClient['raw'];
-    first: DoHttpClient['first'];
-    kv: DoKvClient;
+    query: D1Client['query'];
+    exec: D1Client['exec'];
+    batch: D1Client['batch'];
+    raw: D1Client['raw'];
+    first: D1Client['first'];
   }> {
     const envConfig = getDoEnvironment();
     const adminEnv = getAdminEnvironment();
@@ -176,25 +160,26 @@ export const database = {
     }
     
     const instance = database.instance();
-    const { orm, query, exec, batch, raw, first, kv } = await instance.connect({
+    const { orm, query, exec, batch, raw, first } = await instance.connect({
       databaseName: adminEnv.databaseName,
       dbToken: adminEnv.dbToken,
       gatewayKey: envConfig.gatewayKey,
       schema: adminSchemaDsl as any
     });
     
-    return { instance, orm, query, exec, batch, raw, first, kv };
+    return { instance, orm, query, exec, batch, raw, first };
   },
 
   /**
-   * Create a new database
+   * Create a new database (D1 with dedicated worker)
    */
   async create(args: {
     name: string;
     migrate?: boolean;
     schema?: SchemaType;
+    schemaName?: string;  // Name of migrations folder (e.g., 'organization', 'admin', 'foo')
     instance?: KuratchiDatabase;
-  }): Promise<{ databaseName: string; token: string }> {
+  }): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
     const envConfig = getDoEnvironment();
     
     if (!envConfig.gatewayKey) {
@@ -207,7 +192,8 @@ export const database = {
       databaseName: args.name,
       gatewayKey: envConfig.gatewayKey,
       migrate: !!args.migrate,
-      schema: args.schema
+      schema: args.schema,
+      schemaName: args.schemaName
     });
   },
 

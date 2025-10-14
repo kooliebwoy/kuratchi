@@ -38,9 +38,9 @@
 			"default": "./src/lib/index.ts"
 		},
 		"./auth": {
-			"types": "./src/lib/auth/index-v2.ts",
-			"svelte": "./src/lib/auth/index-v2.ts",
-			"default": "./src/lib/auth/index-v2.ts"
+			"types": "./src/lib/auth/index.ts",
+			"svelte": "./src/lib/auth/index.ts",
+			"default": "./src/lib/auth/index.ts"
 		},
 		"./database": {
 			"types": "./src/lib/database/index.ts",
@@ -57,11 +57,6 @@
 			"svelte": "./src/lib/r2/index.ts",
 			"default": "./src/lib/r2/index.ts"
 		},
-		"./d1": {
-			"types": "./src/lib/d1/index.ts",
-			"svelte": "./src/lib/d1/index.ts",
-			"default": "./src/lib/d1/index.ts"
-		},
 		"./orm": {
 			"types": "./src/lib/orm/index.ts",
 			"svelte": "./src/lib/orm/index.ts",
@@ -71,6 +66,11 @@
 			"types": "./src/lib/domains/index.ts",
 			"svelte": "./src/lib/domains/index.ts",
 			"default": "./src/lib/domains/index.ts"
+		},
+		"./email": {
+			"types": "./src/lib/email/index.ts",
+			"svelte": "./src/lib/email/index.ts",
+			"default": "./src/lib/email/index.ts"
 		}
 	},
 	"peerDependencies": {
@@ -104,7 +104,9 @@
 	],
 	"dependencies": {
 		"@sveltejs/adapter-cloudflare": "^7.2.3",
-		"tsx": "^4.19.2",
-		"cloudflare": "^5.2.0"
+		"cloudflare": "^5.2.0",
+		"resend": "^4.8.0",
+		"stripe": "^19.1.0",
+		"tsx": "^4.19.2"
 	}
 }

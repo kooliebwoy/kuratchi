@@ -4,23 +4,22 @@
  * Unified SDK for Cloudflare Workers with auth, database, storage, and ORM
  */
 
-// === UNIFIED API (NEW) ===
+// === UNIFIED API ===
 // Single entry point for all configuration
 export { kuratchi } from './kuratchi.js';
 export type { KuratchiConfig, KuratchiSDK } from './kuratchi.js';
 
-// === MODULAR API (BACKWARD COMPATIBLE) ===
+// === MODULAR API ===
 // Individual module exports for granular control
-export { database } from './database/kuratchi-database.js';
-export { auth } from './auth/kuratchi-auth.js';
+export { database } from './database/index.js';
 export { kv } from './kv/index.js';
 export { r2 } from './r2/index.js';
-export { d1 } from './d1/index.js';
 export { domains } from './domains/index.js';
+export { stripe } from './stripe/index.js';
 
 // === ACTIVITY ===
 // Activity action constants (auto-populated from DB)
-export { ActivityAction, getActivityActions, isValidAction } from './activity-actions.js';
+export { ActivityAction, getActivityActions, isValidAction } from './auth/utils/activity-actions.js';
 
 // === TYPES ===
 // Re-export commonly used types
@@ -32,7 +31,7 @@ export type {
   AuthHandleEnv,
   CreateAuthHandleOptions,
   AuthConfig
-} from './auth/types.js';
+} from './auth/utils/types.js';
 
 // Domains types
 export type {
@@ -42,3 +41,17 @@ export type {
   ListDnsRecordsOptions,
   CreateDnsRecordOptions
 } from './domains/index.js';
+
+// Stripe types
+export type {
+  StripePluginOptions,
+  CreateCustomerOptions,
+  CreateCheckoutOptions,
+  CreateSubscriptionOptions,
+  UpdateSubscriptionOptions,
+  CreatePortalSessionOptions,
+  StripeCustomerRecord,
+  StripeSubscriptionRecord,
+  StripeEventRecord,
+  StripeInvoiceRecord
+} from './stripe/index.js';

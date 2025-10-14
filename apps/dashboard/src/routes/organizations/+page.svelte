@@ -10,6 +10,10 @@
 	let modalMode = $state<'create' | 'edit'>('create');
 	let editingOrg = $state<any>(null);
 
+	// Delete confirmation state
+	let showDeleteDialog = $state(false);
+	let deletingOrg = $state<any>(null);
+
 	// Form state
 	let formData = $state({
 		organizationName: '',
@@ -69,10 +73,22 @@
 		resetForm();
 	}
 
-	// Handle delete
-	function handleDelete(id: string) {
-		if (!confirm('Are you sure you want to delete this organization?')) return;
-		// TODO: Implement delete via form submission
+	// Open delete confirmation
+	function openDeleteDialog(org: any) {
+		deletingOrg = org;
+		showDeleteDialog = true;
+	}
+
+	// Close delete dialog
+	function closeDeleteDialog() {
+		showDeleteDialog = false;
+		deletingOrg = null;
+	}
+
+	// Handle delete confirmation
+	function handleDeleteConfirm() {
+		showDeleteDialog = false;
+		// The form submission will handle the actual deletion
 	}
 
 	// Status badge colors
@@ -151,7 +167,7 @@
 										</button>
 										<button 
 											class="btn btn-ghost btn-sm btn-square text-error"
-											onclick={() => handleDelete(org.id)}
+											onclick={() => openDeleteDialog(org)}
 										>
 											<Trash2 class="h-4 w-4" />
 										</button>
@@ -269,6 +285,61 @@
           </button>
         </div>
       </form>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Delete Confirmation Dialog -->
+{#if showDeleteDialog && deletingOrg}
+  <Dialog bind:open={showDeleteDialog} size="sm" onClose={closeDeleteDialog} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg text-error">Delete Organization</h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={closeDeleteDialog}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="space-y-4">
+        <div class="alert alert-warning">
+          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>This action cannot be undone!</span>
+        </div>
+        
+        <p class="text-base-content/70">
+          Are you sure you want to delete <strong class="text-base-content">{deletingOrg.organizationName}</strong>?
+        </p>
+        
+        <form {...deleteOrganization} onsubmit={handleDeleteConfirm}>
+          <input type="hidden" name="id" value={deletingOrg.id} />
+          
+          <div class="modal-action">
+            <button
+              type="button"
+              class="btn"
+              onclick={closeDeleteDialog}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              class="btn btn-error" 
+              aria-busy={!!deleteOrganization.pending} 
+              disabled={!!deleteOrganization.pending}
+            >
+              {deleteOrganization.pending ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
+        </form>
+      </div>
     {/snippet}
   </Dialog>
 {/if}

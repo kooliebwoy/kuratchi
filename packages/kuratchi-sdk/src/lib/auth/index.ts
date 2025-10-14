@@ -1,10 +1,10 @@
 /**
  * Kuratchi Auth - Plugin-based architecture
- * Main exports for v2 API
+ * Main exports for auth module
  */
 
 // Core
-export { createAuthHandle, KURATCHI_SESSION_COOKIE } from './handle-v2.js';
+export { createAuthHandle, KURATCHI_SESSION_COOKIE } from './core/handle.js';
 export { PluginRegistry, createPlugin } from './core/plugin.js';
 
 // Plugins (direct exports - no namespace needed)
@@ -56,7 +56,4 @@ export type {
   RouteGuard,
   RouteGuardContext,
   AuthConfig
-} from './types.js';
-
-// Legacy exports (for backward compatibility)
-export { KuratchiAuth } from './kuratchi-auth.js';
+} from './utils/types.js';

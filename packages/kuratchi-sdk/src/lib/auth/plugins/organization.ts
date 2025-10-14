@@ -4,7 +4,7 @@
  */
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
-import { KuratchiDatabase } from '../../database/kuratchi-database.js';
+import { KuratchiDatabase } from '../../database/index.js';
 import type { RequestEvent } from '@sveltejs/kit';
 
 export interface OrganizationPluginOptions {

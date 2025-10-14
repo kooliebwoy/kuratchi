@@ -1,48 +1,39 @@
 /**
  * Worker Deployment
- * Handles DO worker script upload and configuration
+ * Handles D1 worker script upload and configuration
  */
 
 import { CloudflareClient } from '../../utils/cloudflare.js';
-import { DEFAULT_DO_WORKER_SCRIPT } from '../worker-template.js';
+import { DEFAULT_D1_WORKER_SCRIPT } from './worker-template.js';
+import type { PrimaryLocationHint } from '../../utils/cloudflare.js';
 
 export interface DeployWorkerOptions {
   scriptName: string;
+  databaseName: string;
   gatewayKey: string;
   cloudflareClient: CloudflareClient;
+  location?: PrimaryLocationHint;
 }
 
 /**
- * Deploy or update the internal DO worker
+ * Deploy or update the internal D1 worker with database binding
+ * Each database gets its own worker with a dedicated D1 database
  */
-export async function deployWorker(options: DeployWorkerOptions): Promise<void> {
-  const { scriptName, gatewayKey, cloudflareClient } = options;
+export async function deployWorker(options: DeployWorkerOptions): Promise<{ databaseId: string; workerName: string }> {
+  const { scriptName, databaseName, gatewayKey, cloudflareClient, location } = options;
   
   if (!gatewayKey) {
     throw new Error('gatewayKey is required to deploy worker');
   }
   
-  const bindings: any[] = [
-    // Secret binding for gateway key
-    { type: 'secret_text', name: 'API_KEY', text: gatewayKey },
-    // Durable Object namespace binding
-    { type: 'durable_object_namespace', name: 'DO', class_name: 'KuratchiDoInternal' }
-  ];
-  
-  // Try to update existing worker first, then create if it doesn't exist
-  try {
-    await cloudflareClient.uploadWorkerModule(scriptName, DEFAULT_DO_WORKER_SCRIPT, bindings);
-  } catch (error: any) {
-    // If it's a DO class migration error, try without migrations
-    if (error.message?.includes('new-class migration') || error.message?.includes('already depended on')) {
-      await cloudflareClient.uploadWorkerModule(scriptName, DEFAULT_DO_WORKER_SCRIPT, bindings, { skipDoMigrations: true });
-    } else {
-      throw error;
-    }
-  }
-  
-  // Enable worker subdomain
-  await cloudflareClient.enableWorkerSubdomain(scriptName);
+  // Use CloudflareClient's deployD1Worker method
+  return await cloudflareClient.deployD1Worker({
+    workerName: scriptName,
+    databaseName,
+    workerScript: DEFAULT_D1_WORKER_SCRIPT,
+    gatewayKey,
+    location
+  });
 }
 
 /**
@@ -50,8 +41,7 @@ export async function deployWorker(options: DeployWorkerOptions): Promise<void> 
  */
 export async function isWorkerDeployed(scriptName: string, cloudflareClient: CloudflareClient): Promise<boolean> {
   try {
-    // Try to get worker info
-    // This is a simplified check - you may want to implement a proper check
+    await cloudflareClient.getWorkerScript(scriptName);
     return true;
   } catch {
     return false;

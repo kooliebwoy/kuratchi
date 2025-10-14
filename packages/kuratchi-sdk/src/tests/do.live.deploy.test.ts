@@ -2,7 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const process: any;
 import { describe, it, expect } from 'vitest';
-import { KuratchiDatabase } from '../lib/database/kuratchi-database.js';
+import { KuratchiDatabase } from '../lib/database/index.js';
 import { adminSchemaDsl } from '../lib/schema/admin.example.js';
 import { env } from '$env/dynamic/private';
 

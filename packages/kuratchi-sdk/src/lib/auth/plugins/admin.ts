@@ -4,7 +4,7 @@
  */
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
-import type { RouteGuard } from '../types.js';
+import type { RouteGuard } from '../utils/types.js';
 import { KuratchiDatabase } from '../../database/core/database.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { hashPassword } from '../../utils/auth.js';
@@ -256,11 +256,13 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
                 scriptName: env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal'
               });
               
+              // Create database with organization schema
               const result = await dbService.createDatabase({
                 databaseName,
                 gatewayKey,
                 migrate: true,
-                schema: options.organizationSchema
+                schema: options.organizationSchema,
+                schemaName: 'organization'  // Loads from /migrations-organization
               });
               
               dbToken = result.token;

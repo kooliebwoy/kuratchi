@@ -148,7 +148,22 @@
     <h3 class="font-bold text-lg mb-4">Create New Database</h3>
 
     {#if createDatabase.result?.success}
-      <p>Successfully created!</p>
+      <div class="alert alert-success mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Database created successfully!</span>
+      </div>
+    {/if}
+
+    {#if createDatabase.pending > 0}
+      <div class="alert alert-info mb-4">
+        <span class="loading loading-spinner loading-sm"></span>
+        <div>
+          <div class="font-semibold">Creating D1 database...</div>
+          <div class="text-sm opacity-70">This may take 5-10 seconds as we deploy your dedicated worker</div>
+        </div>
+      </div>
     {/if}
     
     <form {...createDatabase} class="space-y-4" enctype="multipart/form-data">

@@ -4,7 +4,7 @@
  */
 
 import type { RequestEvent } from '@sveltejs/kit';
-import type { AuthHandleEnv } from '../types.js';
+import type { AuthHandleEnv } from '../utils/types.js';
 
 export type MaybePromise<T> = T | Promise<T>;
 

@@ -15,94 +15,16 @@ export type QueryResult<T = any> = {
   results?: any;
 };
 
-// KV types
-export type KvEncoding = 'json' | 'text' | 'base64';
+// KV types removed - KV operations not supported in D1 mode
+// Use Cloudflare KV directly via platform.env if needed
 
-export interface KvGetOptions {
-  key: string;
-  type?: 'json' | 'text' | 'arrayBuffer';
-  allowConcurrency?: boolean;
-  noCache?: boolean;
-  withMetadata?: boolean;
-}
-
-export interface KvGetResult {
-  success: boolean;
-  value?: any;
-  metadata?: any;
-  encoding?: KvEncoding;
-  error?: string;
-}
-
-export interface KvPutOptions {
-  key: string;
-  value: any;
-  encoding?: 'json' | 'text' | 'base64';
-  metadata?: any;
-  allowConcurrency?: boolean;
-  allowUnconfirmed?: boolean;
-  expiration?: number;
-  expirationTtl?: number;
-}
-
-export interface KvPutResult {
-  success: boolean;
-  error?: string;
-}
-
-export interface KvDeleteOptions {
-  key: string;
-  allowConcurrency?: boolean;
-}
-
-export interface KvDeleteResult {
-  success: boolean;
-  deleted?: boolean;
-  error?: string;
-}
-
-export interface KvListOptions {
-  prefix?: string;
-  start?: string;
-  startAfter?: string;
-  end?: string;
-  limit?: number;
-  cursor?: string;
-  allowConcurrency?: boolean;
-  reverse?: boolean;
-}
-
-export interface KvListKey {
-  name: string;
-  expiration?: number | null;
-  metadata?: any;
-}
-
-export interface KvListResult {
-  success: boolean;
-  keys: KvListKey[];
-  list_complete: boolean;
-  cursor: string | null;
-  cacheStatus?: string | null;
-  error?: string;
-}
-
-// KV Client interface
-export interface DoKvClient {
-  get(opts: KvGetOptions): Promise<KvGetResult>;
-  put(opts: KvPutOptions): Promise<KvPutResult>;
-  delete(opts: KvDeleteOptions): Promise<KvDeleteResult>;
-  list(opts?: KvListOptions): Promise<KvListResult>;
-}
-
-// HTTP Client interface
-export interface DoHttpClient {
+// D1 Client interface (for migrations and raw queries)
+export interface D1Client {
   query<T = any>(query: string, params?: any[]): Promise<QueryResult<T>>;
   exec(query: string): Promise<QueryResult<any>>;
   batch(items: { query: string; params?: any[] }[]): Promise<QueryResult<any>>;
   raw(query: string, params?: any[], columnNames?: boolean): Promise<QueryResult<any>>;
   first<T = any>(query: string, params?: any[], columnName?: string): Promise<QueryResult<T>>;
-  kv: DoKvClient;
 }
 
 // Configuration types
@@ -127,6 +49,7 @@ export interface CreateDatabaseOptions {
   gatewayKey: string;
   migrate?: boolean;
   schema?: DatabaseSchema | SchemaDsl;
+  schemaName?: string;  // Name of migrations folder (e.g., 'organization', 'admin', 'foo')
 }
 
 export interface ClientOptions {
@@ -140,10 +63,11 @@ export interface HttpClientOptions {
   databaseName: string;
   dbToken: string;
   gatewayKey: string;
+  scriptName?: string;
 }
 
 // ORM Client type
-export type OrmClient = Record<string, TableApi> & { kv?: DoKvClient };
+export type OrmClient = Record<string, TableApi>;
 
 // Schema union type
 export type SchemaType = DatabaseSchema | SchemaDsl;

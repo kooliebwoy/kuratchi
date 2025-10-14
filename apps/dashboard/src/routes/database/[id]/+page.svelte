@@ -1,12 +1,13 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { getDatabaseTables, executeQuery } from '$lib/api/database.remote';
+  import { getDatabaseTables, executeQuery, getDatabaseAnalytics } from '$lib/api/database.remote';
 
   let queryDialog: HTMLDialogElement;
   let queryResults = $state<any[]>([]);
 
   const databaseId = $page.params.id;
   const tables = getDatabaseTables();
+  const analytics = getDatabaseAnalytics();
 
   // Handle query results
   $effect(() => {
@@ -14,6 +15,12 @@
       queryResults = executeQuery.result.results || [];
     }
   });
+
+  function formatNumber(num: number): string {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  }
 </script>
 
 <svelte:head>
@@ -42,6 +49,102 @@
         </svg>
         Run Query
       </button>
+    </div>
+  </div>
+
+  <!-- Analytics Stats -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="card border border-base-200 bg-base-200/30">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-base-content/60 uppercase tracking-wider">Read Queries</p>
+            {#if analytics.loading}
+              <span class="loading loading-spinner loading-sm mt-2"></span>
+            {:else if analytics.current}
+              <p class="text-3xl font-bold mt-1">{formatNumber(analytics.current.readQueries || 0)}</p>
+            {:else}
+              <p class="text-3xl font-bold mt-1">0</p>
+            {/if}
+          </div>
+          <div class="p-3 bg-info/10 rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </div>
+        </div>
+        <p class="text-xs text-base-content/50 mt-2">Last 7 days</p>
+      </div>
+    </div>
+
+    <div class="card border border-base-200 bg-base-200/30">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-base-content/60 uppercase tracking-wider">Write Queries</p>
+            {#if analytics.loading}
+              <span class="loading loading-spinner loading-sm mt-2"></span>
+            {:else if analytics.current}
+              <p class="text-3xl font-bold mt-1">{formatNumber(analytics.current.writeQueries || 0)}</p>
+            {:else}
+              <p class="text-3xl font-bold mt-1">0</p>
+            {/if}
+          </div>
+          <div class="p-3 bg-success/10 rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </div>
+        </div>
+        <p class="text-xs text-base-content/50 mt-2">Last 7 days</p>
+      </div>
+    </div>
+
+    <div class="card border border-base-200 bg-base-200/30">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-base-content/60 uppercase tracking-wider">Rows Read</p>
+            {#if analytics.loading}
+              <span class="loading loading-spinner loading-sm mt-2"></span>
+            {:else if analytics.current}
+              <p class="text-3xl font-bold mt-1">{formatNumber(analytics.current.rowsRead || 0)}</p>
+            {:else}
+              <p class="text-3xl font-bold mt-1">0</p>
+            {/if}
+          </div>
+          <div class="p-3 bg-warning/10 rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+          </div>
+        </div>
+        <p class="text-xs text-base-content/50 mt-2">Last 7 days</p>
+      </div>
+    </div>
+
+    <div class="card border border-base-200 bg-base-200/30">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-base-content/60 uppercase tracking-wider">Rows Written</p>
+            {#if analytics.loading}
+              <span class="loading loading-spinner loading-sm mt-2"></span>
+            {:else if analytics.current}
+              <p class="text-3xl font-bold mt-1">{formatNumber(analytics.current.rowsWritten || 0)}</p>
+            {:else}
+              <p class="text-3xl font-bold mt-1">0</p>
+            {/if}
+          </div>
+          <div class="p-3 bg-primary/10 rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+        </div>
+        <p class="text-xs text-base-content/50 mt-2">Last 7 days</p>
+      </div>
     </div>
   </div>
 

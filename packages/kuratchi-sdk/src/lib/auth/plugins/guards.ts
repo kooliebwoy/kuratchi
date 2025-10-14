@@ -4,7 +4,7 @@
  */
 
 import type { AuthPlugin, SessionContext } from '../core/plugin.js';
-import type { RouteGuard } from '../types.js';
+import type { RouteGuard } from '../utils/types.js';
 
 export interface GuardsPluginOptions {
   /**

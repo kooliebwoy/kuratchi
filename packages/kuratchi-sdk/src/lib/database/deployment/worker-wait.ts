@@ -3,10 +3,10 @@
  * Wait for worker endpoint to become responsive
  */
 
-import type { DoHttpClient } from '../core/types.js';
+import type { D1Client } from '../core/types.js';
 
 export interface WaitForWorkerOptions {
-  client: DoHttpClient;
+  client: D1Client;
   timeoutMs?: number;
   intervalMs?: number;
 }
@@ -53,7 +53,7 @@ export async function waitForWorker(options: WaitForWorkerOptions): Promise<bool
 /**
  * Check if worker is ready (single attempt)
  */
-export async function isWorkerReady(client: DoHttpClient): Promise<boolean> {
+export async function isWorkerReady(client: D1Client): Promise<boolean> {
   try {
     const result = await client.query('SELECT 1 as test');
     return result && result.success === true;

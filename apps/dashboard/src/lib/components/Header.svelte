@@ -11,10 +11,10 @@
   </div>
 
   <div class="flex items-center gap-3">
-    <label class="input input-bordered flex items-center gap-2 bg-base-200/40">
+    <!-- <label class="input input-bordered flex items-center gap-2 bg-base-200/40">
       <Search class="h-4 w-4 opacity-60" />
       <input class="min-w-[220px] bg-transparent text-sm outline-none" placeholder="Search projects, members, activity" />
-    </label>
+    </label> -->
 
     <button class="btn btn-circle btn-ghost text-base-content/70">
       <Bell class="h-5 w-5" />

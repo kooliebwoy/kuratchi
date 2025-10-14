@@ -1,27 +1,13 @@
 /**
  * Email Auth Plugin - Magic link authentication
  * Handles magic link generation, sending, and verification
+ * Uses the email service for sending and tracking
  */
 
 import type { AuthPlugin, PluginContext } from '../core/plugin.js';
-import type { RequestEvent } from '@sveltejs/kit';
+import { sendEmail as sendEmailService } from '../../email/index.js';
 
 export interface EmailAuthPluginOptions {
-  /** Email provider: 'resend' or custom function */
-  provider?: 'resend' | ((to: string, link: string, from: string) => Promise<void>);
-  
-  /** API key for email provider */
-  apiKey?: string;
-  
-  /** From email address */
-  from?: string;
-  
-  /** Magic link send route (default: '/auth/magic/send') */
-  sendRoute?: string;
-  
-  /** Magic link callback route (default: '/auth/magic/callback') */
-  callbackRoute?: string;
-  
   /** Token expiry in milliseconds (default: 900000 = 15 min) */
   tokenExpiry?: number;
   
@@ -33,41 +19,6 @@ export interface EmailAuthPluginOptions {
   
   /** Callback after successful verification */
   onSuccess?: (email: string, user: any) => Promise<void>;
-}
-
-async function sendEmail(
-  provider: 'resend' | ((to: string, link: string, from: string) => Promise<void>),
-  apiKey: string,
-  from: string,
-  to: string,
-  subject: string,
-  html: string
-) {
-  if (typeof provider === 'function') {
-    const link = html.match(/href="([^"]+)"/)?.[1] || '';
-    return provider(to, link, from);
-  }
-  
-  if (provider === 'resend') {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        subject,
-        html
-      })
-    });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to send email: ${error}`);
-    }
-  }
 }
 
 async function findOrganizationIdByEmail(adminDb: any, email: string): Promise<string | null> {
@@ -87,7 +38,6 @@ async function findOrganizationIdByEmail(adminDb: any, email: string): Promise<s
 
 export function emailAuthPlugin(options: EmailAuthPluginOptions = {}): AuthPlugin {
   const tokenExpiry = options.tokenExpiry || 900000; // 15 min
-  const provider = options.provider || 'resend';
   
   return {
     name: 'email-auth',
@@ -111,13 +61,6 @@ export function emailAuthPlugin(options: EmailAuthPluginOptions = {}): AuthPlugi
           try {
             if (!email) {
               return { success: false, error: 'email_required' };
-            }
-            
-            const apiKey = options.apiKey || ctx.env.RESEND_API_KEY;
-            const from = options.from || ctx.env.EMAIL_FROM;
-            
-            if (!apiKey || !from) {
-              return { success: false, error: 'email_not_configured' };
             }
             
             const redirectTo = emailOptions?.redirectTo || '/';
@@ -160,12 +103,12 @@ export function emailAuthPlugin(options: EmailAuthPluginOptions = {}): AuthPlugi
               created_at: Date.now()
             });
             
-            // Build magic link URL - user must provide callback route
+            // Build magic link URL
             const url = new URL(ctx.event.request.url);
             const origin = ctx.env.ORIGIN || `${url.protocol}//${url.host}`;
             const link = `${origin}/auth/magic/callback?token=${encodeURIComponent(token)}&org=${encodeURIComponent(orgId)}`;
             
-            // Send email
+            // Generate email template
             const template = options.emailTemplate
               ? options.emailTemplate(link, email)
               : {
@@ -179,7 +122,23 @@ export function emailAuthPlugin(options: EmailAuthPluginOptions = {}): AuthPlugi
                   `
                 };
             
-            await sendEmail(provider, apiKey, from, email, template.subject, template.html);
+            // Send email using email service (auto-tracked)
+            const result = await sendEmailService(ctx.event, {
+              to: email,
+              subject: template.subject,
+              html: template.html,
+              emailType: 'magic_link',
+              organizationId: orgId,
+              metadata: {
+                tokenId: token,
+                expiresAt: new Date(expiresAt).toISOString(),
+                redirectTo
+              }
+            });
+            
+            if (!result.success) {
+              return { success: false, error: result.error || 'send_failed' };
+            }
             
             return { success: true };
           } catch (e: any) {

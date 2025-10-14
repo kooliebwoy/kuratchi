@@ -4,16 +4,19 @@
  */
 
 import type { Handle } from '@sveltejs/kit';
-import type { CreateAuthHandleOptions } from './auth/types.js';
+import type { CreateAuthHandleOptions } from './auth/utils/types.js';
 import type { AuthPlugin } from './auth/core/plugin.js';
-import { createAuthHandle } from './auth/handle-v2.js';
+import { createAuthHandle } from './auth/core/handle.js';
 import { KuratchiDatabase } from './database/index.js';
 import { database as databaseNamespace } from './database/index.js';
-import { auth as authNamespace } from './auth/kuratchi-auth.js';
 import { kv as kvNamespace } from './kv/index.js';
 import { r2 as r2Namespace } from './r2/index.js';
-import { d1 as d1Namespace } from './d1/index.js';
 import { domains as domainsNamespace } from './domains/index.js';
+import { initEmailPlugin } from './email/index.js';
+import type { EmailPluginOptions } from './email/index.js';
+import { stripe as stripeNamespace, initStripePlugin } from './stripe/index.js';
+import type { StripePluginOptions } from './stripe/index.js';
+import { handleStripeCallback } from './stripe/callback.js';
 
 /**
  * Unified Kuratchi configuration object
@@ -58,6 +61,16 @@ export interface KuratchiConfig {
     /** D1 database mappings: { friendlyName: 'WRANGLER_BINDING' } */
     d1?: Record<string, string>;
   };
+
+  /**
+   * Email service configuration (Resend)
+   */
+  email?: EmailPluginOptions;
+
+  /**
+   * Stripe payment and subscription configuration
+   */
+  stripe?: StripePluginOptions;
 }
 
 /**
@@ -68,16 +81,14 @@ export interface KuratchiSDK {
   handle: Handle;
   /** Database (DO) service */
   database: typeof databaseNamespace;
-  /** Auth service */
-  auth: typeof authNamespace;
   /** KV service */
   kv: typeof kvNamespace;
   /** R2 service */
   r2: typeof r2Namespace;
-  /** D1 service */
-  d1: typeof d1Namespace;
   /** Domains (Cloudflare DNS) service */
   domains: typeof domainsNamespace;
+  /** Stripe payment and subscription service */
+  stripe: typeof stripeNamespace;
 }
 
 /**
@@ -106,7 +117,17 @@ export interface KuratchiSDK {
  * ```
  */
 export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
-  // Create auth handle with all configuration
+  // Initialize email plugin if configured
+  if (config.email) {
+    initEmailPlugin(config.email);
+  }
+
+  // Initialize Stripe plugin if configured
+  if (config.stripe) {
+    initStripePlugin(config.stripe);
+  }
+
+  // Create auth handle with plugin-based configuration
   const authConfig: CreateAuthHandleOptions & { plugins?: AuthPlugin[] } = {
     ...config.auth?.options,
     cookieName: config.auth?.cookieName,
@@ -115,11 +136,24 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
     d1Databases: config.storage?.d1,
   };
 
-  // Create auth handle (v2 supports both plugin and non-plugin modes)
-  const handle = createAuthHandle({
+  // Create auth handle with plugins and Stripe callback handling
+  const baseHandle = createAuthHandle({
     ...authConfig,
     plugins: config.auth?.plugins || []
   });
+
+  // Wrap handle to intercept Stripe callback route
+  const handle: Handle = async ({ event, resolve }) => {
+    const callbackPath = config.stripe?.callbackPath || '/kuratchi/stripe/callback';
+    
+    // Check if this is the Stripe callback route
+    if (config.stripe && event.url.pathname === callbackPath) {
+      return await handleStripeCallback(event);
+    }
+
+    // Otherwise, use the base auth handle
+    return baseHandle({ event, resolve });
+  };
 
   // Create database instance if config provided (only if all required fields present)
   const databaseInstance = config.database?.workersSubdomain && config.database?.accountId && config.database?.apiToken
@@ -139,10 +173,9 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
       ...databaseNamespace,
       instance: () => databaseInstance
     } : databaseNamespace,
-    auth: authNamespace,
     kv: kvNamespace,
     r2: r2Namespace,
-    d1: d1Namespace,
     domains: domainsNamespace,
+    stripe: stripeNamespace,
   };
 }

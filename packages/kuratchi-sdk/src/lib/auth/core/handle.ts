@@ -5,14 +5,14 @@
 
 import { dev } from '$app/environment';
 import type { Handle, RequestEvent } from '@sveltejs/kit';
-import { ensurePlatformEnv, runWithPlatform } from '../utils/platform-context.js';
-import { PluginRegistry, type AuthPlugin } from './core/plugin.js';
-import type { CreateAuthHandleOptions, AuthHandleEnv } from './types.js';
-import { sessionPlugin } from './plugins/session.js';
-import { storagePlugin } from './plugins/storage.js';
-import { adminPlugin } from './plugins/admin.js';
-import { organizationPlugin } from './plugins/organization.js';
-import { guardsPlugin } from './plugins/guards.js';
+import { ensurePlatformEnv, runWithPlatform } from '../../utils/platform-context.js';
+import { PluginRegistry, type AuthPlugin } from './plugin.js';
+import type { CreateAuthHandleOptions, AuthHandleEnv } from '../utils/types.js';
+import { sessionPlugin } from '../plugins/session.js';
+import { storagePlugin } from '../plugins/storage.js';
+import { adminPlugin } from '../plugins/admin.js';
+import { organizationPlugin } from '../plugins/organization.js';
+import { guardsPlugin } from '../plugins/guards.js';
 
 /**
  * Default environment resolver
@@ -181,4 +181,4 @@ export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: 
 /**
  * Export for backward compatibility
  */
-export { KURATCHI_SESSION_COOKIE } from './types.js';
+export { KURATCHI_SESSION_COOKIE } from '../utils/types.js';

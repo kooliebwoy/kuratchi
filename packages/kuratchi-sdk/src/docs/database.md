@@ -262,12 +262,7 @@ This modular structure allows you to:
 
 All existing code continues to work! The refactored module maintains 100% backward compatibility.
 
-### Legacy Import (Still Works)
-```ts
-import { KuratchiDatabase } from 'kuratchi-sdk/database/kuratchi-database';
-```
-
-### Recommended Import
+### Import
 ```ts
 import { KuratchiDatabase, database } from 'kuratchi-sdk/database';
 ```

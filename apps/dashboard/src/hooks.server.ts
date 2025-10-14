@@ -10,6 +10,7 @@ import { adminSchema } from '$lib/schemas/admin';
 import { organizationSchema } from '$lib/schemas/organization';
 import { kuratchi } from 'kuratchi-sdk';
 import type { Handle } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 
 export const { handle }: { handle: Handle } = kuratchi({
   auth: {
@@ -80,8 +81,21 @@ export const { handle }: { handle: Handle } = kuratchi({
       })
     ]
   },
+  email: {
+    apiKey: env.RESEND_API_KEY,
+    from: env.RESEND_FROM_EMAIL,
+    fromName: 'Kuratchi',
+    trackEmails: true,
+    trackingDb: 'admin',
+    trackingTable: 'emails'
+  },
   storage: {
     r2: { R2: 'BUCKET' },
     kv: { KV: 'KV' }
+  },
+  stripe: {
+    apiKey: env.STRIPE_SECRET_KEY,
+    trackEvents: true,
+    trackingDb: 'admin'
   }
 });

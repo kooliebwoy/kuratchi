@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { KuratchiDatabase } from '../lib/database/kuratchi-database.js';
+import { KuratchiDatabase } from '../lib/database/index.js';
 
 // Mock the migration loader to control journal + migrations content
 vi.mock('../lib/orm/loader', () => {

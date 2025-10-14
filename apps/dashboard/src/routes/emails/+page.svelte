@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Mail, CheckCircle, XCircle, AlertCircle, Clock, Search, Eye, X, ExternalLink } from 'lucide-svelte';
-  import { getEmails, getEmailStats } from './emails.remote';
+  import { getEmails, getEmailStats } from '$lib/api/emails.remote';
 
   // Data sources
   const emails = getEmails();
@@ -8,11 +8,11 @@
 
   // Derived lists
   const emailsList = $derived(emails.current ? (Array.isArray(emails.current) ? emails.current : []) : []);
-  const statsData = $derived(stats.current || { total: 0, delivered: 0, bounced: 0, complained: 0, last24h: 0 });
+  const statsData = $derived(stats.current || { total: 0, sent: 0, failed: 0, pending: 0, last24h: 0 });
 
   // Filter state
   let searchQuery = $state('');
-  let filterStatus = $state<'all' | 'delivered' | 'bounced' | 'complained' | 'opened'>('all');
+  let filterStatus = $state<'all' | 'sent' | 'failed' | 'pending'>('all');
   let selectedEmail = $state<any>(null);
   let showEmailModal = $state(false);
 
@@ -23,14 +23,15 @@
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((e: any) =>
-        e.to?.some((t: string) => t.toLowerCase().includes(q)) ||
+        e.to?.toLowerCase().includes(q) ||
         e.from?.toLowerCase().includes(q) ||
-        e.subject?.toLowerCase().includes(q)
+        e.subject?.toLowerCase().includes(q) ||
+        e.emailType?.toLowerCase().includes(q)
       );
     }
 
     if (filterStatus !== 'all') {
-      filtered = filtered.filter((e: any) => e.last_event === filterStatus);
+      filtered = filtered.filter((e: any) => e.status === filterStatus);
     }
 
     return filtered;
@@ -56,18 +57,14 @@
 
   function getStatusBadge(status: string) {
     switch (status) {
-      case 'delivered':
-        return { class: 'badge-success', label: 'Delivered' };
-      case 'bounced':
-        return { class: 'badge-error', label: 'Bounced' };
-      case 'complained':
-        return { class: 'badge-warning', label: 'Complained' };
-      case 'opened':
-        return { class: 'badge-info', label: 'Opened' };
-      case 'clicked':
-        return { class: 'badge-primary', label: 'Clicked' };
+      case 'sent':
+        return { class: 'badge-success', label: 'Sent' };
+      case 'failed':
+        return { class: 'badge-error', label: 'Failed' };
+      case 'pending':
+        return { class: 'badge-warning', label: 'Pending' };
       default:
-        return { class: 'badge-neutral', label: status || 'Sent' };
+        return { class: 'badge-neutral', label: status || 'Unknown' };
     }
   }
 
@@ -95,7 +92,7 @@
       </div>
       <div>
         <h1 class="text-2xl font-bold">Email Management</h1>
-        <p class="text-sm text-base-content/70">View and manage sent emails via Resend</p>
+        <p class="text-sm text-base-content/70">View and manage tracked emails</p>
       </div>
     </div>
   </div>
@@ -120,8 +117,8 @@
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Delivered</p>
-            <p class="text-3xl font-bold text-success">{statsData.delivered}</p>
+            <p class="text-xs text-base-content/60 uppercase font-semibold">Sent</p>
+            <p class="text-3xl font-bold text-success">{statsData.sent}</p>
           </div>
           <div class="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
             <CheckCircle class="h-6 w-6 text-success" />
@@ -134,8 +131,8 @@
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Bounced</p>
-            <p class="text-3xl font-bold text-error">{statsData.bounced}</p>
+            <p class="text-xs text-base-content/60 uppercase font-semibold">Failed</p>
+            <p class="text-3xl font-bold text-error">{statsData.failed}</p>
           </div>
           <div class="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
             <XCircle class="h-6 w-6 text-error" />
@@ -177,10 +174,9 @@
 
     <select class="select select-bordered select-sm w-48" bind:value={filterStatus}>
       <option value="all">All Status</option>
-      <option value="delivered">Delivered</option>
-      <option value="bounced">Bounced</option>
-      <option value="complained">Complained</option>
-      <option value="opened">Opened</option>
+      <option value="sent">Sent</option>
+      <option value="failed">Failed</option>
+      <option value="pending">Pending</option>
     </select>
   </div>
 
@@ -208,16 +204,13 @@
               </tr>
             {:else if filteredEmails.length > 0}
               {#each filteredEmails as email}
+                {@const badge = getStatusBadge(email.status)}
                 <tr class="hover">
                   <td>
                     <div class="flex flex-col gap-1">
-                      {#if email.to && email.to.length > 0}
-                        <span class="font-medium">{email.to[0]}</span>
-                        {#if email.to.length > 1}
-                          <span class="text-xs text-base-content/60">+{email.to.length - 1} more</span>
-                        {/if}
-                      {:else}
-                        <span class="text-base-content/50">N/A</span>
+                      <span class="font-medium">{email.to || 'N/A'}</span>
+                      {#if email.emailType}
+                        <span class="text-xs text-base-content/60 badge badge-xs">{email.emailType}</span>
                       {/if}
                     </div>
                   </td>
@@ -226,15 +219,13 @@
                     <div class="max-w-xs truncate font-medium">{email.subject || 'No subject'}</div>
                   </td>
                   <td>
-                    <div class="text-sm">{getTimeAgo(email.created_at)}</div>
-                    <div class="text-xs text-base-content/60">{formatDate(email.created_at)}</div>
+                    <div class="text-sm">{getTimeAgo(email.sentAt)}</div>
+                    <div class="text-xs text-base-content/60">{formatDate(email.sentAt)}</div>
                   </td>
                   <td>
-                    {#if email.last_event}
-                      {@const badge = getStatusBadge(email.last_event)}
-                      <span class="badge {badge.class} badge-sm">{badge.label}</span>
-                    {:else}
-                      <span class="badge badge-neutral badge-sm">Sent</span>
+                    <span class="badge {badge.class} badge-sm">{badge.label}</span>
+                    {#if email.error}
+                      <div class="text-xs text-error mt-1" title={email.error}>Error</div>
                     {/if}
                   </td>
                   <td class="text-right">

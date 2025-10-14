@@ -28,7 +28,7 @@ export class CloudflareClient {
         this.apiToken = config.apiToken;
         this.accountId = config.accountId;
         this.base = config.endpointBase || 'https://api.cloudflare.com/client/v4';
-        this.cf = new Cloudflare({ token: this.apiToken });
+        this.cf = new Cloudflare({ apiToken: this.apiToken });
     }
 
     private async request(path: string, init: RequestInit): Promise<any> {
@@ -218,28 +218,121 @@ export class CloudflareClient {
         }
         form.append('metadata', JSON.stringify(metadata));
 
-        const res = await (this.cf as any).workers.scripts.update(scriptName, form);
-        return res as any;
+        // Use direct API call since the SDK doesn't support FormData properly
+        const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${this.apiToken}`
+            },
+            body: form
+        });
+
+        if (!res.ok) {
+            const error = await res.text();
+            throw new Error(`Failed to upload worker: ${res.status} ${error}`);
+        }
+
+        return res.json();
+    }
+
+    /**
+     * Deploy a D1 worker with database binding
+     * Creates a D1 database and deploys a worker with the database bound
+     */
+    async deployD1Worker(options: {
+        workerName: string;
+        databaseName: string;
+        workerScript: string;
+        gatewayKey: string;
+        location?: PrimaryLocationHint;
+    }): Promise<{ databaseId: string; workerName: string }> {
+        const { workerName, databaseName, workerScript, gatewayKey, location } = options;
+
+        // Create D1 database
+        const dbResponse = await this.createDatabase(databaseName, location);
+        if (!dbResponse.success || !dbResponse.result) {
+            throw new Error(`Failed to create D1 database: ${JSON.stringify(dbResponse.errors)}`);
+        }
+        const databaseId = dbResponse.result.uuid || dbResponse.result.id;
+
+        try {
+            // Prepare bindings for the worker
+            const bindings = [
+                // Secret binding for gateway key
+                { type: 'secret_text', name: 'API_KEY', text: gatewayKey },
+                // D1 database binding
+                { type: 'd1', name: 'DB', id: databaseId }
+            ];
+
+            // Upload worker with D1 binding
+            await this.uploadWorkerModule(workerName, workerScript, bindings);
+
+            // Enable worker subdomain
+            await this.enableWorkerSubdomain(workerName);
+
+            return { databaseId, workerName };
+        } catch (error) {
+            // Cleanup: delete the database if worker deployment fails
+            try {
+                await this.deleteDatabase(databaseId);
+            } catch (cleanupError) {
+                console.error('Failed to cleanup database after worker deployment failure:', cleanupError);
+            }
+            throw error;
+        }
     }
 
     /** Enable a Workers.dev subdomain for a script */
     async enableWorkerSubdomain(scriptName: string): Promise<CloudflareAPIResponse<any>> {
-        const res = await (this.cf as any).workers.scripts.subdomain.update(scriptName, {
-            enabled: true,
-            previews_enabled: true
+        const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}/subdomain`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.apiToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                enabled: true
+            })
         });
-        return res as any;
+
+        if (!res.ok) {
+            const error = await res.text();
+            throw new Error(`Failed to enable worker subdomain: ${res.status} ${error}`);
+        }
+
+        return res.json();
     }
 
     /** Get a Worker script (metadata or content). Success indicates it exists. */
     async getWorkerScript(scriptName: string): Promise<any> {
-        const res = await (this.cf as any).workers.scripts.get(scriptName);
-        return res as any;
+        const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${this.apiToken}`
+            }
+        });
+
+        if (!res.ok) {
+            const error = await res.text();
+            throw new Error(`Failed to get worker script: ${res.status} ${error}`);
+        }
+
+        return res.json();
     }
 
     /** Delete a Worker script by name (force=true to remove along with bindings/objects) */
     async deleteWorkerScript(scriptName: string): Promise<void> {
-        await (this.cf as any).workers.scripts.delete(scriptName, { force: true });
+        const res = await fetch(`${this.base}/accounts/${this.accountId}/workers/scripts/${scriptName}?force=true`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${this.apiToken}`
+            }
+        });
+
+        if (!res.ok) {
+            const error = await res.text();
+            throw new Error(`Failed to delete worker script: ${res.status} ${error}`);
+        }
     }
 
     // ===== Queues =====

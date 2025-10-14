@@ -1,12 +1,13 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Home, Database, Users, Shield, Settings, Activity, Globe, Building2, Clock, Mail, File, Folder } from 'lucide-svelte';
+  import { Home, Database, Users, Shield, Settings, Activity, Globe, Building2, Clock, Mail, File, Folder, Package } from 'lucide-svelte';
 
   const menu = [
     { label: 'Overview', icon: Home, href: '/' },
     { label: 'Organizations', icon: Building2, href: '/organizations' },
-    { label: 'Databases', icon: Database, href: '/databases' },
+    { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: Globe, href: '/domains' },
+    { label: 'Products', icon: Package, href: '/products' },
     { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Users', icon: Users, href: '/users' },
     { label: 'Roles', icon: Shield, href: '/roles' },

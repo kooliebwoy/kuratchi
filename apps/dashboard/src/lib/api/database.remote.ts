@@ -2,6 +2,7 @@ import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error, fail } from '@sveltejs/kit';
 import { database } from 'kuratchi-sdk';
+import { env } from '$env/dynamic/private';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -148,22 +149,24 @@ export const createDatabase = guardedForm(
 		const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
 
 		try {
-			// Import organization schema
-			const { organizationSchema } = await import('$lib/schemas/organization');
-
 			// Create database name (system-level or org-level)
 			const dbName = activeOrgId && activeOrgId !== 'admin' 
 				? `org-${activeOrgId}-${name}` 
 				: `sys-${name}`;
 
-			// Create the database
+			// Create the database with organization schema
 			const created = await database.create({
 				name: dbName,
-				migrate: true,
-				schema: organizationSchema
+				migrate: false
 			});
 
-			console.log('database created: ', created);
+
+			console.log('[createDatabase] D1 database created:', {
+				databaseName: created.databaseName,
+				databaseId: created.databaseId,
+				workerName: created.workerName,
+				token: created.token ? '***' : undefined
+			});
 
 			// Store database info in admin DB using ORM
 			const { orm: adminOrm } = await database.admin();
@@ -176,7 +179,7 @@ export const createDatabase = guardedForm(
 			const newDB = await adminOrm.databases.insert({
 				id: dbId,
 				name: created.databaseName,
-				dbuuid: created.databaseName,
+				dbuuid: created.databaseId || created.databaseName, // Use D1 database ID if available
 				organizationId: orgId,
 				isArchived: false,
 				isActive: true,
@@ -222,6 +225,148 @@ export const createDatabase = guardedForm(
 		}
 	}
 );
+
+// Get D1 analytics from Cloudflare GraphQL API for a specific database
+export const getDatabaseAnalytics = guardedQuery(async () => {
+	const { locals } = getRequestEvent();
+	const { url } = getRequestEvent();
+	
+	// Get database ID from URL path
+	const pathParts = url.pathname.split('/');
+	const dbId = pathParts[pathParts.indexOf('database') + 1];
+	
+	if (!dbId) {
+		console.warn('[getDatabaseAnalytics] No database ID in URL');
+		return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+	}
+	
+	try {
+		// Get account ID and API token from environment
+		const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+		const apiToken = env.CLOUDFLARE_API_TOKEN;
+		
+		if (!accountId || !apiToken) {
+			console.warn('[getDatabaseAnalytics] Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN');
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+
+		// Fetch the database record to get the D1 UUID (dbuuid)
+		const { orm: adminOrm } = await database.admin();
+		const dbRecord = await adminOrm.databases
+			.where({ id: { eq: dbId } })
+			.first();
+		
+		if (!dbRecord?.data?.dbuuid) {
+			console.warn('[getDatabaseAnalytics] No dbuuid found for database:', dbId);
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+
+		const d1DatabaseId = dbRecord.data.dbuuid;
+		console.log('[getDatabaseAnalytics] Fetching analytics for D1 database:', d1DatabaseId);
+
+		// Calculate date range (last 7 days)
+		const endDate = new Date();
+		const startDate = new Date();
+		startDate.setDate(startDate.getDate() - 7);
+		
+		const start = startDate.toISOString().split('T')[0];
+		const end = endDate.toISOString().split('T')[0];
+		
+		// Using string interpolation with specific databaseId filter
+		const query = `
+			query {
+				viewer {
+					accounts(filter: { accountTag: "${accountId}" }) {
+						d1AnalyticsAdaptiveGroups(
+							limit: 10000
+							filter: {
+								date_geq: "${start}"
+								date_leq: "${end}"
+								databaseId: "${d1DatabaseId}"
+							}
+							orderBy: [date_DESC]
+						) {
+							sum {
+								readQueries
+								writeQueries
+								rowsRead
+								rowsWritten
+							}
+							dimensions {
+								date
+								databaseId
+							}
+						}
+					}
+				}
+			}
+		`;
+
+		console.log('[getDatabaseAnalytics] Query:', query);
+		console.log('[getDatabaseAnalytics] Date range:', start, 'to', end);
+
+		const response = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+			method: 'POST',
+			headers: {
+				'Authorization': `Bearer ${apiToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ query })
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error('[getDatabaseAnalytics] GraphQL request failed:', response.status, errorText);
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+
+		const data = await response.json();
+		console.log('[getDatabaseAnalytics] Raw response:', JSON.stringify(data, null, 2));
+		
+		if (data.errors) {
+			console.error('[getDatabaseAnalytics] GraphQL errors:', data.errors);
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+		
+		const groups = data?.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups || [];
+		
+		if (groups.length === 0) {
+			console.warn('[getDatabaseAnalytics] No analytics data found');
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+		
+		// Sum up all metrics across all groups
+		let totalReadQueries = 0;
+		let totalWriteQueries = 0;
+		let totalRowsRead = 0;
+		let totalRowsWritten = 0;
+		
+		for (const group of groups) {
+			totalReadQueries += group.sum?.readQueries || 0;
+			totalWriteQueries += group.sum?.writeQueries || 0;
+			totalRowsRead += group.sum?.rowsRead || 0;
+			totalRowsWritten += group.sum?.rowsWritten || 0;
+		}
+
+		console.log('[getDatabaseAnalytics] Totals:', {
+			readQueries: totalReadQueries,
+			writeQueries: totalWriteQueries,
+			rowsRead: totalRowsRead,
+			rowsWritten: totalRowsWritten,
+			groupsCount: groups.length
+		});
+
+		return {
+			readQueries: totalReadQueries,
+			writeQueries: totalWriteQueries,
+			rowsRead: totalRowsRead,
+			rowsWritten: totalRowsWritten
+		};
+	} catch (err) {
+		console.error('[getDatabaseAnalytics] Error:', err);
+		return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+	}
+});
 
 // Execute a SQL query
 export const executeQuery = guardedForm(

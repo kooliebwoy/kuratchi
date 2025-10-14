@@ -3,63 +3,51 @@
  * Create ORM client with schema and migrations
  */
 
-import type { DoHttpClient, OrmClient, ClientOptions } from '../core/types.js';
+import type { D1Client, OrmClient, ClientOptions } from '../core/types.js';
 import type { DatabaseSchema } from '../migrations/schema.js';
 import type { SchemaDsl } from '../../utils/types.js';
 import { createClientFromJsonSchema } from '../../orm/kuratchi-orm.js';
-import { createDoHttpAdapter, createDoDirectAdapter, createD1Adapter } from '../../orm/adapters.js';
+import { createDoHttpAdapter, createD1Adapter } from '../../orm/adapters.js';
 import { getCurrentPlatform } from '../../utils/platform-context.js';
 import { ensureNormalizedSchema } from '../migrations/migration-utils.js';
 import { applyMigrations } from '../migrations/migration-runner.js';
 
 export interface CreateOrmClientOptions {
-  httpClient: DoHttpClient;
+  httpClient: D1Client;
   schema: DatabaseSchema | SchemaDsl;
   databaseName: string;
 }
 
 /**
  * Detect binding type and return adapter
- * Checks for D1, DO direct, or falls back to HTTP
+ * Checks for D1 direct binding or falls back to HTTP (D1 workers)
  */
-function detectAdapter(databaseName: string, httpClient: DoHttpClient): { exec: any; kvClient: any; type: string } {
+function detectAdapter(databaseName: string, httpClient: D1Client): { exec: any; type: string } {
   const platform = getCurrentPlatform() as any;
   
   if (platform?.env) {
-    const binding = platform.env[databaseName] || platform.env.ADMIN_DB;
+    const binding = platform.env[databaseName] || platform.env.ADMIN_DB || platform.env.DB;
     
-    // Check for D1 binding
+    // Check for D1 binding (direct D1 access in wrangler dev or production)
     if (binding && typeof binding.prepare === 'function') {
       console.log(`[Kuratchi] Using D1 direct binding for ${databaseName}`);
       return {
         exec: createD1Adapter(binding),
-        kvClient: null,
         type: 'd1'
-      };
-    }
-    
-    // Check for DO direct binding
-    if (binding && typeof binding.sql === 'function') {
-      console.log(`[Kuratchi] Using DO direct binding for ${databaseName}`);
-      return {
-        exec: createDoDirectAdapter(binding),
-        kvClient: null, // TODO: Add direct KV access from DO binding
-        type: 'do-direct'
       };
     }
   }
   
-  // Fallback to HTTP client
+  // Fallback to HTTP client (D1 workers via REST API)
   console.log(`[Kuratchi] Using HTTP client for ${databaseName}`);
   return {
     exec: createDoHttpAdapter(httpClient),
-    kvClient: httpClient.kv,
     type: 'http'
   };
 }
 
 /**
- * Create ORM client (auto-detects D1, DO direct, or HTTP client)
+ * Create ORM client (auto-detects D1 direct binding or HTTP client)
  */
 export async function createOrmClient(options: CreateOrmClientOptions): Promise<OrmClient> {
   const { httpClient, schema, databaseName } = options;
@@ -67,11 +55,11 @@ export async function createOrmClient(options: CreateOrmClientOptions): Promise<
   // Normalize schema
   const normalizedSchema = ensureNormalizedSchema(schema);
   
-  // Auto-detect best adapter FIRST (D1 > DO direct > HTTP)
-  const { exec, kvClient, type } = detectAdapter(databaseName, httpClient);
+  // Auto-detect best adapter FIRST (D1 direct > HTTP)
+  const { exec, type } = detectAdapter(databaseName, httpClient);
   
   // Apply migrations using the detected adapter
-  // For D1/DO direct, we need to wrap exec to match DoHttpClient interface
+  // For D1 direct, we need to wrap exec to match D1Client interface
   const migrationClient = type === 'http' 
     ? httpClient 
     : createMigrationClientFromExec(exec);
@@ -89,15 +77,17 @@ export async function createOrmClient(options: CreateOrmClientOptions): Promise<
     throw error;
   }
   
-  // Create ORM client with detected adapter
-  return createClientFromJsonSchema(exec, normalizedSchema, { kv: kvClient });
+  // Create ORM client from schema (no KV support in D1 mode)
+  const ormClient = createClientFromJsonSchema(exec, normalizedSchema);
+  
+  return ormClient;
 }
 
 /**
- * Create a DoHttpClient-compatible wrapper from an exec function
- * Used for running migrations against D1/DO direct bindings
+ * Create a D1Client-compatible wrapper from an exec function
+ * Used for running migrations against D1 direct bindings
  */
-function createMigrationClientFromExec(exec: any): DoHttpClient {
+function createMigrationClientFromExec(exec: any): D1Client {
   return {
     exec: exec,
     query: async (sql: string, params?: any[]) => {
@@ -123,13 +113,13 @@ function createMigrationClientFromExec(exec: any): DoHttpClient {
       return result.results?.[0] || null;
     },
     kv: null as any
-  } as DoHttpClient;
+  } as D1Client;
 }
 
 /**
  * Create ORM client with full validation
  */
-export async function createValidatedOrmClient(options: ClientOptions & { httpClient: DoHttpClient }): Promise<OrmClient> {
+export async function createValidatedOrmClient(options: ClientOptions & { httpClient: D1Client }): Promise<OrmClient> {
   const { httpClient, schema, databaseName } = options;
   
   if (!databaseName) {

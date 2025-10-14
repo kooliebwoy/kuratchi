@@ -3,14 +3,14 @@
  * Apply database migrations with history tracking
  */
 
-import type { DoHttpClient, QueryResult } from '../core/types.js';
+import type { D1Client, QueryResult } from '../core/types.js';
 import type { DatabaseSchema } from './schema.js';
 import type { SchemaDsl } from '../../utils/types.js';
 import { loadMigrations } from './loader.js';
 import { ensureNormalizedSchema, generateInitialMigration, splitSqlStatements, unwrapModuleExport } from './migration-utils.js';
 
 export interface ApplyMigrationsOptions {
-  client: DoHttpClient;
+  client: D1Client;
   schemaName: string;
   schema?: DatabaseSchema | SchemaDsl;
 }
@@ -27,7 +27,7 @@ interface MigrationJournal {
 /**
  * Ensure migrations_history table exists
  */
-async function ensureMigrationsTable(client: DoHttpClient): Promise<void> {
+async function ensureMigrationsTable(client: D1Client): Promise<void> {
   const result = await client.exec(
     'CREATE TABLE IF NOT EXISTS migrations_history (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, created_at INTEGER);'
   );
@@ -40,7 +40,7 @@ async function ensureMigrationsTable(client: DoHttpClient): Promise<void> {
 /**
  * Get applied migrations from history
  */
-async function getAppliedMigrations(client: DoHttpClient): Promise<Set<string>> {
+async function getAppliedMigrations(client: D1Client): Promise<Set<string>> {
   const result = await client.query<{ tag: string }>('SELECT tag FROM migrations_history');
   
   if (!result || result.success === false) {
@@ -93,7 +93,7 @@ async function loadOrGenerateMigrations(
  * Apply a single migration
  */
 async function applyMigration(
-  client: DoHttpClient,
+  client: D1Client,
   migrationKey: string,
   tag: string,
   getSql: () => Promise<string>

@@ -1,20 +1,35 @@
 /**
- * HTTP Client for Durable Object communication
- * Handles all HTTP requests to the DO worker
+ * HTTP Client for D1 communication with Session support
+ * Handles all HTTP requests to the D1 worker with bookmark tracking
  */
 
-import type { DatabaseConfig, DoHttpClient, QueryResult } from '../core/types.js';
-import { createKvClient } from './kv-client.js';
+import type { DatabaseConfig, D1Client, QueryResult } from '../core/types.js';
 
 /**
- * Make an HTTP request to the DO worker
+ * Session state for D1 bookmarks
+ */
+class SessionState {
+  private bookmark: string | null = null;
+
+  getBookmark(): string | null {
+    return this.bookmark;
+  }
+
+  setBookmark(bookmark: string | null): void {
+    this.bookmark = bookmark;
+  }
+}
+
+/**
+ * Make an HTTP request to the D1 worker with session support
  */
 async function makeRequest(
   endpoint: string,
   dbName: string,
   path: string,
   body: any,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  sessionState: SessionState
 ): Promise<QueryResult<any>> {
   try {
     const requestHeaders: Record<string, string> = {
@@ -22,12 +37,24 @@ async function makeRequest(
       'x-db-name': dbName,
       ...headers
     };
+
+    // Add session bookmark if available
+    const bookmark = sessionState.getBookmark();
+    if (bookmark) {
+      requestHeaders['x-d1-bookmark'] = bookmark;
+    }
     
     const response = await fetch(`${endpoint}${path}`, {
       method: 'POST',
       headers: requestHeaders,
       body: JSON.stringify(body)
     });
+
+    // Extract and store new bookmark from response
+    const newBookmark = response.headers.get('x-d1-bookmark');
+    if (newBookmark) {
+      sessionState.setBookmark(newBookmark);
+    }
     
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
@@ -46,10 +73,10 @@ async function makeRequest(
 }
 
 /**
- * Create HTTP client for DO communication
+ * Create HTTP client for D1 communication with session support
  */
-export function createHttpClient(config: DatabaseConfig): DoHttpClient {
-  const scriptName = config.scriptName || 'kuratchi-do-internal';
+export function createHttpClient(config: DatabaseConfig): D1Client {
+  const scriptName = config.scriptName || 'kuratchi-d1-internal';
   const endpoint = `https://${scriptName}.${config.workersSubdomain}`;
   const dbName = config.databaseName;
   
@@ -62,11 +89,11 @@ export function createHttpClient(config: DatabaseConfig): DoHttpClient {
     headers['x-db-token'] = config.dbToken;
   }
   
-  // Create request helper
-  const request = (path: string, body: any) => makeRequest(endpoint, dbName, path, body, headers);
+  // Create session state for bookmark tracking
+  const sessionState = new SessionState();
   
-  // Create KV client
-  const kvClient = createKvClient(request);
+  // Create request helper with session support
+  const request = (path: string, body: any) => makeRequest(endpoint, dbName, path, body, headers, sessionState);
   
   return {
     query: <T = any>(query: string, params: any[] = []) => 
@@ -82,16 +109,14 @@ export function createHttpClient(config: DatabaseConfig): DoHttpClient {
       request('/api/raw', { query, params, columnNames }),
     
     first: <T = any>(query: string, params: any[] = [], columnName?: string) => 
-      request('/api/first', { query, params, columnName }) as Promise<QueryResult<T>>,
-    
-    kv: kvClient
+      request('/api/first', { query, params, columnName }) as Promise<QueryResult<T>>
   };
 }
 
 /**
  * Create HTTP client with validation
  */
-export function createValidatedHttpClient(config: DatabaseConfig): DoHttpClient {
+export function createValidatedHttpClient(config: DatabaseConfig): D1Client {
   if (!config.databaseName) {
     throw new Error('databaseName is required');
   }

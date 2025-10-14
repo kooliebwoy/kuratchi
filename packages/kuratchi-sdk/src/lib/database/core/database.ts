@@ -1,6 +1,6 @@
 /**
  * Core Database Class
- * Main orchestration class using extracted modules
+ * Main orchestration class using D1 databases with individual workers
  */
 
 import type {
@@ -8,7 +8,7 @@ import type {
   CreateDatabaseOptions,
   ClientOptions,
   HttpClientOptions,
-  DoHttpClient,
+  D1Client,
   OrmClient
 } from './types.js';
 import { CloudflareClient } from '../../utils/cloudflare.js';
@@ -16,14 +16,16 @@ import { createSignedDbToken } from '../../utils/token.js';
 import { createHttpClient } from '../clients/http-client.js';
 import { createOrmClient } from '../clients/orm-client.js';
 import { splitSqlStatements } from '../migrations/migration-utils.js';
+import { deployWorker } from '../deployment/worker-deployment.js';
 
 /**
- * KuratchiDatabase - Durable Objects backed SQLite with instant logical databases
+ * KuratchiDatabase - D1 backed SQLite with individual workers per database
+ * Each database gets its own D1 instance and dedicated worker for isolation and performance
  */
 export class KuratchiDatabase {
   private cloudflareClient: CloudflareClient;
   private workersSubdomain: string;
-  private scriptName: string;
+  private scriptNamePrefix: string;
 
   constructor(config: DatabaseInstanceConfig) {
     this.cloudflareClient = new CloudflareClient({
@@ -32,7 +34,7 @@ export class KuratchiDatabase {
       endpointBase: config.endpointBase
     });
     this.workersSubdomain = config.workersSubdomain;
-    this.scriptName = config.scriptName || 'kuratchi-do-internal';
+    this.scriptNamePrefix = config.scriptName || 'kuratchi-d1';
     
     // Hide CloudflareClient from enumeration
     try {
@@ -45,10 +47,11 @@ export class KuratchiDatabase {
   }
 
   /**
-   * Create a new logical database
+   * Create a new D1 database with dedicated worker
+   * Each database gets its own D1 instance and worker for isolation
    */
-  async createDatabase(options: CreateDatabaseOptions): Promise<{ databaseName: string; token: string }> {
-    const { databaseName, gatewayKey, migrate, schema } = options;
+  async createDatabase(options: CreateDatabaseOptions): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
+    const { databaseName, gatewayKey, migrate, schema, schemaName } = options;
     
     if (!databaseName) {
       throw new Error('databaseName is required');
@@ -66,8 +69,7 @@ export class KuratchiDatabase {
       : 365 * 24 * 60 * 60 * 1000;       // 1 year (renewable via admin)
     const token = await createSignedDbToken(databaseName, gatewayKey, ttl);
     
-    // Check if we have direct DO binding (ONLY in wrangler dev or production Workers)
-    // Note: Local SvelteKit dev (npm run dev) doesn't have DO bindings - must use HTTP
+    // Check if we have direct D1 binding (ONLY in wrangler dev or production Workers)
     const platform = (globalThis as any).__sveltekit_platform || (globalThis as any).platform;
     
     // Detect local SvelteKit dev using $app/environment dev flag or lack of platform.env
@@ -82,46 +84,66 @@ export class KuratchiDatabase {
     }
     
     if (!isLocalDev) {
-      const doBinding = platform?.env?.[databaseName] || platform?.env?.KURATCHI_DO;
+      const d1Binding = platform?.env?.[databaseName] || platform?.env?.DB;
       
-      if (doBinding && typeof doBinding.sql === 'function') {
-        console.log(`[Kuratchi] Using direct DO binding for ${databaseName} - skipping deploy/wait`);
+      if (d1Binding && typeof d1Binding.prepare === 'function') {
+        console.log(`[Kuratchi] Using direct D1 binding for ${databaseName} - skipping deploy/wait`);
         
-        // Apply initial schema migration if requested (using direct binding)
-        if (migrate && schema) {
-          await this.applyInitialMigrationDirect(doBinding, schema);
+        // Apply migrations if requested (using direct binding)
+        if (migrate && schemaName) {
+          await this.applyInitialMigrationDirect(d1Binding, schema, schemaName);
         }
         
         return { databaseName, token };
       }
     }
     
-    // Fallback: HTTP flow
-    // Note: Worker should already be deployed via CLI (kuratchi-cli admin create)
-    // Each database is just a new DO instance accessed via the same worker
-    console.log(`[Kuratchi] No direct binding for ${databaseName} - using HTTP flow`);
+    // HTTP flow: Deploy a new D1 database with dedicated worker
+    console.log(`[Kuratchi] Deploying D1 worker for ${databaseName}`);
     
-    // Create HTTP client for this database (new DO instance)
-    const httpClient = this.httpClient({ databaseName, dbToken: token, gatewayKey });
+    // Generate worker name from database name (sanitize for worker naming)
+    const workerName = `${this.scriptNamePrefix}-${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
     
-    // Apply initial schema migration if requested (via HTTP)
-    if (migrate && schema) {
-      await this.applyInitialMigration(httpClient, schema);
+    // Deploy D1 database and worker
+    const { databaseId, workerName: deployedWorkerName } = await deployWorker({
+      scriptName: workerName,
+      databaseName,
+      gatewayKey,
+      cloudflareClient: this.cloudflareClient
+    });
+    
+    console.log(`[Kuratchi] D1 worker deployed: ${deployedWorkerName} (DB ID: ${databaseId})`);
+    
+    // Create HTTP client for this database
+    const httpClient = this.httpClient({ 
+      databaseName, 
+      dbToken: token, 
+      gatewayKey,
+      scriptName: deployedWorkerName
+    });
+    
+    // Apply migrations if requested (via HTTP)
+    if (migrate && schemaName) {
+      await this.applyInitialMigration(httpClient, schema, schemaName);
     }
     
-    return { databaseName, token };
+    return { databaseName, token, databaseId, workerName: deployedWorkerName };
   }
 
   /**
    * Get HTTP client for raw SQL access
    */
-  httpClient(options: HttpClientOptions): DoHttpClient {
+  httpClient(options: HttpClientOptions): D1Client {
+    // Generate script name if not provided
+    const scriptName = options.scriptName || 
+      `${this.scriptNamePrefix}-${options.databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+    
     return createHttpClient({
       databaseName: options.databaseName,
       dbToken: options.dbToken,
       gatewayKey: options.gatewayKey,
       workersSubdomain: this.workersSubdomain,
-      scriptName: this.scriptName
+      scriptName
     });
   }
 
@@ -159,79 +181,103 @@ export class KuratchiDatabase {
    * Get both ORM client and raw SQL access
    */
   async connect(options: ClientOptions): Promise<{
+    instance: KuratchiDatabase;
     orm: OrmClient;
-    query: DoHttpClient['query'];
-    exec: DoHttpClient['exec'];
-    batch: DoHttpClient['batch'];
-    raw: DoHttpClient['raw'];
-    first: DoHttpClient['first'];
-    kv: DoHttpClient['kv'];
+    query: D1Client['query'];
+    exec: D1Client['exec'];
+    batch: D1Client['batch'];
+    raw: D1Client['raw'];
+    first: D1Client['first'];
   }> {
     const { databaseName, dbToken, gatewayKey } = options;
     const httpClient = this.httpClient({ databaseName, dbToken, gatewayKey });
     const orm = await this.ormClient(options);
     
     return {
+      instance: this,
       orm,
       query: httpClient.query,
       exec: httpClient.exec,
       batch: httpClient.batch,
       raw: httpClient.raw,
-      first: httpClient.first,
-      kv: httpClient.kv
+      first: httpClient.first
     };
   }
 
   /**
-   * Apply initial migration during database creation
+   * Apply migrations during database creation (via HTTP)
+   * Uses the same migration runner as runtime, loading from generated migrations folder
    */
-  private async applyInitialMigration(client: DoHttpClient, schema: any): Promise<void> {
-    const { generateInitialMigration, ensureNormalizedSchema } = await import('../migrations/migration-utils.js');
+  private async applyInitialMigration(client: D1Client, schema: any, schemaName: string): Promise<void> {
+    const { applyMigrations } = await import('../migrations/migration-runner.js');
     
-    const normalized = ensureNormalizedSchema(schema);
-    const { migrations } = generateInitialMigration(normalized);
-    const initialSql = await migrations.m0001();
+    console.log('[Kuratchi] Applying migrations via HTTP...');
     
-    // Split into statements
-    const statements = splitSqlStatements(initialSql);
+    // Use the existing migration runner - it will:
+    // 1. Create migrations_history table
+    // 2. Load migrations from /migrations-{schemaName} folder
+    // 3. Apply all pending migrations
+    // 4. Skip already-applied migrations
+    await applyMigrations({
+      client,
+      schemaName,
+      schema  // Fallback if no migrations folder exists
+    });
     
-    if (statements.length === 1) {
-      const result = await client.query(statements[0]);
-      if (!result || result.success === false) {
-        throw new Error(`Migration failed: ${result?.error || 'unknown error'}`);
-      }
-    } else if (statements.length > 1) {
-      const result = await client.batch(statements.map((query) => ({ query })));
-      if (!result || result.success === false) {
-        throw new Error(`Migration batch failed: ${result?.error || 'unknown error'}`);
-      }
-    }
+    console.log('[Kuratchi] ✓ Migrations applied');
   }
 
   /**
-   * Apply initial migration using direct DO binding
+   * Apply migrations using direct D1 binding
+   * Uses the same migration runner as runtime
    */
-  private async applyInitialMigrationDirect(doBinding: any, schema: any): Promise<void> {
-    const { generateInitialMigration, ensureNormalizedSchema } = await import('../migrations/migration-utils.js');
+  private async applyInitialMigrationDirect(d1Binding: any, schema: any, schemaName: string): Promise<void> {
+    // Wrap D1 binding in D1Client interface for migration runner
+    const client: D1Client = {
+      query: async (sql: string) => {
+        const stmt = d1Binding.prepare(sql);
+        const result = await stmt.all();
+        return { success: true, results: result.results };
+      },
+      exec: async (sql: string) => {
+        await d1Binding.exec(sql);
+        return { success: true };
+      },
+      batch: async (queries: any[]) => {
+        const stmts = queries.map(q => d1Binding.prepare(q.query));
+        await d1Binding.batch(stmts);
+        return { success: true };
+      },
+      raw: async (sql: string) => {
+        const stmt = d1Binding.prepare(sql);
+        const result = await stmt.raw();
+        return { success: true, results: result };
+      },
+      first: async (sql: string) => {
+        const stmt = d1Binding.prepare(sql);
+        const result = await stmt.first();
+        return { success: true, data: result };
+      }
+    };
     
-    const normalized = ensureNormalizedSchema(schema);
-    const { migrations } = generateInitialMigration(normalized);
-    const initialSql = await migrations.m0001();
+    const { applyMigrations } = await import('../migrations/migration-runner.js');
     
-    // Split into statements
-    const statements = splitSqlStatements(initialSql);
+    console.log('[Kuratchi] Applying migrations via D1 binding...');
     
-    // Execute directly on DO binding
-    for (const sql of statements) {
-      await doBinding.sql(sql);
-    }
+    await applyMigrations({
+      client,
+      schemaName,
+      schema
+    });
+    
+    console.log('[Kuratchi] ✓ Migrations applied');
   }
 
   /**
    * Hide internals in logs
    */
   toJSON() {
-    return { type: 'KuratchiDatabase', scriptName: this.scriptName };
+    return { type: 'KuratchiDatabase', scriptNamePrefix: this.scriptNamePrefix };
   }
 
   [Symbol.for('nodejs.util.inspect.custom')]() {
