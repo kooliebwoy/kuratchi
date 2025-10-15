@@ -130,7 +130,7 @@ export const signOut = form('unchecked', async () => {
 /**
  * Create a new organization with database and first user
  */
-export const createOrganization = form('unchecked', async (data: any) => {
+export const signUp = form('unchecked', async (data: any) => {
 	// Validate input
 	const result = v.safeParse(signupSchema, data);
 	if (!result.success) {

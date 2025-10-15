@@ -9,6 +9,10 @@
 export { kuratchi } from './kuratchi.js';
 export type { KuratchiConfig, KuratchiSDK } from './kuratchi.js';
 
+// === CLIENT (BATTERIES-INCLUDED) ===
+// Simple, friction-free database client - just API key + database ID
+export { KuratchiClient, createKuratchiClient, type KuratchiClientConfig } from './client/index.js';
+
 // === MODULAR API ===
 // Individual module exports for granular control
 export { database } from './database/index.js';

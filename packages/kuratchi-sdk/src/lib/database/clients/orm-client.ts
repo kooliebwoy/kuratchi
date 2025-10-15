@@ -7,7 +7,7 @@ import type { D1Client, OrmClient, ClientOptions } from '../core/types.js';
 import type { DatabaseSchema } from '../migrations/schema.js';
 import type { SchemaDsl } from '../../utils/types.js';
 import { createClientFromJsonSchema } from '../../orm/kuratchi-orm.js';
-import { createDoHttpAdapter, createD1Adapter } from '../../orm/adapters.js';
+import { createD1HttpAdapter, createD1Adapter } from '../../orm/adapters.js';
 import { getCurrentPlatform } from '../../utils/platform-context.js';
 import { ensureNormalizedSchema } from '../migrations/migration-utils.js';
 import { applyMigrations } from '../migrations/migration-runner.js';
@@ -41,7 +41,7 @@ function detectAdapter(databaseName: string, httpClient: D1Client): { exec: any;
   // Fallback to HTTP client (D1 workers via REST API)
   console.log(`[Kuratchi] Using HTTP client for ${databaseName}`);
   return {
-    exec: createDoHttpAdapter(httpClient),
+    exec: createD1HttpAdapter(httpClient),
     type: 'http'
   };
 }

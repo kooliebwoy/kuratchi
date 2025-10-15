@@ -1,6 +1,5 @@
 import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
-import { database } from 'kuratchi-sdk';
 
 export interface ApiKeyValidation {
 	organizationId: string;
@@ -17,49 +16,51 @@ export async function validateApiKey(
 	locals: RequestEvent['locals']
 ): Promise<ApiKeyValidation> {
 	try {
-		const { orm: adminDb } = await database.admin();
+		// Use the same database source as the Settings page
+		const adminDb = await locals.kuratchi?.getAdminDb?.();
 		if (!adminDb) {
 			error(500, 'Database connection not available');
 		}
 
-		// Query the API keys table
-		const apiKeyRecord = await (adminDb as any).apiKeys
-			?.where({ key: apiKey, active: true })
-			.get();
+		// Get all non-revoked tokens and find the matching one in JavaScript
+		// (ORM's where() has issues with long strings causing LIKE pattern errors)
+		const allTokensResult = await (adminDb as any).platformApiTokens
+			?.where({ revoked: false })
+			.many();
 
-		if (!apiKeyRecord?.data) {
+		if (!allTokensResult?.data) {
+			error(500, 'Failed to query API tokens');
+		}
+
+		// Find the matching token by exact string comparison
+		const keyData = allTokensResult.data.find((t: any) => t.token === apiKey);
+
+		if (!keyData) {
 			error(401, 'Invalid API key');
 		}
 
-		const keyData = apiKeyRecord.data;
-
 		// Check if key is expired
-		if (keyData.expiresAt && new Date(keyData.expiresAt) < new Date()) {
+		if (keyData.expires && new Date(keyData.expires) < new Date()) {
 			error(401, 'API key has expired');
 		}
 
-		// Get organization details
-		const orgRecord = await (adminDb as any).organizations
-			?.where({ id: keyData.organizationId })
-			.get();
-
-		if (!orgRecord?.data) {
-			error(404, 'Organization not found');
-		}
+		// For platform API keys, we use 'admin' as the organization
+		// This gives access to all databases owned by the platform
+		const organizationId = 'admin';
+		const organizationSlug = 'admin';
 
 		// Update last used timestamp
-		await (adminDb as any).apiKeys
+		await (adminDb as any).platformApiTokens
 			?.where({ id: keyData.id })
 			.update({
-				lastUsedAt: new Date().toISOString(),
-				usageCount: (keyData.usageCount || 0) + 1
+				updated_at: new Date().toISOString()
 			});
 
 		return {
-			organizationId: keyData.organizationId,
-			organizationSlug: orgRecord.data.organizationSlug,
+			organizationId,
+			organizationSlug,
 			keyId: keyData.id,
-			permissions: keyData.permissions || []
+			permissions: ['*'] // Platform keys have full access
 		};
 	} catch (err: any) {
 		if (err.status) {

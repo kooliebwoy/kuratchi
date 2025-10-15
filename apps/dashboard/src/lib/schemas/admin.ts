@@ -245,6 +245,14 @@ export const adminSchema: SchemaDsl = {
       invoicePdf: 'text',
       metadata: 'json',
       '...timestamps': true,
-    }
+    },
+    platformApiTokens: {
+      id: 'text primary key not null',
+      token: 'text not null unique',
+      name: 'text',
+      expires: 'timestamp_ms',
+      revoked: 'boolean',
+      '...timestamps': true,
+    },
   },
 } as const;

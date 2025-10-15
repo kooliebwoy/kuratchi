@@ -143,7 +143,7 @@ export default {
 
     try {
       // Handle request with session
-      const response = await withTablesInitialized(request, session, handleRequest);
+      const response = await withTablesInitialized(request, session, env, handleRequest);
       
       // Return the bookmark so we can continue the session in another request
       response.headers.set('x-d1-bookmark', session.getBookmark() || '');
@@ -202,33 +202,37 @@ async function retryWhile(fn, shouldRetryFn) {
 }
 
 // Main request handler
-async function handleRequest(request, session) {
+async function handleRequest(request, session, env) {
   const { pathname } = new URL(request.url);
   const tsStart = Date.now();
 
   if (pathname === '/api/run') {
+    // Read request body once before retry loop
+    const { query, params } = await request.json();
     return await retryWhile(async () => {
-      const { query, params } = await request.json();
-      const stmt = session.prepare(query);
+      let stmt = session.prepare(query);
       if (params && params.length > 0) {
-        stmt.bind(...params);
+        stmt = stmt.bind(...params);
       }
       const resp = await stmt.all();
       return Response.json(buildResponse(session, resp, tsStart));
     }, shouldRetry);
   } else if (pathname === '/api/exec') {
+    // Read request body once before retry loop
+    const { query } = await request.json();
     return await retryWhile(async () => {
-      const { query } = await request.json();
-      const resp = await session.exec(query);
+      // exec() is not available on sessions, use the raw DB binding
+      const resp = await env.DB.exec(query);
       return Response.json(buildResponse(session, resp, tsStart));
     }, shouldRetry);
   } else if (pathname === '/api/batch') {
+    // Read request body once before retry loop
+    const { batch } = await request.json();
     return await retryWhile(async () => {
-      const { batch } = await request.json();
       const stmts = batch.map(item => {
-        const stmt = session.prepare(item.query);
+        let stmt = session.prepare(item.query);
         if (item.params && item.params.length > 0) {
-          stmt.bind(...item.params);
+          stmt = stmt.bind(...item.params);
         }
         return stmt;
       });
@@ -291,23 +295,24 @@ function buildResponse(session, res, tsStart) {
 }
 
 // Auto-initialize tables on first error
-async function withTablesInitialized(request, session, handler) {
+async function withTablesInitialized(request, session, env, handler) {
   try {
-    return await handler(request.clone(), session);
+    return await handler(request.clone(), session, env);
   } catch (e) {
     const errMsg = String(e);
     // If it's a "no such table" error, initialize and retry
     if (errMsg.includes('no such table') || errMsg.includes('SQLITE_ERROR')) {
-      await initTables(session);
-      return await handler(request.clone(), session);
+      await initTables(env);
+      return await handler(request.clone(), session, env);
     }
     throw e;
   }
 }
 
-async function initTables(session) {
+async function initTables(env) {
   // Create migrations_history table for tracking migrations
-  await session.exec(
+  // exec() is not available on sessions, use the raw DB binding
+  await env.DB.exec(
     'CREATE TABLE IF NOT EXISTS migrations_history (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, created_at INTEGER);'
   );
 }

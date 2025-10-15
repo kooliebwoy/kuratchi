@@ -36,10 +36,11 @@ export function createD1Adapter(db: any) {
 }
 
 /**
- * Adapter for DO HTTP client
+ * Adapter for D1 HTTP client
  * Converts HTTP response to QueryResult
+ * Use this when accessing D1 via REST API (BaaS, remote workers)
  */
-export function createDoHttpAdapter(httpClient: any) {
+export function createD1HttpAdapter(httpClient: any) {
   return async (sql: string, params?: any[]): Promise<QueryResult<any>> => {
     try {
       const result = await httpClient.query(sql, params || []);
@@ -59,6 +60,14 @@ export function createDoHttpAdapter(httpClient: any) {
       };
     }
   };
+}
+
+/**
+ * @deprecated Use createD1HttpAdapter instead
+ * Kept for backward compatibility
+ */
+export function createDoHttpAdapter(httpClient: any) {
+  return createD1HttpAdapter(httpClient);
 }
 
 /**
@@ -104,7 +113,7 @@ export function createAutoAdapter(binding: any) {
   
   // Check if it's an HTTP client (has query method)
   if (binding && typeof binding.query === 'function') {
-    return createDoHttpAdapter(binding);
+    return createD1HttpAdapter(binding);
   }
   
   throw new Error('Unknown binding type. Expected D1Database, DO binding, or HTTP client');

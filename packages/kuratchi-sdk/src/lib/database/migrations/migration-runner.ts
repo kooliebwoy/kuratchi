@@ -102,21 +102,33 @@ async function applyMigration(
   let sql = await getSql();
   sql = unwrapModuleExport(sql);
   
-  // Split into statements
+  // Split into individual statements and execute them one by one
+  // D1's exec() via HTTP has issues, so we use query() for each statement
   const statements = splitSqlStatements(sql);
+  console.log(`[Migration] Executing ${statements.length} statements for ${migrationKey}`);
   
-  // Build batch with migration statements + history insert
-  const batch = statements.map((query) => ({ query, params: [] as any[] }));
-  batch.push({
-    query: 'INSERT INTO migrations_history (tag, created_at) VALUES (?, ?);',
-    params: [tag, Date.now()]
-  });
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    const result = await client.query(stmt);
+    
+    if (!result || result.success === false) {
+      throw new Error(`Migration ${migrationKey}/${tag} failed at statement ${i + 1}/${statements.length}: ${result?.error || 'unknown error'}`);
+    }
+  }
   
-  // Execute batch
-  const result = await client.batch(batch);
+  console.log(`[Migration] ✓ All ${statements.length} statements executed successfully`);
   
-  if (!result || result.success === false) {
-    throw new Error(`Migration ${migrationKey}/${tag} failed: ${result?.error || 'unknown error'}`);
+  // Record migration in history
+  const timestamp = Date.now();
+  console.log(`[Migration] Recording in history: tag=${tag}, timestamp=${timestamp}`);
+  
+  const historyResult = await client.query(
+    'INSERT INTO migrations_history (tag, created_at) VALUES (?, ?)',
+    [tag, timestamp]
+  );
+  
+  if (!historyResult || historyResult.success === false) {
+    throw new Error(`Failed to record migration ${migrationKey}/${tag} in history: ${historyResult?.error || 'unknown error'}`);
   }
 }
 

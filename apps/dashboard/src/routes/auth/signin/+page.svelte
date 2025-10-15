@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { LoginForm } from '@kuratchi/ui';
-  import { signInWithCredentials } from '../auth.remote';
+  import { signInWithCredentials } from '$lib/api/auth.remote';
+  import { FormField, FormInput } from '@kuratchi/ui';
   import { goto } from '$app/navigation';
-  
-  let magicLinkLoading = $state(false);
-  let magicLinkError = $state('');
+  import { LogIn } from 'lucide-svelte';
   
   // Handle successful sign in
   $effect(() => {
@@ -12,33 +10,6 @@
       goto('/database');
     }
   });
-  
-  async function handleMagicLinkSubmit(e: SubmitEvent) {
-    e.preventDefault();
-    magicLinkLoading = true;
-    magicLinkError = '';
-    
-    const formData = new FormData(e.target as HTMLFormElement);
-    const email = formData.get('email');
-    
-    try {
-      const response = await fetch('/auth/magic/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirectTo: '/database' })
-      });
-      
-      if (response.ok) {
-        alert('Check your email for the sign-in link!');
-      } else {
-        magicLinkError = 'Failed to send magic link';
-      }
-    } catch (e) {
-      magicLinkError = 'Network error';
-    } finally {
-      magicLinkLoading = false;
-    }
-  }
   
   function handleOAuthClick(provider: string) {
     window.location.href = `/auth/oauth/${provider}/start?redirectTo=/database`;
@@ -52,47 +23,48 @@
 <div class="min-h-screen bg-base-200 flex items-center justify-center p-4">
   <div class="card w-full max-w-md bg-base-100 shadow-xl">
     <div class="card-body">
-      <h2 class="card-title text-2xl font-bold">Sign In to Kuratchi</h2>
+      <!-- Header with icon -->
+      <div class="flex items-center gap-3 mb-2">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+          <LogIn class="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h2 class="text-2xl font-bold">Sign In to Kuratchi</h2>
+        </div>
+      </div>
       <p class="text-sm text-base-content/70 mb-6">Access your database management console</p>
       
       <!-- Credentials Form -->
       <form {...signInWithCredentials} class="space-y-4">
-        <div class="form-control">
-          <label class="label" for="email">
-            <span class="label-text">Email</span>
-          </label>
-          <input
-            id="email"
-            name="email"
+        <FormField 
+          label="Email" 
+          issues={signInWithCredentials.fields.email.issues()}
+        >
+          <FormInput 
+            field={signInWithCredentials.fields.email}
             type="email"
             placeholder="you@company.com"
-            class="input input-bordered"
-            disabled={signInWithCredentials.pending > 0}
-            required
           />
-        </div>
+        </FormField>
         
-        <div class="form-control">
-          <label class="label" for="password">
-            <span class="label-text">Password</span>
-          </label>
-          <input
-            id="password"
-            name="password"
+        <FormField 
+          label="Password" 
+          issues={signInWithCredentials.fields.password.issues()}
+        >
+          <FormInput 
+            field={signInWithCredentials.fields.password}
             type="password"
             placeholder="••••••••"
-            class="input input-bordered"
-            disabled={signInWithCredentials.pending > 0}
-            required
           />
-        </div>
+        </FormField>
         
         <button
           type="submit"
           class="btn btn-primary w-full"
-          disabled={signInWithCredentials.pending > 0}
+          aria-busy={!!signInWithCredentials.pending}
+          disabled={!!signInWithCredentials.pending}
         >
-          {#if signInWithCredentials.pending > 0}
+          {#if signInWithCredentials.pending}
             <span class="loading loading-spinner loading-sm"></span>
             Signing in...
           {:else}

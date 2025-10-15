@@ -2,24 +2,50 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './query/$types';
 import { authenticateApiRequest } from '$lib/server/api-auth';
 import { database } from 'kuratchi-sdk';
+import { env } from '$env/dynamic/private';
 
 /**
- * POST /api/v1/databases/query
+ * POST /api/v1/databases
  * 
- * Proxy endpoint that forwards database operations to the Kuratchi database worker.
- * This is a thin authentication layer - the actual database logic is handled by the worker.
+ * Execute database queries through Kuratchi BaaS.
+ * This endpoint handles authentication and forwards requests to your database worker.
  * 
- * The request body should match the worker's expected format for the specific endpoint:
- * - /do/api/run: { query: string, params?: any[] }
- * - /do/api/exec: { query: string }
- * - /do/api/batch: { batch: Array<{ query: string, params?: any[] }> }
- * - /do/api/raw: { query: string, params?: any[] }
- * - /do/api/first: { query: string, params?: any[], columnName?: string }
+ * Authentication:
+ * - Header: Authorization: Bearer <your-platform-api-key>
+ * - Or: x-api-key: <your-platform-api-key>
  * 
- * Headers:
- * - x-api-key or Authorization: Bearer <key> - Your organization API key
- * - x-database-id - The database ID to query
- * - x-endpoint - The worker endpoint to call (default: /do/api/run)
+ * Required Headers:
+ * - x-database-id: Your database ID (found in dashboard)
+ * 
+ * Optional Headers:
+ * - x-endpoint: D1 worker endpoint to call (automatically set by SDK)
+ *   Available endpoints: /api/run, /api/exec, /api/batch, /api/raw, /api/first
+ *   Note: When using the Kuratchi SDK, this header is set automatically
+ * - x-d1-bookmark: D1 session bookmark for consistency (returned in response)
+ * 
+ * Request Body Examples:
+ * 
+ * 1. Run a query (default):
+ *    { "query": "SELECT * FROM users WHERE id = ?", "params": [1] }
+ * 
+ * 2. Execute raw SQL:
+ *    { "query": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)" }
+ * 
+ * 3. Batch operations:
+ *    { "batch": [
+ *        { "query": "INSERT INTO users (name) VALUES (?)", "params": ["Alice"] },
+ *        { "query": "INSERT INTO users (name) VALUES (?)", "params": ["Bob"] }
+ *      ]
+ *    }
+ * 
+ * 4. Get first result:
+ *    { "query": "SELECT COUNT(*) as count FROM users", "columnName": "count" }
+ * 
+ * Response includes:
+ * - success: boolean
+ * - results: query results
+ * - d1Latency: query execution time
+ * - sessionBookmark: bookmark for next request (for consistency)
  */
 export const POST: RequestHandler = async (event) => {
 	const { request } = event;
@@ -40,19 +66,20 @@ export const POST: RequestHandler = async (event) => {
 			error(500, 'Database connection not available');
 		}
 
-		// 4. Verify database belongs to the authenticated organization
+		// 4. Verify database exists (platform keys have access to all databases)
+		// Match by dbuuid (Cloudflare D1 UUID) instead of internal id
 		const { data: databases } = await adminDb.databases
-			.where({ id: databaseId, organizationId: auth.organizationId })
+			.where({ dbuuid: databaseId })
 			.many();
 
 		const dbRecord = databases?.[0];
 		if (!dbRecord) {
-			error(404, 'Database not found or access denied');
+			error(404, 'Database not found');
 		}
 
-		// 5. Get database token
+		// 5. Get database token (use internal database ID, not UUID)
 		const { data: tokens } = await (adminDb as any).dbApiTokens
-			.where({ databaseId: databaseId, active: true })
+			.where({ databaseId: dbRecord.id, revoked: false })
 			.many();
 
 		const dbToken = tokens?.[0];
@@ -60,13 +87,13 @@ export const POST: RequestHandler = async (event) => {
 			error(500, 'Database token not found');
 		}
 
-		// 6. Get the endpoint to call (default: /do/api/run)
-		const endpoint = request.headers.get('x-endpoint') || '/do/api/run';
+		// 6. Get the endpoint to call (default: /api/run for D1 worker)
+		const endpoint = request.headers.get('x-endpoint') || '/api/run';
 		
 		// 7. Get environment config
-		const gatewayKey = process.env.KURATCHI_GATEWAY_KEY;
-		const workersSubdomain = process.env.KURATCHI_WORKERS_SUBDOMAIN;
-		const scriptName = process.env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal';
+		const gatewayKey = env.KURATCHI_GATEWAY_KEY;
+		const workersSubdomain = env.KURATCHI_WORKERS_SUBDOMAIN || env.CLOUDFLARE_WORKERS_SUBDOMAIN;
+		const scriptName = env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal';
 		
 		if (!gatewayKey) {
 			error(500, 'Gateway key not configured');
@@ -78,26 +105,50 @@ export const POST: RequestHandler = async (event) => {
 		// 8. Build the worker URL
 		const workerUrl = `https://${scriptName}.${workersSubdomain}${endpoint}`;
 		
-		// 9. Read the request body (we need to clone it since we already read it once)
+		// 9. Read the request body
 		const requestBody = await request.text();
 		
-		// 10. Forward the request to the worker with proper authentication
+		// 10. Get optional D1 bookmark for session consistency
+		const d1Bookmark = request.headers.get('x-d1-bookmark');
+		
+		// 11. Forward the request to the worker with proper authentication
+		const workerHeaders: Record<string, string> = {
+			'Content-Type': 'application/json',
+			'Authorization': `Bearer ${gatewayKey}`,
+			'x-db-name': dbRecord.name,
+			'x-db-token': dbToken.token
+		};
+		
+		// Include bookmark if provided (for D1 session consistency)
+		if (d1Bookmark) {
+			workerHeaders['x-d1-bookmark'] = d1Bookmark;
+		}
+		
 		const workerRequest = new Request(workerUrl, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${gatewayKey}`,
-				'x-db-name': dbRecord.databaseName,
-				'x-db-token': dbToken.token
-			},
+			headers: workerHeaders,
 			body: requestBody
 		});
 
 		const response = await fetch(workerRequest);
 		const result = await response.json();
 
-		// 11. Return the worker's response
-		return json(result, { status: response.status });
+		// 12. Extract the session bookmark from worker response
+		const responseBookmark = response.headers.get('x-d1-bookmark');
+		
+		// 13. Return the worker's response with bookmark header
+		const responseHeaders: Record<string, string> = {
+			'Content-Type': 'application/json'
+		};
+		
+		if (responseBookmark) {
+			responseHeaders['x-d1-bookmark'] = responseBookmark;
+		}
+		
+		return json(result, { 
+			status: response.status,
+			headers: responseHeaders
+		});
 
 	} catch (err: any) {
 		console.error('[API] Database query error:', err);

@@ -243,44 +243,32 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             throw new Error(`[Admin] Failed to insert organization: ${errorMsg}`);
           }
           
-          // 2. Provision database for organization
-          let dbToken: string;
           
           // Try to provision via Durable Objects if credentials available
-          if (workersSubdomain && accountId && apiToken) {
-            try {
-              const dbService = new KuratchiDatabase({
-                workersSubdomain,
-                accountId,
-                apiToken,
-                scriptName: env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal'
-              });
-              
-              // Create database with organization schema
-              const result = await dbService.createDatabase({
-                databaseName,
-                gatewayKey,
-                migrate: true,
-                schema: options.organizationSchema,
-                schemaName: 'organization'  // Loads from /migrations-organization
-              });
-              
-              dbToken = result.token;
-            } catch (error: any) {
-              console.error('[Admin] Failed to provision database:', error.message);
-              // Fallback: generate token manually
-              dbToken = await createSignedDbToken(databaseName, gatewayKey, 365 * 24 * 60 * 60 * 1000);
-            }
-          } else {
-            // No DO credentials, generate token manually
-            dbToken = await createSignedDbToken(databaseName, gatewayKey, 365 * 24 * 60 * 60 * 1000);
-          }
+          const dbService = new KuratchiDatabase({
+            workersSubdomain,
+            accountId,
+            apiToken,
+            scriptName: env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal'
+          });
+          
+          // Create database with organization schema
+          const result = await dbService.createDatabase({
+            databaseName,
+            gatewayKey,
+            migrate: true,
+            schema: options.organizationSchema,
+            schemaName: 'organization'  // Loads from /migrations-organization
+          });
+          
+          const dbToken = result.token;
+          const dbUuid = result.databaseId;
           
           // 3. Store database record in admin DB (matches schema: id, name, dbuuid, organizationId)
           await adminDb.databases.insert({
             id: databaseId,
             name: databaseName,
-            dbuuid: databaseName, // Use name as UUID for now
+            dbuuid: dbUuid, // Use name as UUID for now
             organizationId: organizationId,
             isActive: true,
             isArchived: false,

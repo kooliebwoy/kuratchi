@@ -1470,6 +1470,57 @@
           "type": "text"
         }
       ]
+    },
+    {
+      "name": "platformApiTokens",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "token",
+          "type": "text",
+          "notNull": true,
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "expires",
+          "type": "integer",
+          "mode": "timestamp_ms"
+        },
+        {
+          "name": "revoked",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
     }
   ]
 }

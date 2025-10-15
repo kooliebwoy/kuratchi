@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Settings, User, CreditCard, Shield, AlertTriangle, X, Save, Check, Zap, Crown, Sparkles, Calendar, Receipt } from 'lucide-svelte';
+  import { Settings, User, CreditCard, Shield, AlertTriangle, X, Save, Check, Zap, Crown, Sparkles, Calendar, Receipt, Key, Plus, Copy, RotateCw, Trash2 } from 'lucide-svelte';
+  import { Dialog, FormField, FormInput, FormTextarea } from '@kuratchi/ui';
   import {
     getAccountSettings,
     getBillingInfo,
@@ -13,21 +14,29 @@
     upgradePlan,
     manageBilling
   } from '$lib/api/settings.remote';
+  import {
+    getApiKeys,
+    createApiKey,
+    rotateApiKey,
+    deleteApiKey
+  } from '$lib/api/api-keys.remote';
 
   // Data sources
   const account = getAccountSettings();
   const billing = getBillingInfo();
   const subscription = getSubscriptionDetails();
   const plans = getAvailablePlans();
+  const apiKeys = getApiKeys();
 
   // Derived data
   const accountData = $derived(account.current || null);
   const billingData = $derived(billing.current || null);
   const subscriptionData = $derived(subscription.current || null);
   const plansData = $derived(plans.current || []);
+  const apiKeysData = $derived(apiKeys.current || []);
 
   // Active tab
-  let activeTab = $state<'account' | 'billing' | 'security' | 'danger'>('account');
+  let activeTab = $state<'account' | 'billing' | 'security' | 'api-keys' | 'danger'>('account');
 
   // Form state
   let profileForm = $state({
@@ -53,6 +62,19 @@
   let deleteForm = $state({
     confirmation: '',
     password: ''
+  });
+
+  // API Keys state
+  let showCreateKeyModal = $state(false);
+  let showRotateKeyModal = $state(false);
+  let showDeleteKeyModal = $state(false);
+  let showKeyValueModal = $state(false);
+  let selectedKey = $state<any>(null);
+  let newKeyValue = $state<string>('');
+
+  let apiKeyForm = $state({
+    name: '',
+    description: ''
   });
 
   // Modal state
@@ -85,6 +107,55 @@
 
   function handleDeleteAccount() {
     // Form will redirect after successful deletion
+  }
+
+  // API Key functions
+  function resetApiKeyForm() {
+    apiKeyForm = { name: '', description: '' };
+    selectedKey = null;
+  }
+
+  function openCreateKeyModal() {
+    resetApiKeyForm();
+    showCreateKeyModal = true;
+  }
+
+  function openRotateKeyModal(key: any) {
+    selectedKey = key;
+    showRotateKeyModal = true;
+  }
+
+  function openDeleteKeyModal(key: any) {
+    selectedKey = key;
+    showDeleteKeyModal = true;
+  }
+
+  async function handleRotateKeySuccess() {
+    showRotateKeyModal = false;
+    selectedKey = null;
+    await apiKeys.refresh();
+  }
+
+  async function handleDeleteKeySuccess() {
+    showDeleteKeyModal = false;
+    selectedKey = null;
+    await apiKeys.refresh();
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }
+
+  function formatDate(dateString: string) {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   }
 </script>
 
@@ -128,6 +199,13 @@
     >
       <Shield class="h-4 w-4 mr-2" />
       Security
+    </button>
+    <button 
+      class="tab {activeTab === 'api-keys' ? 'tab-active' : ''}" 
+      onclick={() => activeTab = 'api-keys'}
+    >
+      <Key class="h-4 w-4 mr-2" />
+      API Keys
     </button>
     <button 
       class="tab {activeTab === 'danger' ? 'tab-active' : ''}" 
@@ -496,6 +574,95 @@
     </div>
   {/if}
 
+  <!-- API Keys Tab -->
+  {#if activeTab === 'api-keys'}
+    <div class="space-y-6">
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold">Master API Keys</h3>
+              <p class="text-sm text-base-content/70">Manage API keys for Kuratchi access</p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick={openCreateKeyModal}>
+              <Plus class="h-4 w-4 mr-2" />
+              Create API Key
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Key</th>
+                  <th>Created</th>
+                  <th>Last Used</th>
+                  <th class="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#if apiKeysData && apiKeysData.length > 0}
+                  {#each apiKeysData as key}
+                    <tr>
+                      <td>
+                        <div>
+                          <div class="font-medium">{key.name}</div>
+                          {#if key.description}
+                            <div class="text-sm text-base-content/60">{key.description}</div>
+                          {/if}
+                        </div>
+                      </td>
+                      <td>
+                        <code class="text-sm bg-base-200 px-2 py-1 rounded">{key.prefix}...</code>
+                      </td>
+                      <td class="text-sm text-base-content/70">
+                        {formatDate(key.created_at)}
+                      </td>
+                      <td class="text-sm text-base-content/70">
+                        {key.last_used_at ? formatDate(key.last_used_at) : 'Never'}
+                      </td>
+                      <td class="text-right">
+                        <div class="flex justify-end gap-2">
+                          <button
+                            class="btn btn-ghost btn-sm btn-square"
+                            onclick={() => openRotateKeyModal(key)}
+                            title="Rotate key"
+                          >
+                            <RotateCw class="h-4 w-4" />
+                          </button>
+                          <button
+                            class="btn btn-ghost btn-sm btn-square text-error"
+                            onclick={() => openDeleteKeyModal(key)}
+                            title="Delete key"
+                          >
+                            <Trash2 class="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  {/each}
+                {:else}
+                  <tr>
+                    <td colspan="5" class="text-center py-8">
+                      <div class="flex flex-col items-center gap-2">
+                        <Key class="h-12 w-12 text-base-content/30" />
+                        <p class="text-base-content/70">No API keys yet</p>
+                        <button class="btn btn-sm btn-primary" onclick={openCreateKeyModal}>
+                          Create your first API key
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                {/if}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Danger Zone Tab -->
   {#if activeTab === 'danger'}
     <div class="space-y-6">
@@ -652,4 +819,341 @@
     </div>
     <button type="button" class="modal-backdrop" onclick={() => showDeleteModal = false} aria-label="Close modal"></button>
   </div>
+{/if}
+
+<!-- Create API Key Modal -->
+{#if showCreateKeyModal}
+  <Dialog bind:open={showCreateKeyModal} size="md" onClose={resetApiKeyForm} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg">Create API Key</h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      {#if createApiKey.result?.key}
+        <div class="space-y-4">
+          <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>API key created successfully!</span>
+          </div>
+
+          <div class="bg-warning/10 border border-warning/20 p-4 rounded-lg">
+            <p class="text-sm font-semibold text-warning mb-2">⚠️ Save this key now!</p>
+            <p class="text-sm text-base-content/70 mb-3">This is the only time you'll see the full key. Store it securely.</p>
+            
+            <div class="flex gap-2">
+              <input 
+                type="text" 
+                readonly 
+                value={createApiKey.result.key}
+                class="input input-bordered flex-1 font-mono text-sm"
+              />
+              <button
+                class="btn btn-square"
+                onclick={() => copyToClipboard(createApiKey.result.key)}
+              >
+                <Copy class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-info/10 border border-info/20 p-4 rounded-lg">
+            <p class="text-sm font-medium mb-2">Next steps:</p>
+            <ul class="text-sm space-y-1">
+              <li>• Copy this key to a secure location</li>
+              <li>• Add it to your environment variables</li>
+              <li>• Never commit it to version control</li>
+            </ul>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-primary" onclick={async () => { 
+              showCreateKeyModal = false; 
+              resetApiKeyForm();
+              await apiKeys.refresh();
+            }}>
+              I've Saved the Key
+            </button>
+          </div>
+        </div>
+      {:else}
+        <form {...createApiKey} class="space-y-4">
+          <FormField 
+            label="Name" 
+            issues={createApiKey.fields.name.issues()}
+            hint="A descriptive name for this API key"
+          >
+            <FormInput 
+              field={createApiKey.fields.name} 
+              placeholder="Production API Key"
+            />
+          </FormField>
+
+          <FormField 
+            label="Description (optional)" 
+            issues={createApiKey.fields.description?.issues()}
+          >
+            <FormTextarea 
+              field={createApiKey.fields.description} 
+              placeholder="Used for production environment..."
+              rows={3}
+            />
+          </FormField>
+
+          <div class="modal-action">
+            <button type="button" class="btn" onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }}>
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" disabled={createApiKey.pending > 0}>
+              {#if createApiKey.pending > 0}
+                <span class="loading loading-spinner loading-sm"></span>
+                Creating...
+              {:else}
+                Create Key
+              {/if}
+            </button>
+          </div>
+        </form>
+      {/if}
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Rotate API Key Modal -->
+{#if showRotateKeyModal && selectedKey}
+  <Dialog bind:open={showRotateKeyModal} size="md" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg">Rotate API Key</h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={() => { showRotateKeyModal = false; selectedKey = null; }}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="space-y-4">
+        <div class="alert alert-warning">
+          <AlertTriangle class="h-5 w-5" />
+          <div>
+            <p class="font-semibold">This will invalidate the current key</p>
+            <p class="text-sm">Any applications using the old key will stop working immediately.</p>
+          </div>
+        </div>
+
+        <div class="bg-base-200 p-4 rounded-lg">
+          <p class="text-sm font-medium mb-2">Key to rotate:</p>
+          <p class="font-bold">{selectedKey.name}</p>
+          <code class="text-xs text-base-content/70">{selectedKey.prefix}...</code>
+        </div>
+
+        {#if rotateApiKey.result?.key}
+          <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>API key rotated successfully!</span>
+          </div>
+
+          <div class="bg-warning/10 border border-warning/20 p-4 rounded-lg">
+            <p class="text-sm font-semibold text-warning mb-2">⚠️ Save this key now!</p>
+            <p class="text-sm text-base-content/70 mb-3">This is the only time you'll see the full key. Store it securely.</p>
+            
+            <div class="flex gap-2">
+              <input 
+                type="text" 
+                readonly 
+                value={rotateApiKey.result.key}
+                class="input input-bordered flex-1 font-mono text-sm"
+              />
+              <button
+                class="btn btn-square"
+                onclick={() => copyToClipboard(rotateApiKey.result.key)}
+              >
+                <Copy class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-primary" onclick={async () => { 
+              await handleRotateKeySuccess();
+            }}>
+              I've Saved the Key
+            </button>
+          </div>
+        {:else}
+          <form {...rotateApiKey}>
+            <input type="hidden" name="id" value={selectedKey.id} />
+            
+            <div class="modal-action">
+              <button type="button" class="btn" onclick={() => { showRotateKeyModal = false; selectedKey = null; }}>
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-warning" disabled={rotateApiKey.pending > 0}>
+                {#if rotateApiKey.pending > 0}
+                  <span class="loading loading-spinner loading-sm"></span>
+                  Rotating...
+                {:else}
+                  <RotateCw class="h-4 w-4 mr-2" />
+                  Rotate Key
+                {/if}
+              </button>
+            </div>
+          </form>
+        {/if}
+      </div>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Delete API Key Modal -->
+{#if showDeleteKeyModal && selectedKey}
+  <Dialog bind:open={showDeleteKeyModal} size="md" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg text-error">Delete API Key</h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={() => { showDeleteKeyModal = false; selectedKey = null; }}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="space-y-4">
+        <div class="alert alert-error">
+          <AlertTriangle class="h-5 w-5" />
+          <span>This action cannot be undone!</span>
+        </div>
+
+        <div class="bg-base-200 p-4 rounded-lg">
+          <p class="text-sm font-medium mb-2">Key to delete:</p>
+          <p class="font-bold">{selectedKey.name}</p>
+          <code class="text-xs text-base-content/70">{selectedKey.prefix}...</code>
+        </div>
+
+        <p class="text-sm text-base-content/70">
+          Any applications using this key will immediately lose access.
+        </p>
+
+        {#if deleteApiKey.result?.success}
+          <div class="alert alert-success">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>API key deleted successfully!</span>
+          </div>
+          <div class="modal-action">
+            <button type="button" class="btn btn-primary" onclick={async () => { 
+              await handleDeleteKeySuccess();
+            }}>
+              Close
+            </button>
+          </div>
+        {:else}
+          <form {...deleteApiKey}>
+            <input type="hidden" name="id" value={selectedKey.id} />
+            
+            <div class="modal-action">
+              <button type="button" class="btn" onclick={() => { showDeleteKeyModal = false; selectedKey = null; }}>
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-error" disabled={deleteApiKey.pending > 0}>
+                {#if deleteApiKey.pending > 0}
+                  <span class="loading loading-spinner loading-sm"></span>
+                  Deleting...
+                {:else}
+                  <Trash2 class="h-4 w-4 mr-2" />
+                  Delete Key
+                {/if}
+              </button>
+            </div>
+          </form>
+        {/if}
+      </div>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Show New API Key Modal -->
+{#if showKeyValueModal && newKeyValue}
+  <Dialog bind:open={showKeyValueModal} size="md" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+    {#snippet header()}
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-lg">Your New API Key</h3>
+        <button
+          class="btn btn-ghost btn-sm btn-circle"
+          type="button"
+          onclick={() => { showKeyValueModal = false; newKeyValue = ''; }}
+          aria-label="Close"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="space-y-4">
+        <div class="alert alert-warning">
+          <AlertTriangle class="h-5 w-5" />
+          <div>
+            <p class="font-semibold">Save this key now!</p>
+            <p class="text-sm">You won't be able to see it again.</p>
+          </div>
+        </div>
+
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium">API Key</span>
+          </label>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              class="input input-bordered flex-1 font-mono text-sm"
+              value={newKeyValue}
+              readonly
+            />
+            <button
+              class="btn btn-square"
+              onclick={() => copyToClipboard(newKeyValue)}
+            >
+              <Copy class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-info/10 border border-info/20 p-4 rounded-lg">
+          <p class="text-sm font-medium mb-2">Next steps:</p>
+          <ul class="text-sm space-y-1">
+            <li>• Copy this key to a secure location</li>
+            <li>• Add it to your environment variables</li>
+            <li>• Never commit it to version control</li>
+          </ul>
+        </div>
+
+        <div class="modal-action">
+          <button type="button" class="btn btn-primary" onclick={() => { showKeyValueModal = false; newKeyValue = ''; }}>
+            I've Saved the Key
+          </button>
+        </div>
+      </div>
+    {/snippet}
+  </Dialog>
 {/if}

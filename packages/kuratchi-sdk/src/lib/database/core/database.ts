@@ -122,6 +122,17 @@ export class KuratchiDatabase {
       scriptName: deployedWorkerName
     });
     
+    // Wait for worker to be ready before applying migrations
+    console.log(`[Kuratchi] Waiting for worker ${deployedWorkerName} to be ready...`);
+    const { waitForWorker } = await import('../deployment/worker-wait.js');
+    const isReady = await waitForWorker({ client: httpClient, timeoutMs: 30000, intervalMs: 2000 });
+    
+    if (!isReady) {
+      throw new Error(`Worker ${deployedWorkerName} did not become ready within 30 seconds`);
+    }
+    
+    console.log(`[Kuratchi] Worker ${deployedWorkerName} is ready`);
+    
     // Apply migrations if requested (via HTTP)
     if (migrate && schemaName) {
       await this.applyInitialMigration(httpClient, schema, schemaName);
