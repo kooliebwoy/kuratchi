@@ -23,6 +23,7 @@ export { default as Table } from './Table.svelte';
 export { default as TableFilters } from './TableFilters.svelte';
 export { default as TablePagination } from './TablePagination.svelte';
 export { default as TableSearch } from './TableSearch.svelte';
+export { default as Tabs } from './Tabs.svelte';
 export { default as Toast } from './Toast.svelte';
 export { default as Tooltip } from './Tooltip.svelte';
 

@@ -57,6 +57,7 @@ export interface ClientOptions {
   dbToken: string;
   gatewayKey: string;
   schema: DatabaseSchema | SchemaDsl;
+  scriptName?: string;
 }
 
 export interface HttpClientOptions {

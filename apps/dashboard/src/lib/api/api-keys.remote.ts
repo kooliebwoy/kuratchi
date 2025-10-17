@@ -7,6 +7,7 @@ import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
 import { ActivityAction } from 'kuratchi-sdk';
+import { getDatabase } from '$lib/server/db-context';
 
 // Helpers
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -53,7 +54,7 @@ const deleteApiKeySchema = v.object({
 export const getApiKeys = guardedQuery(async () => {
 	try {
 		const { locals } = getRequestEvent();
-		const adminDb = await locals.kuratchi?.getAdminDb?.();
+		const adminDb = await getDatabase(locals);
 		
 		if (!adminDb) {
 			return [];
@@ -80,7 +81,7 @@ export const getApiKeys = guardedQuery(async () => {
 export const createApiKey = guardedForm(createApiKeySchema, async (data) => {
 	try {
 		const { locals } = getRequestEvent();
-		const adminDb = await locals.kuratchi?.getAdminDb?.();
+		const adminDb = await getDatabase(locals);
 		
 		if (!adminDb) {
 			error(500, 'Admin database not available');
@@ -122,7 +123,7 @@ export const createApiKey = guardedForm(createApiKeySchema, async (data) => {
 export const rotateApiKey = guardedForm(rotateApiKeySchema, async (data) => {
 	try {
 		const { locals } = getRequestEvent();
-		const adminDb = await locals.kuratchi?.getAdminDb?.();
+		const adminDb = await getDatabase(locals);
 		
 		if (!adminDb) {
 			error(500, 'Admin database not available');
@@ -168,7 +169,7 @@ export const rotateApiKey = guardedForm(rotateApiKeySchema, async (data) => {
 export const deleteApiKey = guardedForm(deleteApiKeySchema, async (data) => {
 	try {
 		const { locals } = getRequestEvent();
-		const adminDb = await locals.kuratchi?.getAdminDb?.();
+		const adminDb = await getDatabase(locals);
 		
 		if (!adminDb) {
 			error(500, 'Admin database not available');

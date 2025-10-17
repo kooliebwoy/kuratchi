@@ -12,6 +12,15 @@ export interface SessionPluginOptions {
   
   /** Custom session parser (optional) */
   parseSession?: (secret: string, cookie: string) => Promise<any>;
+  
+  /** Custom session builder - called when reconstructing session from database (optional) */
+  buildSession?: (data: {
+    sessionRecord: any;
+    user: any;
+    orgId: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }) => any;
 }
 
 export function sessionPlugin(options: SessionPluginOptions = {}): AuthPlugin {
@@ -28,7 +37,11 @@ export function sessionPlugin(options: SessionPluginOptions = {}): AuthPlugin {
       ctx.locals.kuratchi.auth = ctx.locals.kuratchi.auth || {} as any;
       ctx.locals.kuratchi.auth.session = ctx.locals.kuratchi.auth.session || {} as any;
       
-      ctx.locals.session = null;
+      // Only initialize session to null if it doesn't exist yet
+      // This allows other plugins (like credentials during sign-in) to set it first
+      if (ctx.locals.session === undefined) {
+        ctx.locals.session = null;
+      }
       
       // Helper: Set session cookie
       ctx.locals.kuratchi.auth.session.setCookie = (value: string, opts?: { expires?: Date }) => {
@@ -47,6 +60,12 @@ export function sessionPlugin(options: SessionPluginOptions = {}): AuthPlugin {
       ctx.locals.kuratchi.auth.session.clearCookie = () => {
         ctx.event.cookies.delete(cookieName, { path: '/' });
       };
+      
+      // Only load session from cookie if session is not already set
+      // (e.g., by credentials plugin during sign-in)
+      if (ctx.locals.session !== null) {
+        return; // Session already set, skip loading from cookie
+      }
       
       // Parse session from cookie and load from database
       const rawCookie = ctx.event.cookies.get(cookieName);
@@ -90,30 +109,47 @@ export function sessionPlugin(options: SessionPluginOptions = {}): AuthPlugin {
                     .first();
                   
                   if (user) {
-                    // Build enriched session (batteries included)
-                    const enrichedSession = {
-                      userId: user.id,
-                      email: user.email,
-                      organizationId: parsed.orgId,
-                      roles: user.role ? [user.role] : [],
-                      isEmailVerified: !!user.emailVerified,
-                      user: {
-                        id: user.id,
+                    // Build enriched session using custom builder or default
+                    const ipAddress = ctx.event.request.headers.get('cf-connecting-ip') 
+                      || ctx.event.request.headers.get('x-forwarded-for') 
+                      || (ctx.event as any).getClientAddress?.();
+                    const userAgent = ctx.event.request.headers.get('user-agent');
+                    
+                    let enrichedSession: any;
+                    
+                    if (options.buildSession) {
+                      // Use custom session builder
+                      enrichedSession = options.buildSession({
+                        sessionRecord,
+                        user,
+                        orgId: parsed.orgId,
+                        ipAddress: ipAddress || undefined,
+                        userAgent: userAgent || undefined
+                      });
+                    } else {
+                      // Default session structure (batteries included)
+                      enrichedSession = {
+                        userId: user.id,
                         email: user.email,
-                        name: user.name || null,
-                        firstName: user.firstName || null,
-                        lastName: user.lastName || null,
-                        role: user.role || null,
-                        image: user.image || null,
-                        organizationId: parsed.orgId || null
-                      },
-                      createdAt: sessionRecord.created_at,
-                      lastAccessedAt: new Date().toISOString(),
-                      ipAddress: ctx.event.request.headers.get('cf-connecting-ip') 
-                        || ctx.event.request.headers.get('x-forwarded-for') 
-                        || (ctx.event as any).getClientAddress?.(),
-                      userAgent: ctx.event.request.headers.get('user-agent')
-                    };
+                        organizationId: parsed.orgId,
+                        roles: user.role ? [user.role] : [],
+                        isEmailVerified: !!user.emailVerified,
+                        user: {
+                          id: user.id,
+                          email: user.email,
+                          name: user.name || null,
+                          firstName: user.firstName || null,
+                          lastName: user.lastName || null,
+                          role: user.role || null,
+                          image: user.image || null,
+                          organizationId: parsed.orgId || null
+                        },
+                        createdAt: sessionRecord.created_at,
+                        lastAccessedAt: new Date().toISOString(),
+                        ipAddress,
+                        userAgent
+                      };
+                    }
                     
                     // Set session in locals (access via locals.session.user)
                     ctx.locals.session = enrichedSession;

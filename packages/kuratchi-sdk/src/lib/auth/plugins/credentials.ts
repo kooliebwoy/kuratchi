@@ -132,7 +132,7 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
           password: string,
           authOptions?: { organizationId?: string; ipAddress?: string; userAgent?: string }
         ): Promise<
-          | { success: true; cookie: string; user: any; session: any }
+          | { success: true; cookie: string; user: any }
           | { success: false; error: string; message?: string }
         > => {
           try {
@@ -155,7 +155,6 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             
             let orgId: string | undefined = authOptions?.organizationId;
             let targetDb: any;
-            let isSuperadmin = false;
             
             // Determine target database: Organization DB or Admin DB
             const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
@@ -163,41 +162,24 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             
             // If organizations are enabled, authenticate against org DB
             if (getOrgDb && getAdminDb) {
-              // FIRST: Check if this is a superadmin in the admin DB
-              // Superadmins exist only in admin DB, not in any organization
               if (!orgId) {
                 const adminDb = await getAdminDb();
-                
-                // Check if user exists in admin DB with superadmin role
-                const { data: adminUser } = await adminDb.users
-                  .where({ email })
-                  .first();
-                
-                if (adminUser && adminUser.role === 'superadmin') {
-                  // This is a superadmin - authenticate against admin DB
-                  targetDb = adminDb;
-                  isSuperadmin = true;
-                  orgId = 'admin'; // Mark as admin for session
-                } else {
-                  // Not a superadmin - find their organization
-                  const foundOrgId = await findOrganizationIdByEmail(adminDb, email);
-                  orgId = foundOrgId || undefined;
-                }
+                // Find their organization (all users, including superadmins, must have an org)
+                const foundOrgId = await findOrganizationIdByEmail(adminDb, email);
+                orgId = foundOrgId || undefined;
               }
               
-              // If not superadmin and no org found, fail
-              if (!isSuperadmin && !orgId) {
+              // If no org found, fail
+              if (!orgId) {
                 if (kv) await recordFailedAttempt(kv, email, maxAttempts, lockoutDuration);
                 if (options.onFailure) await options.onFailure(email);
-                return { success: false, error: 'invalid_credentials' };
+                return { success: false, error: 'no_organization_found', message: 'User must belong to an organization' };
               }
               
-              // Get organization database (if not superadmin)
-              if (!isSuperadmin) {
-                targetDb = await getOrgDb(orgId!);
-                if (!targetDb) {
-                  return { success: false, error: 'organization_database_not_found' };
-                }
+              // Get organization database
+              targetDb = await getOrgDb(orgId);
+              if (!targetDb) {
+                return { success: false, error: 'organization_database_not_found' };
               }
             } else if (getAdminDb) {
               // Single-tenant mode: authenticate against admin DB
@@ -258,7 +240,7 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
             
             // Generate session token and hash it
-            const sessionToken = `${orgId || 'admin'}.${generateSessionToken()}`;
+            const sessionToken = `${orgId}.${generateSessionToken()}`;
             const sessionTokenHash = await hashToken(sessionToken);
             
             // Store session in database with hashed token
@@ -278,40 +260,12 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             // Build encrypted session cookie
             const sessionCookie = await buildSessionCookie(
               authSecret,
-              (orgId || 'admin') as any,
+              orgId as any,
               sessionTokenHash
             );
             
-            // Sanitize user (remove password_hash)
+            // Sanitize user (remove password_hash) for return payload
             const { password_hash, ...safeUser } = user;
-            
-            // Build enriched session data (batteries included)
-            const sessionData = {
-              userId: user.id,
-              email: user.email,
-              organizationId: orgId || 'admin',
-              roles: user.role ? [user.role] : [],
-              isEmailVerified: !!user.emailVerified,
-              user: {
-                id: user.id,
-                email: user.email,
-                name: user.name || null,
-                firstName: user.firstName || null,
-                lastName: user.lastName || null,
-                role: user.role || null,
-                image: user.image || null,
-                organizationId: orgId || null
-              },
-              createdAt: now.toISOString(),
-              lastAccessedAt: now.toISOString(),
-              ipAddress: ctx.event.request.headers.get('cf-connecting-ip') 
-              || ctx.event.request.headers.get('x-forwarded-for') 
-              || (ctx.event as any).getClientAddress?.(),
-              userAgent: ctx.event.request.headers.get('user-agent')
-            };
-            
-            // Set session in locals (batteries included - immediate access)
-            ctx.locals.session = sessionData;
             
             // Set session cookie using session plugin helper
             const setCookie = ctx.locals.kuratchi?.auth?.session?.setCookie;
@@ -327,8 +281,7 @@ export function credentialsPlugin(options: CredentialsPluginOptions = {}): AuthP
             return {
               success: true,
               cookie: sessionCookie,
-              user: safeUser,
-              session: sessionData
+              user: safeUser
             };
           } catch (e: any) {
             console.error('[Credentials] Authentication failed:', e);

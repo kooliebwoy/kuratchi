@@ -102,23 +102,12 @@
 	}
 </script>
 
-<div class="p-8">
-	<!-- Header -->
-	<div class="mb-8 flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-				<Building2 class="h-6 w-6 text-primary" />
-			</div>
-			<div>
-				<h1 class="text-2xl font-bold">Organizations</h1>
-				<p class="text-sm text-base-content/70">Manage your organizations</p>
-			</div>
-		</div>
-		<button class="btn btn-primary" onclick={openCreateModal}>
-			<Plus class="h-4 w-4" />
-			New Organization
-		</button>
-	</div>
+<div class="flex justify-end mb-6">
+	<button class="btn btn-primary" onclick={openCreateModal}>
+		<Plus class="h-4 w-4" />
+		New Organization
+	</button>
+</div>
 
 	<!-- Organizations Table -->
 	<div class="card bg-base-100 shadow-sm">
@@ -188,10 +177,10 @@
 							</td>
 						</tr>
 					{/if}
+				</tbody>
 			</table>
 		</div>
 	</div>
-</div>
 
 <!-- Create/Edit Dialog -->
 {#if showModal}

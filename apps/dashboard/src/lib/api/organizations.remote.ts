@@ -2,6 +2,7 @@ import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
 import { database, ActivityAction } from 'kuratchi-sdk';
+import { getAdminDatabase, getDatabase } from '$lib/server/db-context';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -9,6 +10,18 @@ const guardedQuery = <R>(fn: () => Promise<R>) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
 		return fn();
+	});
+};
+
+// Guarded query helper with parameters and validation
+const guardedQueryWithParams = <T, R>(
+	schema: v.BaseSchema<unknown, T, v.BaseIssue<unknown>>,
+	fn: (params: T) => Promise<R>
+) => {
+	return query(schema, async (params: T) => {
+		const { locals: { session } } = getRequestEvent();
+		if (!session?.user) error(401, 'Unauthorized');
+		return fn(params);
 	});
 };
 
@@ -30,13 +43,17 @@ const guardedForm = <R>(
 	});
 };
 
-// Get all organizations
+// Get organizations (context-aware: all orgs for superadmin, current org for regular users)
 export const getOrganizations = guardedQuery(async () => {
 	try {
-		const { orm: adminOrm } = await database.admin();
+		const { locals } = getRequestEvent();
+		const db = await getAdminDatabase(locals);
+		const isSuperadmin = locals.kuratchi?.superadmin?.isSuperadmin?.();
 		
-		const result = await adminOrm.organizations
-			.where({ deleted_at: { is: null } })
+		// Superadmins see all organizations from admin DB
+		// Regular users see only their organization
+		const result = await db.organizations
+			.where({ deleted_at: { isNullish: true } })
 			.many();
 
 		if (!result.success) {
@@ -44,7 +61,14 @@ export const getOrganizations = guardedQuery(async () => {
 			return [];
 		}
 
-		return result.data || [];
+		// For regular users, filter to just their org (though DB should already handle this)
+		let organizations = result.data || [];
+		
+		if (!isSuperadmin && locals.session?.organizationId) {
+			organizations = organizations.filter((org: any) => org.id === locals.session.organizationId);
+		}
+
+		return organizations;
 	} catch (err) {
 		console.error('Error fetching organizations:', err);
 		return [];
@@ -161,30 +185,30 @@ export const updateOrganization = guardedForm(
 	}
 );
 
-// Delete organization (soft delete)
+// Delete organization (soft delete + cleanup)
 export const deleteOrganization = guardedForm(
 	v.object({
 		id: v.pipe(v.string(), v.nonEmpty())
 	}),
 	async ({ id }) => {
 		try {
-			const { orm: adminOrm } = await database.admin();
-			const now = new Date().toISOString();
-
-			const result = await adminOrm.organizations
-				.where({ id })
-				.update({ 
-					deleted_at: now,
-					updated_at: now
-				});
-
+			const { locals } = getRequestEvent();
+			
+			// Use SDK's deleteOrganization which handles:
+			// - Physical deletion of D1 database and worker
+			// - Soft delete of organization, databases, tokens, and user mappings
+			if (!locals.kuratchi?.auth?.admin?.deleteOrganization) {
+				error(500, 'Organization deletion not configured');
+			}
+			
+			const result = await locals.kuratchi.auth.admin.deleteOrganization(id);
+			
 			if (!result.success) {
-				console.error('Failed to delete organization:', result.error);
-				error(500, `Failed to delete organization: ${result.error}`);
+				console.error('Failed to delete organization:', result);
+				error(500, 'Failed to delete organization');
 			}
 
 			// Log activity 
-			const { locals } = getRequestEvent();
 			await locals.kuratchi?.activity?.logActivity?.({
 				action: ActivityAction.ORGANIZATION_DELETED,
 				data: {
@@ -200,6 +224,20 @@ export const deleteOrganization = guardedForm(
 		} catch (err) {
 			console.error('Error deleting organization:', err);
 			error(500, 'Failed to delete organization');
+		}
+	}
+);
+
+export const getOrganizationNameById = guardedQueryWithParams(
+	v.pipe(v.string(), v.nonEmpty()),
+	async (id) => {
+		try {
+			const { locals: { kuratchi } } = getRequestEvent();
+			const org = await kuratchi?.auth?.admin?.getOrganization(id);
+			return org?.organizationName || 'Unknown Organization';
+		} catch (err) {
+			console.error('Error fetching organization name:', err);
+			return 'Unknown Organization';
 		}
 	}
 );

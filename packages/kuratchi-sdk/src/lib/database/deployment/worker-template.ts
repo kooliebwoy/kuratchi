@@ -223,7 +223,15 @@ async function handleRequest(request, session, env) {
     return await retryWhile(async () => {
       // exec() is not available on sessions, use the raw DB binding
       const resp = await env.DB.exec(query);
-      return Response.json(buildResponse(session, resp, tsStart));
+      // exec() returns D1ExecResult with different structure
+      return Response.json({
+        success: true,
+        results: [],
+        d1Latency: Date.now() - tsStart,
+        servedByRegion: resp.meta?.served_by_region || '',
+        servedByPrimary: resp.meta?.served_by_primary || '',
+        sessionBookmark: session.getBookmark()
+      });
     }, shouldRetry);
   } else if (pathname === '/api/batch') {
     // Read request body once before retry loop

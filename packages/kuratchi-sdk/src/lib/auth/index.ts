@@ -13,6 +13,7 @@ export {
   storagePlugin,
   adminPlugin,
   requireSuperadmin,
+  createSuperadmin,
   organizationPlugin,
   guardsPlugin,
   requireAuth,

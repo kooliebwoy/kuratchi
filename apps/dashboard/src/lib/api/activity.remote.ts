@@ -6,6 +6,7 @@
 import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
+import { getDatabase } from '$lib/server/db-context';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -40,7 +41,7 @@ const guardedForm = <R>(
 export const getActivities = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await getDatabase(locals);
     if (!adminDb) error(500, 'Admin database not configured');
 
     // Get all activities

@@ -28,15 +28,6 @@ export type { DatabaseInstanceConfig as DOOptions } from './core/types.js';
 // Client factories
 export { createHttpClient, createValidatedHttpClient } from './clients/http-client.js';
 export { createOrmClient, createValidatedOrmClient } from './clients/orm-client.js';
-export { createBaasClient, type BaasClientConfig } from './clients/baas-client.js';
-
-// BaaS - Simplified database access (batteries included)
-export { 
-  createBaasDatabase, 
-  type BaasDatabaseConfig,
-  type BaasDatabase,
-  type BaasRawDatabase
-} from './baas.js';
 
 // Deployment utilities
 export { deployWorker, isWorkerDeployed } from './deployment/worker-deployment.js';

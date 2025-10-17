@@ -1,6 +1,7 @@
 import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
+import { getDatabase } from '$lib/server/db-context';
 
 // Helpers
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -33,11 +34,10 @@ const guardedForm = <R>(
 export const getUsers = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
-    if (!adminDb) error(500, 'Admin database not configured');
+    const db = await getDatabase(locals);
 
     // Get all users from admin database
-    const usersResult = await adminDb.users
+    const usersResult = await db.users
       .where({ deleted_at: { isNullish: true } })
       .orderBy({ created_at: 'desc' })
       .many();
@@ -45,14 +45,14 @@ export const getUsers = guardedQuery(async () => {
     const users = usersResult?.data || [];
 
     // Get all organization users mappings
-    const orgUsersResult = await adminDb.organizationUsers
+    const orgUsersResult = await db.organizationUsers
       .where({ deleted_at: { isNullish: true } })
       .many();
     
     const orgUsers = orgUsersResult?.data || [];
 
     // Get all organizations
-    const orgsResult = await adminDb.organizations
+    const orgsResult = await db.organizations
       .where({ deleted_at: { isNullish: true } })
       .many();
     
@@ -77,8 +77,7 @@ export const getUsers = guardedQuery(async () => {
       // For each org, get the user's role from the org database
       const orgDetails = await Promise.all(userOrgs.map(async (org: any) => {
         try {
-          const orgDb = await locals.kuratchi?.orgDatabaseClient?.(org.id);
-          if (!orgDb) return { ...org, userRole: null, isOrgAdmin: false };
+          const orgDb = await getDatabase(locals);
 
           const orgUserResult = await orgDb.users
             .where({ email: user.email })
@@ -117,11 +116,10 @@ export const getUserDetails = guardedQuery(async () => {
     const userId = url.searchParams.get('id');
     if (!userId) error(400, 'User ID required');
 
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
-    if (!adminDb) error(500, 'Admin database not configured');
+    const db = await getDatabase(locals);
 
     // Get user from admin database
-    const userResult = await adminDb.users
+    const userResult = await db.users
       .where({ id: userId, deleted_at: { isNullish: true } })
       .first();
     
@@ -129,7 +127,7 @@ export const getUserDetails = guardedQuery(async () => {
     if (!user) error(404, 'User not found');
 
     // Get organization mappings
-    const orgUsersResult = await adminDb.organizationUsers
+    const orgUsersResult = await db.organizationUsers
       .where({ email: user.email, deleted_at: { isNullish: true } })
       .many();
     
@@ -138,7 +136,7 @@ export const getUserDetails = guardedQuery(async () => {
     // Get organizations
     const orgIds = orgUsers.map((ou: any) => ou.organizationId);
     const organizations = await Promise.all(orgIds.map(async (orgId: string) => {
-      const orgResult = await adminDb.organizations
+      const orgResult = await db.organizations
         .where({ id: orgId, deleted_at: { isNullish: true } })
         .first();
       return orgResult?.data;
@@ -147,8 +145,7 @@ export const getUserDetails = guardedQuery(async () => {
     // Get roles in each organization
     const orgDetails = await Promise.all(organizations.filter(Boolean).map(async (org: any) => {
       try {
-        const orgDb = await locals.kuratchi?.orgDatabaseClient?.(org.id);
-        if (!orgDb) return { ...org, userRole: null, permissions: [] };
+        const orgDb = await getDatabase(locals, org.id);
 
         const orgUserResult = await orgDb.users
           .where({ email: user.email })
@@ -189,10 +186,9 @@ export const getUserDetails = guardedQuery(async () => {
 export const getAvailableOrganizations = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
-    if (!adminDb) error(500, 'Admin database not configured');
+    const db = await getDatabase(locals);
 
-    const orgsResult = await adminDb.organizations
+    const orgsResult = await db.organizations
       .where({ deleted_at: { isNullish: true } })
       .orderBy({ created_at: 'desc' })
       .many();
@@ -231,11 +227,10 @@ export const createUser = guardedForm(
   async ({ email, name, password, organizations, roles, isSuperAdmin }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       // Check if user already exists
-      const existingResult = await adminDb.users
+      const existingResult = await db.users
         .where({ email })
         .first();
       
@@ -264,7 +259,7 @@ export const createUser = guardedForm(
         }
       }
 
-      await adminDb.users.insert({
+      await db.users.insert({
         id: userId,
         email,
         name,
@@ -284,7 +279,7 @@ export const createUser = guardedForm(
       // Add user to organizations
       for (const orgId of orgIds) {
         // Add to organizationUsers mapping
-        await adminDb.organizationUsers.insert({
+        await db.organizationUsers.insert({
           id: crypto.randomUUID(),
           organizationId: orgId,
           email,
@@ -294,8 +289,8 @@ export const createUser = guardedForm(
         });
 
         // Add to organization database with role
-        const orgDb = await locals.kuratchi?.orgDatabaseClient?.(orgId);
-        if (orgDb) {
+        try {
+          const orgDb = await getDatabase(locals, orgId);
           const role = roleAssignments[orgId] || 'member';
           await orgDb.users.insert({
             id: crypto.randomUUID(),
@@ -307,6 +302,8 @@ export const createUser = guardedForm(
             updated_at: now,
             deleted_at: null
           });
+        } catch (err) {
+          console.error(`[createUser] Failed to add user to org ${orgId}:`, err);
         }
       }
 
@@ -330,8 +327,7 @@ export const updateUser = guardedForm(
   async ({ id, email, name, isSuperAdmin, status }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       const updateData: any = { updated_at: new Date().toISOString() };
       if (email !== undefined) updateData.email = email;
@@ -339,17 +335,17 @@ export const updateUser = guardedForm(
       if (isSuperAdmin !== undefined) updateData.role = isSuperAdmin ? 'superadmin' : 'user';
       if (status !== undefined) updateData.status = status;
 
-      await adminDb.users
+      await db.users
         .where({ id })
         .update(updateData);
 
       // If email changed, update organizationUsers mappings
       if (email) {
-        const oldUserResult = await adminDb.users.where({ id }).first();
+        const oldUserResult = await db.users.where({ id }).first();
         const oldEmail = oldUserResult?.data?.email;
         
         if (oldEmail && oldEmail !== email) {
-          await adminDb.organizationUsers
+          await db.organizationUsers
             .where({ email: oldEmail })
             .updateMany({ email });
         }
@@ -369,10 +365,9 @@ export const suspendUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
-      await adminDb.users
+      await db.users
         .where({ id })
         .update({ 
           status: false,
@@ -393,10 +388,9 @@ export const activateUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
-      await adminDb.users
+      await db.users
         .where({ id })
         .update({ 
           status: true,
@@ -417,28 +411,27 @@ export const deleteUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       const now = new Date().toISOString();
 
       // Get user email first
-      const userResult = await adminDb.users.where({ id }).first();
+      const userResult = await db.users.where({ id }).first();
       const email = userResult?.data?.email;
 
       // Soft delete user
-      await adminDb.users
+      await db.users
         .where({ id })
         .update({ deleted_at: now });
 
       // Soft delete organization mappings
       if (email) {
-        await adminDb.organizationUsers
+        await db.organizationUsers
           .where({ email })
           .updateMany({ deleted_at: now });
 
         // Also remove from organization databases
-        const orgUsersResult = await adminDb.organizationUsers
+        const orgUsersResult = await db.organizationUsers
           .where({ email })
           .many();
         
@@ -446,12 +439,10 @@ export const deleteUser = guardedForm(
         
         for (const ou of orgUsers) {
           try {
-            const orgDb = await locals.kuratchi?.orgDatabaseClient?.(ou.organizationId);
-            if (orgDb) {
-              await orgDb.users
+            const orgDb = await getDatabase(locals, ou.organizationId);
+            await orgDb.users
                 .where({ email })
                 .update({ deleted_at: now });
-            }
           } catch (err) {
             console.error(`[deleteUser] Failed to remove user from org ${ou.organizationId}:`, err);
           }
@@ -476,18 +467,17 @@ export const addUserToOrganization = guardedForm(
   async ({ userId, organizationId, roleId }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       // Get user
-      const userResult = await adminDb.users.where({ id: userId }).first();
+      const userResult = await db.users.where({ id: userId }).first();
       const user = userResult?.data;
       if (!user) error(404, 'User not found');
 
       const now = new Date().toISOString();
 
       // Check if already in organization
-      const existingResult = await adminDb.organizationUsers
+      const existingResult = await db.organizationUsers
         .where({ email: user.email, organizationId })
         .first();
       
@@ -498,12 +488,12 @@ export const addUserToOrganization = guardedForm(
       // Add to organizationUsers mapping
       if (existingResult?.data) {
         // Restore soft-deleted mapping
-        await adminDb.organizationUsers
+        await db.organizationUsers
           .where({ id: existingResult.data.id })
           .update({ deleted_at: null, updated_at: now });
       } else {
         // Create new mapping
-        await adminDb.organizationUsers.insert({
+        await db.organizationUsers.insert({
           id: crypto.randomUUID(),
           organizationId,
           email: user.email,
@@ -514,8 +504,8 @@ export const addUserToOrganization = guardedForm(
       }
 
       // Add to organization database
-      const orgDb = await locals.kuratchi?.orgDatabaseClient?.(organizationId);
-      if (orgDb) {
+      try {
+        const orgDb = await getDatabase(locals, organizationId);
         // Get role name if roleId provided
         let roleName = 'member';
         if (roleId) {
@@ -551,6 +541,8 @@ export const addUserToOrganization = guardedForm(
             deleted_at: null
           });
         }
+      } catch (err) {
+        console.error(`[addUserToOrganization] Failed to add user to org database:`, err);
       }
 
       await getUsers().refresh();
@@ -570,27 +562,28 @@ export const removeUserFromOrganization = guardedForm(
   async ({ userId, organizationId }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       // Get user
-      const userResult = await adminDb.users.where({ id: userId }).first();
+      const userResult = await db.users.where({ id: userId }).first();
       const user = userResult?.data;
       if (!user) error(404, 'User not found');
 
       const now = new Date().toISOString();
 
       // Soft delete from organizationUsers mapping
-      await adminDb.organizationUsers
+      await db.organizationUsers
         .where({ email: user.email, organizationId })
         .updateMany({ deleted_at: now });
 
       // Soft delete from organization database
-      const orgDb = await locals.kuratchi?.orgDatabaseClient?.(organizationId);
-      if (orgDb) {
+      try {
+        const orgDb = await getDatabase(locals, organizationId);
         await orgDb.users
           .where({ email: user.email })
           .updateMany({ deleted_at: now });
+      } catch (err) {
+        console.error(`[removeUserFromOrganization] Failed to remove from org database:`, err);
       }
 
       await getUsers().refresh();
@@ -611,11 +604,10 @@ export const updateUserRole = guardedForm(
   async ({ userId, organizationId, roleId }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
-      if (!adminDb) error(500, 'Admin database not configured');
+      const db = await getDatabase(locals);
 
       // Get user
-      const userResult = await adminDb.users.where({ id: userId }).first();
+      const userResult = await db.users.where({ id: userId }).first();
       const user = userResult?.data;
       if (!user) error(404, 'User not found');
 
@@ -625,14 +617,17 @@ export const updateUserRole = guardedForm(
       if (!role) error(404, 'Role not found');
 
       // Update in organization database
-      const orgDb = await locals.kuratchi?.orgDatabaseClient?.(organizationId);
-      if (orgDb) {
+      try {
+        const orgDb = await getDatabase(locals, organizationId);
         await orgDb.users
           .where({ email: user.email })
           .update({ 
             role: role.name,
             updated_at: new Date().toISOString() 
           });
+      } catch (err) {
+        console.error(`[updateUserRole] Failed to update role in org database:`, err);
+        error(500, 'Failed to update user role');
       }
 
       await getUsers().refresh();

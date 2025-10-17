@@ -63,8 +63,6 @@ async function defaultGetEnv(event: RequestEvent): Promise<AuthHandleEnv> {
  */
 function initializeLocals(locals: any): void {
   if (!locals.kuratchi) locals.kuratchi = {};
-  if (typeof locals.kuratchi.user === 'undefined') locals.kuratchi.user = null;
-  if (typeof locals.kuratchi.session === 'undefined') locals.kuratchi.session = null;
   if (typeof locals.user === 'undefined') locals.user = null;
   if (typeof locals.session === 'undefined') locals.session = null;
 }
@@ -150,8 +148,8 @@ export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: 
     // Create session context
     const sessionContext = {
       ...context,
-      session: context.locals.kuratchi.session,
-      user: context.locals.kuratchi.user
+      session: context.locals.session,
+      user: context.locals.user
     };
     
     // Execute onSession hooks

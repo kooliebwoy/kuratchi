@@ -9,9 +9,10 @@
 export { kuratchi } from './kuratchi.js';
 export type { KuratchiConfig, KuratchiSDK } from './kuratchi.js';
 
-// === CLIENT (BATTERIES-INCLUDED) ===
-// Simple, friction-free database client - just API key + database ID
-export { KuratchiClient, createKuratchiClient, type KuratchiClientConfig } from './client/index.js';
+// === KURATCHI CLOUD ===
+// Premium managed infrastructure - all operations routed through Kuratchi Cloud
+// Single API key - no need for Cloudflare, Resend, or other service keys
+export * as cloud from './cloud/index.js';
 
 // === MODULAR API ===
 // Individual module exports for granular control

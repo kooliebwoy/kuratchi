@@ -106,6 +106,7 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
         }
         
         const databaseName = databases.name;
+        const workerName = databases.workerName;
         
         // Get token from dbApiTokens table (query for non-revoked token)
         const { data: tokenRecord } = await adminDb.dbApiTokens
@@ -132,7 +133,8 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
           databaseName,
           dbToken,
           gatewayKey: gatewayKey || '',
-          schema
+          schema,
+          scriptName: workerName
         });
         
         return orgDb;

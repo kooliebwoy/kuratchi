@@ -48,7 +48,8 @@ export class KuratchiDatabase {
 
   /**
    * Create a new D1 database with dedicated worker
-   * Each database gets its own D1 instance and worker for isolation
+   * Always uses HTTP mode - databases are accessed via deployed workers
+   * For direct D1 bindings (e.g., admin DB in SvelteKit), pass the binding directly to the plugin
    */
   async createDatabase(options: CreateDatabaseOptions): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
     const { databaseName, gatewayKey, migrate, schema, schemaName } = options;
@@ -69,36 +70,7 @@ export class KuratchiDatabase {
       : 365 * 24 * 60 * 60 * 1000;       // 1 year (renewable via admin)
     const token = await createSignedDbToken(databaseName, gatewayKey, ttl);
     
-    // Check if we have direct D1 binding (ONLY in wrangler dev or production Workers)
-    const platform = (globalThis as any).__sveltekit_platform || (globalThis as any).platform;
-    
-    // Detect local SvelteKit dev using $app/environment dev flag or lack of platform.env
-    let isLocalDev = false;
-    try {
-      // Try to import SvelteKit's dev flag (only available in SvelteKit context)
-      const { dev } = await import('$app/environment');
-      isLocalDev = dev && !platform?.env;
-    } catch {
-      // Not in SvelteKit context or import failed - check for platform.env absence
-      isLocalDev = !platform?.env;
-    }
-    
-    if (!isLocalDev) {
-      const d1Binding = platform?.env?.[databaseName] || platform?.env?.DB;
-      
-      if (d1Binding && typeof d1Binding.prepare === 'function') {
-        console.log(`[Kuratchi] Using direct D1 binding for ${databaseName} - skipping deploy/wait`);
-        
-        // Apply migrations if requested (using direct binding)
-        if (migrate && schemaName) {
-          await this.applyInitialMigrationDirect(d1Binding, schema, schemaName);
-        }
-        
-        return { databaseName, token };
-      }
-    }
-    
-    // HTTP flow: Deploy a new D1 database with dedicated worker
+    // Deploy a new D1 database with dedicated worker (always HTTP mode)
     console.log(`[Kuratchi] Deploying D1 worker for ${databaseName}`);
     
     // Generate worker name from database name (sanitize for worker naming)
@@ -142,6 +114,55 @@ export class KuratchiDatabase {
   }
 
   /**
+   * Delete a database and its dedicated worker
+   * Cleans up both the D1 database and the Durable Object worker
+   */
+  async deleteDatabase(options: { databaseName: string; databaseId?: string }): Promise<{ success: boolean }> {
+    const { databaseName, databaseId } = options;
+    
+    if (!databaseName) {
+      throw new Error('databaseName is required');
+    }
+    
+    console.log(`[Kuratchi] Deleting database and worker for ${databaseName}`);
+    
+    // Generate worker name from database name
+    const workerName = `${this.scriptNamePrefix}-${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+    
+    try {
+      // Delete the worker script
+      console.log(`[Kuratchi] Deleting worker: ${workerName}`);
+      await this.cloudflareClient.deleteWorkerScript(workerName);
+      console.log(`[Kuratchi] ✓ Worker deleted: ${workerName}`);
+    } catch (error: any) {
+      // If worker doesn't exist, that's fine
+      if (error.message?.includes('10007') || error.message?.includes('not found')) {
+        console.log(`[Kuratchi] Worker ${workerName} not found (already deleted)`);
+      } else {
+        console.warn(`[Kuratchi] Failed to delete worker ${workerName}:`, error.message);
+      }
+    }
+    
+    // Delete the D1 database if we have the ID
+    if (databaseId) {
+      try {
+        console.log(`[Kuratchi] Deleting D1 database: ${databaseId}`);
+        await this.cloudflareClient.deleteDatabase(databaseId);
+        console.log(`[Kuratchi] ✓ D1 database deleted: ${databaseId}`);
+      } catch (error: any) {
+        // If database doesn't exist, that's fine
+        if (error.message?.includes('not found')) {
+          console.log(`[Kuratchi] D1 database ${databaseId} not found (already deleted)`);
+        } else {
+          console.warn(`[Kuratchi] Failed to delete D1 database ${databaseId}:`, error.message);
+        }
+      }
+    }
+    
+    return { success: true };
+  }
+
+  /**
    * Get HTTP client for raw SQL access
    */
   httpClient(options: HttpClientOptions): D1Client {
@@ -162,7 +183,7 @@ export class KuratchiDatabase {
    * Get ORM client with auto-migrations
    */
   async ormClient(options: ClientOptions): Promise<OrmClient> {
-    const { databaseName, dbToken, gatewayKey, schema } = options;
+    const { databaseName, dbToken, gatewayKey, schema, scriptName } = options;
     
     if (!databaseName || !dbToken || !gatewayKey) {
       throw new Error('databaseName, dbToken, and gatewayKey are required');
@@ -171,7 +192,7 @@ export class KuratchiDatabase {
       throw new Error('schema is required');
     }
     
-    const httpClient = this.httpClient({ databaseName, dbToken, gatewayKey });
+    const httpClient = this.httpClient({ databaseName, dbToken, gatewayKey, scriptName });
     
     return createOrmClient({
       httpClient,
@@ -233,52 +254,6 @@ export class KuratchiDatabase {
       client,
       schemaName,
       schema  // Fallback if no migrations folder exists
-    });
-    
-    console.log('[Kuratchi] ✓ Migrations applied');
-  }
-
-  /**
-   * Apply migrations using direct D1 binding
-   * Uses the same migration runner as runtime
-   */
-  private async applyInitialMigrationDirect(d1Binding: any, schema: any, schemaName: string): Promise<void> {
-    // Wrap D1 binding in D1Client interface for migration runner
-    const client: D1Client = {
-      query: async (sql: string) => {
-        const stmt = d1Binding.prepare(sql);
-        const result = await stmt.all();
-        return { success: true, results: result.results };
-      },
-      exec: async (sql: string) => {
-        await d1Binding.exec(sql);
-        return { success: true };
-      },
-      batch: async (queries: any[]) => {
-        const stmts = queries.map(q => d1Binding.prepare(q.query));
-        await d1Binding.batch(stmts);
-        return { success: true };
-      },
-      raw: async (sql: string) => {
-        const stmt = d1Binding.prepare(sql);
-        const result = await stmt.raw();
-        return { success: true, results: result };
-      },
-      first: async (sql: string) => {
-        const stmt = d1Binding.prepare(sql);
-        const result = await stmt.first();
-        return { success: true, data: result };
-      }
-    };
-    
-    const { applyMigrations } = await import('../migrations/migration-runner.js');
-    
-    console.log('[Kuratchi] Applying migrations via D1 binding...');
-    
-    await applyMigrations({
-      client,
-      schemaName,
-      schema
     });
     
     console.log('[Kuratchi] ✓ Migrations applied');

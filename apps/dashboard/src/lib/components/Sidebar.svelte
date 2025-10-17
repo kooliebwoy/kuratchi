@@ -4,13 +4,11 @@
 
   const menu = [
     { label: 'Overview', icon: Home, href: '/' },
-    { label: 'Organizations', icon: Building2, href: '/organizations' },
     { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: Globe, href: '/domains' },
     { label: 'Products', icon: Package, href: '/products' },
     { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Users', icon: Users, href: '/users' },
-    { label: 'Roles', icon: Shield, href: '/roles' },
     { label: 'Storage', icon: Folder, href: '/storage' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Activity', icon: Activity, href: '/activity' },

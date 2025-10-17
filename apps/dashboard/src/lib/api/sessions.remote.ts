@@ -1,6 +1,7 @@
 import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
+import { getDatabase } from '$lib/server/db-context';
 
 // Helpers
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -33,11 +34,10 @@ const guardedForm = <R>(
 export const getSessions = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
-    if (!adminDb) error(500, 'Admin database not configured');
+    const db = await getDatabase(locals);
 
-    // Get all active sessions from admin database
-    const sessionsResult = await adminDb.session
+    // Get all active sessions from database
+    const sessionsResult = await db.session
       .where({ expires: { gt: new Date().toISOString() } })
       .orderBy({ created_at: 'desc' })
       .many();
@@ -46,7 +46,7 @@ export const getSessions = guardedQuery(async () => {
 
     // Get users for each session
     const userIds = [...new Set(sessions.map((s: any) => s.userId))];
-    const usersResult = await adminDb.users
+    const usersResult = await db.users
       .where({ id: { in: userIds } })
       .many();
     

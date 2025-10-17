@@ -7,7 +7,7 @@
   // Handle successful sign in
   $effect(() => {
     if (signInWithCredentials.result?.success) {
-      goto('/database');
+      goto('/');
     }
   });
   

@@ -26,7 +26,7 @@ function detectAdapter(databaseName: string, httpClient: D1Client): { exec: any;
   const platform = getCurrentPlatform() as any;
   
   if (platform?.env) {
-    const binding = platform.env[databaseName] || platform.env.ADMIN_DB || platform.env.DB;
+    const binding = platform.env[databaseName];
     
     // Check for D1 binding (direct D1 access in wrangler dev or production)
     if (binding && typeof binding.prepare === 'function') {

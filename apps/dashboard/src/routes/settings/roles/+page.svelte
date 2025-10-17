@@ -13,7 +13,7 @@
 		archivePermission,
 		attachPermissionToRole,
 		detachPermissionFromRole
-	} from '../../lib/api/roles.remote';
+	} from '$lib/api/roles.remote';
 
 	// Data sources
 	const roles = getRoles();
@@ -168,48 +168,36 @@
 	}
 </script>
 
-<div class="p-8">
-	<!-- Header -->
-	<div class="mb-8 flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-				<Shield class="h-6 w-6 text-primary" />
-			</div>
-			<div>
-				<h1 class="text-2xl font-bold">Roles & Permissions</h1>
-				<p class="text-sm text-base-content/70">Manage access control for your organization</p>
-			</div>
-		</div>
-		<div class="flex gap-2">
-			<button class="btn btn-outline" onclick={openCreatePermModal}>
-				<Plus class="h-4 w-4" />
-				New Permission
-			</button>
-			<button class="btn btn-primary" onclick={openCreateModal}>
-				<Plus class="h-4 w-4" />
-				New Role
-			</button>
-		</div>
-	</div>
+<!-- Action Buttons -->
+<div class="mb-6 flex justify-end gap-2">
+	<button class="btn btn-outline" onclick={openCreatePermModal}>
+		<Plus class="h-4 w-4" />
+		New Permission
+	</button>
+	<button class="btn btn-primary" onclick={openCreateModal}>
+		<Plus class="h-4 w-4" />
+		New Role
+	</button>
+</div>
 
-	<!-- Tabs -->
-	<div class="tabs tabs-boxed mb-6 w-fit">
-		<button 
-			class="tab {activeTab === 'roles' ? 'tab-active' : ''}" 
-			onclick={() => activeTab = 'roles'}
-		>
-			Roles
-		</button>
-		<button 
-			class="tab {activeTab === 'permissions' ? 'tab-active' : ''}" 
-			onclick={() => activeTab = 'permissions'}
-		>
-			Permissions
-		</button>
-	</div>
+<!-- Tabs -->
+<div class="tabs tabs-boxed mb-6 w-fit">
+	<button 
+		class="tab {activeTab === 'roles' ? 'tab-active' : ''}" 
+		onclick={() => activeTab = 'roles'}
+	>
+		Roles
+	</button>
+	<button 
+		class="tab {activeTab === 'permissions' ? 'tab-active' : ''}" 
+		onclick={() => activeTab = 'permissions'}
+	>
+		Permissions
+	</button>
+</div>
 
-	<!-- Roles Table -->
-	{#if activeTab === 'roles'}
+<!-- Roles Table -->
+{#if activeTab === 'roles'}
 	<div class="card bg-base-100 shadow-sm">
 		<div class="card-body">
 			<div class="overflow-x-auto">
@@ -297,7 +285,6 @@
 		</div>
 	</div>
 	{/if}
-</div>
 
 <!-- Create/Edit Role Modal -->
 <Dialog bind:open={showRoleModal} size="lg" class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">

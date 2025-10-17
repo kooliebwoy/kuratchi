@@ -4,7 +4,6 @@
   import { Building2, Users, Database, Activity, Shield, Mail, Globe, Clock } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { activity, tables, providers, users } = data;
 
   // Quick stats based on actual menu items
   const quickStats = [
@@ -54,7 +53,7 @@
     <!-- Recent Activity -->
     <InfoCard title="Recent Activity" class="lg:col-span-2">
       <div class="space-y-3">
-        {#each activity.slice(0, 5) as item}
+        <!-- {#each activity.slice(0, 5) as item}
           <div class="flex items-center justify-between p-3 rounded-lg bg-base-200/30">
             <div>
               <p class="text-sm font-medium">{item.action}</p>
@@ -62,7 +61,7 @@
             </div>
             <Badge variant="primary" size="sm">{item.status}</Badge>
           </div>
-        {/each}
+        {/each} -->
       </div>
       {#snippet footer()}
         <a href="/activity" class="btn btn-ghost btn-sm">View All Activity</a>
@@ -101,7 +100,7 @@
     <!-- Database Overview -->
     <InfoCard title="Database Status">
       <div class="space-y-3">
-        {#each tables.slice(0, 3) as table}
+        <!-- {#each tables.slice(0, 3) as table}
           <div class="flex items-center justify-between">
             <div>
               <p class="font-medium text-sm">{table.name}</p>
@@ -111,7 +110,7 @@
               {table.status}
             </Badge>
           </div>
-        {/each}
+        {/each} -->
       </div>
       {#snippet footer()}
         <a href="/database" class="btn btn-ghost btn-sm">View All Tables</a>
@@ -121,7 +120,7 @@
     <!-- Authentication Providers -->
     <InfoCard title="Auth Providers">
       <div class="space-y-3">
-        {#each providers as provider}
+        <!-- {#each providers as provider}
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <provider.icon class="h-4 w-4 text-primary" />
@@ -129,7 +128,7 @@
             </div>
             <Badge variant="success" size="xs">{provider.success}</Badge>
           </div>
-        {/each}
+        {/each} -->
       </div>
       {#snippet footer()}
         <a href="/settings" class="btn btn-ghost btn-sm">Configure Auth</a>

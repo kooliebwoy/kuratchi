@@ -9,7 +9,7 @@ export type { SessionPluginOptions } from './session.js';
 export { storagePlugin } from './storage.js';
 export type { StoragePluginOptions } from './storage.js';
 
-export { adminPlugin, requireSuperadmin } from './admin.js';
+export { adminPlugin, requireSuperadmin, createSuperadmin } from './admin.js';
 export type { AdminPluginOptions } from './admin.js';
 
 export { organizationPlugin } from './organization.js';

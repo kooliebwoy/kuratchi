@@ -1,23 +1,6 @@
-import {
-  overviewCards,
-  trafficGraph,
-  recentActivity,
-  databaseTables,
-  authProviders,
-  userInsights
-} from '$lib/data/dashboard';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals: { session } }) => {
   if (!session?.user) redirect(302, '/auth/signin');
-
-  return {
-    cards: overviewCards,
-    traffic: trafficGraph,
-    activity: recentActivity,
-    tables: databaseTables,
-    providers: authProviders,
-    users: userInsights
-  };
 };

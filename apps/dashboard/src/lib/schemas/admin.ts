@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 5,
+  version: 6,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -131,6 +131,7 @@ export const adminSchema: SchemaDsl = {
       id: 'text primary key not null',
       name: 'text unique',
       dbuuid: 'text unique',
+      workerName: 'text',
       isArchived: 'boolean',
       isActive: 'boolean',
       lastBackup: 'timestamp_ms',

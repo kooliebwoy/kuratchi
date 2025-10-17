@@ -1,6 +1,6 @@
 {
   "name": "admin",
-  "version": 5,
+  "version": 6,
   "tables": [
     {
       "name": "users",
@@ -742,6 +742,10 @@
           "name": "dbuuid",
           "type": "text",
           "unique": true
+        },
+        {
+          "name": "workerName",
+          "type": "text"
         },
         {
           "name": "isArchived",

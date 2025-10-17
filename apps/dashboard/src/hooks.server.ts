@@ -16,7 +16,11 @@ export const { handle }: { handle: Handle } = kuratchi({
   auth: {
     plugins: [
       sessionPlugin(),
-      adminPlugin({ adminSchema, organizationSchema }), // Includes superadmin detection
+      adminPlugin({ 
+        adminSchema, 
+        organizationSchema,
+        adminDatabase: 'ADMIN_DB'  // Binding name from wrangler.toml (defaults to 'DB' if omitted)
+      }),
       organizationPlugin({ organizationSchema }),
       credentialsPlugin(), // Enable email/password auth
       activityPlugin({
