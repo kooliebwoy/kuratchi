@@ -17,7 +17,7 @@
 
 {#if isAuthenticated}
   <div class="flex min-h-screen bg-base-100 text-base-content">
-    <Sidebar />
+    <Sidebar {isSuperadmin} />
     <div class="flex flex-1 flex-col">
       <Header {workspace} {user} {isSuperadmin} />
       <main class="flex-1 overflow-y-auto px-8 py-8">

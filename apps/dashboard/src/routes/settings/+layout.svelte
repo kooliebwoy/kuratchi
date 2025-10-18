@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Settings, Shield, AlertTriangle, Key, CreditCard, Lock } from 'lucide-svelte';
+  import { Settings, Shield, AlertTriangle, Key, CreditCard, Lock, Users } from 'lucide-svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
 
@@ -11,6 +11,7 @@
 
   const tabs = [
     { label: 'Account', href: '/settings', icon: Settings },
+    { label: 'Users', href: '/settings/users', icon: Users },
     { label: 'Billing', href: '/settings/billing', icon: CreditCard },
     { label: 'Security', href: '/settings/security', icon: Lock },
     { label: 'API Keys', href: '/settings/api-keys', icon: Key },

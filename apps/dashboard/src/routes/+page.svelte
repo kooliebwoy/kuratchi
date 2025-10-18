@@ -9,7 +9,7 @@
   const quickStats = [
     { title: 'Organizations', value: '3', icon: Building2, href: '/organizations', color: 'primary' as const },
     { title: 'Active Users', value: '142', icon: Users, href: '/users', color: 'success' as const },
-    { title: 'Database Tables', value: tables.length.toString(), icon: Database, href: '/databases', color: 'info' as const },
+    { title: 'Database Tables', value: '12', icon: Database, href: '/databases', color: 'info' as const },
     { title: 'Active Sessions', value: '89', icon: Clock, href: '/sessions', color: 'warning' as const }
   ];
 </script>

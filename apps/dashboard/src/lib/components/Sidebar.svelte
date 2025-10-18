@@ -1,6 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Home, Database, Users, Shield, Settings, Activity, Globe, Building2, Clock, Mail, File, Folder, Package } from 'lucide-svelte';
+  import { Home, Database, Shield, Settings, Activity, Globe, Clock, Mail, Folder, Package } from 'lucide-svelte';
+
+  let { isSuperadmin }: { isSuperadmin: boolean } = $props();
 
   const menu = [
     { label: 'Overview', icon: Home, href: '/' },
@@ -8,13 +10,20 @@
     { label: 'Domains', icon: Globe, href: '/domains' },
     { label: 'Products', icon: Package, href: '/products' },
     { label: 'Sessions', icon: Clock, href: '/sessions' },
-    { label: 'Users', icon: Users, href: '/users' },
     { label: 'Storage', icon: Folder, href: '/storage' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Activity', icon: Activity, href: '/activity' },
     { label: 'Settings', icon: Settings, href: '/settings' },
-    { label: 'Super Admin', icon: Shield, href: '/superadmin', role: 'isSuperAdmin' }
+    { label: 'Super Admin', icon: Shield, href: '/superadmin', requireSuperadmin: true }
   ];
+
+  // Filter menu items based on permissions
+  const visibleMenu = $derived(menu.filter(item => {
+    if (item.requireSuperadmin) {
+      return isSuperadmin;
+    }
+    return true;
+  }));
 
   const isActive = (href: string) => {
     return page.url.pathname === href;
@@ -32,7 +41,7 @@
     </div>
   </div>
   <nav class="flex flex-1 flex-col gap-1">
-    {#each menu as item}
+    {#each visibleMenu as item}
       {#if isActive(item.href)}
         <a
           href={item.href}
