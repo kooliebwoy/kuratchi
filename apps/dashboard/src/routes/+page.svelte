@@ -25,9 +25,6 @@
       <h1 class="text-2xl font-semibold">Dashboard Overview</h1>
       <p class="text-sm text-base-content/60">Welcome back! Here's what's happening with your platform.</p>
     </div>
-    <a href="/organizations" class="btn btn-primary">
-      Create Organization
-    </a>
   </div>
 
   <!-- Quick Stats Grid -->

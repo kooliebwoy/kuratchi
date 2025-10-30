@@ -9,7 +9,7 @@
     { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: Globe, href: '/domains' },
     { label: 'Products', icon: Package, href: '/products' },
-    { label: 'Sessions', icon: Clock, href: '/sessions' },
+    // { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Storage', icon: Folder, href: '/storage' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Activity', icon: Activity, href: '/activity' },
