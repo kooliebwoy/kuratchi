@@ -1,12 +1,61 @@
+/**
+ * Single source of truth for all page data
+ */
+export interface PageData {
+  /**
+   * Unique identifier for the page (optional for new pages)
+   */
+  id?: string;
+  /**
+   * Page title displayed in the editor and browser
+   */
+  title: string;
+  /**
+   * SEO meta title
+   */
+  seoTitle: string;
+  /**
+   * SEO meta description
+   */
+  seoDescription: string;
+  /**
+   * URL slug for the page
+   */
+  slug: string;
+  /**
+   * Domain for the page (display only)
+   */
+  domain?: string;
+  /**
+   * Serialized block data for page content
+   */
+  content: Array<Record<string, unknown>>;
+  /**
+   * Serialized header block data
+   */
+  header: Record<string, unknown> | null;
+  /**
+   * Serialized footer block data
+   */
+  footer: Record<string, unknown> | null;
+  /**
+   * Additional metadata (theme settings, etc.)
+   */
+  metadata?: {
+    backgroundColor?: string;
+    [key: string]: unknown;
+  };
+}
+
 export interface EditorOptions {
   /**
    * Reference to the rendered editor container. Managed internally when omitted.
    */
   editor?: HTMLElement | null;
   /**
-   * Serialized block data used to hydrate the editor.
+   * Complete page data (single source of truth)
    */
-  editorData?: Array<Record<string, unknown>>;
+  pageData?: PageData;
   /**
    * Toggle whether the editor is editable.
    */
@@ -15,18 +64,6 @@ export interface EditorOptions {
    * When true, renders header and footer regions in addition to page content.
    */
   isWebpage?: boolean;
-  /**
-   * Background color applied to the editor canvas.
-   */
-  backgroundColor?: string;
-  /**
-   * Serialized header block data.
-   */
-  headerBlock?: Array<Record<string, unknown>> | Record<string, unknown> | null;
-  /**
-   * Serialized footer block data.
-   */
-  footerBlock?: Array<Record<string, unknown>> | Record<string, unknown> | null;
   /**
    * Enable layout presets (hero sections, etc.).
    */
@@ -37,17 +74,58 @@ export interface EditorOptions {
   imageConfig?: {
     uploadEndpoint?: string;
   };
+  /**
+   * Show the full editor UI with sidebars and toolbars. When false, shows only the canvas.
+   */
+  showUI?: boolean;
+  /**
+   * Initial device preview size: 'phone' | 'tablet' | 'desktop'
+   */
+  initialDeviceSize?: 'phone' | 'tablet' | 'desktop';
+  /**
+   * Available pages for menu widget
+   */
+  pages?: Array<Record<string, unknown>>;
+  /**
+   * Reserved pages for menu widget
+   */
+  reservedPages?: Array<Record<string, unknown>>;
+  /**
+   * Callback when any page data changes (debounced autosave)
+   */
+  onUpdate?: (pageData: PageData) => void | Promise<void>;
+  /**
+   * Autosave delay in milliseconds (default: 1000)
+   */
+  autoSaveDelay?: number;
 }
 
-export const defaultEditorOptions: Required<Pick<EditorOptions, 'editable' | 'isWebpage' | 'backgroundColor' | 'layoutsEnabled'>> &
-  Omit<EditorOptions, 'editable' | 'isWebpage' | 'backgroundColor' | 'layoutsEnabled'> = {
+export const defaultPageData: PageData = {
+  title: 'Untitled Page',
+  seoTitle: '',
+  seoDescription: '',
+  slug: '',
+  domain: 'example.com',
+  content: [],
+  header: null,
+  footer: null,
+  metadata: {
+    backgroundColor: '#000000'
+  }
+};
+
+export const defaultEditorOptions: Required<Pick<EditorOptions, 'editable' | 'isWebpage' | 'layoutsEnabled' | 'showUI' | 'initialDeviceSize' | 'autoSaveDelay'>> &
+  Omit<EditorOptions, 'editable' | 'isWebpage' | 'layoutsEnabled' | 'showUI' | 'initialDeviceSize' | 'autoSaveDelay'> = {
   editor: null,
-  editorData: [],
+  pageData: defaultPageData,
   editable: true,
   isWebpage: true,
-  backgroundColor: '#000000',
-  headerBlock: [],
-  footerBlock: [],
   layoutsEnabled: true,
-  imageConfig: {}
+  imageConfig: {},
+  showUI: true,
+  initialDeviceSize: 'desktop',
+  pages: undefined,
+  reservedPages: undefined,
+  onUpdate: undefined,
+  autoSaveDelay: 1000
 };
