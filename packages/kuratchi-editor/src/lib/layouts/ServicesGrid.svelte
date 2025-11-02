@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { LayoutBlock } from "$lib/shell";
-    import { LucideIconMap, type LucideIconKey } from "$lib/utils/lucide-icons";
+    import { LayoutBlock } from "../shell/index.js";
+    import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
     import { Plus, ArrowUp, ArrowDown, Trash2 } from "@lucide/svelte";
 
     interface Props {

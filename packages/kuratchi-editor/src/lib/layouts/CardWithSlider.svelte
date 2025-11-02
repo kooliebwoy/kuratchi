@@ -1,7 +1,7 @@
 <script lang="ts">
     import CardNoImage from "./CardNoImage.svelte";
     import NoMarginCarousel from "./NoMarginCarousel.svelte";
-    import { SearchImages, LayoutBlock } from "$lib/shell";
+    import { SearchImages, LayoutBlock } from "../shell/index.js";
     
     interface Props {
         id?: any;

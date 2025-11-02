@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { SearchIcons, LayoutBlock } from "$lib/shell";
-    import { LucideIconMap, type LucideIconKey } from "$lib/utils/lucide-icons";
+    import { SearchIcons, LayoutBlock } from "../shell/index.js";
+    import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
     interface Props {
         id?: string;

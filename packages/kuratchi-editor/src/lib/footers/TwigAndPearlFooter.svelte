@@ -1,6 +1,6 @@
 <script lang="ts">
- import { SearchIcons, EditorDrawer as Drawer } from '$lib/shell';
- import { LucideIconMap, type LucideIconKey } from '$lib/utils/lucide-icons';
+ import { SearchIcons, EditorDrawer as Drawer } from '../shell/index.js';
+ import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
   interface Props {

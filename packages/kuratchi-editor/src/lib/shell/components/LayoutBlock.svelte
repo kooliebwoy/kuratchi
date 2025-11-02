@@ -1,10 +1,10 @@
 <script lang="ts">
     import { Pencil, GripVertical, X, Trash2 } from '@lucide/svelte';
     import type { Snippet } from 'svelte';
-    import { deleteElement } from '$lib/utils/editor.svelte';
-    import { getFooterBlock } from '$lib/registry/footerBlocks.svelte';
-    import { getHeaderBlock } from '$lib/registry/headerBlocks.svelte';
-    import { openRightPanel } from '$lib/stores/right-panel';
+    import { deleteElement } from '../../utils/editor.svelte.js';
+    import { getFooterBlock } from '../../registry/footerBlocks.svelte.js';
+    import { getHeaderBlock } from '../../registry/headerBlocks.svelte.js';
+    import { openRightPanel } from '../../stores/right-panel.js';
 
     interface Props {
         id: string;

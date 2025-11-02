@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Search, X } from "@lucide/svelte";
-    import { LucideIconMap, lucideIconKeys, type LucideIconKey } from "$lib/utils/lucide-icons";
+    import { LucideIconMap, lucideIconKeys, type LucideIconKey } from "../../utils/lucide-icons.js";
 
     interface Props {
         selectedIcons?: { icon: LucideIconKey; name?: string }[];

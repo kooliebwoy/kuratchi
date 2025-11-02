@@ -1,6 +1,6 @@
 <script lang="ts">
     import { ArrowRight, Plus } from "@lucide/svelte";
-    import { LayoutBlock } from '$lib/shell';
+    import { LayoutBlock } from '../shell/index.js';
 
     interface Props {
         id?: string;

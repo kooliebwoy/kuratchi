@@ -1,6 +1,6 @@
 <script lang="ts">
     import { GripVertical, Trash2 } from "@lucide/svelte";
-    import { deleteElement } from "$lib/utils/editor.svelte";
+    import { deleteElement } from "../utils/editor.svelte.js";
 
     interface Props {
         id?: string;

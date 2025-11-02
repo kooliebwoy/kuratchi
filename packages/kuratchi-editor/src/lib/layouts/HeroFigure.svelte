@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SearchImage, LayoutBlock } from "$lib/shell";
+    import { SearchImage, LayoutBlock } from "../shell/index.js";
     import { ArrowRight } from "@lucide/svelte";
 
     interface Props {

@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { EditorDrawer as Drawer } from '$lib/shell';
+    import { EditorDrawer as Drawer } from '../shell/index.js';
     import { Pencil, GripVertical, Trash2, Wand2 } from '@lucide/svelte';
 	import { deserialize, applyAction } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
 	import type { ActionResult } from "@sveltejs/kit";
-  	import { deleteElement, validation, validationMessage } from '$lib/utils/editor.svelte';
+  	import { deleteElement, validation, validationMessage } from '../utils/editor.svelte.js';
 
 	interface Props {
 		id?: string;

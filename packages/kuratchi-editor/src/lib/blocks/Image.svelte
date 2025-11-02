@@ -2,7 +2,7 @@
     import { deserialize } from "$app/forms";
     import { Upload } from "@lucide/svelte";
     import type { ActionResult } from "@sveltejs/kit";
-    import { SideActions } from "$lib/shell";
+    import { SideActions } from "../shell/index.js";
     import { onMount } from "svelte";
 
     interface Props {

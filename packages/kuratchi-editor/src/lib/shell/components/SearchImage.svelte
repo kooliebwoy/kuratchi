@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Plus, Trash2 } from '@lucide/svelte';
-    import { imageConfig } from '$lib/stores/imageConfig';
+    import { imageConfig } from '../../stores/imageConfig.js';
 
     interface ImageData {
         url: string;

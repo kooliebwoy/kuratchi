@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SearchImages, LayoutBlock } from '$lib/shell';
+    import { SearchImages, LayoutBlock } from '../shell/index.js';
 
     interface Props {
         id?: any;

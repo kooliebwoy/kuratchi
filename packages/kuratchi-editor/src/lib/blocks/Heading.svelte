@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { handleEmojis } from "$lib/utils/emojis";
-    import EditorToolbar from "$lib/plugins/EditorToolbar.svelte";
-    import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "$lib/utils/editor.svelte";
+    import { handleEmojis } from "../utils/emojis.js";
+    import EditorToolbar from "../plugins/EditorToolbar.svelte";
+    import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
-    import { SideActions } from "$lib/shell";
+    import { SideActions } from "../shell/index.js";
 
     interface Props {
         id?: string;

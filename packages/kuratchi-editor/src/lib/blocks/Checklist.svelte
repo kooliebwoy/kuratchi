@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SideActions } from "$lib/shell";
+    import { SideActions } from "../shell/index.js";
     import Checkbox from "./Checkbox.svelte";
     import { onMount, mount } from "svelte";
 

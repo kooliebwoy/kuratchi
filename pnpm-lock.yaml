@@ -20,6 +20,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@kuratchi/editor':
+        specifier: workspace:*
+        version: link:../../packages/kuratchi-editor
       '@kuratchi/ui':
         specifier: workspace:*
         version: link:../../packages/kuratchi-ui
