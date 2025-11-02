@@ -130,8 +130,8 @@
 {:else}
     <!-- Full editor UI -->
     <div class="flex h-screen bg-base-100">
-        <!-- Left Sidebar -->
-        <div class="{sidebarCollapsed ? 'w-12' : 'w-84'} transition-all duration-300 bg-base-200 border-r border-base-300 flex flex-col">
+        <!-- Left Sidebar - Modern Design -->
+        <div class="{sidebarCollapsed ? 'w-12' : 'w-80'} transition-all duration-300 bg-base-200 border-r border-base-300 flex flex-col shadow-lg">
             <div class="flex items-center justify-between p-3 border-b border-base-300">
                 {#if !sidebarCollapsed}
                     <h2 class="text-sm font-medium text-base-content">Page Builder</h2>
@@ -340,45 +340,53 @@
         <!-- Main Content Area -->
         <div class="flex-1 flex flex-col min-w-0">
             <!-- Header Toolbar -->
-            <div class="border-b border-base-300 bg-base-100 text-base-content flex justify-between items-center px-4 py-2">
-                <div class="flex gap-3 items-center">
-                    <span class="text-sm font-medium">{localPageData.title}</span>
-                    <span class="text-xs text-base-content/50">{localPageData.domain}</span>
+            <div class="border-b border-base-300 bg-base-100 flex justify-between items-center px-6 py-3 shadow-sm">
+                <!-- Left: Page Info -->
+                <div class="flex gap-4 items-center min-w-0">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-semibold text-base-content truncate">{localPageData.title}</span>
+                        <span class="text-xs text-base-content/60">{localPageData.domain}</span>
+                    </div>
                 </div>
 
-                <div class="flex gap-1">
+                <!-- Center: Device Size Toggle -->
+                <div class="flex gap-2 bg-base-200 rounded-lg p-1.5 border border-base-300">
                     <button 
-                        class="px-2 py-1 rounded text-sm hover:bg-base-200 transition-colors {activeSize==='phone' ? 'bg-base-200' : ''}"
+                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='phone' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
                         onclick={() => adjustBrowserSize('phone')}
+                        title="Mobile (390px)"
                     >
-                        <Smartphone class="text-base" />
+                        <Smartphone class="w-4 h-4" />
                     </button>
                     <button 
-                        class="px-2 py-1 rounded text-sm hover:bg-base-200 transition-colors {activeSize==='tablet' ? 'bg-base-200' : ''}"
+                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='tablet' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
                         onclick={() => adjustBrowserSize('tablet')}
+                        title="Tablet (768px)"
                     >
-                        <Tablet class="text-base" />
+                        <Tablet class="w-4 h-4" />
                     </button>
                     <button 
-                        class="px-2 py-1 rounded text-sm hover:bg-base-200 transition-colors {activeSize==='desktop' ? 'bg-base-200' : ''}"
+                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='desktop' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
                         onclick={() => adjustBrowserSize('desktop')}
+                        title="Desktop (1440px)"
                     >
-                        <Monitor class="text-base" />
+                        <Monitor class="w-4 h-4" />
                     </button>
                 </div>
 
+                <!-- Right: Action Buttons -->
                 <div class="flex gap-2">
-                    <button class="px-3 py-1 bg-base-200 hover:bg-base-300 rounded text-sm transition-colors">
-                        <Eye class="text-base" />
+                    <button class="px-3 py-1.5 bg-base-200 hover:bg-base-300 rounded-lg text-sm font-medium transition-all text-base-content flex items-center gap-2" title="Preview">
+                        <Eye class="w-4 h-4" />
                     </button>
-                    <button class="px-3 py-1 bg-primary hover:bg-primary-focus rounded text-sm text-primary-content transition-colors" onclick={handleSave}>
-                        Publish
+                    <button class="px-4 py-1.5 btn btn-primary btn-sm" onclick={handleSave}>
+                        <span>Publish</span>
                     </button>
                 </div>
             </div>
 
             <!-- Canvas -->
-            <div class="flex-1 bg-base-content text-base-100 overflow-auto">
+            <div class="flex-1 bg-slate-100 overflow-auto">
                 <div
                     class="mx-auto w-full"
                     style:max-width={activeSize === 'phone' ? '390px' : activeSize === 'tablet' ? '768px' : '1440px'}
@@ -403,27 +411,27 @@
         </div>
 
         <!-- Right Sidebar -->
-        <div class="{$rightPanel.open ? 'w-84' : 'w-0'} transition-all duration-300 bg-base-200 border-l-2 border-primary/20 flex flex-col overflow-hidden shrink-0 shadow-lg">
+        <div class="{$rightPanel.open ? 'w-80' : 'w-0'} transition-all duration-300 bg-base-200 border-l border-base-300 flex flex-col overflow-hidden shrink-0 shadow-lg">
             {#if $rightPanel.open}
-                <div class="flex items-center justify-between p-3 border-b border-base-300 bg-gradient-to-r from-primary/5 to-transparent">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-100">
                     <div class="flex items-center gap-2">
                         <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
                         <h2 class="text-sm font-semibold text-base-content">{$rightPanel.title}</h2>
                     </div>
                     <button 
-                        class="p-1.5 hover:bg-base-300 rounded-md transition-colors group"
+                        class="p-1.5 hover:bg-base-300 rounded-lg transition-colors group text-base-content/60 hover:text-base-content"
                         onclick={closeRightPanel}
                     >
-                        <ChevronRight class="w-4 h-4 group-hover:text-primary transition-colors" />
+                        <ChevronRight class="w-4 h-4" />
                     </button>
                 </div>
-                <div class="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-base-100/50 to-base-200">
+                <div class="flex-1 overflow-y-auto p-4">
                     {#if $rightPanel.content}
                         {@render $rightPanel.content()}
                     {/if}
                 </div>
-                <div class="p-3 border-t border-base-300 bg-base-100/80">
-                    <div class="text-xs text-base-content/60 text-center">Changes are saved automatically</div>
+                <div class="p-3 border-t border-base-300 bg-base-100">
+                    <div class="text-xs text-base-content/60 text-center">Auto-saving...</div>
                 </div>
             {/if}
         </div>
