@@ -90,6 +90,8 @@ export const database = {
     schema: SchemaType;
     gatewayKey?: string;
     instance?: KuratchiDatabase;
+    scriptName?: string;
+    skipMigrations?: boolean;
   }): Promise<OrmClient> {
     const envConfig = getDoEnvironment();
     const instance = args.instance || database.instance();
@@ -99,7 +101,9 @@ export const database = {
       databaseName: args.databaseName,
       dbToken: args.dbToken,
       gatewayKey,
-      schema: args.schema
+      schema: args.schema,
+      scriptName: args.scriptName,
+      skipMigrations: args.skipMigrations
     });
   },
 
@@ -140,7 +144,7 @@ export const database = {
   /**
    * Admin database helper (auto-config from env)
    */
-  async admin(): Promise<{
+  async connect(options: ClientOptions): Promise<{
     instance: KuratchiDatabase;
     orm: OrmClient;
     query: D1Client['query'];

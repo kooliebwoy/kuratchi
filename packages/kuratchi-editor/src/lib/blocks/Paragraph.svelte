@@ -10,7 +10,8 @@
         type?: string;
         metadata?: {
             color?: string;
-        }
+        };
+        editable?: boolean;
     }
 
     let {
@@ -19,7 +20,8 @@
         type = 'paragraph',
         metadata = {
             color: '#000000',
-        }
+        },
+        editable = true
     }: Props = $props();
 
     let component: HTMLElement;
@@ -35,8 +37,8 @@
 
     // Setup selection listener when component is available
     $effect(() => {
+        if (!editable) return;
         if (component) {
-            // Clean up previous listener if it exists
             if (cleanup) cleanup();
             cleanup = setupSelectionListener(component, selectionState);
         }
@@ -57,25 +59,34 @@
 
     let mounted = $state(false);
     onMount(() => {
+        if (!editable) return;
         mounted = true;
     });
 </script>
 
-<div class="editor-item group relative" bind:this={component}>
-    {#if mounted}
-        <EditorToolbar {component} show={selectionState.showToolbar} />
-    {/if}
+{#if editable}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <EditorToolbar {component} show={selectionState.showToolbar} />
+        {/if}
 
-    {#if mounted}
-        <SideActions {component} />
-    {/if}
-    
-    <div data-type={type} id={id} class="w-full min-w-full">
-        <!-- JSON Data for this component -->
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
+        {#if mounted}
+            <SideActions {component} />
+        {/if}
+        
+        <div data-type={type} id={id} class="w-full min-w-full">
+            <!-- JSON Data for this component -->
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+
+            <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="outline-none"></p>
         </div>
-
-        <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="outline-none"></p>
     </div>
-</div>
+{:else}
+    <div data-type={type} id={id} class="w-full min-w-full">
+        <svelte:element this={'p'} class="outline-none" style:color={color}>
+            {@html paragraph}
+        </svelte:element>
+    </div>
+{/if}

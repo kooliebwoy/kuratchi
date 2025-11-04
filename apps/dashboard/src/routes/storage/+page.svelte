@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getAllMedia, getFolders, uploadMedia, updateMedia, deleteMedia, createFolder, updateFolder, deleteFolder } from './storage.remote';
+  import { getAllMedia, getFolders, uploadMedia, updateMedia, deleteMedia, createFolder, updateFolder, deleteFolder } from '$lib/api/storage.remote';
   import { Modal, Badge, Button, InfoCard } from '@kuratchi/ui';
   import { Upload, FolderPlus, Trash2, Edit, Image, Film, FileText, File as FileIcon, X, Grid3x3, List, Folder, Eye } from 'lucide-svelte';
 

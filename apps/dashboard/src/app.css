@@ -1,4 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@source "./src/**/*.{svelte,ts}";
+@source "../../../packages/kuratchi-editor/src/**/*.{svelte,ts}";
+@source "../../../packages/kuratchi-ui/src/**/*.{svelte,ts}";
 @import "tailwindcss";
 @plugin "daisyui";
 

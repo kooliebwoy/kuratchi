@@ -106,7 +106,7 @@ export const defaultPageData: PageData = {
   seoDescription: '',
   slug: '',
   domain: 'example.com',
-  content: [],
+  content: [] satisfies Array<Record<string, unknown>>,
   header: null,
   footer: null,
   metadata: {

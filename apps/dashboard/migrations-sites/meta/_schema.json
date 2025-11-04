@@ -1,0 +1,1283 @@
+{
+  "name": "sites",
+  "version": 1.1,
+  "tables": [
+    {
+      "name": "pages",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "data",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_object())"
+          }
+        },
+        {
+          "name": "seoTitle",
+          "type": "text"
+        },
+        {
+          "name": "seoDescription",
+          "type": "text"
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "unique": true
+        },
+        {
+          "name": "isSpecialPage",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "pageType",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "media",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "key",
+          "type": "text"
+        },
+        {
+          "name": "url",
+          "type": "text"
+        },
+        {
+          "name": "fileName",
+          "type": "text"
+        },
+        {
+          "name": "alt",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "slides",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "alt",
+          "type": "text"
+        },
+        {
+          "name": "src",
+          "type": "text"
+        },
+        {
+          "name": "key",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "menu",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "menuItems",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "popups",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "formId",
+          "type": "text"
+        },
+        {
+          "name": "data",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_object())"
+          }
+        },
+        {
+          "name": "image",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "deliveryMethod",
+          "type": "text"
+        },
+        {
+          "name": "deliveryPage",
+          "type": "text"
+        },
+        {
+          "name": "deliveryDelay",
+          "type": "integer"
+        },
+        {
+          "name": "deliveryRepeat",
+          "type": "integer"
+        },
+        {
+          "name": "deliveryStyle",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "price",
+          "type": "text"
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "unique": true
+        },
+        {
+          "name": "sku",
+          "type": "text"
+        },
+        {
+          "name": "ctaText",
+          "type": "text"
+        },
+        {
+          "name": "featureText",
+          "type": "text"
+        },
+        {
+          "name": "featureImage",
+          "type": "text"
+        },
+        {
+          "name": "images",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "features",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "tags",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "categories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "entity",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "subcategories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "categoryId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "tags",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "entity",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "entityTags",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "tagId",
+          "type": "text"
+        },
+        {
+          "name": "entityId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "entityCategories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "categoryId",
+          "type": "text"
+        },
+        {
+          "name": "entityId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "entitySubcategories",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "subcategoryId",
+          "type": "text"
+        },
+        {
+          "name": "entityId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "services",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "price",
+          "type": "text"
+        },
+        {
+          "name": "slug",
+          "type": "text"
+        },
+        {
+          "name": "ctaText",
+          "type": "text"
+        },
+        {
+          "name": "featureText",
+          "type": "text"
+        },
+        {
+          "name": "featureImage",
+          "type": "text"
+        },
+        {
+          "name": "images",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "features",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "tags",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "posts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "seoTitle",
+          "type": "text"
+        },
+        {
+          "name": "seoDescription",
+          "type": "text"
+        },
+        {
+          "name": "content",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "slug",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "authorId",
+          "type": "text",
+          "references": {
+            "table": "users",
+            "column": "id"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "comments",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "email",
+          "type": "text"
+        },
+        {
+          "name": "comment",
+          "type": "text"
+        },
+        {
+          "name": "postId",
+          "type": "text",
+          "references": {
+            "table": "posts",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "forms",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "responseMessage",
+          "type": "text"
+        },
+        {
+          "name": "fields",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "ctaButton",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "timestamp",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "deliveryMethod",
+          "type": "text"
+        },
+        {
+          "name": "deliveryPage",
+          "type": "text"
+        },
+        {
+          "name": "deliveryDelay",
+          "type": "integer"
+        },
+        {
+          "name": "deliveryRepeat",
+          "type": "integer"
+        },
+        {
+          "name": "deliveryStyle",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "leads",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "formId",
+          "type": "text",
+          "references": {
+            "table": "forms",
+            "column": "id",
+            "onDelete": "cascade"
+          }
+        },
+        {
+          "name": "data",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "redirects",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "source",
+          "type": "text"
+        },
+        {
+          "name": "destination",
+          "type": "text"
+        },
+        {
+          "name": "code",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "newsletter",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "domain",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "subscribers",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "email",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "audienceId",
+          "type": "text"
+        },
+        {
+          "name": "contactResendId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "campaigns",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "subject",
+          "type": "text"
+        },
+        {
+          "name": "body",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "audienceId",
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "audiences",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "audienceResendId",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "scripts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "attributes",
+          "type": "json",
+          "default": {
+            "kind": "raw",
+            "sql": "(json_array())"
+          }
+        },
+        {
+          "name": "isEnabled",
+          "type": "integer",
+          "mode": "boolean"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "default": {
+            "kind": "raw",
+            "sql": "(CURRENT_TIMESTAMP)"
+          }
+        },
+        {
+          "name": "deleted_at",
+          "type": "text"
+        }
+      ]
+    }
+  ]
+}

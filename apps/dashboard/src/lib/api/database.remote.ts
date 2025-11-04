@@ -1,8 +1,8 @@
 import { getRequestEvent, query, form } from '$app/server';
+import { env } from '$env/dynamic/private';
 import * as v from 'valibot';
 import { error, fail } from '@sveltejs/kit';
 import { database } from 'kuratchi-sdk';
-import { env } from '$env/dynamic/private';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -41,21 +41,30 @@ export const logRouteActivity = guardedQuery(async () => {
 
 // Get all databases for the organization
 export const getDatabases = guardedQuery(async () => {
-	const { locals } = getRequestEvent();
-	const session = locals.session;
-	const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
-	
-	try {
-		const { orm } = await database.admin();
-		let result: any;
-		if (activeOrgId) {
-			result = await orm.databases
-				.many();
-		} else {
-			// Superadmin with no org selected: list all
-			result = await orm.databases.many();
-		}
-		const databases = (result?.data ?? result) || [];
+  const { locals } = getRequestEvent();
+  const session = locals.session;
+  const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
+  
+  try {
+    // Require an active organization context; otherwise, return empty to avoid platform-wide exposure
+    if (!activeOrgId) {
+      console.warn('[getDatabases] No active organization selected; returning empty list');
+      return [] as any[];
+    }
+
+    // Do not show platform admin org databases
+    if (activeOrgId === 'admin') {
+      return [] as any[];
+    }
+
+    const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+    if (!adminDb) error(500, 'Admin database not available');
+
+    const result = await adminDb.databases
+      .where({ organizationId: { eq: activeOrgId }, isPrimary: { eq: false }, deleted_at: { isNullish: true } })
+      .many();
+
+    const databases = (result?.data ?? result) || [];
 
 		console.log('[getDatabases] activeOrgId:', activeOrgId, 'count:', databases?.length ?? 0);
 		

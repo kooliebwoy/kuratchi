@@ -1,0 +1,1 @@
+ALTER TABLE databases ADD COLUMN isPrimary INTEGER DEFAULT 0;

@@ -1,0 +1,28 @@
+{
+  "name": "kuratchi-website",
+  "account_id": "290c1a3b978d0f44f83b515983a1c951",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "routes": [
+    {
+      "pattern": "kuratchi.dev",
+      "custom_domain": true
+    }
+  ],
+  "compatibility_date": "2025-09-24",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  },
+  "build": {
+    "command": "pnpm run build"
+  },
+  "placement": {
+    "mode": "smart"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

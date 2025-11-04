@@ -26,6 +26,9 @@ importers:
       '@kuratchi/ui':
         specifier: workspace:*
         version: link:../../packages/kuratchi-ui
+      '@lucide/svelte':
+        specifier: ^0.552.0
+        version: 0.552.0(svelte@5.39.9)
       cloudflare:
         specifier: ^5.2.0
         version: 5.2.0
@@ -38,6 +41,9 @@ importers:
       resend:
         specifier: ^6.1.2
         version: 6.1.2(@react-email/render@1.1.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))
+      sortablejs:
+        specifier: ^1.15.6
+        version: 1.15.6
       stripe:
         specifier: ^19.1.0
         version: 19.1.0(@types/node@24.7.0)
@@ -64,8 +70,8 @@ importers:
         specifier: ^4.0.0-alpha.15
         version: 4.1.14(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
       daisyui:
-        specifier: ^5.1.28
-        version: 5.1.28
+        specifier: ^5.4.2
+        version: 5.4.2
       eslint:
         specifier: ^9.18.0
         version: 9.37.0(jiti@2.6.1)
@@ -76,8 +82,8 @@ importers:
         specifier: ^4.0.0
         version: 4.3.2(picomatch@4.0.3)(svelte@5.39.9)(typescript@5.9.3)
       tailwindcss:
-        specifier: ^4.1.14
-        version: 4.1.14
+        specifier: ^4.1.16
+        version: 4.1.16
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
@@ -86,6 +92,55 @@ importers:
         version: 1.1.0(typescript@5.9.3)
       vite:
         specifier: ^7.0.4
+        version: 7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)
+      wrangler:
+        specifier: ^4.40.2
+        version: 4.42.0(@cloudflare/workers-types@4.20251004.0)
+
+  apps/site-renderer:
+    dependencies:
+      '@kuratchi/editor':
+        specifier: workspace:*
+        version: link:../../packages/kuratchi-editor
+      '@kuratchi/ui':
+        specifier: workspace:*
+        version: link:../../packages/kuratchi-ui
+      kuratchi-sdk:
+        specifier: workspace:*
+        version: link:../../packages/kuratchi-sdk
+      lucide-svelte:
+        specifier: ^0.460.0
+        version: 0.460.1(svelte@5.39.9)
+    devDependencies:
+      '@sveltejs/adapter-cloudflare':
+        specifier: ^7.2.3
+        version: 7.2.4(@sveltejs/kit@2.44.0(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)))(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)))(wrangler@4.42.0(@cloudflare/workers-types@4.20251004.0))
+      '@sveltejs/kit':
+        specifier: ^2.43.2
+        version: 2.44.0(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)))(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^6.2.0
+        version: 6.2.1(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
+      '@tailwindcss/vite':
+        specifier: ^4.1.13
+        version: 4.1.16(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
+      daisyui:
+        specifier: ^5.1.28
+        version: 5.3.11
+      svelte:
+        specifier: ^5.39.5
+        version: 5.39.9
+      svelte-check:
+        specifier: ^4.3.2
+        version: 4.3.2(picomatch@4.0.3)(svelte@5.39.9)(typescript@5.9.3)
+      tailwindcss:
+        specifier: ^4.1.13
+        version: 4.1.16
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.7
         version: 7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)
       wrangler:
         specifier: ^4.40.2
@@ -1653,6 +1708,9 @@ packages:
 
   daisyui@5.3.11:
     resolution: {integrity: sha512-+nhksucbX08o5zjS3XAaeInY0qg2VvR8FexfDaTx6CR3jo33tCHO7ab/LCyqBOfe7Ov+UjGSOy0R/TiAHWs0Vw==}
+
+  daisyui@5.4.2:
+    resolution: {integrity: sha512-yLoRFlx5hKvn5ODpT7CVb9oU/fAF2X1BGuLmVZo4LN33r7hcmO8v+gcxB6l33mcMas5jut3lZwHj9erqbMvvEA==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -4262,6 +4320,8 @@ snapshots:
   daisyui@5.1.28: {}
 
   daisyui@5.3.11: {}
+
+  daisyui@5.4.2: {}
 
   debug@4.4.3:
     dependencies:

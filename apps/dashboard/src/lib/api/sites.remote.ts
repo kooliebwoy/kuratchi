@@ -1,6 +1,10 @@
-import { getRequestEvent, query, form } from '$app/server';
+import { getRequestEvent, query, form, command } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
+import { database } from 'kuratchi-sdk';
+import { getDatabase, getAdminDatabase, getSiteDatabase } from '$lib/server/db-context';
+import { sitesSchema } from '$lib/schemas/sites';
+import { getThemeHomepage, DEFAULT_THEME_ID } from '@kuratchi/editor';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -40,36 +44,30 @@ export const logRouteActivity = guardedQuery(async () => {
 // Get all sites for the organization
 export const getSites = guardedQuery(async () => {
 	const { locals } = getRequestEvent();
+
+	console.log('[getSites] locals:', locals.kuratchi);
+
 	const session = locals.session;
 	const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
 	
+	if (!activeOrgId) {
+		return [];
+	}
+	
 	try {
-		// TODO: Implement actual database query when sites table is created
-		// For now, return mock data for UI development
-		const mockSites = [
-			{
-				id: '1',
-				name: 'My Portfolio',
-				subdomain: 'portfolio',
-				description: 'Personal portfolio website',
-				theme: 'minimal',
-				created_at: new Date().toISOString(),
-				organizationId: activeOrgId
-			},
-			{
-				id: '2',
-				name: 'Company Blog',
-				subdomain: 'blog',
-				description: 'Company news and updates',
-				theme: 'modern',
-				created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
-				organizationId: activeOrgId
-			}
-		];
+		const db = await getDatabase(locals);
+		const result = await db.sites
+			.where({ deleted_at: { isNullish: true } })
+			.many();
 
-		console.log('[getSites] activeOrgId:', activeOrgId, 'count:', mockSites.length);
+		if (!result.success) {
+			console.error('Failed to fetch sites:', result.error);
+			return [];
+		}
+
+		console.log('[getSites] activeOrgId:', activeOrgId, 'count:', result.data?.length || 0);
 		
-		return mockSites;
+		return result.data || [];
 	} catch (err) {
 		console.error('Error fetching sites:', err);
 		return [];
@@ -83,22 +81,24 @@ export const getSiteById = guardedQuery(async () => {
 	const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
 	const siteId = params.id;
 	
+	if (!activeOrgId || !siteId) {
+		error(400, 'Missing required parameters');
+	}
+	
 	try {
-		// TODO: Implement actual database query when sites table is created
-		// For now, return mock data for UI development
-		const mockSite = {
-			id: siteId,
-			name: 'My Portfolio',
-			subdomain: 'portfolio',
-			description: 'Personal portfolio website',
-			theme: 'minimal',
-			created_at: new Date().toISOString(),
-			organizationId: activeOrgId
-		};
+		const db = await getDatabase(locals);
+		const result = await db.sites
+			.where({ id: siteId, deleted_at: { isNullish: true } })
+			.one();
+
+		if (!result.success || !result.data) {
+			console.error('Site not found:', siteId);
+			error(404, 'Site not found');
+		}
 
 		console.log('[getSiteById] siteId:', siteId, 'activeOrgId:', activeOrgId);
 		
-		return mockSite;
+		return result.data;
 	} catch (err) {
 		console.error('Error fetching site:', err);
 		error(404, 'Site not found');
@@ -113,7 +113,8 @@ const createSiteSchema = v.object({
 		v.minLength(1, 'Subdomain is required'),
 		v.regex(/^[a-z0-9-]+$/, 'Subdomain must contain only lowercase letters, numbers, and hyphens')
 	),
-	description: v.optional(v.string(), '')
+	description: v.optional(v.string(), ''),
+	theme: v.optional(v.string(), 'minimal')
 });
 
 // Create a new site
@@ -123,36 +124,183 @@ export const createSite = guardedForm(
 		const { locals } = getRequestEvent();
 		const session = locals.session;
 		const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
+		const userId = session?.user?.id;
 
-		if (!activeOrgId) {
-			error(400, 'Organization ID is required');
+		if (!activeOrgId || !userId) {
+			error(400, 'Organization ID and User ID are required');
 		}
 
 		try {
-			// TODO: Implement actual database insertion when sites table is created
-			// For now, just log the data
+			const now = new Date().toISOString();
+			const siteId = crypto.randomUUID();
+			const dbId = crypto.randomUUID();
+			const themeId = data.theme || DEFAULT_THEME_ID;
+
 			console.log('[createSite] Creating site:', {
+				siteId,
 				name: data.name,
 				subdomain: data.subdomain,
-				description: data.description,
-				organizationId: activeOrgId
 			});
 
-			// Simulate API delay
-			await new Promise(resolve => setTimeout(resolve, 1000));
+			// Step 1: Create the site database with sites schema
+			// Use siteId prefix (first 8 chars) + subdomain to keep under 63 char limit
+			const shortId = siteId.substring(0, 8);
+			const dbName = `site-${shortId}-${data.subdomain}`;
+			const created = await database.create({
+				name: dbName,
+				schema: sitesSchema,
+				schemaName: 'sites',
+				migrate: true
+			});
+
+			console.log('[createSite] Database created:', {
+				databaseName: created.databaseName,
+				databaseId: created.databaseId,
+				workerName: created.workerName
+			});
+
+			// Step 2: Store database info in admin databases table
+			const adminDb = await getAdminDatabase(locals);
+			const newDB = await adminDb.databases.insert({
+				id: dbId,
+				name: created.databaseName,
+				dbuuid: created.databaseId || created.databaseName,
+				workerName: created.workerName,
+				organizationId: activeOrgId,
+				siteId: siteId,
+				isArchived: false,
+				isActive: true,
+				schemaVersion: 1,
+				needsSchemaUpdate: false,
+				created_at: now,
+				updated_at: now,
+				deleted_at: null
+			});
+
+			if (!newDB.success) {
+				console.error('Failed to insert database:', newDB.error);
+				error(500, `Failed to create database: ${newDB.error}`);
+			}
+
+			// Step 3: Store the database token
+			const dbApiToken = await adminDb.dbApiTokens.insert({
+				id: crypto.randomUUID(),
+				token: created.token,
+				name: `${data.subdomain}-token`,
+				databaseId: dbId,
+				created_at: now,
+				updated_at: now,
+				revoked: false,
+				expires: null,
+				deleted_at: null
+			});
+
+			if (!dbApiToken.success) {
+				console.error('Failed to insert database token:', dbApiToken.error);
+				error(500, `Failed to create database token: ${dbApiToken.error}`);
+			}
+
+			// Step 4: Store site info in organization database
+			const db = await getDatabase(locals);
+			const siteResult = await db.sites.insert({
+				id: siteId,
+				name: data.name,
+				subdomain: data.subdomain,
+				description: data.description || null,
+				status: true,
+				domain: `${data.subdomain}.kuratchi.com`,
+				environment: 'preview',
+				theme: themeId,
+				databaseId: dbId,
+				dbuuid: created.databaseId || created.databaseName,
+				workerName: created.workerName,
+				metadata: { themeId },
+				created_at: now,
+				updated_at: now,
+				deleted_at: null
+			});
+
+			if (!siteResult.success) {
+				console.error('Failed to insert site:', siteResult.error);
+				error(500, `Failed to create site: ${siteResult.error}`);
+			}
+
+			// Step 5: Link user to site
+			const userSiteResult = await db.userSites.insert({
+				userId,
+				siteId,
+				created_at: now,
+				updated_at: now,
+				deleted_at: null
+			});
+
+			if (!userSiteResult.success) {
+				console.error('Failed to link user to site:', userSiteResult.error);
+				// Non-fatal, continue
+			}
+
+			// Step 6: Seed default homepage for selected theme
+			try {
+				const { siteDb } = await getSiteDatabase(locals, siteId);
+				const themeHomepage = getThemeHomepage(themeId);
+				const homepageData = {
+					content: themeHomepage.content.map((block, index) => {
+						const clone = typeof structuredClone === 'function' ? structuredClone(block) : JSON.parse(JSON.stringify(block));
+						if (!clone.id) {
+							clone.id = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `block-${index}-${Date.now()}`);
+						}
+						return clone as Record<string, unknown>;
+					}),
+					header: themeHomepage.header,
+					footer: themeHomepage.footer,
+					metadata: themeHomepage.metadata || { backgroundColor: '#ffffff' }
+				};
+				const homepageId = crypto.randomUUID();
+				await siteDb.pages.insert({
+					id: homepageId,
+					title: themeHomepage.title || data.name || 'Homepage',
+					seoTitle: themeHomepage.seoTitle || themeHomepage.title || data.name || 'Homepage',
+					seoDescription: themeHomepage.seoDescription || data.description || '',
+					slug: themeHomepage.slug || 'homepage',
+					pageType: 'homepage',
+					isSpecialPage: true,
+					status: true,
+					data: homepageData,
+					created_at: now,
+					updated_at: now,
+					deleted_at: null
+				});
+			} catch (homepageError) {
+				console.error('[createSite] Failed to seed default homepage:', homepageError);
+			}
+
+			// Step 7: Store subdomain mapping in KV for fast site resolution
+			try {
+				const kv = locals.kuratchi?.kv?.default;
+				if (kv) {
+					await kv.put(`site:subdomain:${data.subdomain}`, JSON.stringify({
+						siteId,
+						orgId: activeOrgId,
+						databaseId: dbId,
+						dbuuid: created.databaseId || created.databaseName,
+						workerName: created.workerName
+					}));
+					console.log('[createSite] Subdomain mapping stored in KV:', data.subdomain);
+				} else {
+					console.warn('[createSite] KV not available, skipping subdomain mapping');
+				}
+			} catch (err) {
+				console.error('[createSite] Failed to store KV mapping:', err);
+				// Non-fatal, continue
+			}
+
+			// Refresh sites list
+			await getSites().refresh();
 
 			return {
 				success: true,
 				message: 'Site created successfully',
-				data: {
-					id: Math.random().toString(36).substring(7),
-					name: data.name,
-					subdomain: data.subdomain,
-					description: data.description,
-					theme: 'minimal',
-					created_at: new Date().toISOString(),
-					organizationId: activeOrgId
-				}
+				data: siteResult.data
 			};
 		} catch (err) {
 			console.error('Error creating site:', err);
@@ -203,6 +351,45 @@ export const updateSite = guardedForm(
 		}
 	}
 );
+
+// Update site theme schema
+const updateSiteThemeSchema = v.object({
+    siteId: v.string(),
+    themeId: v.string()
+});
+
+// Update site theme as a command (programmatic invocation)
+export const updateSiteTheme = command(updateSiteThemeSchema, async ({ siteId, themeId }): Promise<{ success: boolean; message: string }> => {
+    const { locals } = getRequestEvent();
+
+    const db = await getDatabase(locals);
+
+    const siteResult = await db.sites
+        .where({ id: siteId, deleted_at: { isNullish: true } })
+        .one();
+
+    if (!siteResult.success || !siteResult.data) {
+        error(404, 'Site not found');
+    }
+
+    const currentMetadata = (siteResult.data as any).metadata || {};
+    const updatedMetadata = { ...currentMetadata, themeId };
+
+    const updateResult = await db.sites
+        .where({ id: siteId })
+        .update({
+            metadata: updatedMetadata,
+            updated_at: new Date().toISOString()
+        });
+
+    if (!updateResult.success) {
+        error(500, `Failed to update theme: ${updateResult.error}`);
+    }
+
+    await getSites().refresh();
+
+    return { success: true, message: 'Theme updated successfully' };
+});
 
 // Delete site schema
 const deleteSiteSchema = v.object({

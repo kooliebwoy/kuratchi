@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import { blocks, getBlock } from "./registry/blocks.svelte";
     import { layouts, getLayout } from "./registry/layouts.svelte";
     import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
@@ -124,12 +124,22 @@
     let headerUpdateTimeout: number;
     let footerUpdateTimeout: number;
 
+    let sortableInstance: Sortable | null = null;
+
     onMount(() => {
         imageConfig.set(editorImageConfig);
-        new Sortable(editor, {
-            handle: '.handle',
-            animation: 150
-        });
+
+        const initSortable = async () => {
+            await tick();
+            if (editor instanceof HTMLElement) {
+                sortableInstance = new Sortable(editor, {
+                    handle: '.handle',
+                    animation: 150
+                });
+            }
+        };
+
+        initSortable();
 
         const observer = new MutationObserver(() => {
             updateEditorData();
@@ -177,9 +187,16 @@
         }
         
         return () => {
+            sortableInstance?.destroy();
+            sortableInstance = null;
             clearTimeout(headerUpdateTimeout);
             clearTimeout(footerUpdateTimeout);
         };
+    });
+
+    onDestroy(() => {
+        sortableInstance?.destroy();
+        sortableInstance = null;
     });
 
     let layoutModal: HTMLDialogElement;

@@ -75,6 +75,16 @@ export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: 
   
   // Register user-provided plugins
   if (options.plugins && options.plugins.length > 0) {
+    // Always register storage plugin if storage config is provided,
+    // even when custom plugins are supplied.
+    if (options.kvNamespaces || options.r2Buckets || options.d1Databases) {
+      registry.register(storagePlugin({
+        kv: options.kvNamespaces,
+        r2: options.r2Buckets,
+        d1: options.d1Databases
+      }));
+    }
+
     registry.registerMany(options.plugins);
   } else {
     // Auto-register default plugins if no custom plugins provided

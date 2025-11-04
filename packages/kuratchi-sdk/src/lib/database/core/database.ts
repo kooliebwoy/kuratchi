@@ -183,7 +183,7 @@ export class KuratchiDatabase {
    * Get ORM client with auto-migrations
    */
   async ormClient(options: ClientOptions): Promise<OrmClient> {
-    const { databaseName, dbToken, gatewayKey, schema, scriptName } = options;
+    const { databaseName, dbToken, gatewayKey, schema, scriptName, skipMigrations } = options;
     
     if (!databaseName || !dbToken || !gatewayKey) {
       throw new Error('databaseName, dbToken, and gatewayKey are required');
@@ -197,7 +197,8 @@ export class KuratchiDatabase {
     return createOrmClient({
       httpClient,
       schema,
-      databaseName
+      databaseName,
+      skipMigrations
     });
   }
 

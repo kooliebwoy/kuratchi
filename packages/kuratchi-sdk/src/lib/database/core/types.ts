@@ -58,6 +58,7 @@ export interface ClientOptions {
   gatewayKey: string;
   schema: DatabaseSchema | SchemaDsl;
   scriptName?: string;
+  skipMigrations?: boolean;
 }
 
 export interface HttpClientOptions {

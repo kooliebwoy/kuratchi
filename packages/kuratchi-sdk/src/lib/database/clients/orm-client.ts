@@ -16,6 +16,7 @@ export interface CreateOrmClientOptions {
   httpClient: D1Client;
   schema: DatabaseSchema | SchemaDsl;
   databaseName: string;
+  skipMigrations?: boolean;
 }
 
 /**
@@ -50,7 +51,7 @@ function detectAdapter(databaseName: string, httpClient: D1Client): { exec: any;
  * Create ORM client (auto-detects D1 direct binding or HTTP client)
  */
 export async function createOrmClient(options: CreateOrmClientOptions): Promise<OrmClient> {
-  const { httpClient, schema, databaseName } = options;
+  const { httpClient, schema, databaseName, skipMigrations } = options;
   
   // Normalize schema
   const normalizedSchema = ensureNormalizedSchema(schema);
@@ -64,17 +65,21 @@ export async function createOrmClient(options: CreateOrmClientOptions): Promise<
     ? httpClient 
     : createMigrationClientFromExec(exec);
   
-  try {
-    console.log(`[Kuratchi] Applying migrations for ${normalizedSchema.name} (via ${type})...`);
-    await applyMigrations({
-      client: migrationClient,
-      schemaName: normalizedSchema.name,
-      schema: normalizedSchema
-    });
-    console.log(`[Kuratchi] ✓ Migrations applied for ${normalizedSchema.name}`);
-  } catch (error: any) {
-    console.error(`[Kuratchi] Migration error for ${normalizedSchema.name}:`, error.message);
-    throw error;
+  if (!skipMigrations) {
+    try {
+      console.log(`[Kuratchi] Applying migrations for ${normalizedSchema.name} (via ${type})...`);
+      await applyMigrations({
+        client: migrationClient,
+        schemaName: normalizedSchema.name,
+        schema: normalizedSchema
+      });
+      console.log(`[Kuratchi] ✓ Migrations applied for ${normalizedSchema.name}`);
+    } catch (error: any) {
+      console.error(`[Kuratchi] Migration error for ${normalizedSchema.name}:`, error.message);
+      throw error;
+    }
+  } else {
+    console.log(`[Kuratchi] Skipping migrations for ${normalizedSchema.name}`);
   }
   
   // Create ORM client from schema (no KV support in D1 mode)
@@ -120,7 +125,7 @@ function createMigrationClientFromExec(exec: any): D1Client {
  * Create ORM client with full validation
  */
 export async function createValidatedOrmClient(options: ClientOptions & { httpClient: D1Client }): Promise<OrmClient> {
-  const { httpClient, schema, databaseName } = options;
+  const { httpClient, schema, databaseName, skipMigrations } = options;
   
   if (!databaseName) {
     throw new Error('databaseName is required');
@@ -129,5 +134,5 @@ export async function createValidatedOrmClient(options: ClientOptions & { httpCl
     throw new Error('schema is required');
   }
   
-  return createOrmClient({ httpClient, schema, databaseName });
+  return createOrmClient({ httpClient, schema, databaseName, skipMigrations });
 }

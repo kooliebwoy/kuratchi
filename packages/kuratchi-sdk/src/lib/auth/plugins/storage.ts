@@ -66,6 +66,15 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
             );
           }
         }
+
+        // Convenience accessor: getKV(name?) -> KV namespace
+        // If no name is provided, use the first configured KV binding
+        ctx.locals.kuratchi.getKV = (name?: string) => {
+          const kvObj = ctx.locals.kuratchi.kv as Record<string, any> | undefined;
+          if (!kvObj) return null as any;
+          const key = name || Object.keys(kvObj)[0];
+          return (key ? kvObj[key] : null) as any;
+        };
       }
       
       // Attach R2 buckets
@@ -82,6 +91,15 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
             );
           }
         }
+
+        // Convenience accessor: getR2(name?) -> R2 bucket
+        // If no name is provided, use the first configured R2 binding
+        ctx.locals.kuratchi.getR2 = (name?: string) => {
+          const r2Obj = ctx.locals.kuratchi.r2 as Record<string, any> | undefined;
+          if (!r2Obj) return null as any;
+          const key = name || Object.keys(r2Obj)[0];
+          return (key ? r2Obj[key] : null) as any;
+        };
       }
       
       // Attach D1 databases

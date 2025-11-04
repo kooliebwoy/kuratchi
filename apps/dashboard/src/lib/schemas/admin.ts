@@ -134,11 +134,13 @@ export const adminSchema: SchemaDsl = {
       workerName: 'text',
       isArchived: 'boolean',
       isActive: 'boolean',
+      isPrimary: 'boolean default 0',
       lastBackup: 'timestamp_ms',
       schemaVersion: 'integer default 1',
       needsSchemaUpdate: 'boolean default 0',
       lastSchemaSync: 'timestamp_ms',
       organizationId: 'text',
+      siteId: 'text',
       '...timestamps': true,
     },
     dbApiTokens: {

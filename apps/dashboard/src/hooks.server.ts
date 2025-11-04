@@ -94,8 +94,8 @@ export const { handle }: { handle: Handle } = kuratchi({
     trackingTable: 'emails'
   },
   storage: {
-    r2: { R2: 'BUCKET' },
-    kv: { KV: 'KV' }
+    kv: { default: 'KV', KV: 'KV' },
+    r2: { default: 'BUCKET', R2: 'BUCKET' }
   },
   stripe: {
     apiKey: env.STRIPE_SECRET_KEY,

@@ -758,6 +758,15 @@
           "mode": "boolean"
         },
         {
+          "name": "isPrimary",
+          "type": "integer",
+          "mode": "boolean",
+          "default": {
+            "kind": "value",
+            "value": 0
+          }
+        },
+        {
           "name": "lastBackup",
           "type": "integer",
           "mode": "timestamp_ms"
@@ -786,6 +795,10 @@
         },
         {
           "name": "organizationId",
+          "type": "text"
+        },
+        {
+          "name": "siteId",
           "type": "text"
         },
         {

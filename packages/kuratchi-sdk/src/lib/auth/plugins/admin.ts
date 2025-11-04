@@ -283,10 +283,13 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           
           
           // Try to provision via D1 if credentials available
+          if (!workersSubdomain || !accountId || !apiToken) {
+            throw new Error('[Admin] Cloudflare credentials not configured (CLOUDFLARE_WORKERS_SUBDOMAIN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)');
+          }
           const dbService = new KuratchiDatabase({
-            workersSubdomain,
-            accountId,
-            apiToken,
+            workersSubdomain: workersSubdomain,
+            accountId: accountId,
+            apiToken: apiToken,
             scriptName: 'kuratchi-d1'
           });
           
@@ -310,6 +313,7 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             dbuuid: dbUuid,
             workerName: workerName,
             organizationId: organizationId,
+            isPrimary: true,
             isActive: true,
             isArchived: false,
             schemaVersion: 1,
@@ -489,9 +493,9 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             throw new Error('[Admin] KURATCHI_GATEWAY_KEY not configured');
           }
           
-          // Get database record (non-deleted) using whereAny
+          // Get primary organization database (non-deleted)
           const { data: db } = await adminDb.databases
-            .where({ organizationId: organizationId })
+            .where({ organizationId: organizationId, isPrimary: true })
             .whereAny([
               { deleted_at: { is: null } },
               { deleted_at: { isNullish: true } }
