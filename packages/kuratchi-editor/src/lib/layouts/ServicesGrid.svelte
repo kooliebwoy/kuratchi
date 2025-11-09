@@ -3,24 +3,31 @@
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
     import { Plus, ArrowUp, ArrowDown, Trash2 } from "@lucide/svelte";
 
+    interface ServiceItem {
+        title: string;
+        description: string;
+        icon?: LucideIconKey;
+    }
+
+    interface StylingOptions {
+        backgroundColor?: string;
+        textColor?: string;
+        columns?: number;
+        spacing?: string;
+    }
+
+    interface Metadata {
+        title?: string;
+        subtitle?: string;
+        services?: ServiceItem[];
+        styling?: StylingOptions;
+    }
+
     interface Props {
         id?: string;
         type?: string;
-        metadata?: {
-            title?: string;
-            subtitle?: string;
-            services?: Array<{
-                title: string;
-                description: string;
-                icon?: LucideIconKey;
-            }>;
-            styling?: {
-                backgroundColor?: string;
-                textColor?: string;
-                columns?: number;
-                spacing?: string;
-            };
-        };
+        metadata?: Metadata;
+        editable?: boolean;
     }
 
     let {
@@ -52,7 +59,8 @@
                 columns: 3,
                 spacing: 'large'
             }
-        }
+        },
+        editable = true
     }: Props = $props();
 
     // State variables following the pattern
@@ -65,13 +73,19 @@
     let spacing = $state(metadata.styling?.spacing || 'large');
 
     // Derived content object
+    const normalizedServices = $derived(services.map((service) => ({
+        title: service?.title ?? '',
+        description: service?.description ?? '',
+        icon: service?.icon
+    })));
+
     let content = $derived({
         id,
         type,
         metadata: {
             title,
             subtitle,
-            services,
+            services: normalizedServices,
             styling: {
                 backgroundColor,
                 textColor,
@@ -107,6 +121,7 @@
     }
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -349,3 +364,62 @@
         </section>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section
+        id={id}
+        data-type={type}
+        class="py-16 px-4"
+        style:background-color={backgroundColor}
+        style:color={textColor}
+    >
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="max-w-7xl mx-auto">
+            {#if title || subtitle}
+                <div class="text-center mb-16 max-w-4xl mx-auto">
+                    {#if title}
+                        <h2 class="text-4xl md:text-5xl font-light mb-6 leading-tight">
+                            {@html title}
+                        </h2>
+                    {/if}
+                    {#if subtitle}
+                        <div class="text-lg opacity-80 leading-relaxed">
+                            {@html subtitle}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
+
+            <div
+                class="grid gap-12 md:gap-16"
+                class:grid-cols-1={columns === 1}
+                class:md:grid-cols-2={columns === 2}
+                class:md:grid-cols-3={columns === 3}
+                class:md:grid-cols-4={columns === 4}
+                class:gap-8={spacing === 'small'}
+                class:gap-12={spacing === 'medium'}
+                class:gap-16={spacing === 'large'}
+            >
+                {#each normalizedServices as service}
+                    <article class="text-center space-y-4">
+                        {#if service.icon}
+                            {@const Comp = LucideIconMap[service.icon as LucideIconKey]}
+                            <div class="flex justify-center mb-6">
+                                <Comp class="w-8 h-8 opacity-60" style={`color: ${textColor}`} />
+                            </div>
+                        {/if}
+                        {#if service.title}
+                            <h3 class="text-xl font-medium mb-4 leading-tight">
+                                {service.title}
+                            </h3>
+                        {/if}
+                        {#if service.description}
+                            <p class="opacity-80 leading-relaxed">
+                                {service.description}
+                            </p>
+                        {/if}
+                    </article>
+                {/each}
+            </div>
+        </div>
+    </section>
+{/if}

@@ -17,6 +17,9 @@ export interface ThemeMetadata {
 export interface ThemeTemplate {
   metadata: ThemeMetadata;
   defaultHomepage: Omit<PageData, 'id' | 'domain'>;
+  siteHeader: Record<string, unknown> | null;
+  siteFooter: Record<string, unknown> | null;
+  siteMetadata: Record<string, unknown>;
 }
 
 /**
@@ -47,12 +50,31 @@ const minimalTheme: ThemeTemplate = {
         text: 'Start building your website by adding blocks from the sidebar.',
         alignment: 'center'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#ffffff'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#ffffff',
+    themeId: 'minimal'
   }
 };
 
@@ -92,12 +114,31 @@ const modernTheme: ThemeTemplate = {
         text: 'Add your content here to get started.',
         alignment: 'left'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#f8f9fa'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#f8f9fa',
+    themeId: 'modern'
   }
 };
 
@@ -129,12 +170,31 @@ const classicTheme: ThemeTemplate = {
         text: 'Timeless design that never goes out of style.',
         alignment: 'center'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#fafafa'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#fafafa',
+    themeId: 'classic'
   }
 };
 
@@ -166,12 +226,31 @@ const boldTheme: ThemeTemplate = {
         text: 'Bold design for those who dare to be different.',
         alignment: 'center'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#1a1a1a'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#1a1a1a',
+    themeId: 'bold'
   }
 };
 
@@ -203,12 +282,31 @@ const creativeTheme: ThemeTemplate = {
         text: 'Unleash your creativity with unique design elements.',
         alignment: 'left'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#f0f4f8'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#f0f4f8',
+    themeId: 'creative'
   }
 };
 
@@ -240,12 +338,31 @@ const professionalTheme: ThemeTemplate = {
         text: 'Business-focused design that builds trust and credibility.',
         alignment: 'center'
       }
+    ]
+  },
+  siteHeader: {
+    type: 'saige-blake-header',
+    id: 'default-header',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    reverseOrder: false,
+    icons: [
+      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
+      { icon: 'x', link: '#', name: 'X', enabled: true },
+      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
     ],
-    header: null,
-    footer: null,
-    metadata: {
-      backgroundColor: '#ffffff'
-    }
+    menu: []
+  },
+  siteFooter: {
+    type: 'saige-blake-footer',
+    id: 'default-footer',
+    backgroundColor: '#ffffff',
+    textColor: '#92c8c8',
+    menu: []
+  },
+  siteMetadata: {
+    backgroundColor: '#ffffff',
+    themeId: 'professional'
   }
 };
 
@@ -293,4 +410,11 @@ export function getThemeMetadata(themeId?: string | null): ThemeMetadata {
  */
 export function getThemeHomepage(themeId?: string | null): Omit<PageData, 'id' | 'domain'> {
   return getTheme(themeId).defaultHomepage;
+}
+
+/**
+ * Get full theme template (including site-level data)
+ */
+export function getThemeTemplate(themeId?: string | null): ThemeTemplate {
+  return getTheme(themeId);
 }

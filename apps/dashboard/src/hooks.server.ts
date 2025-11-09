@@ -4,7 +4,8 @@ import {
   organizationPlugin,
   credentialsPlugin,
   activityPlugin,
-  rolesPlugin
+  rolesPlugin,
+  oauthPlugin
 } from 'kuratchi-sdk/auth';
 import { adminSchema } from '$lib/schemas/admin';
 import { organizationSchema } from '$lib/schemas/organization';
@@ -23,6 +24,19 @@ export const { handle }: { handle: Handle } = kuratchi({
       }),
       organizationPlugin({ organizationSchema }),
       credentialsPlugin(), // Enable email/password auth
+      oauthPlugin({
+        providers: [
+          {
+            name: 'google',
+            clientId: env.GOOGLE_CLIENT_ID || '',
+            clientSecret: env.GOOGLE_CLIENT_SECRET || '',
+          }
+        ]
+        // SDK default onProfile handler already implements the logic:
+        // 1. If OAuth account exists → sign in
+        // 2. If email exists (from credentials or other OAuth) → link account and sign in
+        // 3. If new email → create user and sign in
+      }),
       activityPlugin({
         // Static core activity types (fallbacks)
         define: {

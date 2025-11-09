@@ -29,20 +29,18 @@
     class:editor-header-item={getHeaderBlock(type)} 
     class:editor-footer-item={getFooterBlock(type)}
 >
-    <div class="absolute right-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 flex items-center gap-2">
-        <div class="flex items-center gap-2 pr-1 pt-0.5">
-            <button class="btn btn-xs btn-neutral btn-square" onclick={() => drawerContent ? openRightPanel(drawerContent, `Edit ${type}`) : drawerState = true}>
-                <Pencil class="text-xl text-info" />
+    <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex flex-row gap-1">
+        <button class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200 cursor-grab active:cursor-grabbing drag-handle handle" title="Drag to reorder">
+            <GripVertical class="text-base text-base-content/70" />
+        </button>
+        <button class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200" onclick={() => drawerContent ? openRightPanel(drawerContent, `Edit ${type}`) : drawerState = true} title="Edit component">
+            <Pencil class="text-base text-base-content/70" />
+        </button>
+        {#if isNotHeaderOrFooter}
+            <button onclick={() => deleteElement(component!)} class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200" title="Delete component">
+                <Trash2 class="text-base text-error" />
             </button>
-            {#if isNotHeaderOrFooter}
-                <button class="btn btn-xs btn-neutral btn-square cursor-grab active:cursor-grabbing drag-handle handle">
-                    <GripVertical class="text-base" />
-                </button>
-                <button onclick={() => deleteElement(component!)} class="btn btn-xs btn-neutral btn-square">
-                    <Trash2 class="text-base text-error" />
-                </button>
-            {/if}
-        </div>
+        {/if}
     </div>
 
     <div class="component-wrapper" id={id} data-type={type}>
@@ -66,4 +64,3 @@
         </div>
     </div>    
 </div>
-

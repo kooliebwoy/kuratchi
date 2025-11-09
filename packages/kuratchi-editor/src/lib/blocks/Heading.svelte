@@ -72,7 +72,7 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <EditorToolbar {component} show={selectionState.showToolbar} />
+            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} />
         {/if}
         
         {#if mounted}
@@ -92,17 +92,17 @@
             </div>
 
             {#if size === 'h1'}
-                <h1 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
+                <h1 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
             {:else if size === 'h2'}
-                <h2 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h2>
+                <h2 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h2>
             {:else if size === 'h3'}
-                <h3 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h3>
+                <h3 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h3>
             {:else if size === 'h4'}
-                <h4 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h4>
+                <h4 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h4>
             {:else if size === 'h5'}
-                <h5 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h5>
+                <h5 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h5>
             {:else}
-                <h6 id="heading" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h6>
+                <h6 id="heading" class="outline-none" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h6>
             {/if}
         </div>
     </div>

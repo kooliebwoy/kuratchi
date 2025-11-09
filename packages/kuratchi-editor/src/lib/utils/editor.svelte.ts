@@ -317,12 +317,11 @@ export function handleSelectionChange(component: HTMLElement | undefined, state:
 
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
-    const componentRect = component.getBoundingClientRect();
 
-    // Only calculate horizontal position, let CSS handle vertical
+    // Use viewport coordinates for fixed positioning
     state.position = {
-        x: rect.left - componentRect.left + (rect.width / 2),
-        y: 0
+        x: rect.left + (rect.width / 2),
+        y: rect.top
     };
     
     state.showToolbar = true;

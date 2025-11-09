@@ -67,7 +67,7 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <EditorToolbar {component} show={selectionState.showToolbar} />
+            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} />
         {/if}
 
         {#if mounted}

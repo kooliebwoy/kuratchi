@@ -6,15 +6,17 @@
         id?: string;
         type?: string;
         metadata?: any;
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         type = 'divider',
-        metadata = {}
+        metadata = {},
+        editable = true
     }: Props = $props();
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
 
     // extract body from the content and the card title
     let content = $derived({
@@ -25,21 +27,28 @@
 
     let mounted = $state(false);
     onMount(() => {
+        if (!editable) return;
         mounted = true;
     });
 </script>
 
-<div class="editor-item group relative" bind:this={component}>
-    {#if mounted}
-        <SideActions {component} />
-    {/if}
+{#if editable}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <SideActions {component} />
+        {/if}
 
-    <div data-type={type} id={id} class="w-full min-w-full">
-        <!-- JSON Data for this component -->
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
+        <div data-type={type} id={id} class="w-full min-w-full">
+            <!-- JSON Data for this component -->
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+
+            <div class="divider"></div>
         </div>
-
+    </div>
+{:else}
+    <div data-type={type} id={id} class="w-full min-w-full">
         <div class="divider"></div>
     </div>
-</div>
+{/if}

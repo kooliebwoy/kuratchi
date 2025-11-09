@@ -4,7 +4,8 @@
  */
 
 import type { AuthPlugin, PluginContext } from '../core/plugin.js';
-import { signState, verifyState } from '../../utils/auth.js';
+import { signState, verifyState, hashToken, buildSessionCookie, generateSessionToken } from '../../utils/auth.js';
+import { redirect } from '@sveltejs/kit';
 
 export interface OAuthProviderConfig {
   name: 'google' | 'github' | 'microsoft' | string;
@@ -288,13 +289,13 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
             } else {
               // Default: get or create user
               const { data: existingAccount } = await orgDb.oauthAccounts
-                .where({ provider: providerConfig.name, provider_account_id: providerAccountId })
+                .where({ provider: providerConfig.name, providerAccountId })
                 .first();
               
               if (existingAccount) {
                 // Get existing user
                 const { data: existingUser } = await orgDb.users
-                  .where({ id: existingAccount.user_id })
+                  .where({ id: existingAccount.userId })
                   .first();
                 user = existingUser;
               } else {
@@ -320,9 +321,9 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
                 
                 // Link OAuth account
                 await orgDb.oauthAccounts.insert({
-                  user_id: user.id,
+                  userId: user.id,
                   provider: providerConfig.name,
-                  provider_account_id: providerAccountId,
+                  providerAccountId,
                   access_token,
                   refresh_token: refresh_token || null,
                   id_token: id_token || null,
@@ -331,36 +332,58 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
               }
             }
             
-            // Create session
-            const sessionId = crypto.randomUUID();
-            const sessionData = {
-              userId: user.id,
-              email: user.email,
-              organizationId: orgId,
-              createdAt: Date.now()
-            };
+            // Create session with proper token and encryption (matching credentials plugin)
+            if (!ctx.env.KURATCHI_AUTH_SECRET) {
+              throw new Error('Auth secret not configured');
+            }
             
-            await orgDb.sessions.insert({
-              id: sessionId,
-              user_id: user.id,
-              organization_id: orgId,
-              created_at: Date.now(),
-              expires_at: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
+            const now = new Date();
+            const expires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+            
+            // Generate session token and hash it
+            const sessionToken = `${orgId}.${generateSessionToken()}`;
+            const sessionTokenHash = await hashToken(sessionToken);
+            
+            // Store session in database with hashed token
+            const insertResult = await orgDb.session.insert({
+              sessionToken: sessionTokenHash,
+              userId: user.id,
+              expires: expires.getTime(),
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+              deleted_at: null
             });
             
-            // Set session cookie
-            const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-            const sessionCookie = JSON.stringify(sessionData);
-            ctx.locals.kuratchi?.setSessionCookie?.(sessionCookie, { expires });
+            if (!insertResult?.success) {
+              throw new Error('Failed to create session');
+            }
+            
+            // Build encrypted session cookie
+            const sessionCookie = await buildSessionCookie(
+              ctx.env.KURATCHI_AUTH_SECRET,
+              orgId as any,
+              sessionTokenHash
+            );
+            
+            // Set session cookie using session plugin helper
+            const setCookie = ctx.locals.kuratchi?.auth?.session?.setCookie;
+            if (setCookie) {
+              setCookie(sessionCookie, { expires });
+            }
             
             // Callback after success
             if (options.onSuccess) {
               await options.onSuccess(user, providerConfig.name);
             }
             
-            // Redirect
-            return new Response(null, { status: 303, headers: { Location: redirectTo || '/' } });
+            // Redirect using SvelteKit's redirect - this properly preserves cookies
+            throw redirect(303, redirectTo || '/');
           } catch (e: any) {
+            // Re-throw redirect errors (they're not actually errors, but SvelteKit's redirect mechanism)
+            if (e?.status && e?.location) {
+              throw e;
+            }
+            
             console.error(`[OAuth ${providerConfig.name}] Callback failed:`, e);
             return new Response(`OAuth callback error: ${e?.message || String(e)}`, { status: 500 });
           }

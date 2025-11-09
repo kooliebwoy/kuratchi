@@ -15,6 +15,7 @@
     backgroundColor?: string;
     showBackgroundImage?: boolean;
     backgroundImage?: string;
+    editable?: boolean;
   }
 
   let {
@@ -37,7 +38,8 @@
       },
     backgroundColor = $bindable('#ffffff'),
     showBackgroundImage = $bindable(true),
-    backgroundImage = $bindable('https://img.daisyui.com/images/stock/photo-1507358522600-9f71e620c44e.webp')
+    backgroundImage = $bindable('https://img.daisyui.com/images/stock/photo-1507358522600-9f71e620c44e.webp'),
+    editable = true
   }: Props = $props();
   
   let content = $derived({
@@ -54,6 +56,7 @@
   })
   </script>
   
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="card-body">
@@ -133,3 +136,19 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="w-full" style:background-color={backgroundColor}>
+        <div class="hero h-96" style:backgroundImage={showBackgroundImage ? `url(${backgroundImage})` : ''}>
+            <div class="hero-overlay bg-opacity-60"></div>
+            <div class="hero-content text-neutral-content text-center">
+                <div class="max-w-md">
+                    <h1 class="mb-5 text-5xl font-bold" style:color={headingColor}>{heading}</h1>
+                    <p class="mb-5" style:color={textColor}>{body}</p>
+                    <a class={`btn ${buttonColor}`} href={button?.link ?? '#'}>
+                        {button?.label ?? 'Read more'}
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+{/if}

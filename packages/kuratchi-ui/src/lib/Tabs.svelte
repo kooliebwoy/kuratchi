@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import type { Snippet } from 'svelte';
 
   interface Tab {
@@ -11,13 +11,13 @@
 
   interface Props {
     tabs: Tab[];
-    children?: Snippet;
+    children: Snippet;
   }
 
   let { tabs, children }: Props = $props();
 
   // Get current path for active tab detection
-  const currentPath = $derived($page?.url?.pathname || '');
+  const currentPath = $derived(page?.url?.pathname || '');
 
   function isActive(tabHref: string): boolean {
     // Exact match for root paths, or prefix match for nested paths
@@ -45,12 +45,10 @@
         {/if}
       </a>
     {/each}
-  </div>
 
-  <!-- Tab Content -->
-  {#if children}
-    <div class="tab-content">
+    <!-- Tab Content -->
+    <div class="w-full">
       {@render children()}
     </div>
-  {/if}
+  </div>
 </div>

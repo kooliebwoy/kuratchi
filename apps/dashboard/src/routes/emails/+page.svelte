@@ -1,22 +1,26 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { Mail, CheckCircle, XCircle, AlertCircle, Clock, Search, Eye, X, ExternalLink } from 'lucide-svelte';
   import { getEmails, getEmailStats } from '$lib/api/emails.remote';
 
-  // Data sources
+  const tabs = [
+    { label: 'Drip Campaigns', href: '/emails/drip', value: 'drip' },
+    { label: 'Segments', href: '/emails/segments', value: 'segments' },
+    { label: 'Templates', href: '/emails/templates', value: 'templates' },
+    { label: 'Email History', href: '/emails', value: 'broadcasts' }
+  ];
+
   const emails = getEmails();
   const stats = getEmailStats();
 
-  // Derived lists
   const emailsList = $derived(emails.current ? (Array.isArray(emails.current) ? emails.current : []) : []);
   const statsData = $derived(stats.current || { total: 0, sent: 0, failed: 0, pending: 0, last24h: 0 });
 
-  // Filter state
   let searchQuery = $state('');
   let filterStatus = $state<'all' | 'sent' | 'failed' | 'pending'>('all');
   let selectedEmail = $state<any>(null);
   let showEmailModal = $state(false);
 
-  // Filtered emails
   const filteredEmails = $derived.by(() => {
     let filtered = emailsList;
 
@@ -83,9 +87,23 @@
   <title>Email Management - Kuratchi Dashboard</title>
 </svelte:head>
 
-<div class="p-8">
-  <!-- Header -->
-  <div class="mb-8 flex items-center justify-between">
+<!-- Navigation Tabs -->
+<div class="border-b border-base-200 bg-base-100">
+  <div class="flex gap-0 px-8">
+    <a href="/emails/drip" class="tab tab-bordered">
+      <span class="font-medium">Drip Campaigns</span>
+    </a>
+    <a href="/emails/segments" class="tab tab-bordered">
+      <span class="font-medium">Segments</span>
+    </a>
+    <a href="/emails" class="tab tab-active tab-bordered">
+      <span class="font-medium">Email History</span>
+    </a>
+  </div>
+</div>
+
+<div class="p-8 space-y-6">
+  <div class="flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
         <Mail class="h-6 w-6 text-primary" />
@@ -97,8 +115,7 @@
     </div>
   </div>
 
-  <!-- Stats Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
@@ -112,7 +129,6 @@
         </div>
       </div>
     </div>
-
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
@@ -126,7 +142,6 @@
         </div>
       </div>
     </div>
-
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
@@ -140,7 +155,6 @@
         </div>
       </div>
     </div>
-
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body p-6">
         <div class="flex items-center justify-between">
@@ -156,8 +170,7 @@
     </div>
   </div>
 
-  <!-- Filters -->
-  <div class="mb-6 flex flex-wrap items-center gap-3">
+  <div class="flex flex-wrap items-center gap-3">
     <div class="form-control">
       <div class="input-group">
         <span class="bg-base-200 flex items-center justify-center px-3">
@@ -180,7 +193,6 @@
     </select>
   </div>
 
-  <!-- Emails Table -->
   <div class="card bg-base-100 shadow-sm">
     <div class="card-body">
       <div class="overflow-x-auto">
@@ -223,7 +235,7 @@
                     <div class="text-xs text-base-content/60">{formatDate(email.sentAt)}</div>
                   </td>
                   <td>
-                    <span class="badge {badge.class} badge-sm">{badge.label}</span>
+                    <span class={`badge ${badge.class} badge-sm`}>{badge.label}</span>
                     {#if email.error}
                       <div class="text-xs text-error mt-1" title={email.error}>Error</div>
                     {/if}
@@ -245,11 +257,9 @@
                   <div class="flex flex-col items-center gap-2">
                     <Mail class="h-12 w-12 text-base-content/30" />
                     <p class="text-base-content/70">No emails found</p>
-                    {#if searchQuery || filterStatus !== 'all'}
-                      <p class="text-sm text-base-content/50">Try adjusting your filters</p>
-                    {:else}
-                      <p class="text-sm text-base-content/50">Send an email to see it here</p>
-                    {/if}
+                    <p class="text-sm text-base-content/50">
+                      {#if searchQuery || filterStatus !== 'all'}Try adjusting your filters{:else}Send an email to see it here{/if}
+                    </p>
                   </div>
                 </td>
               </tr>
@@ -261,7 +271,6 @@
   </div>
 </div>
 
-<!-- Email Detail Modal -->
 {#if showEmailModal && selectedEmail}
   <div class="modal modal-open">
     <div class="modal-box max-w-3xl">
@@ -273,7 +282,6 @@
       </div>
 
       <div class="space-y-4">
-        <!-- Email Header Info -->
         <div class="bg-base-200 p-4 rounded-lg space-y-2 text-sm">
           <div class="flex justify-between">
             <span class="text-base-content/70">To:</span>
@@ -296,39 +304,19 @@
             <div>
               {#if selectedEmail.last_event}
                 {@const badge = getStatusBadge(selectedEmail.last_event)}
-                <span class="badge {badge.class} badge-sm">{badge.label}</span>
+                <span class={`badge ${badge.class} badge-sm`}>{badge.label}</span>
               {:else}
                 <span class="badge badge-neutral badge-sm">Sent</span>
               {/if}
             </div>
           </div>
-          {#if selectedEmail.cc && selectedEmail.cc.length > 0}
-            <div class="flex justify-between">
-              <span class="text-base-content/70">CC:</span>
-              <span class="font-medium">{selectedEmail.cc.join(', ')}</span>
-            </div>
-          {/if}
-          {#if selectedEmail.bcc && selectedEmail.bcc.length > 0}
-            <div class="flex justify-between">
-              <span class="text-base-content/70">BCC:</span>
-              <span class="font-medium">{selectedEmail.bcc.join(', ')}</span>
-            </div>
-          {/if}
-          {#if selectedEmail.reply_to && selectedEmail.reply_to.length > 0}
-            <div class="flex justify-between">
-              <span class="text-base-content/70">Reply To:</span>
-              <span class="font-medium">{selectedEmail.reply_to.join(', ')}</span>
-            </div>
-          {/if}
         </div>
 
-        <!-- Email Content Tabs -->
         <div class="tabs tabs-boxed">
           <button type="button" class="tab tab-active">HTML Preview</button>
           <button type="button" class="tab">Plain Text</button>
         </div>
 
-        <!-- Email Content -->
         <div class="bg-base-200 p-4 rounded-lg max-h-96 overflow-y-auto">
           {#if selectedEmail.html}
             <div class="bg-white p-4 rounded">
@@ -341,11 +329,10 @@
           {/if}
         </div>
 
-        <!-- Email ID for debugging -->
         <div class="flex items-center justify-between text-xs text-base-content/60">
           <span>Email ID: <code class="font-mono">{selectedEmail.id}</code></span>
           <a
-            href="https://resend.com/emails/{selectedEmail.id}"
+            href={`https://resend.com/emails/${selectedEmail.id}`}
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-ghost btn-xs"

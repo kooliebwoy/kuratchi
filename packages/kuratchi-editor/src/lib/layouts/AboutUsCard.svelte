@@ -1,26 +1,44 @@
 <script lang="ts">
     import { LayoutBlock, SearchImage } from '../shell/index.js';
         
+    interface CardImage {
+        url: string;
+        alt: string;
+        title?: string;
+        key?: string;
+        src?: string;
+    }
+
     interface Props {
-        id?: any;
+        id?: string;
         heading?: string;
-        body?: any;
-        image?: Object;
+        body?: string;
+        image?: CardImage;
         type?: string;
-        metadata?: any;
+        metadata?: {
+            backgroundColor: string;
+            textColor: string;
+            reverseOrder: boolean;
+        };
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         heading = 'About Us',
         body = `Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.`,
-        image = { src: 'https://fakeimg.pl/650x500/?text=World&font=lobster"', alt: 'Hero Image', title: 'Hero Image' },
+        image = $bindable<CardImage>({
+            url: 'https://fakeimg.pl/650x500/?text=World&font=lobster"',
+            alt: 'Hero Image',
+            title: 'Hero Image'
+        }),
         type = 'about-us-card',
         metadata = {
-        backgroundColor: '#575757',
-        textColor: '#ffffff',
-        reverseOrder: false
-    }
+            backgroundColor: '#575757',
+            textColor: '#ffffff',
+            reverseOrder: false
+        },
+        editable = true
     }: Props = $props();
 
     // Reactive statements to update metadata properties
@@ -29,6 +47,8 @@
     let textColor = $state(metadata.textColor);
 
     // extract card body from the content and the card title
+    const imageUrl = $derived(image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '');
+
     let content = $derived({
         id,
         type,
@@ -43,6 +63,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -104,7 +125,7 @@
             {#if reverseOrder}
                 <div class="flex flex-wrap md:flex-nowrap px-0 md:px-12 mt-4 gap-6 justify-around w-full min-w-full">
                     <figure class="my-0 rounded-x">
-                        <img src={image.src} alt={image.alt} title={image.title} class="rounded-3xl"  />
+                        <img src={imageUrl} alt={image.alt} title={image.title} class="rounded-3xl"  />
                     </figure>
                     <div class="space-y-8" style:color={textColor}>
                         <h1 class="text-4xl font-extrabold md:text-5xl mt-6" style:color={textColor}>{heading}</h1>
@@ -126,3 +147,30 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="flex justify-evenly gap-8 p-12 w-full flex-row flex-wrap xl:flex-nowrap" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        {#if reverseOrder}
+                <div class="flex flex-wrap md:flex-nowrap px-0 md:px-12 mt-4 gap-6 justify-around w-full min-w-full">
+                    <figure class="my-0 rounded-x">
+                        <img src={imageUrl} alt={image?.alt ?? ''} title={image?.title ?? ''} class="rounded-3xl"  />
+                    </figure>
+                    <div class="space-y-8" style:color={textColor}>
+                    <h1 class="text-4xl font-extrabold md:text-5xl mt-6" style:color={textColor}>{heading}</h1>
+                    <p class="text-xs max-w-96">{body}</p>
+                </div>
+            </div>
+        {:else}
+            <div class="flex flex-wrap md:flex-nowrap px-0 md:px-12 mt-4 gap-6 justify-around w-full min-w-full">
+                <div class="space-y-8" style:color={textColor}>
+                    <h1 class="text-4xl font-extrabold md:text-5xl mt-6" style:color={textColor}>{heading}</h1>
+                    <p class="text-xs max-w-96">{body}</p>
+                </div>
+
+                <figure class="my-0 rounded-x">
+                    <img src={imageUrl} alt={image?.alt ?? ''} title={image?.title ?? ''} class="rounded-3xl"  />
+                </figure>
+            </div>
+        {/if}
+    </section>
+{/if}

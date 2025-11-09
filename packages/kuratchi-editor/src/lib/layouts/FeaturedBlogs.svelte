@@ -12,6 +12,7 @@
         backgroundColor?: string;
         textColor?: string;
         buttonColor?: string;
+        editable?: boolean;
     }
 
     let {
@@ -23,7 +24,8 @@
         buttonLink = '#',
         backgroundColor = '#1f2937',
         textColor = '#ffffff',
-        buttonColor = '#3b82f6'
+        buttonColor = '#3b82f6',
+        editable = true
     }: Props = $props();
 
     let content = $derived({
@@ -39,6 +41,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -123,3 +126,34 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="p-8" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="flex flex-wrap lg:flex-nowrap gap-4 my-12 items-center px-0 md:px-12">
+            <div>
+                <h1 class="uppercase text-4xl font-extrabold md:text-5xl !w-auto" style:color={textColor}>
+                    {@html heading}
+                </h1>
+            </div>
+            <div class="grow ml-0 pr-2 md:ml-16">
+                <div class="text-wrap text-xs max-w-64" style:color={textColor}>
+                    {@html body}
+                </div>
+            </div>
+            <div class="!mt-0">
+                {#if buttonText}
+                    <a href={buttonLink} class="btn" style:background-color={buttonColor} style:color={textColor}>
+                        {buttonText}
+                        <ArrowRight />
+                    </a>
+                {/if}
+            </div>
+        </div>
+
+        <div class="space-y-14 pb-20 px-0 md:px-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Blog cards would go here -->
+            </div>
+        </div>
+    </section>
+{/if}

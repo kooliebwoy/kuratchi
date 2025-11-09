@@ -10,6 +10,7 @@
         button?: any;
         metadata?: any;
         image?: any;
+        editable?: boolean;
     }
 
     let {
@@ -28,7 +29,8 @@
         image = {
             url: 'https://fakeimg.pl/489x600/?text=World&font=lobster',
             alt: 'Clutch CMS'
-        }
+        },
+        editable = true
     }: Props = $props();
 
     // Reactive statements to update metadata properties
@@ -54,7 +56,7 @@
         }
     })
 </script>
-
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="flex flex-wrap flex-col justify-between">
@@ -152,3 +154,49 @@
         {/if}
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="w-full">
+        {#if reverseOrder}
+            <div class="hero bg-base-200 min-h-screen" style:background-color={backgroundColor}>
+                <div class="hero-content flex-col lg:flex-row-reverse">
+                    <div class="basis-1/2">
+                        <h1 class="text-5xl font-extrabold mb-0" style:color={headingColor}>
+                            {@html heading}
+                        </h1>
+                        <div class="py-6 font-semibold my-0" style:color={textColor}>
+                            {@html body}
+                        </div>
+                        <a class="btn btn-outline rounded-none min-w-40" style:color={textColor} style:background-color={buttonColor} href={button?.link ?? '#'}>
+                            {button?.label ?? 'Read more'}
+                            <ArrowRight />
+                        </a>
+                    </div>
+                    <div class="basis-1/2 justify-center">
+                        <img src={image?.url} class="rounded-lg shadow-2xl" alt={image?.alt ?? ''} />
+                    </div>
+                </div>
+            </div>
+        {:else}
+            <div class="hero bg-base-200 min-h-screen" style:background-color={backgroundColor}>
+                <div class="hero-content flex-col lg:flex-row-reverse">
+                    <div class="basis-1/2 justify-center">
+                        <img src={image?.url} class="rounded-lg shadow-2xl" alt={image?.alt ?? ''} />
+                    </div>
+
+                    <div class="basis-1/2">
+                        <h1 class="text-5xl font-extrabold mb-0" style:color={headingColor}>
+                            {@html heading}
+                        </h1>
+                        <div class="py-6 font-semibold my-0" style:color={textColor}>
+                            {@html body}
+                        </div>
+                        <a class="btn btn-outline rounded-none min-w-40" style:color={textColor} style:background-color={buttonColor} href={button?.link ?? '#'}>
+                            {button?.label ?? 'Read more'}
+                            <ArrowRight />
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {/if}
+    </section>
+{/if}

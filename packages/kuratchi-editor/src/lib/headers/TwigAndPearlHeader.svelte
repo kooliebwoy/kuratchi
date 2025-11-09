@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { SearchIcons, EditorDrawer as Drawer } from '../shell/index.js';
+    import { SearchIcons } from '../shell/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Home, Search, Menu, Pencil } from '@lucide/svelte';
+    import { openRightPanel } from '../stores/right-panel.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
 
@@ -25,6 +26,9 @@
         reverseOrder?: boolean;
         icons?: any;
         menu?: any;
+        editable?: boolean;
+        useMobileMenuOnDesktop?: boolean;
+        menuHidden?: boolean;
     }
 
     let {
@@ -39,10 +43,13 @@
             { icon: 'x', link: '#', name: "X", enabled: true },
             { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
         ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[],
-        menu = []
+        menu = [],
+        editable = true,
+        useMobileMenuOnDesktop = false,
+        menuHidden = false
     }: Props = $props();
 
-    if ( menu.length === 0 ) {
+    if (!menuHidden && menu.length === 0 ) {
         menu = [
             { label: 'Home', link: '/' },
             {
@@ -66,79 +73,100 @@
         type: type,
         icons,
     })
+
+    const showDesktopMenu = $derived(!useMobileMenuOnDesktop);
+    const mobileTriggerClass = $derived(useMobileMenuOnDesktop ? '' : 'xl:hidden');
+    const desktopContainerClass = (hidden: boolean) => hidden ? 'hidden' : 'xl:flex';
+
+    function hrefFrom(item: any): string {
+        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
+        if (typeof item?.slug === 'string' && item.slug.length > 0) return `/${item.slug}`;
+        return '#';
+    }
 </script>
 
-<div class="editor-header-item group">
-    <!-- Edit Popup -->
-    <div class="editor-block-controls" bind:this={componentEditor} >
-        <Drawer id={`componentDrawer${id}`}>
-            {#snippet label()}
-                <label for={`componentDrawer${id}`} class="btn btn-xs btn-naked">
-                    <Pencil class="text-xl text-accent" />
+{#snippet headerEditorContent()}
+    <div class="space-y-6">
+        <!-- Display Options -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Display Options</h3>
+            <div class="space-y-2">
+                <label class="label cursor-pointer">
+                    <span class="label-text">Swap Icons and Nav Menu</span>
+                    <input type="checkbox" class="checkbox checkbox-accent" bind:checked={reverseOrder} />
                 </label>
-            {/snippet}
-            {#snippet content()}
-                <div class="card-body">
-                    <div class="flex flex-wrap flex-col justify-between">
-                        <div class="form-control">
-                            <label class="label cursor-pointer">
-                                <span class="label-text">Swap Icons and Nav Menu</span>
-                                <input type="checkbox" class="checkbox checkbox-accent ml-4" bind:checked={reverseOrder} />
-                            </label>
-                        </div>
-
-                        <div class="form-control">
-                            <label class="label cursor-pointer">
-                                <span class="label-text">Search Bar Enabled</span>
-                                <input type="checkbox" class="checkbox checkbox-accent ml-4" bind:checked={searchEnabled} />
-                            </label>
-                        </div>
-        
-                        <div class="form-control">
-                            <label class="label cursor-pointer">
-                                <span class="label-text">Component Background Color</span>
-                                <input type="color" class="input-color ml-4" bind:value={backgroundColor} />
-                            </label>
-                        </div>
-                        
-                        <div class="form-control">
-                            <label class="label cursor-pointer">
-                                <span class="label-text">Home Icon Color</span>
-                                <input type="color" class="input-color ml-4" bind:value={homeIconColor} />
-                            </label>
-                        </div>
-                        
-                        <div class="form-control">
-                            <label class="label cursor-pointer">
-                                <span class="label-text">Text Color</span>
-                                <input type="color" class="input-color ml-4" bind:value={textColor} />
-                            </label>
-                        </div>
-
-                        <div class="divider"></div>
-
-                        <h4>Icons</h4>
-
-                        <SearchIcons bind:selectedIcons={icons} />
-
-                        {#each icons as icon}
-                            {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                            <div class="form-control">
-                                <label class="label cursor-pointer">
-                                    <Comp class="text-2xl" />
-                                    <input type="text" class="input input-bordered" value={icon.link} onchange={(e) => icon.link = (e.target as HTMLInputElement).value} />
-                                </label>
-                            </div>
-                        {/each}
-                    </div>
-                </div>
-            {/snippet}
-        </Drawer>
-    </div>
-    <div class="container mx-auto" id={id} bind:this={component} style:background-color={backgroundColor} data-type={type}>
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
+                <label class="label cursor-pointer">
+                    <span class="label-text">Search Bar Enabled</span>
+                    <input type="checkbox" class="checkbox checkbox-accent" bind:checked={searchEnabled} />
+                </label>
+            </div>
         </div>
+
+        <!-- Colors -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Colors</h3>
+            <div class="space-y-2">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text text-xs">Component Background</span>
+                    </label>
+                    <input type="color" class="input input-bordered h-10" bind:value={backgroundColor} />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text text-xs">Home Icon Color</span>
+                    </label>
+                    <input type="color" class="input input-bordered h-10" bind:value={homeIconColor} />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text text-xs">Text Color</span>
+                    </label>
+                    <input type="color" class="input input-bordered h-10" bind:value={textColor} />
+                </div>
+            </div>
+        </div>
+
+        <!-- Icons -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Icons</h3>
+            <SearchIcons bind:selectedIcons={icons} />
+            <div class="space-y-2">
+                {#each icons as icon}
+                    {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text text-xs flex items-center gap-2">
+                                <Comp class="text-lg" />
+                                Link
+                            </span>
+                        </label>
+                        <input type="text" class="input input-bordered input-sm" value={icon.link} onchange={(e) => icon.link = (e.target as HTMLInputElement).value} />
+                    </div>
+                {/each}
+            </div>
+        </div>
+    </div>
+{/snippet}
+
+<div class="{editable ? 'editor-header-item group relative' : ''}">
+    <!-- Edit Button - Hidden on hover -->
+    {#if editable}
+        <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex flex-row gap-1" bind:this={componentEditor}>
+            <button 
+                class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200"
+                onclick={() => openRightPanel(headerEditorContent, `Edit ${type}`)}
+            >
+                <Pencil class="text-base text-base-content/70" />
+            </button>
+        </div>
+    {/if}
+    <div class="container mx-auto" id={id} bind:this={component} style:background-color={backgroundColor} data-type={type}>
+        {#if editable}
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+        {/if}
         <div class="navbar">
             {#if reverseOrder}
                 <div class="navbar-start grow">
@@ -158,13 +186,14 @@
                     </div>
                 </div>
             {:else}
-                <div class="navbar-start hidden xl:flex grow">
+                <div class={`navbar-start ${desktopContainerClass(!showDesktopMenu)} grow`}>
                     <ul class="menu menu-horizontal px-1 items-center">
                         <li>
                             <a href="homepage" class="btn btn-ghost hover:bg-transparent hover:text-red-500 px-1" style:color={homeIconColor}>
                                 <Home class="text-4xl -mt-2" />
                             </a>
                         </li>
+                        {#if !menuHidden}
                         {#each menu as item}
                             {#if item.items}
                                 <li>
@@ -175,24 +204,25 @@
                                         <ul class="p-2 min-w-36" style:background-color={backgroundColor}>
                                             {#each item.items as subItem}
                                                 <li>
-                                                    <a href={subItem.link} class="no-underline" style:color={textColor}>{subItem.label}</a>
+                                                    <a href={hrefFrom(subItem)} class="no-underline" style:color={textColor}>{subItem.label}</a>
                                                 </li>
                                             {/each}
                                         </ul>
                                     </details>
                                 </li>
-                            {:else if item.link}
+                            {:else}
                                 <li>
-                                    <a href={item.link} class="no-underline" style:color={textColor}>{item.label}</a>
+                                    <a href={hrefFrom(item)} class="no-underline" style:color={textColor}>{item.label}</a>
                                 </li>
                             {/if}
                         {/each}
+                        {/if}
                     </ul>
                 </div>
             {/if}
             <div class="navbar-center grow-0">
                 <div class="dropdown">
-                    <div tabindex="0" role="button" class="btn btn-ghost xl:hidden px-0">
+                    <div tabindex="0" role="button" class={`btn btn-ghost px-0 ${mobileTriggerClass}`}>
                         <Menu class="text-white text-xl" />
                     </div>
                     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -201,6 +231,7 @@
                         <!-- <li>
                             <a href="/homepage" class={activeSelection('/')}>Home</a>
                         </li> -->
+                        {#if !menuHidden}
                         {#each menu as item}
                             {#if item.items}
                                 <li>
@@ -211,18 +242,19 @@
                                         <ul class="p-2">
                                             {#each item.items as subItem}
                                                 <li>
-                                                    <a href="{subItem.link}" class="no-underline" style:color={textColor}>{subItem.label}</a>
+                                                    <a href={hrefFrom(subItem)} class="no-underline" style:color={textColor}>{subItem.label}</a>
                                                 </li>
                                             {/each}
                                         </ul>
                                     </details>
                                 </li>
-                            {:else if item.link}
+                            {:else}
                                 <li>
-                                    <a href={item.link} class="no-underline" style:color={textColor}>{item.label}</a>
+                                    <a href={hrefFrom(item)} class="no-underline" style:color={textColor}>{item.label}</a>
                                 </li>
                             {/if}
                         {/each}
+                        {/if}
                     </ul>
                 </div>
                 <a class="btn btn-ghost text-xl hover:bg-transparent" href="homepage">
@@ -230,13 +262,14 @@
                 </a>
             </div>
             {#if reverseOrder}
-                <div class="navbar-end hidden xl:flex grow">
+                <div class={`navbar-end ${desktopContainerClass(!showDesktopMenu)} grow`}>
                     <ul class="menu menu-horizontal px-1 items-center">
                                 <li>
                                     <a href="homepage" class="btn btn-ghost hover:bg-transparent hover:text-red-500 px-1" style:color={homeIconColor}>
                                         <Home class="text-4xl -mt-2" />
                                     </a>
                                 </li>
+                        {#if !menuHidden}
                         {#each menu as item}
                             {#if item.items}
                                 <li>
@@ -247,7 +280,7 @@
                                         <ul class="p-2 min-w-36" style:background-color=var(--theme-primary-color)>
                                             {#each item.items as subItem}
                                                 <li>
-                                                    <a href={subItem.link} class="no-underline" style:color={textColor}>{subItem.label}</a>
+                                                    <a href={hrefFrom(subItem)} class="no-underline" style:color={textColor}>{subItem.label}</a>
                                                 </li>
                                             {/each}
                                         </ul>
@@ -259,6 +292,7 @@
                                 </li>
                             {/if}
                         {/each}
+                        {/if}
                     </ul>
                 </div>
             {:else}

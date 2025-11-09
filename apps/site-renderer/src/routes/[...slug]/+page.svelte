@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBlock, getLayout } from '@kuratchi/editor';
+  import { getBlock } from '@kuratchi/editor';
 
   interface PagePayload {
     content?: Array<Record<string, unknown>>;
@@ -32,24 +32,11 @@
         {#each contentBlocks as block, index (blockKey(block, index))}
           {@const blockType = typeof block.type === 'string' ? block.type : null}
           {#if blockType}
-            {@const asBlock = getBlock(blockType)}
-            {@const asLayout = asBlock ? null : getLayout(blockType)}
-            {@const blockEntry = asBlock || asLayout}
+            {@const blockEntry = getBlock(blockType)}
             {#if blockEntry?.component}
               {@const Component = blockEntry.component}
               {@const props = { ...block, editable: false } satisfies Record<string, unknown>}
-              <!-- Debug: remove after verification -->
-              {#if asLayout}
-                {@html ''}
-                <Component {...props} />
-              {:else}
-                <Component {...props} />
-              {/if}
-            {:else}
-              {@html ''}
-              <script>
-                console.warn('[site-renderer] Unknown block type', blockType, block);
-              </script>
+              <Component {...props} />
             {/if}
           {/if}
         {/each}
@@ -60,15 +47,10 @@
   </main>
 {:else}
   <div class="container mx-auto px-6 py-24 text-center space-y-6">
-    <h1 class="text-4xl font-bold">Welcome to {site?.name || 'Your Site'}</h1>
+    <h1 class="text-4xl font-bold">Page Not Found</h1>
     <p class="text-xl text-base-content/70 max-w-2xl mx-auto">
-      {site?.description || 'This site is being built with Kuratchi.'}
+      The page you're looking for doesn't exist.
     </p>
-    <div class="alert alert-info max-w-2xl mx-auto">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>
-      <span>No homepage has been created yet. Create pages in the dashboard to get started.</span>
-    </div>
+    <a href="/" class="btn btn-primary">Go Home</a>
   </div>
 {/if}

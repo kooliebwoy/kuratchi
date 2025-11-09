@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
 import { database } from 'kuratchi-sdk';
 import { getDatabase, getAdminDatabase, getSiteDatabase } from '$lib/server/db-context';
 import { sitesSchema } from '$lib/schemas/sites';
-import { getThemeHomepage, DEFAULT_THEME_ID } from '@kuratchi/editor';
+import { getThemeHomepage, getThemeTemplate, DEFAULT_THEME_ID } from '@kuratchi/editor';
 
 // Guarded query helper
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -239,7 +239,21 @@ export const createSite = guardedForm(
 				// Non-fatal, continue
 			}
 
-			// Step 6: Seed default homepage for selected theme
+			// Step 6: Store theme header/footer in site metadata
+			const themeTemplate = getThemeTemplate(themeId);
+			const siteMetadata = {
+				themeId,
+				header: themeTemplate.siteHeader,
+				footer: themeTemplate.siteFooter,
+				...themeTemplate.siteMetadata
+			};
+
+			// Update site with metadata
+			await db.sites
+				.where({ id: siteId })
+				.update({ metadata: siteMetadata });
+
+			// Step 7: Seed default homepage for selected theme
 			try {
 				const { siteDb } = await getSiteDatabase(locals, siteId);
 				const themeHomepage = getThemeHomepage(themeId);
@@ -250,10 +264,7 @@ export const createSite = guardedForm(
 							clone.id = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `block-${index}-${Date.now()}`);
 						}
 						return clone as Record<string, unknown>;
-					}),
-					header: themeHomepage.header,
-					footer: themeHomepage.footer,
-					metadata: themeHomepage.metadata || { backgroundColor: '#ffffff' }
+					})
 				};
 				const homepageId = crypto.randomUUID();
 				await siteDb.pages.insert({
@@ -274,7 +285,7 @@ export const createSite = guardedForm(
 				console.error('[createSite] Failed to seed default homepage:', homepageError);
 			}
 
-			// Step 7: Store subdomain mapping in KV for fast site resolution
+			// Step 8: Store subdomain mapping in KV for fast site resolution
 			try {
 				const kv = locals.kuratchi?.kv?.default;
 				if (kv) {
@@ -409,11 +420,78 @@ export const deleteSite = guardedForm(
 		}
 
 		try {
-			// TODO: Implement actual database deletion when sites table is created
 			console.log('[deleteSite] Deleting site:', data.id);
 
-			// Simulate API delay
-			await new Promise(resolve => setTimeout(resolve, 1000));
+			// Step 1: Get site details from org DB
+			const db = await getDatabase(locals);
+			const siteResult = await db.sites.where({ id: data.id }).first();
+
+			if (!siteResult.success || !siteResult.data) {
+				error(404, 'Site not found');
+			}
+
+			const site = siteResult.data;
+			const databaseId = site.databaseId;
+
+			// Step 2: Delete site from org DB
+			const deleteResult = await db.sites.delete({ id: data.id });
+			if (!deleteResult.success) {
+				console.error('[deleteSite] Failed to delete site from org DB:', deleteResult.error);
+				error(500, 'Failed to delete site');
+			}
+
+			// Step 3: Delete database from Cloudflare using SDK
+			if (databaseId) {
+				try {
+					const deleteDbResult = await database.delete({ databaseId });
+					if (!deleteDbResult.success) {
+						console.error('[deleteSite] Failed to delete database from Cloudflare:', deleteDbResult.error);
+						// Continue anyway - site is already deleted from org DB
+					} else {
+						console.log('[deleteSite] Successfully deleted database from Cloudflare');
+					}
+				} catch (dbErr) {
+					console.error('[deleteSite] Error deleting database:', dbErr);
+					// Continue anyway
+				}
+			}
+
+			// Step 4: Delete from admin DB (databases and tokens tables)
+			if (databaseId) {
+				try {
+					const adminDb = await getAdminDatabase(locals);
+					
+					// Delete database record
+					await adminDb.databases.delete({ databaseId });
+					
+					// Delete token records
+					await adminDb.dbApiTokens.delete({ databaseId });
+					
+					console.log('[deleteSite] Cleaned up admin DB records');
+				} catch (adminErr) {
+					console.error('[deleteSite] Error cleaning up admin DB:', adminErr);
+					// Continue anyway
+				}
+			}
+
+			// Step 5: Delete KV mapping
+			if (site.subdomain) {
+				try {
+					const kv = locals.kuratchi?.kv?.default;
+					if (kv) {
+						await kv.delete(`site:subdomain:${site.subdomain}`);
+						console.log('[deleteSite] Deleted KV mapping');
+					}
+				} catch (kvErr) {
+					console.error('[deleteSite] Error deleting KV mapping:', kvErr);
+					// Continue anyway
+				}
+			}
+
+			console.log('[deleteSite] Successfully deleted site:', data.id);
+			
+			// Refresh sites list
+			await getSites().refresh();
 
 			return {
 				success: true,

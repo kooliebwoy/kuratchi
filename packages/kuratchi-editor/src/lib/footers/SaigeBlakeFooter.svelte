@@ -13,6 +13,7 @@
         subscribeText?: string;
         copyrightText?: any;
         menu?: any;
+        menuHidden?: boolean;
     }
 
     let {
@@ -35,7 +36,8 @@
             { label: 'Terms & Conditions', slug: '/product-b' },
             { label: 'Follow Us', slug: '/product-c' },
             { label: 'Contact Us', slug: '/product-d' },
-        ]
+        ],
+        menuHidden = false
     }: Props = $props();
 
     let footerLogo = {
@@ -45,7 +47,17 @@
         name: 'Kayde',
     }
     
-    let footerMenu = $state(menu);
+    const defaultMenu = [
+        { label: 'Privacy Policy', slug: '/product-a' },
+        { label: 'Terms & Conditions', slug: '/product-b' },
+        { label: 'Follow Us', slug: '/product-c' },
+        { label: 'Contact Us', slug: '/product-d' },
+    ];
+
+    // Compute menu once per prop change to avoid inline re-evaluation
+    const computedMenu = $derived.by(() => {
+        return (menu && Array.isArray(menu) && menu.length > 0) ? menu : defaultMenu;
+    });
 
     const poweredBy = 'Powered by Clutch CMS';
 
@@ -56,7 +68,7 @@
         poweredBy: poweredBy,
         type,
         icons,
-        menu: footerMenu,
+        // Do not include menu here to avoid excessive JSON churn
         subscribeText,
         copyrightText,
     })
@@ -120,11 +132,13 @@
         <footer class="footer sm:footer-horizontal bg-neutral text-neutral-content items-center p-4" style:background-color={backgroundColor}>
             {#if reverseOrder}
                 <aside class="grid-flow-col items-center">
-                    <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
-                        {#each footerMenu as item}
-                            <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
-                        {/each}
-                    </nav>
+                    {#if !menuHidden}
+                        <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
+                            {#each computedMenu as item}
+                                <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
+                            {/each}
+                        </nav>
+                    {/if}
                 </aside>
                 <nav class="md:place-self-center md:justify-self-end">
                     <div class="grid grid-flow-col gap-4">
@@ -149,11 +163,13 @@
                         </div>
                     </nav>
                 </aside>
-                <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
-                    {#each footerMenu as item}
-                        <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
-                    {/each}
-                </nav>
+                {#if !menuHidden}
+                    <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
+                        {#each (menu && Array.isArray(menu) && menu.length > 0 ? menu : defaultMenu) as item}
+                            <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
+                        {/each}
+                    </nav>
+                {/if}
             {/if}
         </footer>
         <footer class="footer footer-center p-4" style:background-color={backgroundColor} style:color={textColor}>

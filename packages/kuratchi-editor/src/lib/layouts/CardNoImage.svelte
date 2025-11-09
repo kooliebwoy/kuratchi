@@ -12,6 +12,7 @@
         buttonColor?: string;
         headingColor?: string;
         contentColor?: string;
+        editable?: boolean;
     }
 
     let {
@@ -24,7 +25,8 @@
         backgroundColor = '#575757',
         buttonColor = '#d1d5db',
         headingColor = '#374151',
-        contentColor = '#374151'
+        contentColor = '#374151',
+        editable = true
     }: Props = $props();
 
     let content = $derived({
@@ -41,6 +43,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -118,3 +121,15 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="card lg:card-side min-h-full h-full" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="card-body">
+            <h2 class="card-title font-extrabold text-4xl" style:color={headingColor}>{heading}</h2>
+            <p style:color={contentColor}>{body}</p>
+            <div class="card-actions justify-start">
+                <a class="btn" href={link} style:background-color={buttonColor} style:color={contentColor}>{button}</a>
+            </div>
+        </div>
+    </section>
+{/if}

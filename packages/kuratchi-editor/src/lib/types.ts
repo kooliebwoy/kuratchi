@@ -30,21 +30,6 @@ export interface PageData {
    * Serialized block data for page content
    */
   content: Array<Record<string, unknown>>;
-  /**
-   * Serialized header block data
-   */
-  header: Record<string, unknown> | null;
-  /**
-   * Serialized footer block data
-   */
-  footer: Record<string, unknown> | null;
-  /**
-   * Additional metadata (theme settings, etc.)
-   */
-  metadata?: {
-    backgroundColor?: string;
-    [key: string]: unknown;
-  };
 }
 
 export interface EditorOptions {
@@ -98,6 +83,30 @@ export interface EditorOptions {
    * Autosave delay in milliseconds (default: 1000)
    */
   autoSaveDelay?: number;
+  /**
+   * Site-level header block (shared across all pages)
+   */
+  siteHeader?: Record<string, unknown> | null;
+  /**
+   * Site-level footer block (shared across all pages)
+   */
+  siteFooter?: Record<string, unknown> | null;
+  /**
+   * Site-level metadata (theme, colors, fonts, etc.)
+   */
+  siteMetadata?: Record<string, unknown>;
+  /**
+   * Callback when site header changes
+   */
+  onSiteHeaderUpdate?: (header: Record<string, unknown> | null) => void | Promise<void>;
+  /**
+   * Callback when site footer changes
+   */
+  onSiteFooterUpdate?: (footer: Record<string, unknown> | null) => void | Promise<void>;
+  /**
+   * Callback when site metadata changes
+   */
+  onSiteMetadataUpdate?: (metadata: Record<string, unknown>) => void | Promise<void>;
 }
 
 export const defaultPageData: PageData = {
@@ -106,12 +115,7 @@ export const defaultPageData: PageData = {
   seoDescription: '',
   slug: '',
   domain: 'example.com',
-  content: [] satisfies Array<Record<string, unknown>>,
-  header: null,
-  footer: null,
-  metadata: {
-    backgroundColor: '#000000'
-  }
+  content: [] satisfies Array<Record<string, unknown>>
 };
 
 export const defaultEditorOptions: Required<Pick<EditorOptions, 'editable' | 'isWebpage' | 'layoutsEnabled' | 'showUI' | 'initialDeviceSize' | 'autoSaveDelay'>> &

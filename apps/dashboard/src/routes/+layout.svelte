@@ -8,11 +8,12 @@
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-  const isAuthenticated = data.isAuthenticated;
-  const isSuperadmin = data.isSuperadmin;
-  const user = data.user;
+  // Make these reactive to data changes
+  const isAuthenticated = $derived(data.isAuthenticated);
+  const isSuperadmin = $derived(data.isSuperadmin);
+  const user = $derived(data.user);
   
-  const workspace = $derived(user.organizationId ? await getOrganizationNameById(user.organizationId) : 'Unknown Organization');
+  const workspace = $derived(user?.organizationId ? await getOrganizationNameById(user.organizationId) : 'Unknown Organization');
 </script>
 
 {#if isAuthenticated}

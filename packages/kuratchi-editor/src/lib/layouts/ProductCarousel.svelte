@@ -2,6 +2,12 @@
     import { ArrowRight, Plus } from "@lucide/svelte";
     import { LayoutBlock } from '../shell/index.js';
 
+    interface ProductItem {
+        name: string;
+        price: string;
+        image: string;
+    }
+
     interface Props {
         id?: string;
         type?: string;
@@ -9,14 +15,11 @@
         body?: string;
         buttonText?: string;
         buttonLink?: string;
-        products?: Array<{
-            name: string;
-            price: string;
-            image: string;
-        }>;
+        products?: ProductItem[];
         backgroundColor?: string;
         textColor?: string;
         buttonColor?: string;
+        editable?: boolean;
     }
 
     let {
@@ -26,16 +29,23 @@
         body = 'Deliver great service experiences fast - without the complexity of traditional ITSM solutions.',
         buttonText = 'All Products',
         buttonLink = '#',
-        products = [
+        products = $bindable<ProductItem[]>([
             { name: 'Product A', price: '$149', image: 'https://fakeimg.pl/250x250/?text=CMS&font=lobster' },
             { name: 'Product B', price: '$199', image: 'https://fakeimg.pl/250x250/?text=CMS&font=lobster' },
             { name: 'Product C', price: '$299', image: 'https://fakeimg.pl/250x250/?text=CMS&font=lobster' },
             { name: 'Product D', price: '$399', image: 'https://fakeimg.pl/250x250/?text=CMS&font=lobster' }
-        ],
+        ]),
         backgroundColor = '#f3f4f6',
         textColor = '#1f2937',
-        buttonColor = '#3b82f6'
+        buttonColor = '#3b82f6',
+        editable = true
     }: Props = $props();
+
+    const normalizedProducts = $derived(products.map((product) => ({
+        name: product?.name ?? '',
+        price: product?.price ?? '',
+        image: product?.image ?? ''
+    })));
 
     let content = $derived({
         id,
@@ -44,13 +54,14 @@
         body,
         buttonText,
         buttonLink,
-        products,
+        products: normalizedProducts,
         backgroundColor,
         textColor,
         buttonColor
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -175,3 +186,55 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="card border-none shadow-none w-full max-w-full rounded-3xl px-4" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="flex flex-wrap lg:flex-nowrap gap-4 my-12 items-center px-0 md:px-12">
+            <div>
+                <h1 class="uppercase text-4xl font-extrabold md:text-5xl !w-auto" style:color={textColor}>
+                    {@html heading}
+                </h1>
+            </div>
+            <div class="grow ml-0 pr-2 md:ml-16">
+                <div class="text-wrap text-xs max-w-64" style:color={textColor}>
+                    {@html body}
+                </div>
+            </div>
+            <div class="!mt-0">
+                {#if buttonText}
+                    <a href={buttonLink} class="btn" style:background-color={buttonColor} style:color={textColor}>
+                        {buttonText}
+                        <ArrowRight />
+                    </a>
+                {/if}
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 p-2 md:p-8 mt-2">
+            {#each normalizedProducts as product}
+                <article class="flex flex-col space-y-2">
+                    {#if product.image}
+                        <img src={product.image} alt={product.name} class="rounded-3xl" />
+                    {/if}
+                    <div class="flex justify-between px-2">
+                        <div class="flex flex-col">
+                            {#if product.name}
+                                <h6 class="text-lg font-bold" style:color={textColor}>{product.name}</h6>
+                            {/if}
+                            {#if product.price}
+                                <p class="text-gray-500 dark:text-gray-400">{product.price}</p>
+                            {/if}
+                        </div>
+                        {#if buttonColor}
+                            <div>
+                                <button class="btn btn-xs mt-3 px-1" style:background-color={buttonColor}>
+                                    <Plus class="w-5 h-5" />
+                                </button>
+                            </div>
+                        {/if}
+                    </div>
+                </article>
+            {/each}
+        </div>
+    </section>
+{/if}

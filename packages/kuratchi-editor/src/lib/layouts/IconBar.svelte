@@ -2,11 +2,23 @@
     import { SearchIcons, LayoutBlock } from "../shell/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
+    interface IconItem {
+        icon: LucideIconKey;
+        link: string;
+        name: string;
+        enabled: boolean;
+    }
+
     interface Props {
         id?: string;
         type?: string;
-        metadata?: any;
-        icons?: any;
+        metadata?: {
+            backgroundColor: string;
+            iconColors: string;
+            roundedBorder: string;
+        };
+        icons?: IconItem[];
+        editable?: boolean;
     }
 
     let {
@@ -17,12 +29,13 @@
             iconColors: '#212121',
             roundedBorder: 'rounded-3xl'
         },
-        icons = [
+        icons = $bindable<IconItem[]>([
             { icon: 'truck', link: '#', name: "Free Shipping & Returns", enabled: true },
             { icon: 'badgeDollarSign', link: '#', name: "100% Money Back Guarantee", enabled: true },
             { icon: 'home', link: '#', name: "High Quality Material", enabled: true },
             { icon: 'circleDollarSign', link: '#', name: "Safe and Secure Checkout", enabled: true },
-        ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[]
+        ]),
+        editable = true
     }: Props = $props();
 
     let iconsState = $state(icons);
@@ -30,6 +43,8 @@
     let backgroundColor = $state(metadata.backgroundColor);
     let iconColors = $state(metadata.iconColors);
     let roundedBorder = $state(metadata.roundedBorder);
+
+    const visibleIcons = $derived(iconsState.filter((icon) => icon.enabled));
 
     let content = $derived({
         id,
@@ -54,6 +69,7 @@
     ]);
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -121,3 +137,26 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="flex place-content-center px-0 md:px-12 my-4 {roundedBorder}" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="flex flex-wrap md:flex-nowrap bg-twig-light justify-evenly gap-y-6 w-full flex-col md:flex-row">
+            {#each visibleIcons as iconItem}
+                {@const Comp = LucideIconMap[iconItem.icon as LucideIconKey]}
+                <div class="space-y-2 text-center" style:color={iconColors}>
+                    {#if iconItem.link}
+                        <a href={iconItem.link} class="inline-flex flex-col items-center gap-2">
+                            <Comp class="text-6xl inline-flex" />
+                            <span>{iconItem.name}</span>
+                        </a>
+                    {:else}
+                        <div class="inline-flex flex-col items-center gap-2">
+                            <Comp class="text-6xl inline-flex" />
+                            <span>{iconItem.name}</span>
+                        </div>
+                    {/if}
+                </div>
+            {/each}
+        </div>
+    </section>
+{/if}

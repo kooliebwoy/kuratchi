@@ -2,27 +2,49 @@
     import { LayoutBlock, SearchImages } from "../shell/index.js";
     import { ArrowRight } from "@lucide/svelte";
 
+    interface CardImage {
+        key?: string;
+        url?: string;
+        src?: string;
+        alt?: string;
+        name?: string;
+    }
+
+    interface CardContent {
+        image: CardImage;
+        title: string;
+        buttonLabel: string;
+        buttonLink: string;
+    }
+
     interface Props {
         id?: string;
         type?: string;
         heading?: string;
-        button?: any;
-        metadata?: any;
-        cards?: any[];
+        button?: { link: string; label: string };
+        metadata?: {
+            buttonColor: string;
+            headingColor: string;
+            textColor: string;
+            backgroundColor: string;
+        };
+        cards?: CardContent[];
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         type = 'grid-ctas',
         heading = 'Our Services',
-        button = { link: '#', label: 'Read more' },
+        button = $bindable({ link: '#', label: 'Read more' }),
         metadata = {
             buttonColor: 'bg-base-200',
             headingColor: 'text-content',
             textColor: 'text-content',
             backgroundColor: '#ffffff'
         },
-        cards = []
+        cards = $bindable<CardContent[]>([]),
+        editable = true
     }: Props = $props();
 
 
@@ -32,12 +54,23 @@
     let headingColor = $state(metadata.headingColor);
     let textColor = $state(metadata.textColor);
 
+    const normalizedCards = $derived(cards.map((card) => ({
+        title: card?.title ?? '',
+        buttonLabel: card?.buttonLabel ?? '',
+        buttonLink: card?.buttonLink ?? '#',
+        image: {
+            url: card?.image?.key ? `/api/bucket/${card.image.key}` : card?.image?.url ?? card?.image?.src ?? '',
+            alt: card?.image?.alt ?? card?.image?.name ?? card?.title ?? '',
+            key: card?.image?.key
+        }
+    })));
+
     let content = $derived({
         id,
         type,
         button,
         heading,
-        cards: cards,
+        cards: normalizedCards,
         metadata : {
             backgroundColor,
             buttonColor,
@@ -47,22 +80,33 @@
     })
 
     // extract images from each card
-    let images = $state(cards.map((card) => card.image));
+    let images = $state(cards.map((card) => card.image).filter(Boolean));
 
     // if image is updated, update the image in the card
 $effect(() => {
+    if (!editable) return;
+
     // if image was deleted, remove it from the card
     cards = cards.filter((card) => images.includes(card.image));
 
     // if image was added, create a new card with the image, unless it already exists
     images.forEach((image) => {
         if (!cards.some((card) => card.image === image)) {
-            cards = [...cards, { image, title: 'card title', buttonLabel: 'button label', buttonLink: '#' }];
+            cards = [
+                ...cards,
+                {
+                    image,
+                    title: 'card title',
+                    buttonLabel: 'button label',
+                    buttonLink: '#'
+                }
+            ];
         }
     });
 });
 </script>
 
+{#if editable}
 <LayoutBlock
     {id}
     {type}>
@@ -193,5 +237,47 @@ $effect(() => {
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="container mx-auto py-8" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="flex flex-col flex-wrap gap-3">
+            <div class="flex justify-between items-center">
+                <h1 class="text-5xl font-bold mb-0" style:color={headingColor}>
+                    {@html heading}
+                </h1>
+                {#if button.label}
+                    <a class="btn btn-ghost rounded-none min-w-40" href={button.link} style:color={textColor} style:background-color={buttonColor}>
+                        {button.label}
+                        <ArrowRight />
+                    </a>
+                {/if}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 place-items-center gap-6 mt-10 mb-5">
+                {#each normalizedCards as card}
+                    <article class="card w-96 max-w-96 !bg-transparent !shadow-none !rounded-none !border-none h-full">
+                        {#if card.image.url}
+                            <figure>
+                                <img src={card.image.url} alt={card.image.alt} class="rounded-none object-cover w-72 h-[450px]" />
+                            </figure>
+                        {/if}
+                        <div class="card-body items-center text-center">
+                            {#if card.title}
+                                <h2 class="card-title" style:color={headingColor}>{card.title}</h2>
+                            {/if}
+                            {#if card.buttonLabel}
+                                <div class="card-actions">
+                                    <a class="btn btn-ghost" href={card.buttonLink} style:color={textColor}>
+                                        {card.buttonLabel}
+                                        <ArrowRight />
+                                    </a>
+                                </div>
+                            {/if}
+                        </div>
+                    </article>
+                {/each}
+            </div>
+        </div>
+    </section>
+{/if}
 
 

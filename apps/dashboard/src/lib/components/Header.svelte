@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { Bell, Search, Command, UserCircle, X, Building2 } from 'lucide-svelte';
+  import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from 'lucide-svelte';
   import { searchOrganizations, setActiveOrganization, clearOrganization } from '$lib/api/superadmin.remote';
+  import { signOut } from '$lib/api/auth.remote';
+  import { goto, invalidateAll } from '$app/navigation';
   
   interface Props {
     workspace: string;
@@ -16,6 +18,8 @@
   let isSearching = $state(false);
 
   let debounceTimer: any;
+  let showUserMenu = $state(false);
+
   function onInput(e: Event) {
     term = (e.target as HTMLInputElement).value;
     clearTimeout(debounceTimer);
@@ -61,6 +65,21 @@
     term = '';
     searchResults = [];
     showDropdown = false;
+  }
+
+  // Handle sign out - redirect after successful logout
+  async function handleSignOut(e: Event) {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const result = await signOut.submit(formData);
+    
+    // Redirect to signin page after successful logout
+    if (result?.success) {
+      // Invalidate all data to clear server-side cache
+      await invalidateAll();
+      // Navigate to signin
+      goto('/auth/signin', { replaceState: true });
+    }
   }
 </script>
 
@@ -120,7 +139,7 @@
                     >
                       <input type="hidden" name="organizationId" value={org.id} />
                       <div class="min-w-0 flex-1 flex items-center gap-2">
-                        <Building2 class="h-4 w-4 text-primary flex-shrink-0" />
+                        <Building2 class="h-4 w-4 text-primary shrink-0" />
                         <div class="min-w-0">
                           <div class="font-medium text-base-content truncate">{org.name}</div>
                           {#if org.slug}
@@ -161,14 +180,49 @@
       <Bell class="h-5 w-5" />
     </button>
 
-    <div class="flex items-center gap-3 rounded-xl border border-base-200/80 bg-base-200/40 px-3 py-2">
-      <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary">
-        <UserCircle class="h-6 w-6" />
-      </div>
-      <div>
-        <p class="text-sm font-medium">{user.name}</p>
-        <p class="text-xs text-base-content/50">{user.email}</p>
-      </div>
+    <!-- User Menu -->
+    <div class="relative">
+      <button
+        class="flex items-center gap-3 rounded-xl border border-base-200/80 bg-base-200/40 px-3 py-2 hover:bg-base-200/60 transition-colors"
+        onclick={() => showUserMenu = !showUserMenu}
+        onblur={() => setTimeout(() => showUserMenu = false, 200)}
+      >
+        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary">
+          <UserCircle class="h-6 w-6" />
+        </div>
+        <div class="text-left">
+          <p class="text-sm font-medium">{user.name}</p>
+          <p class="text-xs text-base-content/50">{user.email}</p>
+        </div>
+        <ChevronDown class="h-4 w-4 text-base-content/50" />
+      </button>
+
+      {#if showUserMenu}
+        <div class="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-base-300 bg-base-100 shadow-xl overflow-hidden">
+          <div class="p-3 border-b border-base-200 bg-base-200/30">
+            <p class="text-sm font-medium truncate">{user.name}</p>
+            <p class="text-xs text-base-content/50 truncate">{user.email}</p>
+          </div>
+          
+          <div class="p-2">
+            <form {...signOut} onsubmit={handleSignOut}>
+              <button
+                type="submit"
+                class="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 rounded-lg transition-colors"
+                disabled={!!signOut.pending}
+              >
+                {#if signOut.pending}
+                  <span class="loading loading-spinner loading-xs"></span>
+                  <span>Signing out...</span>
+                {:else}
+                  <LogOut class="h-4 w-4" />
+                  <span>Sign Out</span>
+                {/if}
+              </button>
+            </form>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 </header>

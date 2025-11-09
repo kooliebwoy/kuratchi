@@ -2,25 +2,37 @@
     import { ArrowRight } from '@lucide/svelte';
     import { LayoutBlock, SearchImage } from '../shell/index.js';
 
+    interface CardImage {
+        url: string;
+        alt: string;
+        title?: string;
+        key?: string;
+        src?: string;
+    }
+
     interface Props {
         id?: string;
         type?: string;
-        image?: Object;
+        image?: CardImage;
         heading?: string;
         body?: string;
         button?: string;
         link?: string;
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         type = 'card-with-image',
-        image = { src: 'https://fakeimg.pl/500x500', alt: 'Noteworthy technology acquisitions 2021', title: 'Card Image' },
+        image = $bindable<CardImage>({ url: 'https://fakeimg.pl/500x500', alt: 'Noteworthy technology acquisitions 2021', title: 'Card Image' }),
         heading = 'Noteworthy technology acquisitions 2021',
         body = 'Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.',
         button = 'Read more',
-        link = '#'
+        link = '#',
+        editable = true
     }: Props = $props();
+
+    const imageUrl = $derived(image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '');
 
     let content = $derived({
         id,
@@ -33,6 +45,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -78,7 +91,7 @@
     {#snippet children()}
         <div class="card lg:card-side">
             <figure>
-                <img src={image.src} alt={image.alt} title={image.title} />
+                <img src={imageUrl} alt={image.alt} title={image.title} />
             </figure>
             <div class="card-body gap-8">
                 <h2 class="card-title">{heading}</h2>
@@ -94,3 +107,21 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="card lg:card-side">
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <figure>
+            <img src={imageUrl} alt={image?.alt ?? ''} title={image?.title ?? ''} />
+        </figure>
+        <div class="card-body gap-8">
+            <h2 class="card-title">{heading}</h2>
+            <p>{body}</p>
+            <div class="card-actions justify-start">
+                <a href={link} class="btn btn-primary rounded-xl">
+                    {button}
+                    <ArrowRight class="w-3.5 h-3.5 ms-2 text-neutral" />
+                </a>
+            </div>
+        </div>
+    </section>
+{/if}

@@ -2,125 +2,135 @@
     import { Wand2, ChevronDown, Undo2, Redo2, Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify, MoreHorizontal } from "@lucide/svelte";
 
     interface Props {
-        editor?: any;
+        component?: HTMLElement;
+        show?: boolean;
+        position?: { x: number; y: number };
     }
 
-    let { editor }: Props = $props();
+    let { component, show = false, position = { x: 0, y: 0 } }: Props = $props();
 
     // Format states
     let isBold = $state(false);
     let isItalic = $state(false);
     let isUnderline = $state(false);
     let isStrikethrough = $state(false);
-    let canUndo = $state(false);
-    let canRedo = $state(false);
 
-    let showToolbar = $state(false);
+    function updateFormatStates() {
+        isBold = document.queryCommandState('bold');
+        isItalic = document.queryCommandState('italic');
+        isUnderline = document.queryCommandState('underline');
+        isStrikethrough = document.queryCommandState('strikethrough');
+    }
+
+    // Update format states when toolbar is shown
+    $effect(() => {
+        if (show) {
+            updateFormatStates();
+        }
+    });
 </script>
 
-{#if showToolbar}
-<div class="absolute z-50 flex flex-row gap-1.5 rounded-lg border border-white/50 bg-black p-1">
+{#if show}
+<div class="fixed z-[9999] flex flex-row gap-0.5 rounded-lg border border-base-300 bg-base-100 text-base-content p-0.5 shadow-lg" style:top="{position.y}px" style:left="{position.x}px" style:transform="translate(-50%, calc(-100% - 8px))">
     <!-- AI Tools Dropdown -->
     <div>
-        <button popovertarget="aiToolsEditorToolbarDropdown" style="anchor-name:--aiToolsEditorToolbarDropdown" class="btn btn-sm btn-ghost hover:bg-transparent">
-            <Wand2 class="text-lg" />
-            AI
-            <ChevronDown class="text-lg" />
+        <button popovertarget="aiToolsEditorToolbarDropdown" style="anchor-name:--aiToolsEditorToolbarDropdown" class="btn btn-xs btn-ghost hover:bg-transparent gap-0.5 px-1.5">
+            <Wand2 class="size-3.5" />
+            <span class="text-xs">AI</span>
+            <ChevronDown class="size-3" />
         </button>
-        <ul popover="" id="aiToolsEditorToolbarDropdown" style="position-anchor:--aiToolsEditorToolbarDropdown" class="dropdown dropdown-hover menu !bg-black rounded-lg border border-white/50 rounded-box w-32 p-2 shadow">
+        <ul popover="" id="aiToolsEditorToolbarDropdown" style="position-anchor:--aiToolsEditorToolbarDropdown" class="dropdown dropdown-hover menu bg-base-100 text-base-content rounded-lg border border-base-300 rounded-box w-32 p-2 shadow">
             <li><a>Item 1</a></li>
             <li><a>Item 2</a></li>
         </ul>
     </div>
 
-    <div class="divider divider-horizontal my-0.5 mx-0.5"></div>
+    <div class="divider divider-horizontal my-0 mx-0.5 w-px"></div>
 
     <!-- History Controls -->
     <div class="join join-horizontal">
         <button 
-            onclick={() => editor?.dispatchCommand(UNDO_COMMAND)} 
-            class="btn btn-xs btn-ghost join-item px-1"
-            disabled={!canUndo}
+            onclick={() => document.execCommand('undo')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <Undo2 class="text-lg" />
+            <Undo2 class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(REDO_COMMAND)} 
-            class="btn btn-xs btn-ghost join-item px-1"
-            disabled={!canRedo}
+            onclick={() => document.execCommand('redo')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <Redo2 class="text-lg" />
+            <Redo2 class="size-3.5" />
         </button>
     </div>
 
-    <div class="divider divider-horizontal my-0.5 mx-0.5"></div>
+    <div class="divider divider-horizontal my-0 mx-0.5 w-px"></div>
 
     <!-- Text Formatting -->
-    <div class="join join-horizontal p-1 gap-1.5">
+    <div class="join join-horizontal gap-0.5">
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} 
-            class={"btn btn-xs btn-ghost join-item px-1 " + (isBold ? "btn-active" : "")}
+            onclick={() => { document.execCommand('bold'); updateFormatStates(); }} 
+            class={"btn btn-xs btn-ghost join-item px-1.5 " + (isBold ? "btn-active" : "")}
         >
-            <Bold class="text-lg" />
+            <Bold class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} 
-            class={"btn btn-xs btn-ghost join-item px-1 " + (isItalic ? "btn-active" : "")}
+            onclick={() => { document.execCommand('italic'); updateFormatStates(); }} 
+            class={"btn btn-xs btn-ghost join-item px-1.5 " + (isItalic ? "btn-active" : "")}
         >
-            <Italic class="text-lg" />
+            <Italic class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')} 
-            class={"btn btn-xs btn-ghost join-item px-1 " + (isUnderline ? "btn-active" : "")}
+            onclick={() => { document.execCommand('underline'); updateFormatStates(); }} 
+            class={"btn btn-xs btn-ghost join-item px-1.5 " + (isUnderline ? "btn-active" : "")}
         >
-            <Underline class="text-lg" />
+            <Underline class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough')} 
-            class={"btn btn-xs btn-ghost join-item px-1 " + (isStrikethrough ? "btn-active" : "")}
+            onclick={() => { document.execCommand('strikethrough'); updateFormatStates(); }} 
+            class={"btn btn-xs btn-ghost join-item px-1.5 " + (isStrikethrough ? "btn-active" : "")}
         >
-            <Strikethrough class="text-lg" />
+            <Strikethrough class="size-3.5" />
         </button>
     </div>
 
-    <div class="divider divider-horizontal my-0.5 mx-0.5"></div>
+    <div class="divider divider-horizontal my-0 mx-0.5 w-px"></div>
 
     <!-- Alignment -->
-    <div class="join join-horizontal">
+    <div class="join join-horizontal gap-0.5">
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'left')} 
-            class="btn btn-xs btn-ghost join-item px-1"
+            onclick={() => document.execCommand('justifyLeft')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <AlignLeft class="text-lg" />
+            <AlignLeft class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'center')} 
-            class="btn btn-xs btn-ghost join-item px-1"
+            onclick={() => document.execCommand('justifyCenter')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <AlignCenter class="text-lg" />
+            <AlignCenter class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'right')} 
-            class="btn btn-xs btn-ghost join-item px-1"
+            onclick={() => document.execCommand('justifyRight')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <AlignRight class="text-lg" />
+            <AlignRight class="size-3.5" />
         </button>
         <button 
-            onclick={() => editor?.dispatchCommand(FORMAT_ELEMENT_COMMAND, 'justify')} 
-            class="btn btn-xs btn-ghost join-item px-1"
+            onclick={() => document.execCommand('justifyFull')} 
+            class="btn btn-xs btn-ghost join-item px-1.5"
         >
-            <AlignJustify class="text-lg" />
+            <AlignJustify class="size-3.5" />
         </button>
     </div>
 
-    <div class="divider divider-horizontal my-0.5 mx-0.5"></div>
+    <div class="divider divider-horizontal my-0 mx-0.5 w-px"></div>
 
     <!-- More Options -->
     <div>
-        <button popovertarget="moreOptionsDropdown" style="anchor-name:--moreOptionsDropdown" class="btn btn-sm btn-ghost hover:bg-transparent">
-            <MoreHorizontal class="text-lg" />
+        <button popovertarget="moreOptionsDropdown" style="anchor-name:--moreOptionsDropdown" class="btn btn-xs btn-ghost hover:bg-transparent px-1.5">
+            <MoreHorizontal class="size-3.5" />
         </button>
-        <ul popover="" id="moreOptionsDropdown" style="position-anchor:--moreOptionsDropdown" class="dropdown dropdown-hover dropdown-end menu !bg-black rounded-lg border border-white/50 rounded-box w-32 p-2 shadow">
+        <ul popover="" id="moreOptionsDropdown" style="position-anchor:--moreOptionsDropdown" class="dropdown dropdown-hover dropdown-end menu bg-base-100 text-base-content rounded-lg border border-base-300 rounded-box w-32 p-2 shadow">
             <li><a>Item 1</a></li>
             <li><a>Item 2</a></li>
         </ul>

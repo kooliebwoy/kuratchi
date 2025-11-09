@@ -3,22 +3,37 @@
     import NoMarginCarousel from "./NoMarginCarousel.svelte";
     import { SearchImages, LayoutBlock } from "../shell/index.js";
     
+    interface CarouselImage {
+        key?: string;
+        url?: string;
+        src?: string;
+        alt?: string;
+    }
+
     interface Props {
-        id?: any;
+        id?: string;
         heading?: string;
         body?: string;
-        button?: any;
-        images?: Object[];
+        button?: { label: string; link: string };
+        images?: CarouselImage[];
         type?: string;
-        metadata?: any;
+        metadata?: {
+            backgroundColor: string;
+            cardBackgroundColor: string;
+            reverseOrder: boolean;
+            buttonColor: string;
+            headingColor: string;
+            contentColor: string;
+        };
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         heading = 'Noteworthy technology acquisitions 2021',
         body = 'Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.',
-        button = { label: 'Read more', link: '#' },
-        images = [],
+        button = $bindable({ label: 'Read more', link: '#' }),
+        images = $bindable<CarouselImage[]>([]),
         type = 'hero-with-slider',
         metadata = {
             backgroundColor: '#575757',
@@ -27,7 +42,8 @@
             buttonColor: '#212121',
             headingColor: 'text-content',
             contentColor: 'text-content'
-        }
+        },
+        editable = true
     }: Props = $props();
 
 
@@ -40,13 +56,18 @@
     let contentColor = $state(metadata.contentColor);
 
     // extract card body from the content and the card title
+    const normalizedImages = $derived(images.map((image) => ({
+        url: image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '',
+        alt: image?.alt ?? ''
+    })));
+
     let content = $derived({
         id,
         type,
         heading,
         body,
         button,
-        images,
+        images: normalizedImages,
         metadata : {
             backgroundColor,
             cardBackgroundColor,
@@ -58,6 +79,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -124,3 +146,25 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="container mx-auto">
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="flex justify-evenly gap-8 w-full flex-row flex-wrap xl:flex-nowrap" style:background-color={backgroundColor}>
+            {#if reverseOrder}
+                <div class="flex-grow min-w-[20rem]">
+                    <NoMarginCarousel images={normalizedImages} editable={false} />
+                </div>
+                <div class="flex flex-col flex-1 min-w-[24rem]">
+                    <CardNoImage heading={heading} body={body} link={button.link} button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} editable={false} />
+                </div>
+            {:else}
+                <div class="flex flex-col flex-1 min-w-[24rem]">
+                    <CardNoImage heading={heading} body={body} link={button.link} button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} editable={false} />
+                </div>
+                <div class="flex-grow min-w-[20rem]">
+                    <NoMarginCarousel images={normalizedImages} editable={false} />
+                </div>
+            {/if}
+        </div>
+    </section>
+{/if}

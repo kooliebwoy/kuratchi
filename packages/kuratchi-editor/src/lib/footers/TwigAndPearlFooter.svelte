@@ -1,6 +1,8 @@
 <script lang="ts">
- import { SearchIcons, EditorDrawer as Drawer } from '../shell/index.js';
+ import { SearchIcons } from '../shell/index.js';
  import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
+ import { Pencil } from '@lucide/svelte';
+ import { openRightPanel } from '../stores/right-panel.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
   interface Props {
@@ -9,7 +11,10 @@
     backgroundColor?: string;
     type?: string;
     icons?: any;
+    menu?: any;
     copyrightText?: any;
+    editable?: boolean;
+    menuHidden?: boolean;
   }
 
   let {
@@ -22,10 +27,13 @@
         { icon: 'x', link: '#', name: "X", enabled: true },
         { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
     ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[]),
+    menu = undefined,
     copyrightText = {
         href: 'https://kayde.io',
         by: 'Kayde',
-    }
+    },
+    editable = true,
+    menuHidden = false
   }: Props = $props();
 
     let component: HTMLElement = $state();
@@ -38,7 +46,7 @@
         name: 'Kayde',
     }
     
-    let footerMenu = [
+    const defaultFooterMenu = [
         {
             label: 'Legal',
             items: [
@@ -64,6 +72,11 @@
 
     const poweredBy = 'Powered by Clutch CMS';
 
+    // Compute menu once per prop change to avoid inline re-evaluation
+    const footerMenu = $derived.by(() => {
+        return (menu && Array.isArray(menu) && menu.length > 0) ? menu : defaultFooterMenu;
+    });
+
     let content = $derived({
         backgroundColor: backgroundColor,
         textColor: textColor,
@@ -74,85 +87,91 @@
     })
 </script>
 
-<div class="editor-footer-item group">
-    <!-- Edit Popup -->
-    <div class="editor-block-controls" bind:this={componentEditor} >
-        <Drawer id={`componentDrawer${id}`}>
-            {#snippet label()}
-          
-                  <label for={`componentDrawer${id}`} class="btn btn-xs btn-naked">
-                      <Icon icon="tabler:edit" class="text-xl text-accent" />
-                  </label>
-              
-          {/snippet}
-            {#snippet content()}
-          
-                  <div class="card-body">
-                      <div class="flex flex-wrap flex-col justify-between">
-                          <div class="form-control">
-                              <label class="label cursor-pointer">
-                                  <span class="label-text">Swap Logo and Footer Menu</span>
-                                  <input type="checkbox" class="checkbox checkbox-accent ml-4" bind:checked={reverseOrder} />
-                              </label>
-                          </div>
-
-                          <div class="form-control">
-                              <label class="label cursor-pointer">
-                                  <span class="label-text">Component Background Color</span>
-                                  <input type="color" class="input-color ml-4" bind:value={backgroundColor} />
-                              </label>
-                          </div>
-                          
-                          <!-- <div class="form-control">
-                              <label class="label cursor-pointer">
-                                  <span class="label-text">Home Icon Color</span>
-                                  <input type="color" class="input-color ml-4" bind:value={homeIconColor} />
-                              </label>
-                          </div> -->
-                          
-                          <div class="form-control">
-                              <label class="label cursor-pointer">
-                                  <span class="label-text">Text Color</span>
-                                  <input type="color" class="input-color ml-4" bind:value={textColor} />
-                              </label>
-                          </div>
-
-                          <div class="divider"></div>
-
-                          <h4>Icons</h4>
-
-                          <SearchIcons bind:selectedIcons={icons} />
-
-                          {#each icons as icon}
-                              {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                              <div class="form-control">
-                                  <label class="label cursor-pointer">
-                                      <Comp class="text-2xl" />
-                                      <input type="text" class="input input-bordered" value={icon.link} onchange={(e) => icon.link = (e.target as HTMLInputElement).value} />
-                                  </label>
-                              </div>
-                          {/each}
-                      </div>
-                  </div>
-              
-          {/snippet}
-        </Drawer>
-    </div>
-    <div class="container mx-auto flex flex-col" id={id} bind:this={component} data-type={type}>
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
+{#snippet footerEditorContent()}
+    <div class="space-y-6">
+        <!-- Display Options -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Display Options</h3>
+            <div class="space-y-2">
+                <label class="label cursor-pointer">
+                    <span class="label-text">Swap Logo and Footer Menu</span>
+                    <input type="checkbox" class="checkbox checkbox-accent" bind:checked={reverseOrder} />
+                </label>
+            </div>
         </div>
+
+        <!-- Colors -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Colors</h3>
+            <div class="space-y-2">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text text-xs">Component Background</span>
+                    </label>
+                    <input type="color" class="input input-bordered h-10" bind:value={backgroundColor} />
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text text-xs">Text Color</span>
+                    </label>
+                    <input type="color" class="input input-bordered h-10" bind:value={textColor} />
+                </div>
+            </div>
+        </div>
+
+        <!-- Icons -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-base-content">Icons</h3>
+            <SearchIcons bind:selectedIcons={icons} />
+            <div class="space-y-2">
+                {#each icons as icon}
+                    {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text text-xs flex items-center gap-2">
+                                <Comp class="text-lg" />
+                                Link
+                            </span>
+                        </label>
+                        <input type="text" class="input input-bordered input-sm" value={icon.link} onchange={(e) => icon.link = (e.target as HTMLInputElement).value} />
+                    </div>
+                {/each}
+            </div>
+        </div>
+    </div>
+{/snippet}
+
+<div class="{editable ? 'editor-footer-item group relative' : ''}">
+    <!-- Edit Button - Hidden on hover -->
+    {#if editable}
+        <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex flex-row gap-1" bind:this={componentEditor}>
+            <button 
+                class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200"
+                onclick={() => openRightPanel(footerEditorContent, `Edit ${type}`)}
+            >
+                <Pencil class="text-base text-base-content/70" />
+            </button>
+        </div>
+    {/if}
+    <div class="container mx-auto" id={id} bind:this={component} style:background-color={backgroundColor} data-type={type}>
+        {#if editable}
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+        {/if}
         <footer class="footer flex flex-wrap lg:flex-nowrap p-10 text-base-content mb-0 min-w-full rounded-3xl min-h-56" style:background-color={backgroundColor}>
             {#if reverseOrder}
                 <div class="flex flex-row flex-wrap lg:flex-nowrap gap-6 grow justify-between">
-                    {#each footerMenu as item}
-                        <nav class="flex flex-col gap-2">
-                            <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
-                            {#each item.items as subItem}
-                                <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
-                            {/each}
-                        </nav>
-                    {/each}
+                    {#if !menuHidden}
+                        {#each footerMenu as item}
+                            <nav class="flex flex-col gap-2">
+                                <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
+                                {#each item.items as subItem}
+                                    <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
+                                {/each}
+                            </nav>
+                        {/each}
+                    {/if}
                 </div>
                 <aside class="flex-1 place-items-end">
                     <img src={footerLogo.src} alt={footerLogo.alt} class="max-w-40 max-h-40" />
@@ -162,14 +181,16 @@
                     <img src={footerLogo.src} alt={footerLogo.alt} class="max-w-40 max-h-40" />
                 </aside>
                 <div class="flex flex-row flex-wrap lg:flex-nowrap gap-6 grow justify-between">
-                    {#each footerMenu as item}
-                        <nav class="flex flex-col gap-2">
-                            <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
-                            {#each item.items as subItem}
-                                <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
-                            {/each}
-                        </nav>
-                    {/each}
+                    {#if !menuHidden}
+                        {#each footerMenu as item}
+                            <nav class="flex flex-col gap-2">
+                                <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
+                                {#each item.items as subItem}
+                                    <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
+                                {/each}
+                            </nav>
+                        {/each}
+                    {/if}
                 </div>
             {/if}
         </footer>

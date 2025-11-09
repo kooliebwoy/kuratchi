@@ -8,6 +8,7 @@
         button?: any;
         type?: string;
         metadata?: any;
+        editable?: boolean;
     }
 
     let {
@@ -21,7 +22,8 @@
             headingColor: '#212121',
             buttonColor: '#212121',
             textColor: '#ffffff'
-        }
+        },
+        editable = true
     }: Props = $props();
 
     let backgroundColor = $state(metadata.backgroundColor);
@@ -44,6 +46,7 @@
     })
 </script>
 
+{#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
         <div class="space-y-6">
@@ -113,3 +116,23 @@
         </div>
     {/snippet}
 </LayoutBlock>
+{:else}
+    <section id={id} data-type={type} class="hero min-h-screen mt-4 rounded-xl" style:background-color={backgroundColor}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <div class="hero-content text-center">
+            <div class="max-w-2xl space-y-5">
+                <h1 class="text-5xl font-bold" style:color={headingColor}>
+                    {@html heading}
+                </h1>
+                <div class="py-3" style:color={textColor}>
+                    {@html body}
+                </div>
+                {#if button?.label}
+                    <a href={button?.link ?? '#'} class="btn" style:background-color={buttonColor} style:color={textColor}>
+                        {button.label}
+                    </a>
+                {/if}
+            </div>
+        </div>
+    </section>
+{/if}

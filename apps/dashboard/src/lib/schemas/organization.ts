@@ -1,4 +1,4 @@
-import type { SchemaDsl } from 'kuratchi-sdk';
+import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
@@ -83,10 +83,10 @@ export const organizationSchema: SchemaDsl = {
       providerAccountId: 'text not null',
       access_token: 'text',
       refresh_token: 'text',
+      id_token: 'text',
       expires_at: 'timestamp_ms',
       scope: 'text',
       token_type: 'text',
-      id_token: 'text',
       '...timestamps': true,
     },
     sites: {

@@ -7,18 +7,20 @@
 
     interface Props {
         id?: string;
-        image?: {};
+        image?: Record<string, unknown>;
         type?: string;
+        editable?: boolean;
     }
 
     let {
         id = crypto.randomUUID(),
         image = {},
-        type = 'image'
+        type = 'image',
+        editable = true
     }: Props = $props();
 
-    let component: HTMLElement;
-    let componentEditor: HTMLElement;
+    let component = $state<HTMLElement>();
+    let componentEditor = $state<HTMLElement>();
 
     let profilePhotoFile: HTMLInputElement | null = $state(null);
     let photoError: boolean = $state(false);
@@ -88,44 +90,57 @@
 
     let mounted = $state(false);
     onMount(() => {
+        if (!editable) return;
         mounted = true;
     });
 </script>
 
-<div class="editor-item group relative" bind:this={component}>
-    {#if mounted}
-        <SideActions {component} />
-    {/if}
-
-    <div data-type={type} id={id} class="w-full min-w-full">
-        <!-- JSON Data for this component -->
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
-        </div>
-
-        {#if !uploadedImage?.id}
-            <div class="flex items-center justify-center mt-1">
-                <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600">
-                    <div class="flex flex-col items-center justify-center pt-8 pb-6">
-                        <Upload class="w-10 h-10 text-gray-500" />
-                        <p class="mb-1 text-sm text-gray-500 dark:text-gray-400"><span class="font-semibold">Click to upload</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">PNG or JPG (MAX. 10MB)</p>
-                    </div>
-                    <input id="dropzone-file" type="file" name="image" class="hidden" bind:this={profilePhotoFile} onchange={() => processUpload()} />
-                </label>
-            </div>
-            {#if photoError}
-                <span class="text-red-500 mt-1">{photoMessage}</span>
-            {/if}
+{#if editable}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <SideActions {component} />
         {/if}
-    
-        <div class="flex w-full place-items-center justify-center mt-5">
-            <div class="avatar">
-                {#if !photoError && uploadedImage?.id}
-                    <img src='/api/bucket/{uploadedImage?.key}' alt="Profile" />
+
+        <div data-type={type} id={id} class="w-full min-w-full">
+            <!-- JSON Data for this component -->
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+
+            {#if !uploadedImage?.id}
+                <div class="flex items-center justify-center mt-1">
+                    <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600">
+                        <div class="flex flex-col items-center justify-center pt-8 pb-6">
+                            <Upload class="w-10 h-10 text-gray-500" />
+                            <p class="mb-1 text-sm text-gray-500 dark:text-gray-400"><span class="font-semibold">Click to upload</span></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">PNG or JPG (MAX. 10MB)</p>
+                        </div>
+                        <input id="dropzone-file" type="file" name="image" class="hidden" bind:this={profilePhotoFile} onchange={() => processUpload()} />
+                    </label>
+                </div>
+                {#if photoError}
+                    <span class="text-red-500 mt-1">{photoMessage}</span>
                 {/if}
+            {/if}
+        
+            <div class="flex w-full place-items-center justify-center mt-5">
+                <div class="avatar">
+                    {#if !photoError && uploadedImage?.id}
+                        <img src={'/api/bucket/' + uploadedImage?.key} alt={uploadedImage?.alt ?? 'Uploaded image'} />
+                    {/if}
+                </div>
             </div>
         </div>
     </div>
-</div>
+{:else}
+    {#if uploadedImage?.id || uploadedImage?.src || uploadedImage?.url}
+        <figure data-type={type} id={id} class="w-full min-w-full flex justify-center">
+            <img
+                src={uploadedImage?.key ? '/api/bucket/' + uploadedImage.key : uploadedImage?.src ?? uploadedImage?.url ?? ''}
+                alt={uploadedImage?.alt ?? 'Image'}
+                class="max-w-full h-auto"
+            />
+        </figure>
+    {/if}
+{/if}
 

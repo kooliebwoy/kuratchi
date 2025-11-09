@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { getThemeHomepage } from '@kuratchi/editor';
 
-import { getSiteDatabase, type SiteDatabaseContext } from '$lib/server/db-context';
+import { getSiteDatabase, getDatabase, type SiteDatabaseContext } from '$lib/server/db-context';
 
 const JsonRecordSchema = v.record(v.string(), v.unknown());
 
@@ -14,9 +14,7 @@ const PageDataSchema = v.object({
 	seoDescription: v.string(),
 	slug: v.string(),
 	content: v.array(v.unknown()),
-	header: v.nullable(v.unknown()),
-	footer: v.nullable(v.unknown()),
-	metadata: v.optional(JsonRecordSchema)
+	pageType: v.optional(v.string())
 });
 
 type PageData = v.InferOutput<typeof PageDataSchema>;
@@ -51,6 +49,13 @@ const SavePayloadSchema = v.object({
 
 type SavePayload = v.InferOutput<typeof SavePayloadSchema>;
 
+const SaveSiteMetadataSchema = v.object({
+	siteId: v.string(),
+	metadata: JsonRecordSchema
+});
+
+type SaveSiteMetadataPayload = v.InferOutput<typeof SaveSiteMetadataSchema>;
+
 type PageRow = {
 	id: string;
 	title: string | null;
@@ -84,31 +89,31 @@ function toPageData(row: PageRow | null, site: SiteContext['site']): PageData {
 		seoDescription: row?.seoDescription ?? '',
 		slug: row?.slug ?? 'homepage',
 		content,
-		header: (data as any).header ?? null,
-		footer: (data as any).footer ?? null,
-		metadata: (typeof (data as any).metadata === 'object' && (data as any).metadata !== null)
-			? (data as any).metadata as Record<string, unknown>
-			: { backgroundColor: '#000000' }
+		pageType: row?.pageType
 	};
 }
 
 async function getOrCreateHomepage(siteDb: SiteContext['siteDb'], site: SiteContext['site'], themeId?: string | null): Promise<PageRow> {
-	const existing = await siteDb.pages
-		.where({ pageType: 'homepage', deleted_at: { isNullish: true } })
-		.first();
+    // Resolve homepage by slug to avoid reliance on pageType consistency
+    const existing = await siteDb.pages
+        .where({ slug: 'homepage', deleted_at: { isNullish: true } })
+        .first();
 
-	if (existing.success && existing.data) {
-		return existing.data as PageRow;
-	}
+	    if (existing.success && existing.data) {
+        // Normalize accidental pageType drift
+        if (existing.data.pageType !== 'homepage') {
+            await siteDb.pages
+                .where({ id: existing.data.id })
+                .update({ pageType: 'homepage' });
+        }
+        return existing.data as PageRow;
+    }
 
 	// Load default homepage template from theme
 	const themeHomepage = getThemeHomepage(themeId);
 	const now = new Date().toISOString();
 	const defaultData = {
-		content: themeHomepage.content as Record<string, unknown>[],
-		header: themeHomepage.header,
-		footer: themeHomepage.footer,
-		metadata: themeHomepage.metadata || { backgroundColor: '#ffffff' }
+		content: themeHomepage.content as Record<string, unknown>[]
 	};
 
 	const pageId = crypto.randomUUID();
@@ -180,23 +185,34 @@ export const saveSitePage = command(SavePayloadSchema, async ({ siteId, page }: 
 		: {};
 
 	const now = new Date().toISOString();
+	const normalizedSlug = (plainPage.slug || '')
+		.toString()
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, '-')
+		.replace(/^-+|-+$/g, '') || 'homepage';
+
+	const isHomepage = (plainPage.pageType === 'homepage') || normalizedSlug === 'homepage';
 	const payload = {
 		title: plainPage.title,
 		seoTitle: plainPage.seoTitle,
 		seoDescription: plainPage.seoDescription,
-		slug: plainPage.slug || 'homepage',
-		pageType: 'homepage',
+		slug: normalizedSlug,
+		pageType: isHomepage ? 'homepage' : 'webpage',
 		status: true,
 		data: {
-			content: normalizedContent,
-			header: plainPage.header ?? null,
-			footer: plainPage.footer ?? null,
-			metadata: normalizedMetadata
+			content: normalizedContent
 		},
 		updated_at: now
 	};
 
 	const pageId = plainPage.id;
+
+    // Normalize any legacy rows that may still have pageType 'page'
+    if (!isHomepage) {
+        await siteDb.pages
+            .where({ slug: normalizedSlug, pageType: 'page', deleted_at: { isNullish: true } })
+            .update({ pageType: 'webpage' });
+    }
 
 	if (pageId) {
 		const updateResult = await siteDb.pages
@@ -239,4 +255,165 @@ export const saveSitePage = command(SavePayloadSchema, async ({ siteId, page }: 
 	}
 
 	return { id: insertResult.data.id as string, updated_at: now } satisfies SaveSitePageResult;
+});
+
+export const saveSiteMetadata = command(SaveSiteMetadataSchema, async ({ siteId, metadata }: SaveSiteMetadataPayload): Promise<{ updated_at: string }> => {
+	const { locals } = getRequestEvent();
+	const db = await getDatabase(locals);
+
+	const now = new Date().toISOString();
+	const updateResult = await db.sites
+		.where({ id: siteId })
+		.update({ metadata, updated_at: now });
+
+	if (!updateResult.success) {
+		error(500, `Failed to update site metadata: ${updateResult.error ?? 'unknown error'}`);
+	}
+
+	return { updated_at: now };
+});
+
+// Page Management APIs
+
+export interface PageListItem {
+	id: string;
+	title: string;
+	slug: string;
+	pageType: string | null;
+	isSpecialPage: boolean | null;
+	status: boolean | null;
+	updated_at: string | null;
+}
+
+const LoadPageSchema = v.object({
+	siteId: v.string(),
+	pageId: v.string()
+});
+
+const CreatePageSchema = v.object({
+	siteId: v.string(),
+	title: v.string(),
+	slug: v.string()
+});
+
+const DeletePageSchema = v.object({
+	siteId: v.string(),
+	pageId: v.string()
+});
+
+export const listSitePages = query(async (): Promise<PageListItem[]> => {
+	const { params } = getRequestEvent();
+	const siteId = params.id;
+
+	if (!siteId) {
+		error(400, 'Site ID is required');
+	}
+
+	const { siteDb } = await resolveSiteContext(siteId);
+	
+	// Return all pages (homepage + regular pages)
+	const result = await siteDb.pages
+		.where({ deleted_at: { isNullish: true } })
+		.orderBy({ updated_at: 'desc' })
+		.many();
+
+	if (!result.success) {
+		error(500, `Failed to load pages: ${result.error ?? 'unknown error'}`);
+	}
+
+	return (result.data || []).map((page) => ({
+		id: page.id as string,
+		title: (page.title as string) || 'Untitled Page',
+		slug: (page.slug as string) || 'homepage',
+		pageType: (page.pageType as string | null) ?? null,
+		isSpecialPage: (page.isSpecialPage as boolean | null) ?? null,
+		status: (page.status as boolean | null) ?? null,
+		updated_at: (page.updated_at as string | null) ?? null
+	}));
+});
+
+export const loadSitePage = query(LoadPageSchema, async ({ siteId, pageId }): Promise<PageData> => {
+	const { site, siteDb } = await resolveSiteContext(siteId);
+	
+	const result = await siteDb.pages
+		.where({ id: pageId, deleted_at: { isNullish: true } })
+		.first();
+
+	if (!result.success || !result.data) {
+		error(404, 'Page not found');
+	}
+
+	return toPageData(result.data as PageRow, site);
+});
+
+export const createSitePage = command(CreatePageSchema, async ({ siteId, title, slug }): Promise<SaveSitePageResult> => {
+	const { siteDb } = await resolveSiteContext(siteId);
+
+	// Normalize slug
+	const normalizedSlug = (slug || '')
+		.toString()
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+
+	// Check if slug already exists
+	const existing = await siteDb.pages
+		.where({ slug: normalizedSlug, deleted_at: { isNullish: true } })
+		.first();
+
+	if (existing.success && existing.data) {
+		error(400, 'A page with this slug already exists');
+	}
+
+	const now = new Date().toISOString();
+	const pageId = crypto.randomUUID();
+	
+	const insertResult = await siteDb.pages.insert({
+		id: pageId,
+		title,
+		seoTitle: title,
+		seoDescription: '',
+		slug: normalizedSlug,
+		pageType: 'webpage',
+		isSpecialPage: false,
+		status: true,
+		data: { content: [] },
+		created_at: now,
+		updated_at: now,
+		deleted_at: null
+	});
+
+	if (!insertResult.success || !insertResult.data) {
+		error(500, `Failed to create page: ${insertResult.error ?? 'unknown error'}`);
+	}
+
+	return { id: pageId, updated_at: now };
+});
+
+export const deleteSitePage = command(DeletePageSchema, async ({ siteId, pageId }): Promise<{ success: boolean }> => {
+	const { siteDb } = await resolveSiteContext(siteId);
+
+	// Check if it's a special page (homepage, etc.)
+	const page = await siteDb.pages
+		.where({ id: pageId })
+		.first();
+
+	if (!page.success || !page.data) {
+		error(404, 'Page not found');
+	}
+
+	if (page.data.isSpecialPage) {
+		error(400, 'Cannot delete special pages (homepage, etc.)');
+	}
+
+	const now = new Date().toISOString();
+	const deleteResult = await siteDb.pages
+		.where({ id: pageId })
+		.update({ deleted_at: now });
+
+	if (!deleteResult.success) {
+		error(500, `Failed to delete page: ${deleteResult.error ?? 'unknown error'}`);
+	}
+
+	return { success: true };
 });

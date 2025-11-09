@@ -2,15 +2,23 @@
   import { 
     logRouteActivity, 
     getSites, 
-    createSite
+    createSite,
+    deleteSite
   } from '$lib/api/sites.remote';
-  import { Layout, Plus, ExternalLink, Settings, Trash2, Palette } from 'lucide-svelte';
+  import { Layout, Plus, ExternalLink, Settings, Trash2, Palette, X } from 'lucide-svelte';
 
   let createDialog: HTMLDialogElement;
+  let showDeleteConfirm = $state(false);
+  let deletingSite = $state<any>(null);
 
   // Load data using remote functions
   logRouteActivity();
   const sites = getSites();
+
+  function handleDeleteClick(site: any) {
+    deletingSite = site;
+    showDeleteConfirm = true;
+  }
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -87,7 +95,7 @@
                         </a>
                       </li>
                       <li>
-                        <button class="text-error">
+                        <button class="text-error" onclick={() => handleDeleteClick(site)}>
                           <Trash2 class="h-4 w-4" />
                           Delete
                         </button>
@@ -233,3 +241,46 @@
     <button>close</button>
   </form>
 </dialog>
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm && deletingSite}
+  <div class="modal modal-open">
+    <div class="modal-box">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-lg text-error">Confirm Delete</h3>
+        <button class="btn btn-ghost btn-sm btn-circle" onclick={() => { showDeleteConfirm = false; deletingSite = null; }}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <p class="text-base-content/70">
+          Are you sure you want to delete <strong>{deletingSite.name}</strong>?
+        </p>
+        <p class="text-sm text-base-content/60">
+          This will permanently delete:
+        </p>
+        <ul class="list-disc list-inside text-sm text-base-content/60 space-y-1 ml-2">
+          <li>The site and all its pages</li>
+          <li>The site's database from Cloudflare</li>
+          <li>All associated data and content</li>
+        </ul>
+        <p class="text-sm text-error font-semibold">This action cannot be undone.</p>
+        
+        <div class="flex gap-2 justify-end">
+          <button type="button" class="btn btn-outline" onclick={() => { showDeleteConfirm = false; deletingSite = null; }}>
+            Cancel
+          </button>
+          <form {...deleteSite} onsubmit={() => { showDeleteConfirm = false; deletingSite = null; }}>
+            <input type="hidden" name="id" value={deletingSite.id} />
+            <button type="submit" class="btn btn-error">
+              <Trash2 class="h-4 w-4" />
+              Delete Site
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="modal-backdrop" onclick={() => { showDeleteConfirm = false; deletingSite = null; }} aria-label="Close modal"></button>
+  </div>
+{/if}

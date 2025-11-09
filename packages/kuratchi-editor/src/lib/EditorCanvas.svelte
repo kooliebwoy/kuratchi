@@ -22,6 +22,10 @@
         onContentChange?: (content: Array<Record<string, unknown>>) => void;
         onHeaderChange?: (header: Record<string, unknown> | null) => void;
         onFooterChange?: (footer: Record<string, unknown> | null) => void;
+        navigation?: {
+            header?: { visible?: boolean; useMobileMenuOnDesktop?: boolean; items?: any[] };
+            footer?: { visible?: boolean; items?: any[] };
+        };
     }
 
     let { 
@@ -36,7 +40,8 @@
         imageConfig: editorImageConfig = {},
         onContentChange,
         onHeaderChange,
-        onFooterChange
+        onFooterChange,
+        navigation
     }: Props = $props();
     
     let editorBlocks = $state(content);
@@ -44,19 +49,7 @@
     let inlineBlockSearchInput: HTMLInputElement;
     let inlineBlockSearch = $state('');
     let inlineFilteredBlocks = $state([]);
-    let inlineDropdown: HTMLDetailsElement;
-    let inlineDropdownPosition = $state({ top: 0 });
-
-    const updateInlinePosition = () => {
-        if (inlineDropdown) {
-            const rect = inlineDropdown.getBoundingClientRect();
-            inlineDropdownPosition.top = rect.top;
-        }
-    };
-
-    $effect(() => {
-        updateInlinePosition();
-    });
+    let inlineDropdown = $state({ open: false });
 
     const filteredBlocks = $derived(
         blockSearchTerm === ""
@@ -73,6 +66,12 @@
             onContentChange?.(blocks);
         }
     }
+
+    const blockKey = (block: Record<string, unknown>, index: number) => {
+        if (typeof block.id === 'string' && block.id.length > 0) return block.id;
+        if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
+        return `block-${index}`;
+    };
 
     const updateHeaderData = async () => {
         if (!headerElement) return;
@@ -97,6 +96,7 @@
         blockSearchTerm = '';
         inlineDropdown.open = false;
         inlineBlockSearch = '';
+        inlineBlockSearchInput?.focus();
     }
 
     const loadEditorBlock = (type: string) => getBlock(type) || getLayout(type);
@@ -121,6 +121,7 @@
 
     let headerElement = $state<HTMLElement>();
     let footerElement = $state<HTMLElement>();
+    let contentUpdateTimeout: number;
     let headerUpdateTimeout: number;
     let footerUpdateTimeout: number;
 
@@ -142,12 +143,8 @@
         initSortable();
 
         const observer = new MutationObserver(() => {
-            updateEditorData();
-            if (isWebpage) {
-                updateHeaderData();
-                updateFooterData();
-            }
-            updateInlinePosition();
+            clearTimeout(contentUpdateTimeout);
+            contentUpdateTimeout = setTimeout(updateEditorData, 1500);
         });
 
         if (editor) {
@@ -161,7 +158,7 @@
         if (headerElement) {
             const headerObserver = new MutationObserver((mutations) => {
                 clearTimeout(headerUpdateTimeout);
-                headerUpdateTimeout = setTimeout(updateHeaderData, 500);
+                headerUpdateTimeout = setTimeout(updateHeaderData, 1500);
             });
             
             headerObserver.observe(headerElement, {
@@ -172,10 +169,10 @@
             });
         }
         
-        if (footerElement) {
+        if (false && footerElement) {
             const footerObserver = new MutationObserver((mutations) => {
                 clearTimeout(footerUpdateTimeout);
-                footerUpdateTimeout = setTimeout(updateFooterData, 500);
+                footerUpdateTimeout = setTimeout(updateFooterData, 1500);
             });
             
             footerObserver.observe(footerElement, {
@@ -189,6 +186,7 @@
         return () => {
             sortableInstance?.destroy();
             sortableInstance = null;
+            clearTimeout(contentUpdateTimeout);
             clearTimeout(headerUpdateTimeout);
             clearTimeout(footerUpdateTimeout);
         };
@@ -203,12 +201,24 @@
 
     const headerComponent = getHeaderBlock((header as any)?.type) ?? getHeaderBlock('saige-blake-header');
     const footerComponent = getFooterBlock((footer as any)?.type) ?? getFooterBlock('saige-blake-footer');
+
+    const headerMenuHidden = $derived(
+        navigation?.header?.visible === false
+    );
+    const footerMenuHidden = $derived(
+        navigation?.footer?.visible === false
+    );
 </script>
 
 <div class="h-full bg-base-100 flex flex-col max-w-8xl mx-auto rounded-3xl shadow-sm" style:background-color={backgroundColor}>
     {#if isWebpage}
         <div bind:this={headerElement} class="flex-none">
-            <headerComponent.component {...header} />
+            <headerComponent.component
+                {...header}
+                menu={navigation?.header?.items ?? (header as any)?.menu}
+                useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (header as any)?.useMobileMenuOnDesktop}
+                menuHidden={headerMenuHidden}
+            />
         </div> 
     {/if}
 
@@ -219,7 +229,7 @@
                 role="application" 
                 class="prose lg:prose-lg py-8 text-base-content w-full max-w-none relative space-y-3"
             >
-                {#each editorBlocks as block (block.id)}
+                {#each editorBlocks as block, index (blockKey(block, index))}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
                         <div class="relative">
@@ -229,7 +239,7 @@
                 {/each}
             </article>
             <div class="relative group">
-                <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 z-[1] group-hover:opacity-100 transition-opacity flex flex-row gap-1">
+                <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-row gap-1 z-10">
                     {#if layoutsEnabled}
                         <button class="btn btn-xs btn-square" onclick={() => layoutModal.showModal()}>
                             <PanelsTopLeft class="text-base" />
@@ -256,34 +266,30 @@
                         {/if}
                     </ul>
                 </div>
-                <details class="dropdown dropdown-bottom w-full group/dropdown relative" bind:this={inlineDropdown}>
-                    <summary class="px-0 cursor-text">
-                        <input 
-                            class="input input-lg w-full mt-0 !border-0 !border-none !outline-none !ring-0 !ring-offset-0 rounded-none focus:!outline-none focus:!ring-0 focus:!ring-offset-0 px-0 placeholder:opacity-30" 
-                            style="background: transparent; {backgroundColor === '#ffffff' || !backgroundColor ? 'color: rgba(0,0,0,0.8)' : 'color: rgba(255,255,255,0.8)'}" 
-                            bind:value={inlineBlockSearch} 
-                            bind:this={inlineBlockSearchInput} 
-                            oninput={handleInlineSearch} 
-                            placeholder="Type / to browse blocks" 
-                            class:placeholder-black={backgroundColor === '#ffffff' || !backgroundColor}
-                            class:placeholder-white={backgroundColor !== '#ffffff' && backgroundColor}
-                        />
-                    </summary>
-                    <div tabindex="0" role="menu" class="menu dropdown-content rounded-box w-52 p-3 m-3 shadow z-50 opacity-0 group-hover/dropdown:opacity-100 transition-opacity" style="background-color: {backgroundColor === '#ffffff' || !backgroundColor ? '#f8f8f8' : '#1a1a1a'}; color: {backgroundColor === '#ffffff' || !backgroundColor ? '#000000' : '#ffffff'}">
-                        <div class="flex flex-col gap-1 w-full mt-2">
-                            {#if inlineFilteredBlocks.length > 0}
-                                {#each inlineFilteredBlocks as component, i}
-                                    <div class="flex gap-2 w-full">
-                                        <button class="btn btn-ghost" onclick={() => addComponent(component.component)}>
-                                            <component.icon class="text-lg" />
-                                            <span>{component.name}</span>
-                                        </button> 
-                                    </div>
-                                {/each}
-                            {/if}
+                <div class="relative">
+                    <input 
+                        class="input w-full !border-0 !outline-none bg-transparent focus:!outline-none px-0 placeholder:opacity-30" 
+                        style="{backgroundColor === '#ffffff' || !backgroundColor ? 'color: rgba(0,0,0,0.8)' : 'color: rgba(255,255,255,0.8)'}" 
+                        bind:value={inlineBlockSearch} 
+                        bind:this={inlineBlockSearchInput} 
+                        oninput={handleInlineSearch} 
+                        placeholder="Type / to browse blocks" 
+                        class:placeholder-black={backgroundColor === '#ffffff' || !backgroundColor}
+                        class:placeholder-white={backgroundColor !== '#ffffff' && backgroundColor}
+                    />
+                    {#if inlineDropdown?.open && inlineFilteredBlocks.length > 0}
+                        <div class="absolute top-full left-0 mt-2 menu bg-base-100 rounded-box w-52 p-2 shadow-lg z-50 border border-base-300">
+                            {#each inlineFilteredBlocks as component}
+                                <li>
+                                    <button class="btn btn-ghost justify-start" onclick={() => addComponent(component.component)}>
+                                        <component.icon class="text-lg" />
+                                        <span>{component.name}</span>
+                                    </button> 
+                                </li>
+                            {/each}
                         </div>
-                    </div>
-                </details>
+                    {/if}
+                </div>
             </div>
         </div>
     </div>
@@ -313,7 +319,11 @@
 
     {#if isWebpage}
         <div bind:this={footerElement} class="flex-none"> 
-            <footerComponent.component {...footer} />
+            <footerComponent.component
+                {...footer}
+                menu={navigation?.footer?.items ?? (footer as any)?.menu}
+                menuHidden={footerMenuHidden}
+            />
         </div>
     {/if}
 </div>

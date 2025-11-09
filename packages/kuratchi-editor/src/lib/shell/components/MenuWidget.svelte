@@ -10,18 +10,20 @@
         pages: any[];
         reservedPages: any[];
         menuLocation: string;
+        onSave?: (args: { location: string; items: any[] }) => void;
     }
 
     let { 
         menuItems = [],
         pages = [],
         reservedPages = [],
-        menuLocation = 'header'
+        menuLocation = 'header',
+        onSave
     }: Props = $props();
 
     let menuList: HTMLElement;
     let formLoading = $state(false);
-    let editingItem: any = $state(null) as any | null;
+    let editingItem: any = $state(null) as any | null; // { kind: 'item' | 'sub', id: string, parentId?: string }
     let addingSubmenuTo: any = $state(null) as any | null;
     let showPageSelector = $state(false);
     let activeTab = $state('pages');
@@ -37,7 +39,9 @@
                 onEnd: (evt) => {
                     const newIndex = evt.newIndex;
                     const oldIndex = evt.oldIndex;
+                    if (newIndex == null || oldIndex == null) return;
                     const item = menuItems[oldIndex];
+                    if (!item) return;
                     menuItems.splice(oldIndex, 1);
                     menuItems.splice(newIndex, 0, item);
                     menuItems = [...menuItems]; // Trigger reactivity
@@ -122,152 +126,124 @@
         });
         editingItem = null;
     }
+
+    function startEditItem(item: any) {
+        editingItem = { kind: 'item', id: item.id };
+    }
+    function startEditSubItem(parentId: string, subItem: any) {
+        editingItem = { kind: 'sub', id: subItem.id, parentId };
+    }
+    function stopEditing() {
+        editingItem = null;
+    }
 </script>
 
-<div class="flex items-center justify-between mb-4">
-    <button type="button" class="btn btn-sm btn-ghost gap-2" onclick={() => showPageSelector = true}>
-        <Plus />
-        Add Page
+<div class="flex items-center justify-between gap-2 mb-2">
+    <button type="button" class="btn btn-xs btn-ghost gap-1" onclick={() => showPageSelector = true}>
+        <Plus class="w-3 h-3" />
+        <span class="text-xs">Add</span>
     </button>
-    <form method="POST" action="?/updateSiteMenu" use:enhance={submitHandler} class="contents">
-        <input type="hidden" name="menuLocation" value={menuLocation} />
-        <input type="hidden" name="menuData" value={JSON.stringify(menuItems)} />
-        <button type="submit" class="btn btn-sm btn-success gap-2 min-w-[100px]" disabled={formLoading}>
-            {#if formLoading}
-                <span class="loading loading-spinner loading-xs"></span>
-                Saving...
-            {:else}
-                <Check />
-                Save
-            {/if}
+    {#if onSave}
+        <button type="button" class="btn btn-xs btn-primary gap-1" disabled={formLoading} onclick={() => onSave({ location: menuLocation, items: menuItems })}>
+            <Check class="w-3 h-3" />
+            <span class="text-xs">Save</span>
         </button>
-    </form>
+    {:else}
+        <form method="POST" action="?/updateSiteMenu" use:enhance={submitHandler} class="contents">
+            <input type="hidden" name="menuLocation" value={menuLocation} />
+            <input type="hidden" name="menuData" value={JSON.stringify(menuItems)} />
+            <button type="submit" class="btn btn-xs btn-primary gap-1" disabled={formLoading}>
+                {#if formLoading}
+                    <span class="loading loading-spinner loading-xs"></span>
+                {:else}
+                    <Check class="w-3 h-3" />
+                {/if}
+                <span class="text-xs">Save</span>
+            </button>
+        </form>
+    {/if}
 </div>
 
 <!-- Menu Items -->
-<div class="space-y-2">
-    <ul bind:this={menuList} class="space-y-2">
-        {#each menuItems as item (item.id)}
-            <li class="menu-item card !bg-base-200 shadow-sm hover:shadow-md transition-shadow">
-                {#if editingItem?.id === item.id}
-                    <div class="card-body p-4">
-                        <div class="space-y-2">
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">Display Name</span>
-                                </label>
+<div class="space-y-1">
+    <ul bind:this={menuList} class="space-y-1">
+        {#each menuItems as item, i (item.id || item.slug || item.label || i)}
+            <li class="menu-item rounded-lg border border-base-300 bg-base-100 hover:bg-base-100/80 transition-colors overflow-hidden">
+                <div class="p-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                            <button type="button" class="drag-handle btn btn-xs btn-ghost btn-square touch-none flex-shrink-0">
+                                <GripVertical class="w-3 h-3" />
+                            </button>
+                            {#if editingItem?.kind === 'item' && editingItem?.id === item.id}
                                 <input 
-                                    type="text" 
-                                    class="input input-sm input-bordered" 
+                                    class="input input-xs input-bordered flex-1 min-w-0"
                                     value={item.label}
-                                    onchange={(e) => updateMenuItem(item, { label: e.currentTarget.value })}
+                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                    onblur={(e) => updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })}
                                 />
-                            </div>
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">URL Slug</span>
-                                </label>
                                 <input 
-                                    type="text" 
-                                    class="input input-sm input-bordered" 
+                                    class="input input-xs input-bordered flex-1 min-w-0"
                                     value={item.slug}
-                                    onchange={(e) => updateMenuItem(item, { slug: e.currentTarget.value })}
+                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                    onblur={(e) => updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })}
                                 />
-                            </div>
-                            <div class="flex justify-end space-x-2">
-                                <button type="button" class="btn btn-sm btn-ghost" onclick={() => editingItem = null}>
-                                    Cancel
-                                </button>
-                                <button type="button" class="btn btn-sm btn-primary" onclick={() => editingItem = null}>
-                                    Done
-                                </button>
-                            </div>
+                            {:else}
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-medium truncate">{item.label}</div>
+                                    <div class="text-xs text-base-content/50 truncate">{item.slug}</div>
+                                </div>
+                            {/if}
+                        </div>
+                        <div class="flex gap-0.5 flex-shrink-0">
+                            <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => startEditItem(item)} title="Edit">
+                                <Pencil class="w-3 h-3" />
+                            </button>
+                            <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => addingSubmenuTo = item} title="Add submenu">
+                                <CornerDownRight class="w-3 h-3" />
+                            </button>
+                            <button type="button" class="btn btn-xs btn-ghost btn-square text-error" onclick={() => removeMenuItem(item.id)} title="Delete">
+                                <Trash2 class="w-3 h-3" />
+                            </button>
                         </div>
                     </div>
-                {:else}
-                    <div class="card-body p-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <button type="button" class="drag-handle btn btn-sm btn-ghost btn-square touch-none">
-                                    <GripVertical />
-                                </button>
-                                <span class="font-medium">{item.label}</span>
-                                <span class="text-xs opacity-60">{item.slug}</span>
-                            </div>
-                            <div class="flex space-x-1">
-                                <button type="button" class="btn btn-sm btn-ghost btn-square" onclick={() => editingItem = item}>
-                                    <Pencil />
-                                </button>
-                                <button type="button" class="btn btn-sm btn-ghost btn-square" onclick={() => addingSubmenuTo = item}>
-                                    <CornerDownRight />
-                                </button>
-                                <button type="button" class="btn btn-sm btn-ghost btn-square text-error" onclick={() => removeMenuItem(item.id)}>
-                                    <Trash2 />
-                                </button>
-                            </div>
-                        </div>
 
-                        {#if item.items?.length > 0}
-                            <ul class="pl-8 mt-2 space-y-1 border-l-2 border-primary/20">
-                                {#each item.items as subItem (subItem.id)}
-                                    <li class="relative">
-                                        <div class="absolute -left-[17px] top-1/2 w-3 h-px bg-primary/20"></div>
-                                        {#if editingItem?.id === subItem.id}
-                                            <div class="bg-base-100 rounded-lg p-2 space-y-2">
-                                                <div class="form-control">
-                                                    <label class="label">
-                                                        <span class="label-text">Display Name</span>
-                                                    </label>
-                                                    <input 
-                                                        type="text" 
-                                                        class="input input-sm input-bordered" 
-                                                        value={subItem.label}
-                                                        onchange={(e) => updateSubMenuItem(item.id, subItem, { label: e.currentTarget.value })}
-                                                    />
-                                                </div>
-                                                <div class="form-control">
-                                                    <label class="label">
-                                                        <span class="label-text">URL Slug</span>
-                                                    </label>
-                                                    <input 
-                                                        type="text" 
-                                                        class="input input-sm input-bordered" 
-                                                        value={subItem.slug}
-                                                        onchange={(e) => updateSubMenuItem(item.id, subItem, { slug: e.currentTarget.value })}
-                                                    />
-                                                </div>
-                                                <div class="flex justify-end space-x-2">
-                                                    <button type="button" class="btn btn-sm btn-ghost" onclick={() => editingItem = null}>
-                                                        Cancel
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm btn-primary" onclick={() => editingItem = null}>
-                                                        Done
-                                                    </button>
-                                                </div>
-                                            </div>
+                    {#if item.items?.length > 0}
+                        <ul class="mt-1 space-y-0.5 pl-5 border-l border-base-300">
+                            {#each item.items as subItem, j (subItem.id || subItem.slug || subItem.label || `${i}-${j}`)}
+                                <li class="flex items-center justify-between gap-2 p-1.5 rounded bg-base-200/50 hover:bg-base-200 transition-colors text-xs">
+                                    <div class="flex-1 min-w-0">
+                                        {#if editingItem?.kind === 'sub' && editingItem?.id === subItem.id}
+                                            <input 
+                                                class="input input-xs input-bordered w-full mb-1"
+                                                value={subItem.label}
+                                                onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                                onblur={(e) => updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })}
+                                            />
+                                            <input 
+                                                class="input input-xs input-bordered w-full"
+                                                value={subItem.slug}
+                                                onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                                onblur={(e) => updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })}
+                                            />
                                         {:else}
-                                            <div class="flex items-center justify-between bg-base-100 rounded-lg p-2 hover:bg-base-100/80">
-                                                <div class="flex items-center gap-2">
-                                                    <CornerDownRight class="text-primary/60" />
-                                                    <span>{subItem.label}</span>
-                                                    <span class="text-xs opacity-60">{subItem.slug}</span>
-                                                </div>
-                                                <div class="flex space-x-1">
-                                                    <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => editingItem = subItem}>
-                                                        <Pencil />
-                                                    </button>
-                                                    <button type="button" class="btn btn-xs btn-ghost btn-square text-error" onclick={() => removeSubMenuItem(item.id, subItem.id)}>
-                                                        <Trash2 />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            <div class="font-medium truncate">{subItem.label}</div>
+                                            <div class="text-base-content/50 truncate">{subItem.slug}</div>
                                         {/if}
-                                    </li>
-                                {/each}
-                            </ul>
-                        {/if}
-                    </div>
-                {/if}
+                                    </div>
+                                    <div class="flex gap-0.5 flex-shrink-0">
+                                        <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => startEditSubItem(item.id, subItem)} title="Edit">
+                                            <Pencil class="w-2.5 h-2.5" />
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-ghost btn-square text-error" onclick={() => removeSubMenuItem(item.id, subItem.id)} title="Delete">
+                                            <Trash2 class="w-2.5 h-2.5" />
+                                        </button>
+                                    </div>
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </div>
             </li>
         {/each}
     </ul>
@@ -276,12 +252,12 @@
 <!-- Page Selector Modal -->
 {#if showPageSelector || addingSubmenuTo}
     <div class="modal modal-open">
-        <div class="modal-box">
-            <h3 class="font-bold text-lg mb-4">
-                {addingSubmenuTo ? `Add Submenu to ${addingSubmenuTo.label}` : 'Add Page to Menu'}
+        <div class="modal-box max-w-sm">
+            <h3 class="font-semibold text-base mb-3">
+                {addingSubmenuTo ? `Add to ${addingSubmenuTo.label}` : 'Add Page'}
             </h3>
             
-            <div class="tabs tabs-boxed mb-4">
+            <div class="tabs tabs-boxed tabs-sm mb-3">
                 <button 
                     class="tab {activeTab === 'pages' ? 'tab-active' : ''}" 
                     onclick={() => activeTab = 'pages'}
@@ -296,17 +272,17 @@
                 </button>
             </div>
 
-            <div class="space-y-2 max-h-64 overflow-y-auto">
+            <div class="space-y-1 max-h-72 overflow-y-auto pr-2">
                 {#if activeTab === 'pages'}
                     {#each pages as page}
-                        <div class="flex justify-between items-center p-2 hover:bg-base-200 rounded-lg">
-                            <div>
-                                <div class="font-medium">{page.title}</div>
-                                <div class="text-xs opacity-60">{page.slug}</div>
+                        <div class="flex justify-between items-center p-2 rounded hover:bg-base-200 transition-colors text-sm">
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium truncate">{page.title}</div>
+                                <div class="text-xs text-base-content/50 truncate">{page.slug}</div>
                             </div>
                             <button 
                                 type="button" 
-                                class="btn btn-sm btn-ghost" 
+                                class="btn btn-xs btn-primary ml-2 flex-shrink-0" 
                                 onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page) : addMenuItem(page)}
                             >
                                 Add
@@ -315,14 +291,14 @@
                     {/each}
                 {:else}
                     {#each reservedPages as page}
-                        <div class="flex justify-between items-center p-2 hover:bg-base-200 rounded-lg">
-                            <div>
-                                <div class="font-medium">{page.name}</div>
-                                <div class="text-xs opacity-60">{page.path}</div>
+                        <div class="flex justify-between items-center p-2 rounded hover:bg-base-200 transition-colors text-sm">
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium truncate">{page.name}</div>
+                                <div class="text-xs text-base-content/50 truncate">{page.path}</div>
                             </div>
                             <button 
                                 type="button" 
-                                class="btn btn-sm btn-ghost" 
+                                class="btn btn-xs btn-primary ml-2 flex-shrink-0" 
                                 onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page, true) : addMenuItem(page, true)}
                             >
                                 Add
@@ -332,8 +308,8 @@
                 {/if}
             </div>
 
-            <div class="modal-action">
-                <button type="button" class="btn" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}>
+            <div class="modal-action mt-4">
+                <button type="button" class="btn btn-sm" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}>
                     Close
                 </button>
             </div>

@@ -1,2 +1,11 @@
 @import "tailwindcss";
 @plugin "daisyui";
+
+/* Remove ugly outline from contenteditable elements */
+[contenteditable] {
+  outline: none;
+}
+
+[contenteditable]:focus {
+  outline: none;
+}

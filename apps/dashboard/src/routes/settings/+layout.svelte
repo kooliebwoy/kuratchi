@@ -9,7 +9,7 @@
 
   let { children }: Props = $props();
 
-  const tabs = [
+  const tabs = $state([
     { label: 'Account', href: '/settings', icon: Settings },
     { label: 'Users', href: '/settings/users', icon: Users },
     { label: 'Billing', href: '/settings/billing', icon: CreditCard },
@@ -17,7 +17,7 @@
     { label: 'API Keys', href: '/settings/api-keys', icon: Key },
     { label: 'Roles & Permissions', href: '/settings/roles', icon: Shield },
     { label: 'Danger Zone', href: '/settings/danger', icon: AlertTriangle }
-  ];
+  ]);
 </script>
 
 <div class="p-8">

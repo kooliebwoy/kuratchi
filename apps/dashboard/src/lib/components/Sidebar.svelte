@@ -9,10 +9,10 @@
     { label: 'Sites', icon: Layout, href: '/sites' },
     { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: Globe, href: '/domains' },
-    { label: 'Products', icon: Package, href: '/products' },
+    // { label: 'Products', icon: Package, href: '/products' },
     // { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Storage', icon: Folder, href: '/storage' },
-    { label: 'Emails', icon: Mail, href: '/emails' },
+    { label: 'Emails', icon: Mail, href: '/emails/drip' },
     { label: 'Activity', icon: Activity, href: '/activity' },
     { label: 'Settings', icon: Settings, href: '/settings' },
     { label: 'Super Admin', icon: Shield, href: '/superadmin', requireSuperadmin: true }

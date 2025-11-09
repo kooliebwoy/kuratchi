@@ -7,6 +7,7 @@
         id?: string;
         type?: string;
         metadata?: any;
+        editable?: boolean;
     }
 
     let {
@@ -25,10 +26,11 @@
                 alt: 'daisy',
                 key: ''
             }
-        }
+        },
+        editable = true
     }: Props = $props();
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
 
     let image1 = $state(metadata.image1);
     let image2 = $state(metadata.image2);
@@ -42,21 +44,36 @@
 
     let mounted = $state(false);
     onMount(() => {
+        if (!editable) return;
         mounted = true;
     });
 </script>
 
-<div class="editor-item group relative" bind:this={component}>
-    {#if mounted}
-        <SideActions {component} />
-    {/if}
+{#if editable}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <SideActions {component} />
+        {/if}
 
-    <div data-type={type} id={id} class="w-full min-w-full">
-        <!-- JSON Data for this component -->
-        <div class="hidden" id="metadata-{id}">
-            {JSON.stringify(content)}
+        <div data-type={type} id={id} class="w-full min-w-full">
+            <!-- JSON Data for this component -->
+            <div class="hidden" id="metadata-{id}">
+                {JSON.stringify(content)}
+            </div>
+
+            <div class="diff aspect-[16/9]">
+                <div class="diff-item-1">
+                    <img alt={image1.alt} src={ image1.key ? '/api/bucket/' + image1.key : image1.src} />
+                </div>
+                <div class="diff-item-2">
+                    <img alt={image2.alt} src={ image2.key ? '/api/bucket/' + image2.key : image2.src} />
+                </div>
+                <div class="diff-resizer"></div>
+            </div>
         </div>
-
+    </div>
+{:else}
+    <div data-type={type} id={id} class="w-full min-w-full">
         <div class="diff aspect-[16/9]">
             <div class="diff-item-1">
                 <img alt={image1.alt} src={ image1.key ? '/api/bucket/' + image1.key : image1.src} />
@@ -64,8 +81,7 @@
             <div class="diff-item-2">
                 <img alt={image2.alt} src={ image2.key ? '/api/bucket/' + image2.key : image2.src} />
             </div>
-            <div class="diff-resizer"></div>
         </div>
     </div>
-</div>
+{/if}
 
