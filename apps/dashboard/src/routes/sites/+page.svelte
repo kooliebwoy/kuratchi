@@ -33,116 +33,112 @@
   <title>Sites - Kuratchi Dashboard</title>
 </svelte:head>
 
-<section class="space-y-8">
-  <div class="flex flex-wrap items-center justify-between gap-4">
+<div class="p-8">
+  <!-- Header -->
+  <div class="mb-8 flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-semibold">Sites</h1>
-      <p class="text-sm text-base-content/60">Create and manage your Kuratchi websites</p>
+      <h1 class="text-2xl font-bold">Sites</h1>
+      <p class="text-sm text-base-content/70">Create and manage your Kuratchi websites</p>
     </div>
-    <div class="flex gap-2">
-      <button class="btn btn-primary btn-sm text-primary-content" onclick={() => createDialog.showModal()}>
-        <Plus class="h-4 w-4" />
-        New Site
-      </button>
-    </div>
+    <button class="btn btn-primary" onclick={() => createDialog.showModal()}>
+      <Plus class="h-4 w-4" />
+      New Site
+    </button>
   </div>
 
-  <div class="card border border-base-200 bg-base-200/30">
-    <div class="card-body gap-6">
-      {#if sites.loading}
-        <div class="flex justify-center py-12">
-          <span class="loading loading-spinner loading-lg"></span>
-        </div>
-      {:else if sites.error}
-        <div class="alert alert-error">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>Error loading sites</span>
-        </div>
-      {:else if sites.current && sites.current.length > 0}
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {#each sites.current as site}
-            <div class="card bg-base-100 border border-base-200 hover:shadow-lg transition-shadow">
-              <div class="card-body">
-                <div class="flex items-start justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                      <Layout class="h-5 w-5 text-primary" />
+  <!-- Sites Table -->
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <div class="overflow-x-auto">
+        {#if sites.loading}
+          <div class="flex justify-center py-12">
+            <span class="loading loading-spinner loading-lg"></span>
+          </div>
+        {:else if sites.error}
+          <div class="alert alert-error">
+            <span>Error loading sites. Please try again.</span>
+          </div>
+        {:else if sites.current && sites.current.length > 0}
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Site Name</th>
+                <th>Subdomain</th>
+                <th>Theme</th>
+                <th>Created</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each sites.current as site}
+                <tr class="hover">
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <Layout class="h-4 w-4 text-base-content/60" />
+                      <div>
+                        <div class="font-medium">{site.name}</div>
+                        {#if site.description}
+                          <div class="text-xs text-base-content/50">{site.description}</div>
+                        {/if}
+                      </div>
                     </div>
-                    <div>
-                      <h3 class="font-semibold text-base">{site.name}</h3>
-                      <p class="text-xs text-base-content/60">{site.subdomain}.kuratchi.com</p>
+                  </td>
+                  <td>
+                    <code class="text-sm">{site.subdomain}.kuratchi.com</code>
+                  </td>
+                  <td>
+                    <span class="badge badge-outline badge-sm">{site.theme || 'Default'}</span>
+                  </td>
+                  <td>
+                    <span class="text-sm">{formatDate(site.created_at)}</span>
+                  </td>
+                  <td class="text-right">
+                    <div class="flex gap-1 justify-end">
+                      <a
+                        href="/sites/{site.id}"
+                        class="btn btn-ghost btn-sm btn-square"
+                        title="Edit site"
+                      >
+                        <Settings class="h-4 w-4" />
+                      </a>
+                      <a
+                        href="https://{site.subdomain}.kuratchi.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-ghost btn-sm btn-square"
+                        title="Visit site"
+                      >
+                        <ExternalLink class="h-4 w-4" />
+                      </a>
+                      <button
+                        class="btn btn-ghost btn-sm btn-square text-error"
+                        onclick={() => handleDeleteClick(site)}
+                        title="Delete site"
+                      >
+                        <Trash2 class="h-4 w-4" />
+                      </button>
                     </div>
-                  </div>
-                  <div class="dropdown dropdown-end">
-                    <button tabindex="0" class="btn btn-ghost btn-sm btn-circle">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                      </svg>
-                    </button>
-                    <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                      <li>
-                        <a href="/sites/{site.id}">
-                          <Settings class="h-4 w-4" />
-                          Edit Site
-                        </a>
-                      </li>
-                      <li>
-                        <a href="https://{site.subdomain}.kuratchi.com" target="_blank" rel="noopener noreferrer">
-                          <ExternalLink class="h-4 w-4" />
-                          Visit Site
-                        </a>
-                      </li>
-                      <li>
-                        <button class="text-error" onclick={() => handleDeleteClick(site)}>
-                          <Trash2 class="h-4 w-4" />
-                          Delete
-                        </button>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-                
-                {#if site.description}
-                  <p class="text-sm text-base-content/70 mt-2">{site.description}</p>
-                {/if}
-
-                <div class="flex items-center justify-between mt-4 pt-4 border-t border-base-200">
-                  <div class="flex items-center gap-2">
-                    <Palette class="h-3 w-3 text-base-content/60" />
-                    <span class="text-xs text-base-content/60">{site.theme || 'Default'}</span>
-                  </div>
-                  <span class="text-xs text-base-content/60">{formatDate(site.created_at)}</span>
-                </div>
-
-                <div class="card-actions mt-4">
-                  <a href="/sites/{site.id}" class="btn btn-primary btn-sm btn-block">
-                    Edit Site
-                  </a>
-                </div>
-              </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}
+          <div class="text-center py-12">
+            <div class="flex flex-col items-center gap-2">
+              <Layout class="h-12 w-12 text-base-content/30" />
+              <p class="text-base-content/70">No sites found</p>
+              <button class="btn btn-primary btn-sm mt-2" onclick={() => createDialog.showModal()}>
+                <Plus class="h-4 w-4" />
+                Create Your First Site
+              </button>
             </div>
-          {/each}
-        </div>
-      {:else}
-        <div class="flex flex-col items-center gap-4 py-12">
-          <div class="flex h-20 w-20 items-center justify-center rounded-full bg-base-200">
-            <Layout class="h-10 w-10 text-base-content/40" />
           </div>
-          <div class="text-center">
-            <p class="font-semibold text-base-content/60">No sites yet</p>
-            <p class="text-sm text-base-content/40">Create your first Kuratchi site to get started</p>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick={() => createDialog.showModal()}>
-            <Plus class="h-4 w-4" />
-            Create Site
-          </button>
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
   </div>
-</section>
+</div>
 
 <!-- Create Site Dialog -->
 <dialog bind:this={createDialog} class="modal">

@@ -159,37 +159,41 @@
                 {JSON.stringify(content)}
             </div>
         {/if}
-        <footer class="footer flex flex-wrap lg:flex-nowrap p-10 text-base-content mb-0 min-w-full rounded-3xl min-h-56" style:background-color={backgroundColor}>
+        <footer class="footer p-10 text-base-content mb-0 min-w-full rounded-3xl min-h-56" style:background-color={backgroundColor}>
             {#if reverseOrder}
-                <div class="flex flex-row flex-wrap lg:flex-nowrap gap-6 grow justify-between">
+                <div class="flex flex-col lg:flex-row gap-6 grow">
                     {#if !menuHidden}
-                        {#each footerMenu as item}
-                            <nav class="flex flex-col gap-2">
-                                <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
-                                {#each item.items as subItem}
-                                    <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
-                                {/each}
-                            </nav>
-                        {/each}
+                        <div class="flex flex-row gap-8">
+                            {#each footerMenu as item}
+                                <nav class="flex flex-col gap-2">
+                                    <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
+                                    {#each item.items as subItem}
+                                        <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
+                                    {/each}
+                                </nav>
+                            {/each}
+                        </div>
                     {/if}
                 </div>
-                <aside class="flex-1 place-items-end">
+                <aside class="flex-1 flex justify-end items-center">
                     <img src={footerLogo.src} alt={footerLogo.alt} class="max-w-40 max-h-40" />
                 </aside>
             {:else}
-                <aside class="flex-1">
+                <aside class="flex-1 flex items-center">
                     <img src={footerLogo.src} alt={footerLogo.alt} class="max-w-40 max-h-40" />
                 </aside>
-                <div class="flex flex-row flex-wrap lg:flex-nowrap gap-6 grow justify-between">
+                <div class="flex flex-col lg:flex-row gap-6 grow">
                     {#if !menuHidden}
-                        {#each footerMenu as item}
-                            <nav class="flex flex-col gap-2">
-                                <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
-                                {#each item.items as subItem}
-                                    <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
-                                {/each}
-                            </nav>
-                        {/each}
+                        <div class="flex flex-row gap-8">
+                            {#each footerMenu as item}
+                                <nav class="flex flex-col gap-2">
+                                    <h6 class="footer-title" style:color={textColor}>{item.label}</h6>
+                                    {#each item.items as subItem}
+                                        <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={subItem.link}>{subItem.label}</a>
+                                    {/each}
+                                </nav>
+                            {/each}
+                        </div>
                     {/if}
                 </div>
             {/if}

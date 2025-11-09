@@ -21,11 +21,13 @@
   let showFolderModal = $state(false);
   let showEditModal = $state(false);
   let showDeleteConfirm = $state(false);
+  let showDeleteFolderConfirm = $state(false);
   let showPreviewModal = $state(false);
   
   // Modal state
   let folderModalMode = $state<'create' | 'edit'>('create');
   let editingFolder = $state<any>(null);
+  let deletingFolder = $state<any>(null);
   let editingMedia = $state<any>(null);
   let deletingMedia = $state<any>(null);
   let previewMedia = $state<any>(null);
@@ -83,9 +85,9 @@
   }
   
   function getThumbnailUrl(media: any) {
-    // For images, return a thumbnail URL (you'd implement actual logic here)
+    // For images, return the media URL directly
     if (media.mimeType?.startsWith('image/')) {
-      return media.url || `/api/media/${media.id}/thumbnail`;
+      return media.url;
     }
     return null;
   }
@@ -234,13 +236,32 @@
               </li>
               {#each folders as folder}
                 <li>
-                  <button 
-                    class:active={selectedFolder === folder.id}
-                    onclick={() => selectedFolder = folder.id}
-                  >
-                    <Folder class="h-4 w-4" />
-                    {folder.name}
-                  </button>
+                  <div class="flex items-center justify-between w-full group">
+                    <button 
+                      class:active={selectedFolder === folder.id}
+                      onclick={() => selectedFolder = folder.id}
+                      class="flex-1 flex items-center gap-2"
+                    >
+                      <Folder class="h-4 w-4" />
+                      {folder.name}
+                    </button>
+                    <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        class="btn btn-ghost btn-xs btn-circle" 
+                        onclick={(e) => { e.stopPropagation(); openEditFolderModal(folder); }}
+                        title="Edit folder"
+                      >
+                        <Edit class="h-3 w-3" />
+                      </button>
+                      <button 
+                        class="btn btn-ghost btn-xs btn-circle text-error" 
+                        onclick={(e) => { e.stopPropagation(); deletingFolder = folder; showDeleteFolderConfirm = true; }}
+                        title="Delete folder"
+                      >
+                        <Trash2 class="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
                 </li>
               {/each}
             </ul>
@@ -441,7 +462,7 @@
 
         <div class="form-control">
           <label class="label" for="upload-folder"><span class="label-text">Folder (Optional)</span></label>
-          <select id="upload-folder" name="folder" class="select select-bordered">
+          <select id="upload-folder" name="folder" class="select select-bordered" value={selectedFolder || ''}>
             <option value="">Root</option>
             {#each folders as folder}
               <option value={folder.id}>{folder.name}</option>
@@ -585,6 +606,29 @@
         <form {...deleteMedia} onsubmit={() => { showDeleteConfirm = false; deletingMedia = null; }}>
           <input type="hidden" name="id" value={deletingMedia?.id} />
           <button type="submit" class="btn btn-error">Delete File</button>
+        </form>
+      </div>
+    </div>
+</Modal>
+
+<!-- Delete Folder Confirmation -->
+<Modal bind:open={showDeleteFolderConfirm}>
+  <div class="mb-4">
+    <h3 class="font-bold text-lg text-error">Delete Folder</h3>
+  </div>
+    <div class="space-y-4">
+      <p class="text-base-content/70">
+        Are you sure you want to delete the folder <strong class="font-semibold">{deletingFolder?.name}</strong>?
+      </p>
+      <p class="text-sm text-error">This will delete all files inside this folder. This action cannot be undone.</p>
+      
+      <div class="flex gap-2 justify-end">
+        <button type="button" class="btn btn-outline" onclick={() => { showDeleteFolderConfirm = false; deletingFolder = null; }}>
+          Cancel
+        </button>
+        <form {...deleteFolder} onsubmit={() => { showDeleteFolderConfirm = false; deletingFolder = null; }}>
+          <input type="hidden" name="id" value={deletingFolder?.id} />
+          <button type="submit" class="btn btn-error">Delete Folder</button>
         </form>
       </div>
     </div>

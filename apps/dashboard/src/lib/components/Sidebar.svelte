@@ -7,12 +7,12 @@
   const menu = [
     { label: 'Overview', icon: Home, href: '/' },
     { label: 'Sites', icon: Layout, href: '/sites' },
+    { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: Globe, href: '/domains' },
     // { label: 'Products', icon: Package, href: '/products' },
     // { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Storage', icon: Folder, href: '/storage' },
-    { label: 'Emails', icon: Mail, href: '/emails/drip' },
     { label: 'Activity', icon: Activity, href: '/activity' },
     { label: 'Settings', icon: Settings, href: '/settings' },
     { label: 'Super Admin', icon: Shield, href: '/superadmin', requireSuperadmin: true }
@@ -31,7 +31,7 @@
   };
 </script>
 
-<aside class="flex h-full min-w-[260px] flex-col gap-6 border-r border-base-200 bg-base-200/30 px-6 py-6">
+<aside class="flex h-screen min-w-[260px] flex-col gap-6 border-r border-base-200 bg-base-200/30 px-6 py-6">
   <div class="flex items-center gap-3">
     <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary">
       <Globe class="h-5 w-5" />

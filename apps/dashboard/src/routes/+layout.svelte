@@ -5,6 +5,7 @@
   import type { LayoutData } from './$types';
   import type { Snippet } from 'svelte';
 	import { getOrganizationNameById } from '$lib/api/organizations.remote';
+	import HelpWidget from '$components/HelpWidget.svelte';
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -26,6 +27,8 @@
       </main>
     </div>
   </div>
+
+  <HelpWidget />
 {:else}
   {@render children()}
 {/if}

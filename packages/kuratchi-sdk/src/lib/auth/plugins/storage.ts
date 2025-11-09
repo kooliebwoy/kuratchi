@@ -254,8 +254,27 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
           
           const key = uploadOptions?.key || `uploads/${crypto.randomUUID()}-${(file as File).name || 'file'}`;
           
+          // Extract contentType from metadata or use file.type
+          const contentType = uploadOptions?.metadata?.contentType || (file as File).type || 'application/octet-stream';
+          
+          // Build httpMetadata object
+          const httpMetadata: Record<string, string> = {
+            contentType
+          };
+          
+          // Build customMetadata from remaining metadata fields
+          const customMetadata: Record<string, string> = {};
+          if (uploadOptions?.metadata) {
+            for (const [key, value] of Object.entries(uploadOptions.metadata)) {
+              if (key !== 'contentType') {
+                customMetadata[key] = value;
+              }
+            }
+          }
+          
           await bucket.put(key, file, {
-            httpMetadata: uploadOptions?.metadata
+            httpMetadata,
+            customMetadata: Object.keys(customMetadata).length > 0 ? customMetadata : undefined
           });
           
           return { key, bucket: uploadOptions?.bucket || options.defaultBucket || 'default' };
@@ -282,6 +301,7 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
           prefix?: string;
           limit?: number;
           cursor?: string;
+          delimiter?: string;
         }) {
           const bucket = getBucket(options?.bucket);
           if (!bucket) throw new Error('R2 bucket not available');
@@ -289,7 +309,9 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
           const listed = await bucket.list({
             prefix: options?.prefix,
             limit: options?.limit || 1000,
-            cursor: options?.cursor
+            cursor: options?.cursor,
+            delimiter: options?.delimiter,
+            include: ['httpMetadata', 'customMetadata']
           });
           
           return {
@@ -297,10 +319,13 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
               key: obj.key,
               size: obj.size,
               uploaded: obj.uploaded,
-              httpEtag: obj.httpEtag
+              httpEtag: obj.httpEtag,
+              httpMetadata: obj.httpMetadata,
+              customMetadata: obj.customMetadata
             })),
             truncated: listed.truncated,
-            cursor: listed.cursor
+            cursor: listed.cursor,
+            delimitedPrefixes: listed.delimitedPrefixes || []
           };
         },
         

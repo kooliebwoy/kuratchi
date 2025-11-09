@@ -83,19 +83,30 @@ export const getAllMedia = guardedQuery(async () => {
     });
     
     // Transform R2 objects to media format
-    return result?.objects?.map((obj: any) => ({
-      id: obj.key,
-      filename: obj.key.split('/').pop() || obj.key,
-      originalFilename: obj.key.split('/').pop() || obj.key,
-      key: obj.key,
-      size: obj.size,
-      uploaded: obj.uploaded,
-      created_at: obj.uploaded,
-      mimeType: obj.httpMetadata?.contentType || inferMimeTypeFromKey(obj.key),
-      url: `/api/storage/${obj.key}`,
-      folder: null,
-      alt: null
-    })) ?? [];
+    return result?.objects?.map((obj: any) => {
+      // Extract folder from key path
+      // e.g., "uploads/folder-name/file.jpg" -> "uploads/folder-name/"
+      const pathParts = obj.key.split('/');
+      let folder = null;
+      if (pathParts.length > 2) {
+        // File is inside a folder
+        folder = `${pathParts[0]}/${pathParts[1]}/`;
+      }
+      
+      return {
+        id: obj.key,
+        filename: obj.key.split('/').pop() || obj.key,
+        originalFilename: obj.key.split('/').pop() || obj.key,
+        key: obj.key,
+        size: obj.size,
+        uploaded: obj.uploaded,
+        created_at: obj.uploaded,
+        mimeType: obj.httpMetadata?.contentType || inferMimeTypeFromKey(obj.key),
+        url: `/api/storage/${obj.key}`,
+        folder: folder,
+        alt: null
+      };
+    }).filter((obj: any) => !obj.filename.startsWith('.')) ?? []; // Filter out .keep files
   } catch (err) {
     console.error('[storage.getAllMedia] error:', err);
     return [];
@@ -104,9 +115,27 @@ export const getAllMedia = guardedQuery(async () => {
 
 export const getFolders = guardedQuery(async () => {
   try {
-    // For now, return empty array since we're not using folders
-    // You can implement folder logic later if needed
-    return [];
+    const { locals } = getRequestEvent();
+    const result = await locals.kuratchi?.storage?.listFiles?.({
+      bucket: 'default',
+      prefix: 'uploads/',
+      delimiter: '/'
+    });
+    
+    // Extract unique folder prefixes from delimitedPrefixes
+    // R2's list with delimiter gives us the "virtual folders"
+    const folders = (result?.delimitedPrefixes || []).map((prefix: string) => {
+      // prefix will be like "uploads/folder-name/"
+      const folderName = prefix.replace('uploads/', '').replace('/', '');
+      return {
+        id: prefix,
+        name: folderName,
+        slug: folderName,
+        path: prefix
+      };
+    });
+    
+    return folders;
   } catch (err) {
     console.error('[storage.getFolders] error:', err);
     return [];
@@ -130,7 +159,15 @@ export const uploadMedia = guardedForm(
         // Upload to R2 with custom key
         const timestamp = Date.now();
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const key = `uploads/${timestamp}-${sanitizedName}`;
+        
+        // Build key with folder support
+        let key: string;
+        if (folder && folder !== '') {
+          // folder is expected to be like "uploads/folder-name/"
+          key = `${folder}${timestamp}-${sanitizedName}`;
+        } else {
+          key = `uploads/${timestamp}-${sanitizedName}`;
+        }
         
         await locals.kuratchi?.storage?.uploadFile?.(file, {
           bucket: 'default',
@@ -201,7 +238,22 @@ export const createFolder = guardedForm(
   }),
   async ({ name, slug, parentId }) => {
     try {
-      // Folders are not implemented yet - would need database or prefix-based organization
+      const { locals } = getRequestEvent();
+      
+      // Create a folder by uploading a .keep file
+      // This creates the folder structure in R2
+      const folderPath = `uploads/${slug}/`;
+      const keepFile = new Blob([''], { type: 'text/plain' });
+      
+      await locals.kuratchi?.storage?.uploadFile?.(keepFile, {
+        bucket: 'default',
+        key: `${folderPath}.keep`,
+        metadata: {
+          contentType: 'text/plain',
+          folderName: name
+        }
+      });
+      
       await getFolders().refresh();
       return { success: true };
     } catch (err) {
@@ -220,7 +272,28 @@ export const updateFolder = guardedForm(
   }),
   async ({ id, name, slug, parentId }) => {
     try {
-      // Folders are not implemented yet
+      const { locals } = getRequestEvent();
+      
+      // For R2 prefix-based folders, renaming means moving all files
+      // This is complex, so for now we'll just update the .keep file metadata
+      if (slug) {
+        const newFolderPath = `uploads/${slug}/`;
+        const keepFile = new Blob([''], { type: 'text/plain' });
+        
+        // Delete old .keep
+        await locals.kuratchi?.storage?.deleteFile?.(id + '.keep', 'default');
+        
+        // Create new .keep
+        await locals.kuratchi?.storage?.uploadFile?.(keepFile, {
+          bucket: 'default',
+          key: `${newFolderPath}.keep`,
+          metadata: {
+            contentType: 'text/plain',
+            folderName: name || slug
+          }
+        });
+      }
+      
       await getFolders().refresh();
       return { success: true };
     } catch (err) {
@@ -236,7 +309,21 @@ export const deleteFolder = guardedForm(
   }),
   async ({ id }) => {
     try {
-      // Folders are not implemented yet
+      const { locals } = getRequestEvent();
+      
+      // List all files in the folder
+      const result = await locals.kuratchi?.storage?.listFiles?.({
+        bucket: 'default',
+        prefix: id // id is the folder path like "uploads/folder-name/"
+      });
+      
+      // Delete all files in the folder
+      if (result?.objects && result.objects.length > 0) {
+        for (const obj of result.objects) {
+          await locals.kuratchi?.storage?.deleteFile?.((obj as any).key, 'default');
+        }
+      }
+      
       await getFolders().refresh();
       return { success: true };
     } catch (err) {

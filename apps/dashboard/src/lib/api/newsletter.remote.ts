@@ -335,11 +335,11 @@ export const listSegments = guardedQuery(async (): Promise<SegmentSummary[]> => 
       throw new Error(response.error.message);
     }
     const segments = response.data?.data ?? [];
-    return segments.map((segment) => ({
+    return segments.map((segment: any) => ({
       id: segment.id,
       name: segment.name,
       created_at: segment.created_at,
-      subscriberCount: null
+      subscriberCount: segment.contacts_count ?? segment.subscriberCount ?? 0
     }));
   } catch (err) {
     console.error('[newsletter.listSegments] error:', err);
@@ -356,8 +356,21 @@ export const createSegment = guardedCommand(
       const resend = getResendClient();
       const response = await resend.segments.create({ name });
       if (response.error) throw new Error(response.error.message);
-      await listSegments().refresh();
-      return { success: true, id: response.data?.id };
+      
+      // Refresh the segments list to include the new segment
+      const listResource = listSegments();
+      await listResource.refresh();
+      
+      return { 
+        success: true, 
+        id: response.data?.id,
+        segment: {
+          id: response.data?.id,
+          name: name,
+          created_at: new Date().toISOString(),
+          subscriberCount: 0
+        }
+      };
     } catch (err) {
       console.error('[newsletter.createSegment] error:', err);
       const message = err instanceof Error ? err.message : 'Failed to create segment';
@@ -554,7 +567,7 @@ export const listBroadcasts = guardedQuery(async () => {
   }
 });
 
-export const createBroadcast = guardedForm(
+export const createBroadcast = guardedCommand(
   v.object({
     audienceId: v.pipe(v.string(), v.nonEmpty()),
     subject: v.pipe(v.string(), v.nonEmpty()),
@@ -567,7 +580,7 @@ export const createBroadcast = guardedForm(
   async ({ audienceId, subject, html, text, previewText, sendAt, name }) => {
     try {
       const resend = getResendClient();
-      const response = await resend.broadcasts.create({
+      const payload = {
         audienceId,
         subject,
         previewText: previewText || undefined,
@@ -576,18 +589,22 @@ export const createBroadcast = guardedForm(
         text: text?.trim() ? text : undefined,
         name: name || subject,
         ...(sendAt ? { scheduledAt: sendAt } : {})
-      });
+      };
+      console.log('[newsletter.createBroadcast] payload:', payload);
+      const response = await resend.broadcasts.create(payload as any);
+      console.log('[newsletter.createBroadcast] response:', response);
       if (response.error) throw new Error(response.error.message);
       await listBroadcasts().refresh();
       return { success: true, id: response.data?.id };
     } catch (err) {
       console.error('[newsletter.createBroadcast] error:', err);
-      error(500, 'Failed to create broadcast');
+      const message = err instanceof Error ? err.message : 'Failed to create broadcast';
+      error(500, message);
     }
   }
 );
 
-export const sendBroadcast = guardedForm(
+export const sendBroadcast = guardedCommand(
   v.object({
     broadcastId: v.pipe(v.string(), v.nonEmpty()),
     scheduledAt: v.optional(v.string())
@@ -603,12 +620,13 @@ export const sendBroadcast = guardedForm(
       return { success: true };
     } catch (err) {
       console.error('[newsletter.sendBroadcast] error:', err);
-      error(500, 'Failed to send broadcast');
+      const message = err instanceof Error ? err.message : 'Failed to send broadcast';
+      error(500, message);
     }
   }
 );
 
-export const deleteBroadcast = guardedForm(
+export const deleteBroadcast = guardedCommand(
   v.object({
     broadcastId: v.pipe(v.string(), v.nonEmpty())
   }),
@@ -621,7 +639,8 @@ export const deleteBroadcast = guardedForm(
       return { success: true };
     } catch (err) {
       console.error('[newsletter.deleteBroadcast] error:', err);
-      error(500, 'Failed to delete broadcast');
+      const message = err instanceof Error ? err.message : 'Failed to delete broadcast';
+      error(500, message);
     }
   }
 );

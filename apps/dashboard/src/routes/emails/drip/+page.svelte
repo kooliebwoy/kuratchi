@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw } from 'lucide-svelte';
+  import EmailEditor from '$lib/components/EmailEditor.svelte';
   import {
     listSegments,
     listDripCampaigns,
@@ -638,9 +639,12 @@
 
                       <div>
                         <label class="label">
-                          <span class="label-text text-sm font-medium">Email Content (HTML)</span>
+                          <span class="label-text text-sm font-medium">Email Content</span>
                         </label>
-                        <textarea class="textarea textarea-bordered w-full font-mono text-xs" rows="4" bind:value={step.html} placeholder="Email content (HTML)"></textarea>
+                        <EmailEditor
+                          content={step.html}
+                          onChange={(html) => (step.html = html)}
+                        />
                       </div>
 
                       <div class="grid grid-cols-2 gap-4">
@@ -895,12 +899,10 @@
                     </label>
 
                     <!-- Content -->
-                    <textarea
-                      class="textarea textarea-bordered w-full font-mono text-xs"
-                      rows="3"
-                      bind:value={step.html}
-                      placeholder="Email content (HTML)"
-                    ></textarea>
+                    <EmailEditor
+                      content={step.html}
+                      onChange={(html) => (step.html = html)}
+                    />
 
                     <!-- Schedule -->
                     <fieldset class="space-y-2 border-t border-base-200 pt-3">

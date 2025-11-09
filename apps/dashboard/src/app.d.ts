@@ -35,7 +35,7 @@ declare global {
           getOrgActivity?: (orgDbClient: unknown, options?: { limit?: number; userId?: string; action?: string }) => Promise<unknown>;
         };
         storage?: {
-          listFiles?: (options: { bucket: string; prefix?: string }) => Promise<{ objects?: Array<Record<string, unknown>> } | undefined>;
+          listFiles?: (options: { bucket: string; prefix?: string; delimiter?: string }) => Promise<{ objects?: Array<Record<string, unknown>>; delimitedPrefixes?: string[] } | undefined>;
           uploadFile?: (file: File | Blob, options: { bucket: string; key: string; metadata?: Record<string, unknown> }) => Promise<unknown>;
           deleteFile?: (key: string, bucket: string) => Promise<unknown>;
         };

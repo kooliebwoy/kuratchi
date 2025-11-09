@@ -2,7 +2,7 @@
     import { enhance } from '$app/forms';
     import { Plus, Check, GripVertical, Pencil, CornerDownRight, Trash2 } from '@lucide/svelte';
     import Sortable from 'sortablejs';
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import type { SubmitFunction } from '@sveltejs/kit';
 
     interface Props {
@@ -27,10 +27,11 @@
     let addingSubmenuTo: any = $state(null) as any | null;
     let showPageSelector = $state(false);
     let activeTab = $state('pages');
+    let sortableInstance: Sortable | null = null;
 
     onMount(() => {
         if (menuList) {
-            new Sortable(menuList, {
+            sortableInstance = new Sortable(menuList, {
                 animation: 150,
                 handle: '.drag-handle',
                 ghostClass: ['opacity-50', 'bg-primary/10'],
@@ -48,6 +49,16 @@
                 }
             });
         }
+
+        return () => {
+            sortableInstance?.destroy();
+            sortableInstance = null;
+        };
+    });
+
+    onDestroy(() => {
+        sortableInstance?.destroy();
+        sortableInstance = null;
     });
 
     const submitHandler: SubmitFunction = () => {

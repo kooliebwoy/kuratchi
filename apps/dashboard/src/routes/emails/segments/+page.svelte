@@ -140,57 +140,32 @@
 <!-- Navigation Tabs -->
 <div class="border-b border-base-200 bg-base-100">
   <div class="flex gap-0 px-8">
-    <a href="/emails/drip" class="tab tab-bordered">
+    <a href="/emails/drip" class="tab tab-bordered hover:bg-base-200/50 transition">
       <span class="font-medium">Drip Campaigns</span>
     </a>
-    <a href="/emails/segments" class="tab tab-active tab-bordered">
+    <a href="/emails/segments" class="tab tab-active tab-bordered bg-primary/10 text-primary">
       <span class="font-medium">Segments</span>
     </a>
-    <a href="/emails/templates" class="tab tab-bordered">
+    <a href="/emails/templates" class="tab tab-bordered hover:bg-base-200/50 transition">
       <span class="font-medium">Templates</span>
     </a>
-    <a href="/emails" class="tab tab-bordered">
-      <span class="font-medium">Email History</span>
+    <a href="/emails/broadcast" class="tab tab-bordered hover:bg-base-200/50 transition">
+      <span class="font-medium">Broadcasts</span>
     </a>
   </div>
 </div>
 
-<section class="space-y-8 p-8">
+<section class="space-y-6 p-8">
   <!-- Header -->
-  <div class="flex flex-wrap items-center justify-between gap-4">
+  <div class="flex items-center justify-between">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-wide text-primary/70">Contacts</p>
-      <h1 class="text-2xl font-semibold">Segments</h1>
-      <p class="text-sm text-base-content/70">Create and manage contact segments for your campaigns.</p>
+      <h1 class="text-2xl font-bold">Segments</h1>
+      <p class="text-sm text-base-content/70 mt-1">Manage {segments.length} segment{segments.length !== 1 ? 's' : ''} with {segments.reduce((total, s) => total + (s.subscriberCount ?? 0), 0)} total contact{segments.reduce((total, s) => total + (s.subscriberCount ?? 0), 0) !== 1 ? 's' : ''}</p>
     </div>
-    <button class="btn btn-primary btn-sm" onclick={() => (showCreateModal = true)}>
+    <button class="btn btn-primary" onclick={() => (showCreateModal = true)}>
       <Plus class="h-4 w-4" />
-      New segment
+      New Segment
     </button>
-  </div>
-
-  <!-- Stats -->
-  <div class="grid gap-4 md:grid-cols-2">
-    <div class="rounded-2xl border border-base-200 bg-base-100/80 p-4 shadow-sm">
-      <p class="text-sm text-base-content/70">Total segments</p>
-      <div class="mt-2 flex items-center gap-3">
-        <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Users class="h-5 w-5" />
-        </span>
-        <span class="text-3xl font-semibold">{segments.length}</span>
-      </div>
-    </div>
-    <div class="rounded-2xl border border-base-200 bg-base-100/80 p-4 shadow-sm">
-      <p class="text-sm text-base-content/70">Total contacts</p>
-      <div class="mt-2 flex items-center gap-3">
-        <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary">
-          <Mail class="h-5 w-5" />
-        </span>
-        <span class="text-3xl font-semibold">
-          {segments.reduce((total, s) => total + (s.subscriberCount ?? 0), 0)}
-        </span>
-      </div>
-    </div>
   </div>
 
   <!-- Search & List -->
@@ -213,37 +188,35 @@
         <button class="btn btn-primary btn-sm mt-4" onclick={() => (showCreateModal = true)}>Create segment</button>
       </div>
     {:else}
-      <div class="space-y-3">
+      <div class="space-y-2">
         {#each filteredSegments as segment}
-          <div class="rounded-2xl border border-base-200 bg-base-100/90 p-6 shadow-sm transition hover:border-primary/40">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div class="flex-1">
-                <h3 class="text-lg font-semibold">{segment.name}</h3>
-                <p class="text-sm text-base-content/70">
-                  {segment.subscriberCount ?? 0} contact{segment.subscriberCount !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  class="btn btn-outline btn-sm"
-                  onclick={() => openContactsModal(segment)}
-                >
-                  <Users class="h-4 w-4" />
-                  Manage
-                </button>
-                <button
-                  class="btn btn-ghost btn-sm text-error"
-                  onclick={() => handleDeleteSegment(segment.id)}
-                  disabled={deletingId === segment.id}
-                >
-                  {#if deletingId === segment.id}
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                  {:else}
-                    <Trash2 class="h-4 w-4" />
-                  {/if}
-                  Delete
-                </button>
-              </div>
+          <div class="flex items-center justify-between gap-4 rounded-lg border border-base-200 bg-base-100 p-4 transition hover:bg-base-200/30">
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold truncate">{segment.name}</h3>
+              <p class="text-xs text-base-content/60">
+                {segment.subscriberCount ?? 0} contact{segment.subscriberCount !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div class="flex gap-2 flex-shrink-0">
+              <button
+                class="btn btn-ghost btn-sm"
+                onclick={() => openContactsModal(segment)}
+                title="Manage contacts"
+              >
+                <Users class="h-4 w-4" />
+              </button>
+              <button
+                class="btn btn-ghost btn-sm text-error"
+                onclick={() => handleDeleteSegment(segment.id)}
+                disabled={deletingId === segment.id}
+                title="Delete segment"
+              >
+                {#if deletingId === segment.id}
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                {:else}
+                  <Trash2 class="h-4 w-4" />
+                {/if}
+              </button>
             </div>
           </div>
         {/each}
