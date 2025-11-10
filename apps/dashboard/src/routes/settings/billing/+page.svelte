@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Save, Crown, Zap, Sparkles, Calendar, Receipt, Settings, Check } from 'lucide-svelte';
+  import { Save, Crown, Zap, Sparkles, Calendar, Receipt, Settings, Check, Loader2 } from 'lucide-svelte';
   import {
     getBillingInfo,
     getSubscriptionDetails,
@@ -24,10 +24,36 @@
     billingEmail: ''
   });
 
+  let pendingPriceId = $state<string | null>(null);
+
+  function handlePlanSubmit(priceId: string) {
+    pendingPriceId = priceId;
+  }
+
   // Load billing data into form
   $effect(() => {
     if (billingData) {
       billingForm.billingEmail = billingData.billingEmail || '';
+    }
+  });
+
+  $effect(() => {
+    if (!upgradePlan.pending) {
+      pendingPriceId = null;
+    }
+  });
+
+  $effect(() => {
+    const checkoutUrl = upgradePlan.result?.checkoutUrl;
+    if (upgradePlan.result?.success && checkoutUrl) {
+      window.location.href = checkoutUrl;
+    }
+  });
+
+  $effect(() => {
+    const portalUrl = manageBilling.result?.portalUrl;
+    if (manageBilling.result?.success && portalUrl) {
+      window.location.href = portalUrl;
     }
   });
 </script>
@@ -77,9 +103,18 @@
           </a>
         {:else}
           <form {...manageBilling}>
-            <button type="submit" class="btn btn-outline gap-2">
-              <Settings class="h-4 w-4" />
-              Manage Billing
+            <button
+              type="submit"
+              class="btn btn-outline gap-2"
+              aria-busy={!!manageBilling.pending}
+              disabled={!!manageBilling.pending}
+            >
+              {#if manageBilling.pending}
+                <Loader2 class="h-4 w-4 animate-spin" />
+              {:else}
+                <Settings class="h-4 w-4" />
+              {/if}
+              {manageBilling.pending ? 'Opening Portal...' : 'Manage Billing'}
             </button>
           </form>
         {/if}
@@ -101,45 +136,50 @@
 
       {#if !subscriptionData?.hasSubscription}
         <div class="mt-4 p-4 bg-base-100 rounded-lg">
-          <p class="text-sm text-base-content/70 mb-3">
-            Upgrade to unlock premium features:
+          <p class="text-sm text-base-content/70">
+            Choose a plan below to unlock premium features tailored to your team.
           </p>
-          <ul class="space-y-2 text-sm">
-            <li class="flex items-center gap-2">
-              <Check class="h-4 w-4 text-success" />
-              <span>Unlimited projects</span>
-            </li>
-            <li class="flex items-center gap-2">
-              <Check class="h-4 w-4 text-success" />
-              <span>Advanced analytics</span>
-            </li>
-            <li class="flex items-center gap-2">
-              <Check class="h-4 w-4 text-success" />
-              <span>Priority support</span>
-            </li>
-            <li class="flex items-center gap-2">
-              <Check class="h-4 w-4 text-success" />
-              <span>Custom integrations</span>
-            </li>
-          </ul>
         </div>
       {/if}
     </div>
   </div>
 
-  <!-- Plan Comparison (only show if not subscribed) -->
-  {#if !subscriptionData?.hasSubscription && plansData.length > 0}
+  <!-- Plan Comparison -->
+  {#if plansData.length > 0}
     <div id="plans" class="card bg-base-100 shadow-sm">
       <div class="card-body">
-        <h3 class="text-lg font-bold mb-4">Choose Your Plan</h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold">Choose Your Plan</h3>
+          {#if subscriptionData?.hasSubscription}
+            <span class="text-sm text-base-content/60">
+              Current plan: {subscriptionData.planName || subscriptionData.plan}
+            </span>
+          {/if}
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           {#each plansData as plan, index}
             {@const monthlyPrice = plan.prices.find((p: any) => p.interval === 'month')}
+            {@const primaryPrice = monthlyPrice ?? plan.prices[0]}
             {@const isPopular = index === 1}
-            <div class="border {isPopular ? 'border-2 border-primary' : 'border-base-300'} rounded-lg p-6 hover:border-primary transition-colors relative">
+            {@const isCurrentPlan = subscriptionData?.productId === plan.id}
+            {@const isCurrentPrice = subscriptionData?.priceId === primaryPrice?.id}
+            {@const borderClass = isCurrentPlan
+              ? 'border border-success border-2'
+              : isPopular
+                ? 'border border-primary border-2'
+                : 'border border-base-300'}
+            <div class={`rounded-lg p-6 hover:border-primary transition-colors relative ${borderClass}`}>
               {#if isPopular}
                 <div class="absolute -top-3 left-1/2 -translate-x-1/2">
                   <span class="badge badge-primary">Most Popular</span>
+                </div>
+              {/if}
+              {#if isCurrentPlan}
+                <div class="absolute top-4 right-4">
+                  <span class="badge badge-success gap-1">
+                    <Check class="h-3 w-3" />
+                    Current Plan
+                  </span>
                 </div>
               {/if}
               <div class="flex items-center gap-2 mb-2">
@@ -152,12 +192,21 @@
                 {/if}
                 <h4 class="font-bold">{plan.name}</h4>
               </div>
-              {#if monthlyPrice}
+              {#if primaryPrice}
                 <div class="mb-4">
                   <span class="text-3xl font-bold">
-                    ${(monthlyPrice.amount / 100).toFixed(0)}
+                    {(primaryPrice.amount / 100).toLocaleString(undefined, {
+                      style: 'currency',
+                      currency: (primaryPrice.currency || 'usd').toUpperCase()
+                    })}
                   </span>
-                  <span class="text-base-content/60">/month</span>
+                  {#if primaryPrice.interval === 'month'}
+                    <span class="text-base-content/60">/month</span>
+                  {:else if primaryPrice.interval === 'year'}
+                    <span class="text-base-content/60">/year</span>
+                  {:else}
+                    <span class="text-base-content/60">/{primaryPrice.interval}</span>
+                  {/if}
                 </div>
               {/if}
               {#if plan.description}
@@ -173,11 +222,31 @@
                   {/each}
                 </ul>
               {/if}
-              {#if monthlyPrice}
+              {#if primaryPrice}
                 <form {...upgradePlan}>
-                  <input type="hidden" name="priceId" value={monthlyPrice.id} />
-                  <button type="submit" class="btn {isPopular ? 'btn-primary' : 'btn-outline'} w-full">
-                    Choose {plan.name}
+                  <input type="hidden" name="priceId" value={primaryPrice.id} />
+                  <button
+                    type="submit"
+                    class={`btn w-full ${isCurrentPlan ? 'btn-disabled' : isPopular ? 'btn-primary' : 'btn-outline'}`}
+                    disabled={isCurrentPrice || !!upgradePlan.pending}
+                    aria-busy={pendingPriceId === primaryPrice.id && !!upgradePlan.pending}
+                    on:click={() => handlePlanSubmit(primaryPrice.id)}
+                  >
+                    {#if isCurrentPrice}
+                      <span class="flex items-center gap-2 justify-center">
+                        <Check class="h-4 w-4" />
+                        Current Plan
+                      </span>
+                    {:else if upgradePlan.pending && pendingPriceId === primaryPrice.id}
+                      <span class="flex items-center gap-2 justify-center">
+                        <Loader2 class="h-4 w-4 animate-spin" />
+                        Processing...
+                      </span>
+                    {:else if subscriptionData?.hasSubscription}
+                      Switch to {plan.name}
+                    {:else}
+                      Choose {plan.name}
+                    {/if}
                   </button>
                 </form>
               {/if}
@@ -186,7 +255,7 @@
         </div>
       </div>
     </div>
-  {:else if !subscriptionData?.hasSubscription}
+  {:else}
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body text-center py-8">
         <p class="text-base-content/60">No plans available. Create products in the Products page.</p>

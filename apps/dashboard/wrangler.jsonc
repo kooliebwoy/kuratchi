@@ -5,6 +5,12 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "routes": [
+    {
+      "pattern": "build.kuratchi.dev",
+      "custom_domain": true
+    }
+  ],
   "compatibility_date": "2025-09-24",
   "assets": {
     "binding": "ASSETS",
@@ -53,8 +59,8 @@
   ],
   "keep_vars": true,
   "vars": {
-    "ORIGIN": "https://builder.kayde.io",
-    "APP_LOGIN_PATH": "/app/connect",
-    "APP_SIGNUP_PATH": "/app/connect"
+    "ORIGIN": "https://build.kuratchi.dev",
+    "APP_LOGIN_PATH": "/auth/signin",
+    "APP_SIGNUP_PATH": "/auth/signup"
   }
 }
