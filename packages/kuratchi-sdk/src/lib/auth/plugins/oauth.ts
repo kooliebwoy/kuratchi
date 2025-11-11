@@ -59,18 +59,108 @@ const PROVIDER_CONFIGS: Record<string, { authorizeUrl: string; tokenUrl: string;
 };
 
 async function findOrganizationIdByEmail(adminDb: any, email: string): Promise<string | null> {
-  if (!adminDb) return null;
-  
+  if (!adminDb || !email) return null;
+
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) return null;
+
+  const normalizedEmail = trimmedEmail.toLowerCase();
+
   try {
-    const { data: orgUsers } = await adminDb.organizationUsers
-      .where({ email })
+    let orgUsersResult = await adminDb.organizationUsers
+      .where({ email: normalizedEmail })
       .first();
-    
+
+    if (!orgUsersResult?.data && normalizedEmail !== trimmedEmail) {
+      orgUsersResult = await adminDb.organizationUsers
+        .where({ email: trimmedEmail })
+        .first();
+    }
+
+    const orgUsers = orgUsersResult?.data;
+
     // Use camelCase to match admin plugin schema
     return orgUsers?.organizationId || null;
   } catch (error) {
     console.warn('[OAuth] Failed to find organization for email:', error);
     return null;
+  }
+}
+
+function sanitizeRedirectPath(rawRedirect: string | null | undefined, origin: string): string {
+  if (!rawRedirect) return '/';
+
+  const trimmed = rawRedirect.trim();
+  if (!trimmed) return '/';
+
+  let candidate = trimmed.replace(/\\/g, '/');
+
+  if (!candidate.startsWith('/')) {
+    candidate = `/${candidate}`;
+  }
+
+  if (candidate.startsWith('//')) {
+    return '/';
+  }
+
+  try {
+    const normalized = new URL(candidate, origin);
+    if (normalized.origin !== origin) {
+      return '/';
+    }
+
+    const sanitizedPath = normalized.pathname;
+
+    if (!sanitizedPath.startsWith('/')) {
+      return '/';
+    }
+
+    if (sanitizedPath.includes('://')) {
+      return '/';
+    }
+
+    if (sanitizedPath.startsWith('//')) {
+      return '/';
+    }
+
+    const sanitized = `${sanitizedPath}${normalized.search}${normalized.hash}`;
+
+    if (!sanitized || /[\r\n\\]/.test(sanitized)) {
+      return '/';
+    }
+
+    return sanitized;
+  } catch (error) {
+    console.warn('[OAuth] Invalid redirectTo received:', error);
+    return '/';
+  }
+}
+
+async function isEmailInOrganization(adminDb: any, email: string, organizationId: string): Promise<boolean> {
+  if (!adminDb || !email || !organizationId) return false;
+
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) return false;
+
+  const normalizedEmail = trimmedEmail.toLowerCase();
+
+  try {
+    let result = await adminDb.organizationUsers
+      .where({ email: normalizedEmail, organizationId })
+      .first();
+
+    if (!result?.data && normalizedEmail !== trimmedEmail) {
+      result = await adminDb.organizationUsers
+        .where({ email: trimmedEmail, organizationId })
+        .first();
+    }
+
+    const data = result?.data;
+
+    return Boolean(data?.organizationId === organizationId);
+  } catch (error) {
+    console.warn('[OAuth] Failed to verify organization membership:', error);
+    return false;
   }
 }
 
@@ -95,13 +185,14 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
         // GET /auth/oauth/:provider/start
         if (pathname === startPath && ctx.event.request.method === 'GET') {
           try {
-            const overrideOrgId = url.searchParams.get('org') || '';
-            const redirectTo = url.searchParams.get('redirectTo') || '/';
-            
+            const overrideOrgId = (url.searchParams.get('org') || '').trim();
+            const origin = ctx.env.ORIGIN || `${url.protocol}//${url.host}`;
+            const redirectTo = sanitizeRedirectPath(url.searchParams.get('redirectTo'), origin);
+
             if (!ctx.env.KURATCHI_AUTH_SECRET) {
               return new Response('OAuth not configured (missing auth secret)', { status: 500 });
             }
-            
+
             // Build state
             const payload: Record<string, any> = {
               provider: providerConfig.name,
@@ -123,7 +214,6 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
             }
             
             // Build redirect URI
-            const origin = ctx.env.ORIGIN || `${url.protocol}//${url.host}`;
             const redirect_uri = `${origin}${callbackPath}`;
             
             // Build authorization URL
@@ -163,18 +253,28 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
             if (!code || !payload) {
               return new Response('Bad Request (invalid state or code)', { status: 400 });
             }
-            
-            const redirectTo = (payload as any)?.redirectTo || '/';
-            const ts = (payload as any)?.ts;
-            const stateOrgId: string | undefined = (payload as any)?.orgId;
-            
+
+            const origin = ctx.env.ORIGIN || `${url.protocol}//${url.host}`;
+            const stateData = payload as Record<string, any>;
+            const stateProvider = typeof stateData?.provider === 'string' ? stateData.provider : null;
+
+            if (stateProvider && stateProvider !== providerConfig.name) {
+              return new Response('Bad Request (provider mismatch)', { status: 400 });
+            }
+
+            const redirectTo = sanitizeRedirectPath(
+              typeof stateData?.redirectTo === 'string' ? stateData.redirectTo : '/',
+              origin
+            );
+            const ts = stateData?.ts;
+            const stateOrgId = typeof stateData?.orgId === 'string' && stateData.orgId.trim() ? stateData.orgId : undefined;
+
             // Check state TTL
             if (typeof ts === 'number' && Date.now() - ts > stateTtl) {
               return new Response('State expired', { status: 400 });
             }
-            
+
             // Exchange code for tokens
-            const origin = ctx.env.ORIGIN || `${url.protocol}//${url.host}`;
             const redirect_uri = `${origin}${callbackPath}`;
             
             const defaults = PROVIDER_CONFIGS[providerConfig.name] || {};
@@ -238,7 +338,7 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
             let email: string | undefined;
             let name: string | null = null;
             let image: string | null = null;
-            
+
             if (providerConfig.name === 'google') {
               providerAccountId = String(profile.sub);
               email = profile.email;
@@ -262,16 +362,31 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
               image = profile.picture || profile.avatar_url || null;
             }
             
-            // Resolve organization
-            let orgId = stateOrgId || '';
-            if (!orgId && email) {
-              const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
-              if (getAdminDb) {
-                const adminDb = await getAdminDb();
-                orgId = (await findOrganizationIdByEmail(adminDb, email)) || '';
+            const canonicalEmail = typeof email === 'string' ? email.trim() : undefined;
+
+            if (providerConfig.name === 'google') {
+              const emailVerified = profile.email_verified ?? profile.emailVerified ?? profile.verified_email;
+              if (canonicalEmail && emailVerified !== true) {
+                return new Response('google_email_not_verified', { status: 403 });
               }
             }
-            
+
+            // Resolve organization
+            let orgId = '';
+            const getAdminDb = ctx.locals.kuratchi?.getAdminDb;
+            const adminDb = getAdminDb ? await getAdminDb() : null;
+
+            if (stateOrgId && canonicalEmail && adminDb) {
+              const isMember = await isEmailInOrganization(adminDb, canonicalEmail, stateOrgId);
+              if (isMember) {
+                orgId = stateOrgId;
+              }
+            }
+
+            if (!orgId && canonicalEmail && adminDb) {
+              orgId = (await findOrganizationIdByEmail(adminDb, canonicalEmail)) || '';
+            }
+
             if (!orgId) {
               return new Response('organization_not_found_for_email', { status: 404 });
             }
@@ -301,17 +416,23 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
               } else {
                 // Check if user exists by email
                 let existingUser;
-                if (email) {
-                  const result = await orgDb.users.where({ email }).first();
-                  existingUser = result.data;
+                if (canonicalEmail) {
+                  const lowerEmail = canonicalEmail.toLowerCase();
+                  let result = await orgDb.users.where({ email: lowerEmail }).first();
+
+                  if (!result?.data && lowerEmail !== canonicalEmail) {
+                    result = await orgDb.users.where({ email: canonicalEmail }).first();
+                  }
+
+                  existingUser = result?.data;
                 }
-                
+
                 if (existingUser) {
                   user = existingUser;
                 } else {
                   // Create new user
                   const { data: newUser } = await orgDb.users.insert({
-                    email: email || null,
+                    email: canonicalEmail || null,
                     name: name || null,
                     image: image || null,
                     created_at: Date.now()
@@ -369,6 +490,16 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
             const setCookie = ctx.locals.kuratchi?.auth?.session?.setCookie;
             if (setCookie) {
               setCookie(sessionCookie, { expires });
+            } else {
+              const cookieName = 'kuratchi_session';
+              const isHttps = new URL(ctx.event.request.url).protocol === 'https:';
+              ctx.event.cookies.set(cookieName, sessionCookie, {
+                path: '/',
+                httpOnly: true,
+                sameSite: 'lax',
+                secure: isHttps,
+                expires
+              });
             }
             
             // Callback after success
