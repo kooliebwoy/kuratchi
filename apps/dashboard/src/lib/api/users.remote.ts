@@ -34,76 +34,24 @@ const guardedForm = <R>(
 export const getUsers = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const db = await getDatabase(locals);
+    const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
 
-    // Get all users from admin database
-    const usersResult = await db.users
+    if (!orgDb) {
+      throw new Error('Organization database not available in current context');
+    }
+
+    const usersResult = await orgDb.users
       .where({ deleted_at: { isNullish: true } })
       .orderBy({ created_at: 'desc' })
       .many();
-    
-    const users = usersResult?.data || [];
 
-    // Get all organization users mappings
-    const orgUsersResult = await db.organizationUsers
-      .where({ deleted_at: { isNullish: true } })
-      .many();
-    
-    const orgUsers = orgUsersResult?.data || [];
+    const users = usersResult?.data ?? [];
 
-    // Get all organizations
-    const orgsResult = await db.organizations
-      .where({ deleted_at: { isNullish: true } })
-      .many();
-    
-    const organizations = orgsResult?.data || [];
-
-    // Create a map of email to organizations
-    const emailToOrgs: Record<string, any[]> = {};
-    for (const ou of orgUsers) {
-      if (!emailToOrgs[ou.email]) {
-        emailToOrgs[ou.email] = [];
-      }
-      const org = organizations.find((o: any) => o.id === ou.organizationId);
-      if (org) {
-        emailToOrgs[ou.email].push(org);
-      }
-    }
-
-    // Get roles for each user in their organizations
-    const usersWithDetails = await Promise.all(users.map(async (user: any) => {
-      const userOrgs = emailToOrgs[user.email] || [];
-      
-      // For each org, get the user's role from the org database
-      const orgDetails = await Promise.all(userOrgs.map(async (org: any) => {
-        try {
-          const orgDb = await getDatabase(locals);
-
-          const orgUserResult = await orgDb.users
-            .where({ email: user.email })
-            .first();
-          
-          const orgUser = orgUserResult?.data;
-          
-          return {
-            ...org,
-            userRole: orgUser?.role || null,
-            isOrgAdmin: orgUser?.role === 'owner' || orgUser?.role === 'admin'
-          };
-        } catch (err) {
-          console.error(`[getUsers] Failed to get role for user ${user.email} in org ${org.id}:`, err);
-          return { ...org, userRole: null, isOrgAdmin: false };
-        }
-      }));
-
-      return {
-        ...user,
-        organizations: orgDetails,
-        isSuperAdmin: user.role === 'superadmin'
-      };
+    return users.map((user: any) => ({
+      ...user,
+      isOwner: user.role === 'owner',
+      isAdmin: user.role === 'owner' || user.role === 'editor'
     }));
-
-    return usersWithDetails;
   } catch (err) {
     console.error('[users.getUsers] error:', err);
     return [];

@@ -272,8 +272,28 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
               }
             }
             
+            // If no organization found, create one for new OAuth signups
+            if (!orgId && email && name) {
+              const createOrg = ctx.locals.kuratchi?.auth?.admin?.createOrganization;
+              if (createOrg) {
+                try {
+                  console.log(`[OAuth] Creating new organization for ${email}`);
+                  const orgResult = await createOrg({
+                    organizationName: name, // Use OAuth profile name as org name
+                    email,
+                    userName: name
+                  });
+                  orgId = orgResult.organization?.id || '';
+                  console.log(`[OAuth] Created organization ${orgId} for ${email}`);
+                } catch (error: any) {
+                  console.error('[OAuth] Failed to create organization:', error);
+                  return new Response(`Failed to create organization: ${error.message}`, { status: 500 });
+                }
+              }
+            }
+            
             if (!orgId) {
-              return new Response('organization_not_found_for_email', { status: 404 });
+              return new Response('Unable to determine or create organization for this account', { status: 404 });
             }
             
             // Get organization database

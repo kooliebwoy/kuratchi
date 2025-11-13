@@ -29,7 +29,12 @@ export const { handle }: { handle: Handle } = kuratchi({
           {
             name: 'google',
             clientId: env.GOOGLE_CLIENT_ID || '',
-            clientSecret: env.GOOGLE_CLIENT_SECRET || '',
+            clientSecret: env.GOOGLE_CLIENT_SECRET || ''
+          },
+          {
+            name: 'github',
+            clientId: env.GITHUB_CLIENT_ID || '',
+            clientSecret: env.GITHUB_CLIENT_SECRET || ''
           }
         ]
         // SDK default onProfile handler already implements the logic:

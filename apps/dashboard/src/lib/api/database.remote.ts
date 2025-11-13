@@ -75,28 +75,71 @@ export const getDatabases = guardedQuery(async () => {
 	}
 });
 
-// Get database tables and schema info
-export const getDatabaseTables = guardedQuery(async () => {
-	const { locals } = getRequestEvent();
-	const session = locals.session;
-	const activeOrgId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
+// Get a single database by ID
+export const getDatabase = guardedQuery(async () => {
+	const { locals, url } = getRequestEvent();
+	
+	// Get database ID from URL path
+	const pathParts = url.pathname.split('/');
+	const dbId = pathParts[pathParts.indexOf('database') + 1];
+	
+	if (!dbId) {
+		console.warn('[getDatabase] No database ID in URL');
+		return null;
+	}
 	
 	try {
-		// Get the organization's database info
-		const { orm: adminOrm } = await database.admin();
-		const { data: databases } = await adminOrm.databases
-			.where({ organizationId: { eq: activeOrgId } })
-			.many();
+		const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+		if (!adminDb) {
+			console.error('[getDatabase] Admin database not available');
+			return null;
+		}
 		
-		if (!databases || databases.length === 0) {
+		const dbRecord = await adminDb.databases
+			.where({ id: { eq: dbId }, deleted_at: { isNullish: true } })
+			.first();
+		
+		return dbRecord?.data || null;
+	} catch (err) {
+		console.error('Error fetching database:', err);
+		return null;
+	}
+});
+
+// Get database tables and schema info
+export const getDatabaseTables = guardedQuery(async () => {
+	const { locals, url } = getRequestEvent();
+	
+	// Get database ID from URL path
+	const pathParts = url.pathname.split('/');
+	const dbId = pathParts[pathParts.indexOf('database') + 1];
+	
+	if (!dbId) {
+		console.warn('[getDatabaseTables] No database ID in URL');
+		return [];
+	}
+	
+	try {
+		const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+		if (!adminDb) {
+			console.error('[getDatabaseTables] Admin database not available');
+			return [];
+		}
+		
+		// Get the specific database
+		const dbRecord = await adminDb.databases
+			.where({ id: { eq: dbId }, deleted_at: { isNullish: true } })
+			.first();
+		
+		if (!dbRecord?.data) {
+			console.warn('[getDatabaseTables] Database not found:', dbId);
 			return [];
 		}
 
-		// Get the first database (or you could allow selecting which one)
-		const db = databases[0];
+		const db = dbRecord.data;
 		
 		// Get database token
-		const { data: tokens } = await adminOrm.dbApiTokens
+		const { data: tokens } = await adminDb.dbApiTokens
 			.where({ 
 				databaseId: { eq: db.id },
 				revoked: { eq: false },
@@ -105,8 +148,23 @@ export const getDatabaseTables = guardedQuery(async () => {
 			.many();
 		
 		if (!tokens || tokens.length === 0) {
+			console.warn('[getDatabaseTables] No tokens found for database:', dbId);
 			return [];
 		}
+
+		// Get gateway key from environment
+		const gatewayKey = env.KURATCHI_GATEWAY_KEY || process.env.KURATCHI_GATEWAY_KEY;
+		
+		if (!gatewayKey) {
+			console.error('[getDatabaseTables] KURATCHI_GATEWAY_KEY not found in environment');
+			return [];
+		}
+		
+		console.log('[getDatabaseTables] Connecting to database:', {
+			databaseName: db.name,
+			hasToken: !!tokens[0].token,
+			hasGatewayKey: !!gatewayKey
+		});
 
 		// Import organization schema for connection
 		const { organizationSchema } = await import('$lib/schemas/organization');
@@ -115,7 +173,7 @@ export const getDatabaseTables = guardedQuery(async () => {
 		const { query: dbQuery } = await database.instance().connect({
 			databaseName: db.name,
 			dbToken: tokens[0].token,
-			gatewayKey: process.env.KURATCHI_GATEWAY_KEY!,
+			gatewayKey: gatewayKey,
 			schema: organizationSchema
 		});
 
@@ -124,9 +182,19 @@ export const getDatabaseTables = guardedQuery(async () => {
 			`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
 		);
 
+		// Filter out internal/system tables
+		const filteredTables = (tables.results || []).filter((table: any) => {
+			const name = table.name;
+			// Exclude internal tables
+			return name !== '_cf_KV' && 
+			       name !== 'migrations_history' &&
+			       !name.startsWith('_cf_') &&
+			       !name.startsWith('sqlite_');
+		});
+
 		// Get column count and indexes for each table
 		const tablesWithInfo = await Promise.all(
-			(tables.results || []).map(async (table: any) => {
+			filteredTables.map(async (table: any) => {
 				const columns = await dbQuery(`PRAGMA table_info(${table.name})`);
 				const indexes = await dbQuery(`PRAGMA index_list(${table.name})`);
 				
@@ -178,14 +246,16 @@ export const createDatabase = guardedForm(
 			});
 
 			// Store database info in admin DB using ORM
-			const { orm: adminOrm } = await database.admin();
+			const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+			if (!adminDb) error(500, 'Admin database not available');
+			
 			const now = new Date().toISOString();
 			const dbId = crypto.randomUUID();
 			
 			// organizationId can be null for system-level databases
 			const orgId = activeOrgId && activeOrgId !== 'admin' ? activeOrgId : null;
 			
-			const newDB = await adminOrm.databases.insert({
+			const newDB = await adminDb.databases.insert({
 				id: dbId,
 				name: created.databaseName,
 				dbuuid: created.databaseId || created.databaseName, // Use D1 database ID if available
@@ -207,7 +277,7 @@ export const createDatabase = guardedForm(
 			}
 
 			// Store the database token
-			const dbApiToken = await adminOrm.dbApiTokens.insert({
+			const dbApiToken = await adminDb.dbApiTokens.insert({
 				id: crypto.randomUUID(),
 				token: created.token,
 				name: `${name}-token`,
@@ -260,8 +330,13 @@ export const getDatabaseAnalytics = guardedQuery(async () => {
 		}
 
 		// Fetch the database record to get the D1 UUID (dbuuid)
-		const { orm: adminOrm } = await database.admin();
-		const dbRecord = await adminOrm.databases
+		const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+		if (!adminDb) {
+			console.error('[getDatabaseAnalytics] Admin database not available');
+			return { readQueries: 0, writeQueries: 0, rowsRead: 0, rowsWritten: 0 };
+		}
+		
+		const dbRecord = await adminDb.databases
 			.where({ id: { eq: dbId } })
 			.first();
 		
@@ -384,10 +459,25 @@ export const executeQuery = guardedForm(
 		databaseId: v.pipe(v.string(), v.nonEmpty()),
 	}),
 	async ({ sql, databaseId }) => {
+		const { locals } = getRequestEvent();
+		
 		try {
 			// Get database token
-			const { orm: adminOrm } = await database.admin();
-			const { data: tokens } = await adminOrm.dbApiTokens
+			const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+			if (!adminDb) error(500, 'Admin database not available');
+			
+			// Get the database record to get the actual database name
+			const dbRecord = await adminDb.databases
+				.where({ id: { eq: databaseId }, deleted_at: { isNullish: true } })
+				.first();
+			
+			if (!dbRecord?.data) {
+				error(404, 'Database not found');
+			}
+			
+			const db = dbRecord.data;
+			
+			const { data: tokens } = await adminDb.dbApiTokens
 				.where({ 
 					databaseId: { eq: databaseId },
 					revoked: { eq: false },
@@ -399,14 +489,22 @@ export const executeQuery = guardedForm(
 				error(404, 'Database token not found');
 			}
 
+			// Get gateway key from environment
+			const gatewayKey = env.KURATCHI_GATEWAY_KEY || process.env.KURATCHI_GATEWAY_KEY;
+			
+			if (!gatewayKey) {
+				console.error('[executeQuery] KURATCHI_GATEWAY_KEY not found in environment');
+				error(500, 'Gateway key not configured');
+			}
+
 			// Import organization schema for connection
 			const { organizationSchema } = await import('$lib/schemas/organization');
 
 			// Execute query
 			const { query: dbQuery } = await database.instance().connect({
-				databaseName: databaseId,
+				databaseName: db.name,
 				dbToken: tokens[0].token,
-				gatewayKey: process.env.KURATCHI_GATEWAY_KEY!,
+				gatewayKey: gatewayKey,
 				schema: organizationSchema
 			});
 

@@ -15,7 +15,7 @@ import { CloudflareClient } from '../../utils/cloudflare.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { createHttpClient } from '../clients/http-client.js';
 import { createOrmClient } from '../clients/orm-client.js';
-import { splitSqlStatements } from '../migrations/migration-utils.js';
+import { synchronizeSchema } from '../schema-sync.js';
 import { deployWorker } from '../deployment/worker-deployment.js';
 
 /**
@@ -105,9 +105,9 @@ export class KuratchiDatabase {
     
     console.log(`[Kuratchi] Worker ${deployedWorkerName} is ready`);
     
-    // Apply migrations if requested (via HTTP)
-    if (migrate && schemaName) {
-      await this.applyInitialMigration(httpClient, schema, schemaName);
+    // Apply schema synchronization if requested
+    if (migrate && schema) {
+      await this.applyInitialSchemaSync(httpClient, databaseName, schema);
     }
     
     return { databaseName, token, databaseId, workerName: deployedWorkerName };
@@ -241,23 +241,16 @@ export class KuratchiDatabase {
    * Apply migrations during database creation (via HTTP)
    * Uses the same migration runner as runtime, loading from generated migrations folder
    */
-  private async applyInitialMigration(client: D1Client, schema: any, schemaName: string): Promise<void> {
-    const { applyMigrations } = await import('../migrations/migration-runner.js');
-    
-    console.log('[Kuratchi] Applying migrations via HTTP...');
-    
-    // Use the existing migration runner - it will:
-    // 1. Create migrations_history table
-    // 2. Load migrations from /migrations-{schemaName} folder
-    // 3. Apply all pending migrations
-    // 4. Skip already-applied migrations
-    await applyMigrations({
+  private async applyInitialSchemaSync(client: D1Client, databaseName: string, schema: any): Promise<void> {
+    console.log('[Kuratchi] Synchronizing schema via HTTP during provisioning...');
+
+    await synchronizeSchema({
       client,
-      schemaName,
-      schema  // Fallback if no migrations folder exists
+      schema,
+      databaseName
     });
-    
-    console.log('[Kuratchi] ✓ Migrations applied');
+
+    console.log('[Kuratchi] ✓ Schema synchronized');
   }
 
   /**

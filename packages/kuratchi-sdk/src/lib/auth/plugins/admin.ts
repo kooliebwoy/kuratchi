@@ -107,8 +107,15 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
         const bindingName = options.adminDatabase || 'DB';
         const d1Binding = platform?.env?.[bindingName];
         
+        console.log('[AdminPlugin] Debug - platform:', !!platform);
+        console.log('[AdminPlugin] Debug - platform.env:', !!platform?.env);
+        console.log('[AdminPlugin] Debug - bindingName:', bindingName);
+        console.log('[AdminPlugin] Debug - d1Binding:', !!d1Binding);
+        console.log('[AdminPlugin] Debug - d1Binding.prepare:', typeof d1Binding?.prepare);
+        
         // Check if D1 binding is available
         if (d1Binding && typeof d1Binding.prepare === 'function') {
+          console.log('[AdminPlugin] Using D1 direct binding for', bindingName);
           const { createOrmClient } = await import('../../database/clients/orm-client.js');
           
           // Wrap D1 binding in D1Client interface
@@ -139,10 +146,11 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             }
           };
           
-          adminDbClient = createOrmClient({
+          adminDbClient = await createOrmClient({
             httpClient: d1Client,
             schema: options.adminSchema,
-            databaseName: 'kuratchi-admin'
+            databaseName: bindingName, // Use binding name as database name for consistency
+            bindingName: bindingName // Pass the actual binding name for detection
           });
           
           return adminDbClient;
