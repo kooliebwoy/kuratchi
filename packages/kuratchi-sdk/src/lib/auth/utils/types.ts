@@ -1,4 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
+import type { RateLimitPluginOptions } from '../plugins/rate-limit.js';
+import type { TurnstilePluginOptions } from '../plugins/turnstile.js';
 
 // Utility to allow sync or async returns
 export type MaybePromise<T> = T | Promise<T>;
@@ -41,6 +43,10 @@ export type AuthHandleEnv = {
   KURATCHI_ADMIN_DB_ID?: string;
   KURATCHI_GATEWAY_KEY?: string;
   KURATCHI_DO_SCRIPT_NAME?: string;
+  CLOUDFLARE_TURNSTILE_SECRET?: string;
+  CLOUDFLARE_TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET?: string;
+  TURNSTILE_SITE_KEY?: string;
 };
 
 // Options for creating auth handle
@@ -72,6 +78,10 @@ export interface CreateAuthHandleOptions {
   // Maps friendly names to actual binding names
   // Example: { default: 'MY_DB', analytics: 'ANALYTICS_DB' }
   d1Databases?: Record<string, string>;
+  // Optional rate limit configuration. Provide `false` to disable the built-in plugin.
+  rateLimit?: RateLimitPluginOptions | false;
+  // Optional Turnstile verification configuration. Provide `false` to disable the plugin.
+  turnstile?: TurnstilePluginOptions | false;
 }
 
 // Auth config for KuratchiAuth class
