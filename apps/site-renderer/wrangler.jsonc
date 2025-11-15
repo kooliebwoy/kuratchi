@@ -1,5 +1,5 @@
 {
-  "name": "kuratchi-website",
+  "name": "site-renderer-kuratchi",
   "account_id": "290c1a3b978d0f44f83b515983a1c951",
   "main": ".svelte-kit/cloudflare/_worker.js",
   "compatibility_flags": [
@@ -7,7 +7,7 @@
   ],
   "routes": [
     {
-      "pattern": "kuratchi.dev",
+      "pattern": "site-renderer.kuratchi.dev",
       "custom_domain": true
     }
   ],
@@ -22,7 +22,11 @@
   "placement": {
     "mode": "smart"
   },
+  "keep_vars": true,
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "DASHBOARD_API_URL": "https://build.kuratchi.dev"
   }
 }
