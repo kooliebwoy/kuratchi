@@ -33,7 +33,7 @@ export interface ThemeTemplate {
 /**
  * Minimal Theme - Clean and simple design
  */
-const minimalTheme: ThemeTemplate = {
+const createMinimalTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'minimal',
     name: 'Minimal',
@@ -55,12 +55,12 @@ const minimalTheme: ThemeTemplate = {
     themeId: 'minimal',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
  * Modern Theme - Contemporary and sleek
  */
-const modernTheme: ThemeTemplate = {
+const createModernTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'modern',
     name: 'Modern',
@@ -82,12 +82,12 @@ const modernTheme: ThemeTemplate = {
     themeId: 'modern',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
  * Classic Theme - Timeless and elegant
  */
-const classicTheme: ThemeTemplate = {
+const createClassicTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'classic',
     name: 'Classic',
@@ -109,12 +109,12 @@ const classicTheme: ThemeTemplate = {
     themeId: 'classic',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
  * Bold Theme - Eye-catching and vibrant
  */
-const boldTheme: ThemeTemplate = {
+const createBoldTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'bold',
     name: 'Bold',
@@ -136,12 +136,12 @@ const boldTheme: ThemeTemplate = {
     themeId: 'bold',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
  * Creative Theme - Artistic and unique
  */
-const creativeTheme: ThemeTemplate = {
+const createCreativeTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'creative',
     name: 'Creative',
@@ -163,12 +163,12 @@ const creativeTheme: ThemeTemplate = {
     themeId: 'creative',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
  * Professional Theme - Business-focused design
  */
-const professionalTheme: ThemeTemplate = {
+const createProfessionalTheme = (): ThemeTemplate => ({
   metadata: {
     id: 'professional',
     name: 'Professional',
@@ -190,19 +190,50 @@ const professionalTheme: ThemeTemplate = {
     themeId: 'professional',
     blog: createDefaultBlogData()
   }
-};
+});
 
 /**
- * Theme registry - all available themes
+ * Theme registry - all available themes (lazy-loaded)
  */
-export const themes: Record<string, ThemeTemplate> = {
-  minimal: minimalTheme,
-  modern: modernTheme,
-  classic: classicTheme,
-  bold: boldTheme,
-  creative: creativeTheme,
-  professional: professionalTheme
+const themeFactories: Record<string, () => ThemeTemplate> = {
+  minimal: createMinimalTheme,
+  modern: createModernTheme,
+  classic: createClassicTheme,
+  bold: createBoldTheme,
+  creative: createCreativeTheme,
+  professional: createProfessionalTheme
 };
+
+const themeCache: Record<string, ThemeTemplate> = {};
+
+export const themes: Record<string, ThemeTemplate> = new Proxy(themeCache, {
+  get(target, prop: string) {
+    if (typeof prop === 'string' && !target[prop] && themeFactories[prop]) {
+      target[prop] = themeFactories[prop]();
+    }
+    return target[prop];
+  },
+  ownKeys() {
+    return Object.keys(themeFactories);
+  },
+  has(target, prop) {
+    return prop in themeFactories;
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    if (typeof prop === 'string' && prop in themeFactories) {
+      // Ensure theme is initialized before returning descriptor
+      if (!target[prop]) {
+        target[prop] = themeFactories[prop]();
+      }
+      return {
+        enumerable: true,
+        configurable: true,
+        value: target[prop]
+      };
+    }
+    return undefined;
+  }
+});
 
 /**
  * Default theme ID

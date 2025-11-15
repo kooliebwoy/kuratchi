@@ -1,5 +1,10 @@
 import { writable } from 'svelte/store';
 import type { BlogData } from '../types';
-import { createDefaultBlogData } from '../types';
 
-export const blogStore = writable<BlogData>(createDefaultBlogData());
+// Initialize with empty data - will be populated when editor loads
+export const blogStore = writable<BlogData>({
+  categories: [],
+  tags: [],
+  posts: [],
+  settings: {}
+});

@@ -84,7 +84,7 @@ export interface BlogData {
   settings: BlogSettings;
 }
 
-const blogSeed: BlogData = {
+const createBlogSeed = (): BlogData => ({
   categories: [
     { id: uuid(), name: 'Announcements', slug: 'announcements' },
     { id: uuid(), name: 'Guides', slug: 'guides' },
@@ -149,11 +149,9 @@ const blogSeed: BlogData = {
     heroStyle: 'cover',
     featuredPostId: null
   }
-};
+});
 
-export const createDefaultBlogData = (): BlogData => structuredClone(blogSeed);
-
-export const defaultBlogData: BlogData = createDefaultBlogData();
+export const createDefaultBlogData = (): BlogData => structuredClone(createBlogSeed());
 
 export interface EditorOptions {
   /**
@@ -277,8 +275,6 @@ export const defaultEditorOptions: Required<Pick<EditorOptions, 'editable' | 'is
   reservedPages: undefined,
   onUpdate: undefined,
   autoSaveDelay: 1000,
-  siteMetadata: {
-    blog: createDefaultBlogData()
-  },
-  blog: createDefaultBlogData()
+  siteMetadata: undefined,
+  blog: undefined
 };
