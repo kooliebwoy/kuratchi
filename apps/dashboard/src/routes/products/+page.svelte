@@ -8,7 +8,7 @@
     archiveProduct,
     createPrice,
     archivePrice
-  } from '$lib/api/products.remote';
+  } from '$lib/functions/products.remote';
 
   // Data
   const products = getProducts();

@@ -3,7 +3,7 @@
  * Handles all HTTP requests to the D1 worker with bookmark tracking
  */
 
-import type { DatabaseConfig, D1Client, QueryResult } from '../core/types.js';
+import type { DatabaseConfig, D1Client, QueryResult, StorageClient, StoragePutOptions, StorageGetResult, StorageListOptions, StorageListResult } from '../core/types.js';
 
 /**
  * Session state for D1 bookmarks
@@ -95,6 +95,24 @@ export function createHttpClient(config: DatabaseConfig): D1Client {
   // Create request helper with session support
   const request = (path: string, body: any) => makeRequest(endpoint, dbName, path, body, headers, sessionState);
   
+  // Storage client for R2 operations
+  const storage: StorageClient = {
+    get: (key: string) => 
+      request('/api/storage/get', { key }) as Promise<QueryResult<StorageGetResult>>,
+    
+    put: (options: StoragePutOptions) => 
+      request('/api/storage/put', options),
+    
+    delete: (key: string | string[]) => 
+      request('/api/storage/delete', { key }),
+    
+    list: (options?: StorageListOptions) => 
+      request('/api/storage/list', options || {}) as Promise<QueryResult<StorageListResult>>,
+    
+    head: (key: string) => 
+      request('/api/storage/head', { key }) as Promise<QueryResult<StorageGetResult>>
+  };
+  
   return {
     query: <T = any>(query: string, params: any[] = []) => 
       request('/api/run', { query, params }) as Promise<QueryResult<T>>,
@@ -109,7 +127,9 @@ export function createHttpClient(config: DatabaseConfig): D1Client {
       request('/api/raw', { query, params, columnNames }),
     
     first: <T = any>(query: string, params: any[] = [], columnName?: string) => 
-      request('/api/first', { query, params, columnName }) as Promise<QueryResult<T>>
+      request('/api/first', { query, params, columnName }) as Promise<QueryResult<T>>,
+    
+    storage
   };
 }
 

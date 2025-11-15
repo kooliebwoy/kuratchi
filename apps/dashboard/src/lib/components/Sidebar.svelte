@@ -9,7 +9,6 @@
     { label: 'Sites', icon: Layout, href: '/sites' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Database', icon: Database, href: '/database' },
-    { label: 'Domains', icon: Globe, href: '/domains' },
     // { label: 'Products', icon: Package, href: '/products' },
     // { label: 'Sessions', icon: Clock, href: '/sessions' },
     { label: 'Storage', icon: Folder, href: '/storage' },

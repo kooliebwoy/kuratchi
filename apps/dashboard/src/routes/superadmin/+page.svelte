@@ -1,7 +1,7 @@
 <script lang="ts">
   import { UserPlus, X } from 'lucide-svelte';
   import { Dialog, FormField, FormInput, StatsCard } from '@kuratchi/ui';
-  import { getAllOrganizations, getAllUsers, createSuperadminUser } from '$lib/api/superadmin.remote';
+  import { getAllOrganizations, getAllUsers, createSuperadminUser } from '$lib/functions/superadmin.remote';
 
   const organizationsQuery = getAllOrganizations();
   const usersQuery = getAllUsers();

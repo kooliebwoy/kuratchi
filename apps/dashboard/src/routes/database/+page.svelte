@@ -3,7 +3,7 @@
     logRouteActivity, 
     getDatabases, 
     createDatabase
-  } from '$lib/api/database.remote';
+  } from '$lib/functions/database.remote';
 
   let createDialog: HTMLDialogElement;
 

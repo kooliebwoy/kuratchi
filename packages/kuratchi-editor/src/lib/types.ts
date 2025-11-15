@@ -58,6 +58,24 @@ export interface EditorOptions {
    */
   imageConfig?: {
     uploadEndpoint?: string;
+    /**
+     * Custom upload handler function
+     * @param file - The file to upload
+     * @param folder - Optional folder path
+     * @returns Promise with upload result containing url, key, etc.
+     */
+    uploadHandler?: (file: File, folder?: string) => Promise<{
+      url: string;
+      key?: string;
+      filename?: string;
+      size?: number;
+      contentType?: string;
+    }>;
+    /**
+     * Custom delete handler function
+     * @param imageId - The image ID or key to delete
+     */
+    deleteHandler?: (imageId: string) => Promise<void>;
   };
   /**
    * Show the full editor UI with sidebars and toolbars. When false, shows only the canvas.

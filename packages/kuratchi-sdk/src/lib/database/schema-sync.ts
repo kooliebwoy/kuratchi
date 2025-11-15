@@ -259,7 +259,16 @@ function describeColumn(col: Column): string {
 }
 
 function assertColumnCompatible(tableName: string, target: Column, actual: Column) {
-  if (target.type !== actual.type) {
+  const targetType = target.type;
+  const actualType = actual.type;
+
+  // Treat JSON and TEXT as storage-compatible: JSON is stored as TEXT in SQLite/D1
+  const storageTypesCompatible =
+    targetType === actualType ||
+    (targetType === 'json' && actualType === 'text') ||
+    (targetType === 'text' && actualType === 'json');
+
+  if (!storageTypesCompatible) {
     throw new Error(`Column ${tableName}.${target.name} type mismatch (expected ${describeColumn(target)}, got ${describeColumn(actual)})`);
   }
   const targetMode = target.mode ?? null;

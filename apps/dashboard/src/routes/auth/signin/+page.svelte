@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { signInWithCredentials } from '$lib/api/auth.remote';
+  import { signInWithCredentials } from '$lib/functions/auth.remote';
   import { FormField, FormInput } from '@kuratchi/ui';
   import { goto } from '$app/navigation';
   import { LogIn } from 'lucide-svelte';

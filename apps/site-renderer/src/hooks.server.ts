@@ -30,7 +30,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				'Content-Type': 'application/json',
 				Authorization: `Bearer ${apiToken}`
 			},
-			body: JSON.stringify({ subdomain })
+			body: JSON.stringify({ subdomain, hostname })
 		});
 
 		if (!response.ok) {

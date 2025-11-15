@@ -29,11 +29,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			.where({ id: { eq: databaseId }, deleted_at: { isNullish: true } })
 			.first();
 
-		if (!dbRecord?.data) {
+		console.log('[table-data] dbRecord:', dbRecord);
+
+		// Handle both cases where data might be nested or at top level
+		const db = dbRecord?.data || dbRecord;
+
+		if (!db || !db.id) {
+			console.error('[table-data] Database not found for ID:', databaseId);
 			error(404, 'Database not found');
 		}
-
-		const db = dbRecord.data;
 
 		// Get database token
 		const { data: tokens } = await adminDb.dbApiTokens

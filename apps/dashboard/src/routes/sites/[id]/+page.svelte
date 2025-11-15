@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Editor, type PageData, defaultPageData } from '@kuratchi/editor';
-  import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/api/editor.remote';
+  import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/functions/editor.remote';
+  import { uploadSiteMedia } from '$lib/functions/media.remote';
 
   const clone = <T>(value: T): T => {
     if (typeof structuredClone === 'function') {
@@ -347,6 +348,19 @@
           {currentPageId}
           onPageSwitch={switchToPage}
           onCreatePage={openCreatePageModal}
+          imageConfig={{
+            uploadHandler: async (file, folder) => {
+              if (!site?.id) throw new Error('Site not loaded');
+              
+              const result = await uploadSiteMedia({
+                siteId: site.id,
+                file,
+                folder: folder || 'images'
+              });
+              
+              return result;
+            }
+          }}
         />
       {/key}
     {/if}

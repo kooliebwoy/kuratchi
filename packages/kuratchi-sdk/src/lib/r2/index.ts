@@ -1,4 +1,5 @@
 import { getCurrentPlatform } from '../utils/platform-context.js';
+import { CloudflareClient } from '../utils/cloudflare.js';
 
 /**
  * Global R2 bucket access that reads from platform.env
@@ -263,6 +264,83 @@ export function bucket(name: string): R2Bucket | null {
   }
 }
 
+export interface CreateBucketConfig {
+  apiToken?: string;
+  accountId?: string;
+}
+
+/**
+ * Create an R2 bucket via Cloudflare API (control-plane operation)
+ * 
+ * @param name - Bucket name
+ * @param config - Optional config with apiToken and accountId. If not provided, will attempt to resolve from platform.env
+ * @returns Cloudflare API response
+ * 
+ * @example
+ * ```typescript
+ * import { r2 } from 'kuratchi-sdk';
+ * // Auto-resolve from platform.env
+ * const result = await r2.createBucket('my-bucket-name');
+ * 
+ * // Or provide explicitly
+ * const result = await r2.createBucket('my-bucket-name', {
+ *   apiToken: 'your-token',
+ *   accountId: 'your-account-id'
+ * });
+ * ```
+ */
+export async function createBucket(name: string, config?: CreateBucketConfig): Promise<any> {
+  console.log('[Kuratchi R2] createBucket called with:', { name, hasConfig: !!config });
+  
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  console.log('[Kuratchi R2] Environment check:', {
+    hasPlatform: !!platform,
+    hasPlatformEnv: !!(platform?.env),
+    hasProcessEnv: typeof process !== 'undefined' && !!process.env,
+    configApiToken: !!config?.apiToken,
+    configAccountId: !!config?.accountId
+  });
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  console.log('[Kuratchi R2] Resolved credentials:', {
+    hasApiToken: !!apiToken,
+    hasAccountId: !!accountId,
+    accountId: accountId ? `${accountId.substring(0, 8)}...` : 'none'
+  });
+
+  if (!apiToken) {
+    throw new Error('[Kuratchi R2] Cloudflare API token is required. Set CF_API_TOKEN, CLOUDFLARE_API_TOKEN, or KURATCHI_CF_API_TOKEN.');
+  }
+  if (!accountId) {
+    throw new Error('[Kuratchi R2] Cloudflare Account ID is required. Set CF_ACCOUNT_ID, CLOUDFLARE_ACCOUNT_ID, or KURATCHI_CF_ACCOUNT_ID.');
+  }
+
+  console.log('[Kuratchi R2] Creating CloudflareClient...');
+  const client = new CloudflareClient({ apiToken, accountId });
+  
+  console.log('[Kuratchi R2] Calling createR2Bucket...');
+  const result = await client.createR2Bucket(name);
+  
+  console.log('[Kuratchi R2] createR2Bucket result:', {
+    success: result?.success,
+    hasErrors: !!(result?.errors),
+    errorCount: result?.errors?.length || 0
+  });
+  
+  return result;
+}
+
 /**
  * Convenience namespace export
  */
@@ -272,7 +350,8 @@ export const r2 = {
   delete: del,
   head,
   list,
-  bucket
+  bucket,
+  createBucket
 };
 
 // Re-export types

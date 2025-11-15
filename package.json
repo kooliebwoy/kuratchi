@@ -10,7 +10,8 @@
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "deploy:spaces": "pnpm --filter kuratchi-sdk deploy:spaces"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",

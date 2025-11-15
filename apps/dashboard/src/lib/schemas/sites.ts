@@ -182,7 +182,7 @@ export const sitesSchema: any = {
         },
         newsletter: {
             id: 'text primary key not null',
-            domain: 'text',
+            domainId: 'text',
             status: 'boolean',
             '...timestamps': true,
         },

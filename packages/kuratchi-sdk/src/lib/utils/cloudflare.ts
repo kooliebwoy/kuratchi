@@ -171,12 +171,37 @@ export class CloudflareClient {
     /** Create an R2 bucket */
     async createR2Bucket(name: string): Promise<CloudflareAPIResponse<any>> {
         const res = await (this.cf as any).r2.buckets.create({ name, account_id: this.accountId });
-        return res as any;
+        // The Cloudflare SDK returns the bucket object directly, not wrapped in {success, result}
+        // Wrap it to match our CloudflareAPIResponse interface
+        return {
+            success: true,
+            result: res,
+            errors: [],
+            messages: []
+        };
     }
 
     /** List R2 buckets */
     async listR2Buckets(): Promise<CloudflareAPIResponse<any>> {
         const res = await (this.cf as any).r2.buckets.list({ account_id: this.accountId });
+        // The Cloudflare SDK returns { buckets: [...] }, wrap it to match our interface
+        if (res && 'buckets' in res) {
+            return {
+                success: true,
+                result: res.buckets,
+                errors: [],
+                messages: []
+            };
+        }
+        // Fallback for array response
+        if (Array.isArray(res)) {
+            return {
+                success: true,
+                result: res,
+                errors: [],
+                messages: []
+            };
+        }
         return res as any;
     }
 
@@ -236,7 +261,7 @@ export class CloudflareClient {
     }
 
     /**
-     * Deploy a D1 worker with database binding
+     * Deploy a D1 worker with database binding and optional R2 bucket binding
      * Creates a D1 database and deploys a worker with the database bound
      */
     async deployD1Worker(options: {
@@ -245,8 +270,10 @@ export class CloudflareClient {
         workerScript: string;
         gatewayKey: string;
         location?: PrimaryLocationHint;
+        r2BucketName?: string;
+        r2Binding?: string;
     }): Promise<{ databaseId: string; workerName: string }> {
-        const { workerName, databaseName, workerScript, gatewayKey, location } = options;
+        const { workerName, databaseName, workerScript, gatewayKey, location, r2BucketName, r2Binding } = options;
 
         // Create D1 database
         const dbResponse = await this.createDatabase(databaseName, location);
@@ -257,14 +284,19 @@ export class CloudflareClient {
 
         try {
             // Prepare bindings for the worker
-            const bindings = [
+            const bindings: any[] = [
                 // Secret binding for gateway key
                 { type: 'secret_text', name: 'API_KEY', text: gatewayKey },
                 // D1 database binding
                 { type: 'd1', name: 'DB', id: databaseId }
             ];
+            
+            // Add R2 bucket binding if provided
+            if (r2BucketName && r2Binding) {
+                bindings.push({ type: 'r2_bucket', name: r2Binding, bucket_name: r2BucketName });
+            }
 
-            // Upload worker with D1 binding
+            // Upload worker with D1 and optional R2 binding
             await this.uploadWorkerModule(workerName, workerScript, bindings);
 
             // Enable worker subdomain

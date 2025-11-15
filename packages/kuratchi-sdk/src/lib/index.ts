@@ -1,6 +1,6 @@
 /**
  * Kuratchi SDK - Public API
- * 
+ *
  * Unified SDK for Cloudflare Workers with auth, database, storage, and ORM
  */
 
@@ -21,6 +21,8 @@ export { kv } from './kv/index.js';
 export { r2 } from './r2/index.js';
 export { domains } from './domains/index.js';
 export { stripe } from './stripe/index.js';
+export * as notifications from './notifications/index.js';
+export * as spaces from './spaces/index.js';
 
 // === ACTIVITY ===
 // Activity action constants (auto-populated from DB)
@@ -60,3 +62,40 @@ export type {
   StripeEventRecord,
   StripeInvoiceRecord
 } from './stripe/index.js';
+
+// Notifications types
+export type {
+  NotificationPluginOptions,
+  SendInAppNotificationOptions,
+  SendEmailNotificationOptions,
+  CreatePlatformAlertOptions,
+  NotificationResult,
+  BatchNotificationResult,
+  NotificationFilters,
+  InAppNotification,
+  EmailNotification,
+  PlatformAlert,
+  NotificationTemplate,
+  NotificationPreferences,
+  NotificationStats,
+  NotificationCategory,
+  NotificationChannel,
+  NotificationPriority,
+  NotificationStatus,
+  EmailProvider,
+  PlatformAlertType,
+  MonitoringThresholds
+} from './notifications/index.js';
+
+// Spaces types
+export type {
+  SpaceConfig,
+  SpaceClientConfig,
+  Message,
+  Attachment,
+  Participant,
+  SendMessageOptions,
+  GetMessagesOptions,
+  SpaceMetadata,
+  SpaceEventHandlers
+} from './spaces/index.js';

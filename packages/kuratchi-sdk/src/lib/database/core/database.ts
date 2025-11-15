@@ -52,7 +52,7 @@ export class KuratchiDatabase {
    * For direct D1 bindings (e.g., admin DB in SvelteKit), pass the binding directly to the plugin
    */
   async createDatabase(options: CreateDatabaseOptions): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
-    const { databaseName, gatewayKey, migrate, schema, schemaName } = options;
+    const { databaseName, gatewayKey, migrate, schema, schemaName, r2 } = options;
     
     if (!databaseName) {
       throw new Error('databaseName is required');
@@ -76,12 +76,28 @@ export class KuratchiDatabase {
     // Generate worker name from database name (sanitize for worker naming)
     const workerName = `${this.scriptNamePrefix}-${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
     
+    // Parse R2 options if provided
+    let r2BucketName: string | undefined;
+    let r2Binding: string | undefined;
+    if (r2) {
+      if (typeof r2 === 'boolean' && r2) {
+        // Auto-generate R2 bucket name from database name
+        r2BucketName = `${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}-storage`;
+        r2Binding = 'STORAGE';
+      } else if (typeof r2 === 'object') {
+        r2BucketName = r2.bucketName || `${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}-storage`;
+        r2Binding = r2.bindingName || 'STORAGE';
+      }
+    }
+    
     // Deploy D1 database and worker
     const { databaseId, workerName: deployedWorkerName } = await deployWorker({
       scriptName: workerName,
       databaseName,
       gatewayKey,
-      cloudflareClient: this.cloudflareClient
+      cloudflareClient: this.cloudflareClient,
+      r2BucketName,
+      r2Binding
     });
     
     console.log(`[Kuratchi] D1 worker deployed: ${deployedWorkerName} (DB ID: ${databaseId})`);

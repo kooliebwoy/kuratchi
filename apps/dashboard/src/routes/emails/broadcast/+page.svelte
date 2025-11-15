@@ -7,7 +7,7 @@
     sendBroadcast,
     deleteBroadcast,
     listSegments
-  } from '$lib/api/newsletter.remote';
+  } from '$lib/functions/newsletter.remote';
 
   const broadcastsResource = listBroadcasts();
   const segmentsResource = listSegments();

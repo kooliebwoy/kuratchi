@@ -1,10 +1,6 @@
 <script lang="ts">
-	import { Activity, CheckCircle, XCircle, User, Clock, Info, Shield, Building2, Trash2, Search, Filter, TrendingUp, AlertCircle, Plus, Pencil, Settings, ChevronDown, ChevronRight } from 'lucide-svelte';
-	import { Dialog, FormField, FormInput, FormSelect, FormTextarea, FormCheckbox } from '@kuratchi/ui';
-	import { getActivities, getActivityStats, clearOldActivities, getActivityTypes, createActivityType, updateActivityType, deleteActivityType } from '$lib/api/activity.remote';
-	
-	// Tab state
-	let activeTab = $state<'log' | 'types'>('log');
+	import { Activity, CheckCircle, XCircle, User, Clock, Info, Shield, Building2, Trash2, Search, ChevronDown, ChevronRight } from 'lucide-svelte';
+	import { getActivities, clearOldActivities } from '$lib/functions/activity.remote';
 	
 	// Expanded activities state
 	let expandedActivities = $state<Set<string>>(new Set());
@@ -20,11 +16,9 @@
 
 	// Data sources
 	const activities = getActivities();
-	const stats = getActivityStats();
 
 	// Derived lists
 	const activitiesList = $derived(activities.current ? (Array.isArray(activities.current) ? activities.current : []) : []);
-	const statsData = $derived(stats.current || { total: 0, last24h: 0, last7d: 0, last30d: 0, adminActions: 0, userActions: 0, failedActions: 0, activeUsers: 0 });
 
 	// Filter state
 	let searchQuery = $state('');
@@ -129,46 +123,6 @@
 		const formEl = document.getElementById('clear-old-form') as HTMLFormElement;
 		formEl?.requestSubmit();
 	}
-	
-	// Activity Types Management
-	const activityTypes = getActivityTypes();
-	const activityTypesList = $derived(activityTypes.current ? (Array.isArray(activityTypes.current) ? activityTypes.current : []) : []);
-	
-	let showTypeModal = $state(false);
-	let typeModalMode = $state<'create' | 'edit'>('create');
-	let editingType = $state<any>(null);
-	
-	function openCreateTypeModal() {
-		typeModalMode = 'create';
-		editingType = null;
-		showTypeModal = true;
-	}
-	
-	function openEditTypeModal(type: any) {
-		typeModalMode = 'edit';
-		editingType = type;
-		showTypeModal = true;
-	}
-	
-	function closeTypeModal() {
-		showTypeModal = false;
-		editingType = null;
-	}
-	
-	function handleDeleteType(id: string) {
-		if (!confirm('Delete this activity type?')) return;
-		const formEl = document.getElementById(`delete-type-${id}`) as HTMLFormElement;
-		formEl?.requestSubmit();
-	}
-	
-	function getSeverityColor(severity: string) {
-		switch (severity) {
-			case 'critical': return 'badge-error';
-			case 'warning': return 'badge-warning';
-			case 'info': return 'badge-info';
-			default: return 'badge-neutral';
-		}
-	}
 </script>
 
 <svelte:head>
@@ -187,95 +141,10 @@
 				<p class="text-sm text-base-content/70">Monitor system and user activity</p>
 			</div>
 		</div>
-		{#if activeTab === 'log'}
-			<button class="btn btn-outline btn-error" onclick={handleClearOld}>
-				<Trash2 class="h-4 w-4" />
-				Clear Old
-			</button>
-		{:else}
-			<button class="btn btn-primary" onclick={openCreateTypeModal}>
-				<Plus class="h-4 w-4" />
-				New Activity Type
-			</button>
-		{/if}
-	</div>
-
-	<!-- Tabs -->
-	<div class="tabs tabs-boxed mb-6 w-fit">
-		<button 
-			class="tab {activeTab === 'log' ? 'tab-active' : ''}" 
-			onclick={() => activeTab = 'log'}
-		>
-			<Activity class="h-4 w-4 mr-2" />
-			Activity Log
+		<button class="btn btn-outline btn-error" onclick={handleClearOld}>
+			<Trash2 class="h-4 w-4" />
+			Clear Old
 		</button>
-		<button 
-			class="tab {activeTab === 'types' ? 'tab-active' : ''}" 
-			onclick={() => activeTab = 'types'}
-		>
-			<Settings class="h-4 w-4 mr-2" />
-			Activity Types
-		</button>
-	</div>
-
-	{#if activeTab === 'log'}
-	<!-- Stats Cards -->
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-		<div class="card bg-base-100 shadow-sm">
-			<div class="card-body p-6">
-				<div class="flex items-center justify-between">
-					<div>
-						<p class="text-xs text-base-content/60 uppercase font-semibold">Last 24 Hours</p>
-						<p class="text-3xl font-bold text-primary">{statsData.last24h}</p>
-					</div>
-					<div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-						<TrendingUp class="h-6 w-6 text-primary" />
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<div class="card bg-base-100 shadow-sm">
-			<div class="card-body p-6">
-				<div class="flex items-center justify-between">
-					<div>
-						<p class="text-xs text-base-content/60 uppercase font-semibold">User Actions</p>
-						<p class="text-3xl font-bold text-info">{statsData.userActions}</p>
-					</div>
-					<div class="w-12 h-12 rounded-lg bg-info/10 flex items-center justify-center">
-						<User class="h-6 w-6 text-info" />
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<div class="card bg-base-100 shadow-sm">
-			<div class="card-body p-6">
-				<div class="flex items-center justify-between">
-					<div>
-						<p class="text-xs text-base-content/60 uppercase font-semibold">Admin Actions</p>
-						<p class="text-3xl font-bold text-warning">{statsData.adminActions}</p>
-					</div>
-					<div class="w-12 h-12 rounded-lg bg-warning/10 flex items-center justify-center">
-						<Shield class="h-6 w-6 text-warning" />
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<div class="card bg-base-100 shadow-sm">
-			<div class="card-body p-6">
-				<div class="flex items-center justify-between">
-					<div>
-						<p class="text-xs text-base-content/60 uppercase font-semibold">Failed Actions</p>
-						<p class="text-3xl font-bold text-error">{statsData.failedActions}</p>
-					</div>
-					<div class="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
-						<AlertCircle class="h-6 w-6 text-error" />
-					</div>
-				</div>
-			</div>
-		</div>
 	</div>
 
 	<!-- Filters -->
@@ -333,7 +202,7 @@
 					{#each filteredActivities as activity}
 						<div class="flex gap-4 border-b border-base-200 pb-4 last:border-0">
 							<!-- Status Icon -->
-							<div class="flex-shrink-0">
+							<div class="shrink-0">
 								{#if activity.status}
 									<div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10">
 										<CheckCircle class="h-5 w-5 text-success" />
@@ -439,205 +308,9 @@
 			{/if}
 		</div>
 	</div>
-	{:else}
-	<!-- Activity Types Table -->
-	<div class="card bg-base-100 shadow-sm">
-		<div class="card-body">
-			{#if activityTypes.loading}
-				<div class="flex justify-center py-8">
-					<span class="loading loading-spinner loading-lg"></span>
-				</div>
-			{:else if activityTypesList.length > 0}
-				<div class="overflow-x-auto">
-					<table class="table">
-						<thead>
-							<tr>
-								<th>Action</th>
-								<th>Label</th>
-								<th>Category</th>
-								<th>Severity</th>
-								<th>Flags</th>
-								<th>Description</th>
-								<th class="text-right">Actions</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each activityTypesList as type}
-								<tr class="hover">
-									<td>
-										<code class="text-xs bg-base-200 px-2 py-1 rounded">{type.action}</code>
-									</td>
-									<td class="font-medium">{type.label}</td>
-									<td>
-										{#if type.category}
-											<span class="badge badge-sm badge-ghost">{type.category}</span>
-										{:else}
-											<span class="text-base-content/40">-</span>
-										{/if}
-									</td>
-									<td>
-										<span class="badge badge-sm {getSeverityColor(type.severity)}">
-											{type.severity || 'info'}
-										</span>
-									</td>
-									<td>
-										<div class="flex gap-1">
-											{#if type.isAdminAction}
-												<span class="badge badge-xs badge-primary">
-													<Shield class="h-3 w-3 mr-1" />
-													Admin
-												</span>
-											{/if}
-											{#if type.isHidden}
-												<span class="badge badge-xs badge-ghost opacity-50">
-													Hidden
-												</span>
-											{/if}
-											{#if !type.isAdminAction && !type.isHidden}
-												<span class="text-base-content/40 text-xs">-</span>
-											{/if}
-										</div>
-									</td>
-									<td class="text-sm text-base-content/70 max-w-xs truncate">
-										{type.description || '-'}
-									</td>
-									<td class="text-right">
-										<div class="flex justify-end gap-2">
-											<button 
-												class="btn btn-ghost btn-sm btn-square"
-												onclick={() => openEditTypeModal(type)}
-												title="Edit"
-											>
-												<Pencil class="h-4 w-4" />
-											</button>
-											<button 
-												class="btn btn-ghost btn-sm btn-square text-error"
-												onclick={() => handleDeleteType(type.id)}
-												title="Delete"
-											>
-												<Trash2 class="h-4 w-4" />
-											</button>
-										</div>
-										<!-- Hidden delete form -->
-										<form {...deleteActivityType} id="delete-type-{type.id}" style="display: none;">
-											<input type="hidden" name="id" value={type.id} />
-										</form>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{:else}
-				<div class="flex flex-col items-center gap-2 py-12">
-					<Settings class="h-12 w-12 text-base-content/30" />
-					<p class="text-base-content/70">No activity types defined</p>
-					<button class="btn btn-sm btn-primary" onclick={openCreateTypeModal}>
-						Create your first activity type
-					</button>
-				</div>
-			{/if}
-		</div>
-	</div>
-	{/if}
 </div>
 
 <!-- Hidden form for clearing old activities -->
 <form {...clearOldActivities} id="clear-old-form" style="display: none;">
 	<input type="hidden" name="daysOld" value="90" />
 </form>
-
-<!-- Activity Type Modal -->
-{#if showTypeModal}
-	<Dialog bind:open={showTypeModal} size="md" onClose={closeTypeModal}>
-		{#snippet header()}
-			<h3 class="font-bold text-lg">
-				{typeModalMode === 'create' ? 'Create Activity Type' : 'Edit Activity Type'}
-			</h3>
-		{/snippet}
-		{#snippet children()}
-			{@const formRef = typeModalMode === 'create' ? createActivityType : updateActivityType}
-			<form {...formRef} onsubmit={closeTypeModal} class="space-y-4">
-				{#if typeModalMode === 'edit' && editingType}
-					<input type="hidden" name="id" value={editingType.id} />
-				{/if}
-				
-				<FormField 
-					label="Action" 
-					issues={formRef.fields.action.issues()}
-					hint="Unique identifier (e.g., user.login, post.created)"
-				>
-					<FormInput 
-						field={formRef.fields.action} 
-						placeholder="organization.created"
-						disabled={typeModalMode === 'edit'}
-					/>
-				</FormField>
-
-				<FormField 
-					label="Label" 
-					issues={formRef.fields.label.issues()}
-				>
-					<FormInput 
-						field={formRef.fields.label} 
-						placeholder="Organization Created"
-					/>
-				</FormField>
-
-				<div class="grid grid-cols-2 gap-4">
-					<FormField 
-						label="Category" 
-						issues={formRef.fields.category.issues()}
-					>
-						<FormInput 
-							field={formRef.fields.category} 
-							placeholder="organizations"
-						/>
-					</FormField>
-
-					<FormField 
-						label="Severity" 
-						issues={formRef.fields.severity.issues()}
-					>
-						<FormSelect field={formRef.fields.severity}>
-							<option value="info">Info</option>
-							<option value="warning">Warning</option>
-							<option value="critical">Critical</option>
-						</FormSelect>
-					</FormField>
-				</div>
-
-				<FormField 
-					label="Description" 
-					issues={formRef.fields.description.issues()}
-				>
-					<FormTextarea 
-						field={formRef.fields.description} 
-						placeholder="Describe what this activity represents..."
-						rows={2}
-					/>
-				</FormField>
-
-				<div class="flex gap-4">
-					<FormCheckbox 
-						field={formRef.fields.isAdminAction} 
-						label="Admin Action"
-					/>
-					<FormCheckbox 
-						field={formRef.fields.isHidden} 
-						label="Hidden (Admin Only)"
-					/>
-				</div>
-
-				<div class="modal-action">
-					<button type="button" class="btn" onclick={closeTypeModal}>
-						Cancel
-					</button>
-					<button type="submit" class="btn btn-primary" aria-busy={!!formRef.pending} disabled={!!formRef.pending}>
-						{typeModalMode === 'create' ? 'Create' : 'Save'}
-					</button>
-				</div>
-			</form>
-		{/snippet}
-	</Dialog>
-{/if}

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Mail, Zap, Users, FileText, BarChart3, ArrowRight } from 'lucide-svelte';
-  import { getEmails, getEmailStats } from '$lib/api/emails.remote';
-  import { listDripCampaigns, listSegments } from '$lib/api/newsletter.remote';
+  import { Mail, Zap, Users, FileText, BarChart3, ArrowRight, Globe } from 'lucide-svelte';
+  import { getEmails, getEmailStats } from '$lib/functions/emails.remote';
+  import { listDripCampaigns, listSegments } from '$lib/functions/newsletter.remote';
 
   const emails = getEmails();
   const stats = getEmailStats();
@@ -98,7 +98,7 @@
   </div>
 
   <!-- Navigation Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
     <!-- Drip Campaigns -->
     <a href="/emails/drip" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
       <div class="card-body">
@@ -171,6 +171,25 @@
         </div>
         <div class="mt-4 pt-4 border-t border-base-200">
           <p class="text-xs text-base-content/60">Ready to use in campaigns</p>
+        </div>
+      </div>
+    </a>
+
+    <!-- Domains -->
+    <a href="/emails/domains" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
+      <div class="card-body">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="card-title text-lg flex items-center gap-2">
+              <Globe class="h-5 w-5 text-secondary" />
+              Domains
+            </h3>
+            <p class="text-sm text-base-content/70 mt-2">Verify domains for sending emails from your own domain.</p>
+          </div>
+          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+        </div>
+        <div class="mt-4 pt-4 border-t border-base-200">
+          <p class="text-xs text-base-content/60">DNS verification required</p>
         </div>
       </div>
     </a>

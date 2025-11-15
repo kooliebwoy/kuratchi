@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-	import { signUp } from '$lib/api/auth.remote';
+	import { signUp } from '$lib/functions/auth.remote';
   import { FormField, FormInput } from '@kuratchi/ui';
   import { Building2 } from 'lucide-svelte';
   

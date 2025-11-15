@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSiteById } from '$lib/api/sites.remote';
+  import { getSiteById } from '$lib/functions/sites.remote';
 
   const site = getSiteById();
 </script>

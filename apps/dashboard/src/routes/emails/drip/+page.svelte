@@ -9,7 +9,7 @@
     launchDripCampaign,
     processDripBranches,
     type DripCampaignRecord
-  } from '$lib/api/newsletter.remote';
+  } from '$lib/functions/newsletter.remote';
 
   type StepInput = {
     id: string;

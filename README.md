@@ -14,7 +14,9 @@ Kuratchi is an open-source backend-as-a-service (BaaS) platform designed specifi
 - 🗄️ **Database** - Type-safe ORM with migrations, multi-tenancy, and D1 integration
 - 🔑 **KV Storage** - Key-value store with Cloudflare KV
 - 📦 **R2 Storage** - File storage with Cloudflare R2
-- 🚀 **Edge-First** - Built for Cloudflare Workers from day one
+- � **Kuratchi Spaces** - Real-time chat powered by Durable Objects with SQLite storage
+- 🔔 **Notifications** - In-app, email, and platform alerts
+- �🚀 **Edge-First** - Built for Cloudflare Workers from day one
 - 🔌 **Plugin System** - Extensible architecture for custom functionality
 
 ## Monorepo Structure
@@ -24,13 +26,17 @@ This is a Turborepo monorepo containing:
 ```
 kuratchi/
 ├── apps/
-│   ├── docs/              # Documentation site
-│   ├── dashboard/         # Admin dashboard (coming soon)
+│   ├── dashboard/         # Admin dashboard
+│   ├── chat/              # Example chat app with Kuratchi Spaces
+│   ├── site-renderer/     # Multi-tenant site renderer
+│   ├── website/           # Marketing website
 │   └── examples/          # Example applications
 │       ├── basic-auth/    # Basic authentication example
 │       └── multi-tenant/  # Multi-tenant SaaS example
 ├── packages/
 │   ├── kuratchi-sdk/      # Core SDK package
+│   ├── kuratchi-ui/       # UI component library
+│   ├── kuratchi-editor/   # Visual editor
 │   ├── cli/               # CLI tool (coming soon)
 │   ├── config-typescript/ # Shared TypeScript configs
 │   └── config-eslint/     # Shared ESLint configs
@@ -221,6 +227,40 @@ const users = await db.users.where({ email: 'user@example.com' }).all();
 await db.applyMigrations();
 ```
 
+### Kuratchi Spaces
+
+Real-time chat rooms with Durable Objects and SQLite storage:
+
+```typescript
+import * as spaces from 'kuratchi-sdk/spaces';
+import type { Message } from 'kuratchi-sdk/spaces';
+
+// Server-side: Generate secure token
+const spaceToken = await spaces.generateToken('chat-123', {
+  gatewayKey: process.env.KURATCHI_GATEWAY_KEY  // Same key for all features!
+});
+
+// Client-side: Connect to space
+const client = spaces.client({
+  spaceId: 'chat-123',
+  spaceToken,
+  gatewayKey: env.KURATCHI_SPACES_GATEWAY_KEY,
+  workerUrl: 'https://chat-spaces.yourdomain.com',
+  onMessage: (msg) => console.log('New message:', msg)
+});
+
+await client.connect();
+await client.sendMessage({
+  senderId: 'user-123',
+  senderType: 'user',
+  text: 'Hello!'
+});
+
+const messages = await client.getMessages({ limit: 50 });
+```
+
+See [Kuratchi Spaces documentation](./KURATCHI_SPACES_QUICK_REFERENCE.md) for more details.
+
 ## Roadmap
 
 ### Phase 1: Core Platform (Current)
@@ -268,6 +308,9 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 ## Documentation
 
 - [SDK Documentation](./packages/kuratchi-sdk/README.md)
+- [Kuratchi Spaces - Quick Reference](./KURATCHI_SPACES_QUICK_REFERENCE.md)
+- [Kuratchi Spaces - Integration Guide](./KURATCHI_SPACES_INTEGRATION.md)
+- [Kuratchi Spaces - Implementation Summary](./KURATCHI_SPACES_IMPLEMENTATION.md)
 - [Plugin API](./packages/kuratchi-sdk/PLUGIN_API.md)
 - [Schema Guide](./packages/kuratchi-sdk/SCHEMA_GUIDE.md)
 - [Migration Guide](./MONOREPO_MIGRATION.md)

@@ -1,8 +1,11 @@
 /**
  * Managed Database Client
  * 
- * Thin HTTP wrapper for Kuratchi's managed database API.
- * All operations route to /api/v1/databases with your API key.
+ * SQL query execution client for Kuratchi databases.
+ * Routes to /api/v1/databases (query execution endpoint).
+ * 
+ * For database MANAGEMENT (create, list, delete databases):
+ * - Use PlatformClient.databases instead
  */
 
 import type { QueryResult } from '../database/core/types.js';
@@ -97,8 +100,12 @@ async function makeRequest(
 /**
  * Managed Database Client
  * 
- * Thin wrapper around /api/v1/databases endpoint.
+ * SQL query execution for a specific database.
+ * Routes to /api/v1/databases (query execution endpoint).
  * Handles authentication, bookmarks, and request routing.
+ * 
+ * For database MANAGEMENT (create, list, delete):
+ * - Use PlatformClient.databases instead
  */
 export class ManagedDatabase {
   private baseUrl: string;

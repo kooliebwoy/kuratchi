@@ -1,0 +1,53 @@
+# Notifications Queue Worker Configuration
+# Deploy this worker to process notifications from the queue
+
+name = "kuratchi-notifications-queue-worker"
+main = "index.ts"
+compatibility_date = "2024-01-01"
+
+# Queue consumer configuration
+[[queues.consumers]]
+queue = "notifications-queue"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "notifications-dlq"
+
+# Optional: Schedule for database batch processing
+# Runs every 5 minutes to process notifications from the database queue
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Environment variables
+[vars]
+SYSTEM_EMAIL = "admin@yourdomain.com"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# wrangler secret put RESEND_API_KEY
+# wrangler secret put CLOUDFLARE_API_TOKEN
+# wrangler secret put CLOUDFLARE_ACCOUNT_ID
+
+# Durable Object bindings (if using Kuratchi Database)
+# [[durable_objects.bindings]]
+# name = "ADMIN_DB"
+# class_name = "KuratchiDurableObject"
+# script_name = "kuratchi-do-internal"
+
+# KV namespace bindings (if needed)
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "your-kv-namespace-id"
+
+# D1 database bindings (if needed)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "kuratchi-db"
+# database_id = "your-database-id"
+
+# Email sender binding for Cloudflare Email
+[[send_email]]
+name = "EMAIL_SENDER"
+
+# Observability (optional)
+[observability]
+enabled = true

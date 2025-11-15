@@ -1,8 +1,9 @@
-import type { SchemaDsl } from 'kuratchi-sdk';
+import type { SchemaDsl } from 'kuratchi-sdk/database';
+import { notificationSchemas } from 'kuratchi-sdk/notifications';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 6,
+  version: 8,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -68,6 +69,16 @@ export const adminSchema: SchemaDsl = {
       status: 'enum(active,inactive,lead)',
       '...timestamps': true,
     },
+    domains: {
+      id: 'text primary key not null',
+      name: 'text not null',
+      organizationId: 'text -> organizations.id cascade',
+      emailEnabled: 'boolean default false',
+      emailVerified: 'boolean default false',
+      resendDomainId: 'text',
+      emailDnsRecords: 'json',
+      '...timestamps': true,
+    },
     activity: {
       id: 'text primary key',
       userId: 'text',
@@ -79,17 +90,6 @@ export const adminSchema: SchemaDsl = {
       organizationId: 'text',
       ip: 'text',
       userAgent: 'text',
-      '...timestamps': true,
-    },
-    activityTypes: {
-      id: 'text primary key',
-      action: 'text not null unique',
-      label: 'text not null',
-      category: 'text',
-      severity: 'enum(info,warning,critical) default info',
-      description: 'text',
-      isAdminAction: 'boolean default false',
-      isHidden: 'boolean default false',
       '...timestamps': true,
     },
     session: {
@@ -132,6 +132,8 @@ export const adminSchema: SchemaDsl = {
       name: 'text unique',
       dbuuid: 'text unique',
       workerName: 'text',
+      r2BucketName: 'text',
+      r2Binding: 'text',
       isArchived: 'boolean',
       isActive: 'boolean',
       isPrimary: 'boolean default 0',
@@ -257,5 +259,7 @@ export const adminSchema: SchemaDsl = {
       revoked: 'boolean',
       '...timestamps': true,
     },
+    // Notification tables
+    ...notificationSchemas,
   },
 } as const;

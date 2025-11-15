@@ -1,0 +1,56 @@
+{
+  "name": "chat-kuratchi",
+  "account_id": "290c1a3b978d0f44f83b515983a1c951",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "routes": [
+    {
+      "pattern": "chat.kuratchi.dev",
+      "custom_domain": true
+    }
+  ],
+  "compatibility_date": "2025-09-24",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  },
+  "build": {
+    "command": "pnpm run build"
+  },
+  "placement": {
+    "mode": "smart"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "8300ba36ac64476d8c44579056d57e78"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "CHAT_DB",
+      "database_name": "kuratchi-chat-db",
+      "database_id": "463a4d89-599f-4c7b-93b9-62514c6eeb65"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "kuratchi-chat-bucket",
+      "experimental_remote": true
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "keep_vars": true,
+  "vars": {
+    "ORIGIN": "https://chat.kuratchi.dev",
+    "APP_NAME": "Kuratchi Chat"
+  }
+}

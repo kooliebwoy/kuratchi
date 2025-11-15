@@ -29,11 +29,11 @@ export type { CredentialsPluginOptions } from './credentials.js';
 
 // Roles plugin
 export { rolesPlugin } from './roles.js';
-export type { RolesPluginOptions } from './roles.js';
+export type { RolesPluginOptions, PermissionDef, RoleDefinitions } from './roles.js';
 
 // Activity tracking plugin
 export { activityPlugin } from './activity.js';
-export type { ActivityLogOptions } from './activity.js';
+export type { ActivityLogOptions, ActivityTypeDefinition, ActivityPluginOptions } from './activity.js';
 
 // Re-export plugin types
 export type { AuthPlugin, PluginContext, SessionContext, ResponseContext } from '../core/plugin.js';

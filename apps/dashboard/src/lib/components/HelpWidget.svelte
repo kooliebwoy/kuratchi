@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { HelpCircle, X, MessageSquare, Headphones, Send, Mail } from 'lucide-svelte';
+    import { HelpCircle, X, MessageSquare, Headphones, Send, Mail, MessageCircle } from 'lucide-svelte';
     import { enhance } from '$app/forms';
     import type { SubmitFunction } from '@sveltejs/kit';
     
     let isOpen = $state(false);
     let activeTab = $state<'feedback' | 'support'>('feedback');
     let isSubmitting = $state(false);
+    
+    const CHAT_URL = 'https://chat.kuratchi.dev'; // TODO: Update based on environment
     
     // Feedback form state
     let feedbackRating = $state<1 | 2 | 3 | 4 | 5>(5);
@@ -116,6 +118,19 @@
                     <Headphones class="h-3 w-3 mr-1" />
                     Support
                 </button>
+            </div>
+            
+            <!-- Live Chat Button -->
+            <div class="px-4 py-2">
+                <a
+                    href={CHAT_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-outline btn-sm w-full text-xs gap-1"
+                >
+                    <MessageCircle class="h-3 w-3" />
+                    Open Live Chat
+                </a>
             </div>
             
             <!-- Content -->

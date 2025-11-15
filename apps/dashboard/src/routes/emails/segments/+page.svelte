@@ -9,7 +9,7 @@
     removeSegmentContact,
     type SegmentSummary,
     type SegmentContact
-  } from '$lib/api/newsletter.remote';
+  } from '$lib/functions/newsletter.remote';
 
   const segmentsResource = listSegments();
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);

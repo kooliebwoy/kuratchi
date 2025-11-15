@@ -13,6 +13,8 @@ export interface DeployWorkerOptions {
   gatewayKey: string;
   cloudflareClient: CloudflareClient;
   location?: PrimaryLocationHint;
+  r2BucketName?: string;
+  r2Binding?: string;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface DeployWorkerOptions {
  * Each database gets its own worker with a dedicated D1 database
  */
 export async function deployWorker(options: DeployWorkerOptions): Promise<{ databaseId: string; workerName: string }> {
-  const { scriptName, databaseName, gatewayKey, cloudflareClient, location } = options;
+  const { scriptName, databaseName, gatewayKey, cloudflareClient, location, r2BucketName, r2Binding } = options;
   
   if (!gatewayKey) {
     throw new Error('gatewayKey is required to deploy worker');
@@ -32,7 +34,9 @@ export async function deployWorker(options: DeployWorkerOptions): Promise<{ data
     databaseName,
     workerScript: DEFAULT_D1_WORKER_SCRIPT,
     gatewayKey,
-    location
+    location,
+    r2BucketName,
+    r2Binding
   });
 }
 

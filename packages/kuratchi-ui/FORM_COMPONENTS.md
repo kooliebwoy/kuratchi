@@ -71,7 +71,7 @@ Checkbox with label.
 
 ### 1. Define Remote Function
 ```typescript
-// $lib/api/users.remote.ts
+// $lib/functions/users.remote.ts
 export const createUser = guardedForm(
   v.object({
     name: v.pipe(v.string(), v.nonEmpty()),
@@ -90,7 +90,7 @@ export const createUser = guardedForm(
 ```svelte
 <script lang="ts">
   import { Dialog, FormField, FormInput, FormSelect, FormTextarea, FormCheckbox } from '@kuratchi/ui';
-  import { createUser } from '$lib/api/users.remote';
+  import { createUser } from '$lib/functions/users.remote';
   
   let showModal = $state(false);
 </script>

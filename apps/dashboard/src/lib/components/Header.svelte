@@ -1,15 +1,16 @@
 <script lang="ts">
   import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from 'lucide-svelte';
-  import { searchOrganizations, setActiveOrganization, clearOrganization } from '$lib/api/superadmin.remote';
-  import { signOut } from '$lib/api/auth.remote';
+  import { searchOrganizations, setActiveOrganization, clearOrganization } from '$lib/functions/superadmin.remote';
+  import { signOut } from '$lib/functions/auth.remote';
   import { goto, invalidateAll } from '$app/navigation';
-  
+  import NotificationDrawer from '$lib/components/NotificationDrawer.svelte';
+
   interface Props {
     workspace: string;
     user: { name: string; email: string };
     isSuperadmin?: boolean;
   }
-  
+
   let { workspace, user, isSuperadmin = false }: Props = $props();
 
   let term = $state('');
@@ -24,12 +25,12 @@
   function onInput(e: Event) {
     term = (e.target as HTMLInputElement).value;
     clearTimeout(debounceTimer);
-    
+
     if (!term.trim()) {
       searchResults = [];
       return;
     }
-    
+
     debounceTimer = setTimeout(() => {
       if (term.trim()) {
         // Trigger form submission programmatically
@@ -83,7 +84,7 @@
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const result = await signOut.submit(formData);
-    
+
     // Redirect to signin page after successful logout
     if (result?.success) {
       // Invalidate all data to clear server-side cache
@@ -112,7 +113,7 @@
 
     <!-- Notifications Drawer Trigger -->
     <button
-      class="btn btn-circle btn-ghost text-base-content/70"
+      class="btn btn-circle btn-ghost text-base-content/70 relative"
       onclick={() => showNotificationDrawer = !showNotificationDrawer}
     >
       <Bell class="h-5 w-5" />
@@ -141,7 +142,7 @@
             <p class="text-sm font-medium truncate">{user.name}</p>
             <p class="text-xs text-base-content/50 truncate">{user.email}</p>
           </div>
-          
+
           <div class="p-2">
             <form {...signOut} onsubmit={handleSignOut}>
               <button
@@ -239,50 +240,7 @@
 {/if}
 
 <!-- Notifications Drawer -->
-{#if showNotificationDrawer}
-  <div class="fixed inset-y-0 right-0 z-50 w-96 bg-base-100 border-l border-base-200 shadow-2xl flex flex-col">
-    <!-- Header -->
-    <div class="flex items-center justify-between border-b border-base-200 px-6 py-4">
-      <h3 class="font-semibold text-lg">Notifications</h3>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm btn-circle"
-        onclick={() => showNotificationDrawer = false}
-      >
-        <X class="h-4 w-4" />
-      </button>
-    </div>
-
-    <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-3">
-      <div class="p-4 rounded-lg border border-base-200 bg-base-200/30 hover:bg-base-200/50 transition-colors cursor-pointer">
-        <p class="font-medium text-sm text-base-content">Welcome to Kuratchi</p>
-        <p class="text-xs text-base-content/60 mt-1">Get started by creating your first site</p>
-        <p class="text-xs text-base-content/40 mt-2">Just now</p>
-      </div>
-
-      <div class="p-4 rounded-lg border border-base-200 bg-base-200/30 hover:bg-base-200/50 transition-colors cursor-pointer">
-        <p class="font-medium text-sm text-base-content">System Update</p>
-        <p class="text-xs text-base-content/60 mt-1">Dashboard has been updated with new features</p>
-        <p class="text-xs text-base-content/40 mt-2">2 hours ago</p>
-      </div>
-
-      <div class="p-4 rounded-lg border border-base-200 bg-base-200/30 hover:bg-base-200/50 transition-colors cursor-pointer">
-        <p class="font-medium text-sm text-base-content">Email Campaign Sent</p>
-        <p class="text-xs text-base-content/60 mt-1">Your email campaign was successfully delivered</p>
-        <p class="text-xs text-base-content/40 mt-2">1 day ago</p>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div class="border-t border-base-200 p-4">
-      <button class="btn btn-sm btn-ghost w-full">View All Notifications</button>
-    </div>
-  </div>
-
-  <!-- Backdrop -->
-  <div
-    class="fixed inset-0 z-40 bg-black/20"
-    onclick={() => showNotificationDrawer = false}
-  ></div>
-{/if}
+<NotificationDrawer
+  bind:show={showNotificationDrawer}
+  onClose={() => showNotificationDrawer = false}
+/>

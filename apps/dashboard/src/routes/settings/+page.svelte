@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Save, User } from 'lucide-svelte';
-  import { getAccountSettings, updateProfile } from '$lib/api/settings.remote';
+  import { getAccountSettings, updateProfile } from '$lib/functions/settings.remote';
 
   // Data source
   const account = getAccountSettings();

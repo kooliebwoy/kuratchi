@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getSiteById, updateSiteTheme } from '$lib/api/sites.remote';
+  import { getSiteById, updateSiteTheme } from '$lib/functions/sites.remote';
   import { getAllThemes } from '@kuratchi/editor';
   import { Palette, Check } from 'lucide-svelte';
 

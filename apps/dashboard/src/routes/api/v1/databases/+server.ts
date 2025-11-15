@@ -7,8 +7,15 @@ import { env } from '$env/dynamic/private';
 /**
  * POST /api/v1/databases
  * 
- * Execute database queries through Kuratchi BaaS.
- * This endpoint handles authentication and forwards requests to your database worker.
+ * Execute SQL queries on a specific database (not to be confused with /api/v1/platform/databases).
+ * 
+ * Purpose:
+ * - SQL query execution endpoint
+ * - Used by customers to run queries on their databases
+ * - Handles parameterized queries, batches, raw SQL
+ * 
+ * For database MANAGEMENT (create, list, delete):
+ * - Use /api/v1/platform/databases instead
  * 
  * Authentication:
  * - Header: Authorization: Bearer <your-platform-api-key>

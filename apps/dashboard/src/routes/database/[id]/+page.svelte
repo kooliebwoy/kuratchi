@@ -1,13 +1,20 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { getDatabase, getDatabaseTables, executeQuery, getDatabaseAnalytics } from '$lib/api/database.remote';
+  import { getDatabase, getDatabaseTables, executeQuery, getDatabaseAnalytics, getTableData, insertTableRow, deleteTableRow } from '$lib/functions/database.remote';
 
-  let queryDialog: HTMLDialogElement;
-  let tableBrowserDialog: HTMLDialogElement;
+  let deleteRowDialog: HTMLDialogElement;
   let queryResults = $state<any[]>([]);
   let selectedTable = $state<string | null>(null);
   let tableData = $state<any[]>([]);
+  let tableSchema = $state<any[]>([]);
   let tableDataLoading = $state(false);
+  let rowToDelete = $state<any>(null);
+  let newRowData = $state<Record<string, any>>({});
+  let addRowDrawerOpen = $state(false);
+  let isAddingRow = $state(false);
+  let queryPanelOpen = $state(false);
+  let sqlQuery = $state('');
+  let isExecutingQuery = $state(false);
 
   const databaseId = $page.params.id;
   const database = getDatabase();
@@ -18,8 +25,19 @@
   $effect(() => {
     if (executeQuery.result) {
       queryResults = executeQuery.result.results || [];
+      isExecutingQuery = false;
     }
   });
+
+  async function handleExecuteQuery(event: Event) {
+    event.preventDefault();
+    if (!sqlQuery.trim()) return;
+    
+    isExecutingQuery = true;
+    queryResults = [];
+    
+    // The form submission will trigger executeQuery
+  }
 
   function formatNumber(num: number): string {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -29,24 +47,94 @@
 
   async function viewTableData(tableName: string) {
     selectedTable = tableName;
-    tableData = [];
     tableDataLoading = true;
-    
-    // Open dialog immediately
-    tableBrowserDialog?.showModal();
+    tableData = [];
+    tableSchema = [];
     
     try {
-      // Fetch table data via fetch API directly
-      const response = await fetch(`/api/database/table-data?databaseId=${databaseId}&tableName=${encodeURIComponent(tableName)}`);
-      if (response.ok) {
-        const data = await response.json();
-        tableData = data.results || [];
-      }
+      const result = await getTableData({ tableName, databaseId });
+      tableData = result?.rows || [];
+      tableSchema = result?.schema || [];
     } catch (err) {
       console.error('Error loading table data:', err);
+      tableData = [];
+      tableSchema = [];
     } finally {
       tableDataLoading = false;
     }
+  }
+
+  function openAddRowDialog() {
+    // Initialize newRowData with empty values based on schema
+    newRowData = {};
+    tableSchema.forEach((col: any) => {
+      if (!col.pk) { // Don't include auto-increment primary keys
+        newRowData[col.name] = col.dflt_value || '';
+      }
+    });
+    addRowDrawerOpen = true;
+  }
+
+  async function handleAddRow() {
+    if (!selectedTable) return;
+    
+    isAddingRow = true;
+    try {
+      await insertTableRow({ 
+        tableName: selectedTable, 
+        databaseId,
+        rowData: newRowData
+      });
+      
+      // Refresh table data
+      await viewTableData(selectedTable);
+      addRowDrawerOpen = false;
+    } catch (err) {
+      console.error('Error adding row:', err);
+      alert('Failed to add row');
+    } finally {
+      isAddingRow = false;
+    }
+  }
+
+  function confirmDeleteRow(row: any) {
+    rowToDelete = row;
+    deleteRowDialog.showModal();
+  }
+
+  async function handleDeleteRow() {
+    if (!selectedTable || !rowToDelete) return;
+    
+    try {
+      // Build WHERE clause from the row data (use all columns for safety)
+      const whereColumns = Object.keys(rowToDelete);
+      const whereClause = whereColumns.map(col => `${col} = ?`).join(' AND ');
+      const whereValues = whereColumns.map(col => rowToDelete[col]);
+      
+      await deleteTableRow({
+        tableName: selectedTable,
+        databaseId,
+        whereClause,
+        whereValues
+      });
+      
+      // Refresh table data
+      await viewTableData(selectedTable);
+      deleteRowDialog.close();
+      rowToDelete = null;
+    } catch (err) {
+      console.error('Error deleting row:', err);
+      alert('Failed to delete row');
+    }
+  }
+
+  function getSQLType(type: string): string {
+    const upperType = type.toUpperCase();
+    if (upperType.includes('INT')) return 'number';
+    if (upperType.includes('REAL') || upperType.includes('FLOAT') || upperType.includes('DOUBLE')) return 'number';
+    if (upperType.includes('BOOL')) return 'checkbox';
+    if (upperType.includes('DATE') || upperType.includes('TIME')) return 'datetime-local';
+    return 'text';
   }
 </script>
 
@@ -77,14 +165,142 @@
       </div>
     </div>
     <div class="flex gap-2">
-      <button class="btn btn-outline btn-sm" onclick={() => queryDialog.showModal()}>
+      <button 
+        class="btn btn-sm {queryPanelOpen ? 'btn-primary' : 'btn-outline'}" 
+        onclick={() => queryPanelOpen = !queryPanelOpen}
+      >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
+          <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+          <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
         </svg>
-        Query
+        SQL Query
       </button>
     </div>
   </div>
+
+  <!-- SQL Query Panel (Collapsible) -->
+  {#if queryPanelOpen}
+    <div class="border-b border-base-200 bg-base-50">
+      <div class="px-6 py-4">
+        <form {...executeQuery} onsubmit={handleExecuteQuery}>
+          <input type="hidden" name="databaseId" value={databaseId} />
+          
+          <div class="flex items-start gap-4">
+            <!-- Query Input -->
+            <div class="flex-1">
+              <textarea 
+                id="sql-query"
+                name="sql"
+                class="textarea textarea-bordered w-full font-mono text-sm h-20 resize-none focus:h-32 transition-all bg-base-100" 
+                placeholder="SELECT * FROM {selectedTable || 'table_name'} LIMIT 10;"
+                bind:value={sqlQuery}
+                required
+              ></textarea>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-col gap-2 pt-1">
+              <button 
+                type="submit" 
+                class="btn btn-primary btn-sm min-w-32" 
+                disabled={isExecutingQuery || !sqlQuery.trim()}
+              >
+                {#if isExecutingQuery}
+                  <span class="loading loading-spinner loading-xs"></span>
+                  Running...
+                {:else}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                  </svg>
+                  Execute
+                {/if}
+              </button>
+              
+              <div class="flex gap-1">
+                <button 
+                  type="button" 
+                  class="btn btn-xs btn-ghost tooltip tooltip-bottom" 
+                  data-tip="Insert example query"
+                  onclick={() => {
+                    sqlQuery = selectedTable ? `SELECT * FROM ${selectedTable} LIMIT 10;` : 'SELECT * FROM table_name LIMIT 10;';
+                  }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  </svg>
+                </button>
+                <button 
+                  type="button" 
+                  class="btn btn-xs btn-ghost tooltip tooltip-bottom" 
+                  data-tip="Clear query & results"
+                  onclick={() => {
+                    sqlQuery = '';
+                    queryResults = [];
+                  }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <!-- Query Results -->
+        {#if queryResults.length > 0}
+          <div class="mt-4 pt-4 border-t border-base-200">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span class="text-sm font-medium">{queryResults.length} {queryResults.length === 1 ? 'row' : 'rows'} returned</span>
+              </div>
+              <button 
+                type="button" 
+                class="btn btn-xs btn-ghost gap-1"
+                onclick={() => queryResults = []}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+                Close
+              </button>
+            </div>
+            <div class="overflow-x-auto max-h-80 border border-base-200 rounded-lg bg-base-100">
+              <table class="table table-sm table-pin-rows table-pin-cols">
+                <thead class="bg-base-200/50">
+                  <tr>
+                    {#each Object.keys(queryResults[0]) as key}
+                      <th class="font-semibold text-xs uppercase tracking-wide">{key}</th>
+                    {/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each queryResults as row, i}
+                    <tr class="hover:bg-base-200/30">
+                      {#each Object.values(row) as value}
+                        <td class="font-mono text-xs">
+                          {#if value === null}
+                            <span class="text-base-content/40 italic">NULL</span>
+                          {:else if typeof value === 'object'}
+                            <code class="text-xs bg-base-200/70 px-1.5 py-0.5 rounded">{JSON.stringify(value)}</code>
+                          {:else}
+                            {value}
+                          {/if}
+                        </td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <!-- Main Content Area with Sidebar -->
   <div class="flex flex-1 overflow-hidden">
@@ -113,9 +329,14 @@
                 onclick={() => viewTableData(table.name)}
                 class="w-full text-left px-3 py-2 rounded-lg hover:bg-base-200 transition text-sm {selectedTable === table.name ? 'bg-primary text-primary-content font-medium' : 'text-base-content/70 hover:text-base-content'}"
               >
-                <div class="flex items-center justify-between">
-                  <span>{table.name}</span>
-                  <span class="text-xs opacity-60">{table.columnCount}</span>
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span class="truncate">{table.name}</span>
+                  </div>
+                  <span class="text-xs opacity-60 shrink-0 badge badge-ghost badge-sm">{table.columnCount}</span>
                 </div>
               </button>
             {/each}
@@ -135,57 +356,106 @@
             <div class="flex items-center justify-between">
               <h2 class="text-xl font-semibold">{selectedTable}</h2>
               <div class="flex gap-2">
-                <button class="btn btn-sm btn-outline">Add row</button>
-                <button class="btn btn-sm btn-outline">Delete row</button>
+                <button class="btn btn-sm btn-primary" onclick={openAddRowDialog} disabled={tableDataLoading || tableSchema.length === 0}>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                  </svg>
+                  Add Row
+                </button>
               </div>
             </div>
 
             {#if tableDataLoading}
               <div class="flex justify-center py-12">
-                <span class="loading loading-spinner loading-lg"></span>
+                <div class="text-center">
+                  <span class="loading loading-spinner loading-lg"></span>
+                  <p class="mt-2 text-sm text-base-content/60">Loading table data...</p>
+                </div>
               </div>
-            {:else if tableData.length > 0}
+            {:else if tableSchema.length > 0}
+              <div class="mb-2">
+                <p class="text-sm text-base-content/60">
+                  {#if tableData.length > 0}
+                    Showing {tableData.length} rows (limited to 100)
+                  {:else}
+                    Table is empty (0 rows)
+                  {/if}
+                </p>
+              </div>
               <div class="overflow-x-auto border border-base-200 rounded-lg bg-base-100">
                 <table class="table table-sm table-zebra">
                   <thead class="bg-base-200 sticky top-0">
                     <tr>
                       <th class="w-12">#</th>
-                      {#each Object.keys(tableData[0]) as column}
-                        <th class="text-left">{column}</th>
+                      {#each tableSchema as column}
+                        <th class="text-left">
+                          <div class="flex items-center gap-1.5">
+                            <span class="font-semibold">{column.name}</span>
+                            {#if column.pk}
+                              <span class="badge badge-xs badge-primary">PK</span>
+                            {/if}
+                          </div>
+                          <div class="text-xs font-normal opacity-50 mt-0.5">
+                            {column.type}
+                            {#if column.notnull && !column.pk}
+                              · NOT NULL
+                            {/if}
+                          </div>
+                        </th>
                       {/each}
                       <th class="w-20">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {#each tableData as row, i}
-                      <tr class="hover">
-                        <td class="font-mono text-xs opacity-60">{i + 1}</td>
-                        {#each Object.keys(tableData[0]) as column}
-                          <td class="max-w-xs truncate text-sm">
-                            {#if row[column] === null}
-                              <span class="text-base-content/40 italic">NULL</span>
-                            {:else if typeof row[column] === 'object'}
-                              <code class="text-xs bg-base-200 px-2 py-1 rounded">{JSON.stringify(row[column]).substring(0, 50)}</code>
-                            {:else}
-                              <span>{row[column]}</span>
-                            {/if}
+                    {#if tableData.length > 0}
+                      {#each tableData as row, i}
+                        <tr class="hover">
+                          <td class="font-mono text-xs opacity-60">{i + 1}</td>
+                          {#each tableSchema as column}
+                            <td class="max-w-xs truncate text-sm">
+                              {#if row[column.name] === null}
+                                <span class="text-base-content/40 italic">NULL</span>
+                              {:else if typeof row[column.name] === 'object'}
+                                <code class="text-xs bg-base-200 px-2 py-1 rounded">{JSON.stringify(row[column.name]).substring(0, 50)}</code>
+                              {:else}
+                                <span>{row[column.name]}</span>
+                              {/if}
+                            </td>
+                          {/each}
+                          <td class="text-center">
+                            <button 
+                              class="btn btn-ghost btn-xs text-error" 
+                              onclick={() => confirmDeleteRow(row)}
+                              aria-label="Delete row"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                              </svg>
+                            </button>
                           </td>
-                        {/each}
-                        <td class="text-center">
-                          <button class="btn btn-ghost btn-xs" aria-label="Edit row">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M10.5 1.5H5.8A2.3 2.3 0 003.5 3.8v10.4a2.3 2.3 0 002.3 2.3h8.4a2.3 2.3 0 002.3-2.3V9.5M14 4v5m2.5-2.5h-5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        </tr>
+                      {/each}
+                    {:else}
+                      <tr>
+                        <td colspan={tableSchema.length + 2} class="text-center py-8 text-base-content/50">
+                          <div class="flex flex-col items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                          </button>
+                            <p class="font-medium">No rows in this table</p>
+                            <button class="btn btn-sm btn-primary" onclick={openAddRowDialog}>
+                              Add your first row
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    {/each}
+                    {/if}
                   </tbody>
                 </table>
               </div>
             {:else}
               <div class="text-center py-12 text-base-content/50">
-                <p>No data in this table</p>
+                <p>Unable to load table structure</p>
               </div>
             {/if}
           </div>
@@ -294,133 +564,183 @@
   </div>
 </div>
 
-<!-- Query Dialog -->
-<dialog bind:this={queryDialog} class="modal">
-  <div class="modal-box max-w-4xl">
-    <form method="dialog">
-      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-    </form>
-    
-    <h3 class="font-bold text-lg mb-4">Run SQL Query</h3>
-    
-    <form {...executeQuery} class="space-y-4">
-      <input type="hidden" name="databaseId" value={databaseId} />
-      
-      <div class="form-control">
-        <label class="label" for="sql-query">
-          <span class="label-text">SQL Query</span>
-        </label>
-        <textarea 
-          id="sql-query"
-          name="sql"
-          class="textarea textarea-bordered font-mono text-sm h-32" 
-          placeholder="SELECT * FROM users LIMIT 10;"
-          required
-        ></textarea>
+<!-- Add Row Drawer -->
+<div class="drawer drawer-end z-50">
+  <input type="checkbox" bind:checked={addRowDrawerOpen} class="drawer-toggle" />
+  <div class="drawer-side">
+    <label for="add-row-drawer" class="drawer-overlay"></label>
+    <div class="bg-base-100 w-full max-w-2xl h-full flex flex-col">
+      <!-- Drawer Header -->
+      <div class="sticky top-0 bg-base-100 border-b border-base-200 px-6 py-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-xl">Add Row</h3>
+          <p class="text-sm text-base-content/60 mt-1">
+            Add a new row to <span class="font-semibold text-primary">{selectedTable}</span>
+          </p>
+        </div>
+        <button 
+          class="btn btn-sm btn-circle btn-ghost" 
+          onclick={() => addRowDrawerOpen = false}
+          aria-label="Close drawer"
+        >
+          ✕
+        </button>
       </div>
 
-      <div class="modal-action">
-        <button type="button" class="btn" onclick={() => queryDialog.close()}>Cancel</button>
-        <button type="submit" class="btn btn-primary" disabled={executeQuery.pending > 0}>
-          {#if executeQuery.pending > 0}
+      <!-- Drawer Content -->
+      <div class="flex-1 overflow-y-auto px-6 py-6">
+        <div class="space-y-6">
+          {#each tableSchema as column}
+            {#if !column.pk || !column.dflt_value}
+              <div class="form-control">
+                <label class="label" for="add-{column.name}">
+                  <span class="label-text font-semibold">
+                    {column.name}
+                    {#if column.notnull && !column.dflt_value}
+                      <span class="text-error ml-1">*</span>
+                    {/if}
+                  </span>
+                  <span class="label-text-alt text-xs opacity-60">
+                    {column.type}
+                    {#if column.pk}
+                      · Primary Key
+                    {/if}
+                  </span>
+                </label>
+                
+                {#if getSQLType(column.type) === 'checkbox'}
+                  <div class="flex items-center gap-2 mt-2">
+                    <input
+                      id="add-{column.name}"
+                      type="checkbox"
+                      class="toggle toggle-primary"
+                      bind:checked={newRowData[column.name]}
+                    />
+                    <span class="text-sm opacity-60">
+                      {newRowData[column.name] ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                {:else if getSQLType(column.type) === 'number'}
+                  <input
+                    id="add-{column.name}"
+                    type="number"
+                    class="input input-bordered w-full"
+                    bind:value={newRowData[column.name]}
+                    required={column.notnull && !column.dflt_value}
+                    step="any"
+                    placeholder={column.dflt_value ? `Default: ${column.dflt_value}` : 'Enter a number'}
+                  />
+                {:else if column.type.toUpperCase().includes('TEXT') && column.name.toLowerCase().includes('description')}
+                  <textarea
+                    id="add-{column.name}"
+                    class="textarea textarea-bordered w-full h-24"
+                    bind:value={newRowData[column.name]}
+                    required={column.notnull && !column.dflt_value}
+                    placeholder={column.dflt_value ? `Default: ${column.dflt_value}` : 'Enter text...'}
+                  ></textarea>
+                {:else}
+                  <input
+                    id="add-{column.name}"
+                    type={getSQLType(column.type)}
+                    class="input input-bordered w-full"
+                    bind:value={newRowData[column.name]}
+                    required={column.notnull && !column.dflt_value}
+                    placeholder={column.dflt_value ? `Default: ${column.dflt_value}` : `Enter ${column.type.toLowerCase()}...`}
+                  />
+                {/if}
+                
+                {#if column.dflt_value}
+                  <div class="label">
+                    <span class="label-text-alt text-xs opacity-50">
+                      Default value: <code class="bg-base-200 px-1 rounded">{column.dflt_value}</code>
+                    </span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      </div>
+
+      <!-- Drawer Footer -->
+      <div class="sticky bottom-0 bg-base-100 border-t border-base-200 px-6 py-4 flex items-center justify-between gap-4">
+        <button 
+          type="button" 
+          class="btn btn-ghost" 
+          onclick={() => addRowDrawerOpen = false}
+          disabled={isAddingRow}
+        >
+          Cancel
+        </button>
+        <button 
+          type="button" 
+          class="btn btn-primary" 
+          onclick={handleAddRow}
+          disabled={isAddingRow}
+        >
+          {#if isAddingRow}
             <span class="loading loading-spinner loading-sm"></span>
-            Executing...
+            Adding...
           {:else}
-            Execute Query
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+            </svg>
+            Add Row
           {/if}
         </button>
       </div>
-    </form>
-
-    {#if queryResults.length > 0}
-      <div class="mt-4">
-        <h4 class="font-semibold mb-2">Results ({queryResults.length} rows)</h4>
-        <div class="overflow-x-auto max-h-96 border border-base-300 rounded-lg">
-          <table class="table table-sm table-pin-rows">
-            <thead>
-              <tr>
-                {#each Object.keys(queryResults[0]) as key}
-                  <th>{key}</th>
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#each queryResults as row}
-                <tr>
-                  {#each Object.values(row) as value}
-                    <td>{value}</td>
-                  {/each}
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    {/if}
+    </div>
   </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
-  </form>
-</dialog>
+</div>
 
-<!-- Table Browser Dialog -->
-<dialog bind:this={tableBrowserDialog} class="modal">
-  <div class="modal-box max-w-6xl">
+<!-- Delete Row Confirmation Dialog -->
+<dialog bind:this={deleteRowDialog} class="modal">
+  <div class="modal-box">
     <form method="dialog">
       <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
     </form>
     
-    <h3 class="font-bold text-lg mb-4">
-      Table: <span class="text-primary">{selectedTable}</span>
-    </h3>
+    <h3 class="font-bold text-lg mb-4 text-error">Delete Row</h3>
     
-    {#if tableDataLoading}
-      <div class="text-center py-8 text-base-content/60">
-        <span class="loading loading-spinner loading-md"></span>
-        <p class="mt-2">Loading table data...</p>
-      </div>
-    {:else if tableData.length > 0}
-      <div class="mb-4">
-        <p class="text-sm text-base-content/60">Showing {tableData.length} rows (limited to 100)</p>
-      </div>
-      <div class="overflow-x-auto max-h-96 border border-base-300 rounded-lg">
-        <table class="table table-sm table-pin-rows table-pin-cols">
-          <thead class="bg-base-200">
-            <tr>
-              <th class="bg-base-200">#</th>
-              {#each Object.keys(tableData[0]) as column}
-                <th class="bg-base-200">{column}</th>
-              {/each}
-            </tr>
-          </thead>
+    <div class="alert alert-warning mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <span>This action cannot be undone!</span>
+    </div>
+    
+    {#if rowToDelete}
+      <p class="mb-4">Are you sure you want to delete this row?</p>
+      <div class="bg-base-200 p-4 rounded-lg max-h-48 overflow-y-auto">
+        <table class="table table-xs">
           <tbody>
-            {#each tableData as row, i}
-              <tr class="hover">
-                <td class="bg-base-200 font-mono text-xs">{i + 1}</td>
-                {#each Object.keys(tableData[0]) as column}
-                  <td class="font-mono text-xs">
-                    {#if row[column] === null}
-                      <span class="text-base-content/40 italic">NULL</span>
-                    {:else if typeof row[column] === 'object'}
-                      <span class="text-info">{JSON.stringify(row[column])}</span>
-                    {:else}
-                      {row[column]}
-                    {/if}
-                  </td>
-                {/each}
+            {#each Object.entries(rowToDelete) as [key, value]}
+              <tr>
+                <td class="font-semibold">{key}</td>
+                <td class="font-mono text-xs">
+                  {#if value === null}
+                    <span class="text-base-content/40 italic">NULL</span>
+                  {:else if typeof value === 'object'}
+                    {JSON.stringify(value)}
+                  {:else}
+                    {value}
+                  {/if}
+                </td>
               </tr>
             {/each}
           </tbody>
         </table>
       </div>
-    {:else}
-      <div class="text-center py-8 text-base-content/60">
-        <p>No data found in this table</p>
-      </div>
     {/if}
     
     <div class="modal-action">
-      <button class="btn" onclick={() => tableBrowserDialog?.close()}>Close</button>
+      <button type="button" class="btn" onclick={() => deleteRowDialog.close()}>Cancel</button>
+      <button type="button" class="btn btn-error" onclick={handleDeleteRow}>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+        </svg>
+        Delete Row
+      </button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop">

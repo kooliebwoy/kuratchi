@@ -4,8 +4,8 @@
   import { 
     logRouteActivity, 
     getSiteById
-  } from '$lib/api/sites.remote';
-  import { Layout, Save, ArrowLeft, Palette, ExternalLink, Settings2 } from 'lucide-svelte';
+  } from '$lib/functions/sites.remote';
+  import { Layout, Save, ArrowLeft, Palette, ExternalLink, Settings2, Globe } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
 
   let { children }: { children: Snippet } = $props();
@@ -21,10 +21,11 @@
   const activeTab = $derived(() => {
     if (currentPath.endsWith('/theme')) return 'theme';
     if (currentPath.endsWith('/settings')) return 'settings';
+    if (currentPath.endsWith('/domains')) return 'domains';
     return 'editor';
   });
 
-  function navigateToTab(tab: 'editor' | 'theme' | 'settings') {
+  function navigateToTab(tab: 'editor' | 'theme' | 'settings' | 'domains') {
     const basePath = `/sites/${siteId}`;
     if (tab === 'editor') {
       goto(basePath);
@@ -115,6 +116,13 @@
       >
         <Settings2 class="h-4 w-4 mr-2" />
         Settings
+      </button>
+      <button 
+        class="tab {activeTab() === 'domains' ? 'tab-active' : ''}" 
+        onclick={() => navigateToTab('domains')}
+      >
+        <Globe class="h-4 w-4 mr-2" />
+        Domains
       </button>
     </div>
 

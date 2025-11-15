@@ -11,7 +11,7 @@
     deleteUser,
     addUserToOrganization,
     removeUserFromOrganization
-  } from '$lib/api/users.remote';
+  } from '$lib/functions/users.remote';
 
   // Data sources
   const users = getUsers();

@@ -4,7 +4,7 @@
   import Header from '$lib/components/Header.svelte';
   import type { LayoutData } from './$types';
   import type { Snippet } from 'svelte';
-	import { getOrganizationNameById } from '$lib/api/organizations.remote';
+	import { getOrganizationNameById } from '$lib/functions/organizations.remote';
 	import HelpWidget from '$components/HelpWidget.svelte';
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props();

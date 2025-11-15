@@ -55,9 +55,18 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
-      const key = a.slice(2);
-      const val = (i + 1 < argv.length && !argv[i + 1].startsWith('--')) ? argv[++i] : 'true';
-      args[key] = val;
+      const eqIdx = a.indexOf('=');
+      if (eqIdx !== -1) {
+        // Handle --key=value format
+        const key = a.slice(2, eqIdx);
+        const val = a.slice(eqIdx + 1);
+        args[key] = val;
+      } else {
+        // Handle --key value format
+        const key = a.slice(2);
+        const val = (i + 1 < argv.length && !argv[i + 1].startsWith('--')) ? argv[++i] : 'true';
+        args[key] = val;
+      }
     } else {
       args._.push(a);
     }
@@ -377,6 +386,81 @@ async function cmdRefreshAdminToken(args) {
   }, null, 2));
 }
 
+async function cmdDeploySpaces(args) {
+  const mask = (s) => s ? s.slice(0, 8) + '***' : undefined;
+  const accountId = args.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = args.apiToken || process.env.CLOUDFLARE_API_TOKEN;
+  const gatewayKey = args.gatewayKey || process.env.KURATCHI_GATEWAY_KEY;
+  const scriptName = args.scriptName || process.env.KURATCHI_SPACES_SCRIPT_NAME || 'kuratchi-spaces';
+  const verbose = args.verbose !== 'false';
+  const debug = args.debug === 'true';
+
+  if (debug) {
+    console.log('[kuratchi-sdk deploy-spaces] Config:', JSON.stringify({
+      accountId: mask(accountId),
+      apiToken: mask(apiToken),
+      gatewayKey: mask(gatewayKey),
+      scriptName,
+      verbose,
+    }, null, 2));
+  }
+
+  const missing = [];
+  if (!accountId) missing.push('CLOUDFLARE_ACCOUNT_ID or --accountId');
+  if (!apiToken) missing.push('CLOUDFLARE_API_TOKEN or --apiToken');
+  if (!gatewayKey) missing.push('KURATCHI_GATEWAY_KEY or --gatewayKey');
+
+  if (missing.length) {
+    console.error(`Missing required config: ${missing.join(', ')}`);
+    console.error('Usage: kuratchi-sdk deploy-spaces [--accountId <id>] [--apiToken <token>] [--gatewayKey <key>] [--scriptName <name>] [--verbose <true|false>]');
+    console.error('\nTip: Set these in .env file in your workspace root or current directory');
+    process.exit(1);
+  }
+
+  // Import the deployment function
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const pkgRoot = path.resolve(__dirname, '..');
+  
+  const cands = [
+    path.join(pkgRoot, 'dist', 'lib', 'spaces', 'deployment', 'deploy.js'),
+    path.join(pkgRoot, 'src', 'lib', 'spaces', 'deployment', 'deploy.ts'),
+  ];
+  
+  const mod = await importFromCandidates(cands);
+  if (!mod) {
+    console.error('Spaces deployment module not available. Build the package first (npm run build) or make sure src/lib/spaces/deployment/deploy.ts exists.');
+    process.exit(1);
+  }
+  
+  const deploySpacesWorker = mod.deploySpacesWorker || mod.default?.deploySpacesWorker;
+  if (typeof deploySpacesWorker !== 'function') {
+    console.error('deploySpacesWorker function not found.');
+    process.exit(1);
+  }
+
+  try {
+    const result = await deploySpacesWorker({
+      accountId,
+      apiToken,
+      gatewayKey,
+      scriptName,
+      verbose,
+    });
+
+    if (!result.success) {
+      console.error(`\n❌ Deployment failed: ${result.error}`);
+      process.exit(1);
+    }
+
+    console.log('\n✅ All done! Your Kuratchi Spaces worker is live.');
+    process.exit(0);
+  } catch (err) {
+    console.error(`\n❌ Deployment error: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   // Check if we need to re-invoke via tsx for TypeScript support
   const __filename = fileURLToPath(import.meta.url);
@@ -424,6 +508,7 @@ async function main() {
 
 Usage:
   kuratchi-sdk generate-migrations --schema <path> [--outDir <dir>] [--tag <tag>] [--fromSchema <path>]
+  
   kuratchi-sdk init-admin-db [--name <dbName>] [--gatewayKey <key>] [--workersSubdomain <subdomain>] [--accountId <id>] [--apiToken <token>] [--scriptName <name>] [--migrate <true|false>] [--debug]
     Defaults: --name kuratchi-admin, --scriptName kuratchi-do-internal, --migrate true
     Env fallbacks: KURATCHI_GATEWAY_KEY/GATEWAY_KEY, (KURATCHI_)CLOUDFLARE_WORKERS_SUBDOMAIN/WORKERS_SUBDOMAIN, (KURATCHI_)CLOUDFLARE_ACCOUNT_ID/CF_ACCOUNT_ID, (KURATCHI_)CLOUDFLARE_API_TOKEN/CF_API_TOKEN, KURATCHI_ADMIN_DB_NAME
@@ -434,6 +519,12 @@ Usage:
     Defaults: --name kuratchi-admin
     Env fallbacks: KURATCHI_GATEWAY_KEY/GATEWAY_KEY, KURATCHI_ADMIN_DB_NAME
     Important: Update KURATCHI_ADMIN_DB_TOKEN with the new token after running this command
+  
+  kuratchi-sdk deploy-spaces [--accountId <id>] [--apiToken <token>] [--gatewayKey <key>] [--scriptName <name>] [--verbose <true|false>] [--debug]
+    Deploy Kuratchi Spaces worker to Cloudflare
+    Defaults: --scriptName kuratchi-spaces, --verbose true
+    Env fallbacks: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, KURATCHI_GATEWAY_KEY, KURATCHI_SPACES_SCRIPT_NAME
+    Note: Automatically loads .env files from current directory and workspace root
 `);
     return;
   }
@@ -444,6 +535,8 @@ Usage:
       await cmdInitAdminDb(args);
     } else if (cmd === 'refresh-admin-token' || cmd === 'refresh-token') {
       await cmdRefreshAdminToken(args);
+    } else if (cmd === 'deploy-spaces' || cmd === 'spaces-deploy') {
+      await cmdDeploySpaces(args);
     } else {
       console.error(`Unknown command: ${cmd}`);
       process.exit(1);
