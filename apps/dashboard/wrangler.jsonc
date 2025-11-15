@@ -31,8 +31,8 @@
   "d1_databases": [
     {
       "binding": "ADMIN_DB",
-      "database_name": "kayde-admin-db",
-      "database_id": "463a4d89-599f-4c7b-93b9-62514c6eeb65"
+      "database_name": "kuratchi-admin-db",
+      "database_id": "dd5cdabf-fb70-40c5-8c62-ed71343f5cc7"
     }
   ],
   "r2_buckets": [
