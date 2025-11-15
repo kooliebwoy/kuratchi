@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBlock, getLayout } from '@kuratchi/editor';
+  import { getBlock } from '@kuratchi/editor';
 
   interface PagePayload {
     content?: Array<Record<string, unknown>>;
@@ -32,21 +32,12 @@
         {#each contentBlocks as block, index (blockKey(block, index))}
           {@const blockType = typeof block.type === 'string' ? block.type : null}
           {#if blockType}
-            {@const asBlock = getBlock(blockType)}
-            {@const asLayout = asBlock ? null : getLayout(blockType)}
-            {@const blockEntry = asBlock || asLayout}
+            {@const blockEntry = getBlock(blockType)}
             {#if blockEntry?.component}
               {@const Component = blockEntry.component}
               {@const props = { ...block, editable: false } satisfies Record<string, unknown>}
-              <!-- Debug: remove after verification -->
-              {#if asLayout}
-                {@html ''}
-                <Component {...props} />
-              {:else}
-                <Component {...props} />
-              {/if}
+              <Component {...props} />
             {:else}
-              {@html ''}
               <script>
                 console.warn('[site-renderer] Unknown block type', blockType, block);
               </script>

@@ -1,7 +1,8 @@
 <script lang="ts">
     import CardNoImage from "./CardNoImage.svelte";
     import NoMarginCarousel from "./NoMarginCarousel.svelte";
-    import { SearchImages, LayoutBlock } from "../shell/index.js";
+    import { LayoutBlock } from "../shell/index.js";
+    import { ImagePicker } from "../plugins/index.js";
     
     interface CarouselImage {
         key?: string;
@@ -115,7 +116,7 @@
 
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">Images</legend>
-                <SearchImages bind:selectedImages={images} />
+                <ImagePicker bind:selectedImages={images} mode="multiple" />
             </fieldset>
 
         </div>

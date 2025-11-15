@@ -2,8 +2,8 @@
     import { Pencil, GripVertical, X, Trash2 } from '@lucide/svelte';
     import type { Snippet } from 'svelte';
     import { deleteElement } from '../../utils/editor.svelte.js';
-    import { getFooterBlock } from '../../registry/footerBlocks.svelte.js';
-    import { getHeaderBlock } from '../../registry/headerBlocks.svelte.js';
+    import { isFooterBlockType } from '../../presets/footers.js';
+    import { isHeaderBlockType } from '../../presets/headers.js';
     import { openRightPanel } from '../../stores/right-panel.js';
 
     interface Props {
@@ -17,7 +17,7 @@
     let { id, type, drawerContent, metadata, children }: Props = $props();
     let component: HTMLElement;
 
-    const isNotHeaderOrFooter = !getFooterBlock(type) && !getHeaderBlock(type);
+    const isNotHeaderOrFooter = !isFooterBlockType(type) && !isHeaderBlockType(type);
 
     let drawerState = $state(false);
 </script>
@@ -26,8 +26,8 @@
     class="group relative" 
     bind:this={component} 
     class:editor-item={isNotHeaderOrFooter} 
-    class:editor-header-item={getHeaderBlock(type)} 
-    class:editor-footer-item={getFooterBlock(type)}
+    class:editor-header-item={isHeaderBlockType(type)} 
+    class:editor-footer-item={isFooterBlockType(type)}
 >
     <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex flex-row gap-1">
         <button class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200 cursor-grab active:cursor-grabbing drag-handle handle" title="Drag to reorder">
@@ -54,7 +54,7 @@
 <div class="drawer drawer-end">
     <input id="{id}" type="checkbox" class="drawer-toggle" bind:checked={drawerState} />
     <div class="drawer-side z-50">
-        <div class="menu !bg-base-200 text-base-content min-h-full p-4 min-w-96">
+        <div class="menu !bg-base-200 text-base-content min-h-full p-4 min-w-[24rem]">
             <div class="flex mb-5 justify-end pr-2">
                 <button class="btn btn-sm btn-circle btn-neutral shadow-lg" onclick={() => drawerState = false}>
                     <X class="text-2xl text-error" />

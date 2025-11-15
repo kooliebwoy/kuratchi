@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { LayoutBlock, SearchImages } from "../shell/index.js";
+    import { LayoutBlock } from "../shell/index.js";
+    import { ImagePicker } from "../plugins/index.js";
     import { ArrowRight } from "@lucide/svelte";
 
     interface CardImage {
@@ -169,7 +170,7 @@ $effect(() => {
 
             <fieldset class="border border-base-300 rounded-lg p-4">
                 <legend class="text-sm font-medium px-2">Cards</legend>
-                <SearchImages bind:selectedImages={images} />
+                <ImagePicker bind:selectedImages={images} mode="multiple" />
                 
                 <div class="flex flex-col gap-3 mt-3">
                     {#each cards as card, index}

@@ -181,76 +181,44 @@ export const clearEditor = (editor: HTMLElement) => {
     editor.innerHTML = '';
 }
 
-export const addComponentToEditor = (editor: HTMLElement, component: any) => {
+export const addComponentToEditor = (editor: HTMLElement, component: any, props?: Record<string, unknown>) => {
     // add component to the editor div
     if (browser) {
         mount(component, {
-            target: editor
+            target: editor,
+            props
         });
     }
 }
 
 // configure blocks
-export const saveEditorBlocks = async (editor: HTMLElement) => {
-    // update approach to get all elements and then configure them to be saved
-    let blocks = [];
-
-    const elements = editor.querySelectorAll('.editor-item');
-
-    // Loop through all elements and get the JSON data
+const collectSerializedBlocks = (root: HTMLElement | null | undefined, selector: string) => {
+    if (!root) return [];
+    const results: Array<Record<string, unknown>> = [];
+    const elements = root.querySelectorAll(selector);
     for (const element of elements) {
         const jsonDataElement = element.querySelector('[id^="metadata-"]');
-
-        if (jsonDataElement) {
-            try {
-                console.log(jsonDataElement.textContent);
-                const dataToSaveToDB = jsonDataElement.textContent ? JSON.parse(jsonDataElement.textContent) : null;
-                blocks.push(dataToSaveToDB);
-            } catch (error) {
-                console.error('Error parsing JSON data:', error);
-            }
-        }
-    }
-
-    return blocks;
-}
-
-export const saveEditorHeaderBlocks = async (editorHeader: HTMLElement) => {
-    if (!editorHeader) return [];
-
-    // Get the header component instance
-    const headerComponent = editorHeader.querySelector('.editor-header-item');
-    if (!headerComponent) return [];
-
-    const jsonDataElement = headerComponent.querySelector('[id^="metadata-"]');
-
-    if (jsonDataElement) {
+        if (!jsonDataElement?.textContent) continue;
         try {
-            const dataToSaveToDB = jsonDataElement.textContent ? JSON.parse(jsonDataElement.textContent) : null;
-            return dataToSaveToDB;
+            const dataToSaveToDB = JSON.parse(jsonDataElement.textContent);
+            results.push(dataToSaveToDB);
         } catch (error) {
             console.error('Error parsing JSON data:', error);
         }
     }
+    return results;
+};
+
+export const saveEditorBlocks = async (editor: HTMLElement) => {
+    return collectSerializedBlocks(editor, '.editor-item');
+};
+
+export const saveEditorHeaderBlocks = async (editorHeader: HTMLElement) => {
+    return collectSerializedBlocks(editorHeader, '.editor-header-item');
 };
 
 export const saveEditorFooterBlocks = async (editorFooter: HTMLElement) => {
-    if (!editorFooter) return [];
-
-    // Get the footer component instance
-    const footerComponent = editorFooter.querySelector('.editor-footer-item');
-    if (!footerComponent) return [];
-
-    const jsonDataElement = footerComponent.querySelector('[id^="metadata-"]');
-
-    if (jsonDataElement) {
-        try {
-            const dataToSaveToDB = jsonDataElement.textContent ? JSON.parse(jsonDataElement.textContent) : null;
-            return dataToSaveToDB;
-        } catch (error) {
-            console.error('Error parsing JSON data:', error);
-        }
-    }
+    return collectSerializedBlocks(editorFooter, '.editor-footer-item');
 };
 
 // Form Validation Classes

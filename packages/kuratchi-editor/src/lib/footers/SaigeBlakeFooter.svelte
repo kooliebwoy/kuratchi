@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { SearchIcons, LayoutBlock } from '../shell/index.js';
+    import { LayoutBlock } from '../shell/index.js';
+    import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
@@ -102,7 +103,7 @@
 
             <h4>Icons</h4>
 
-            <SearchIcons bind:selectedIcons={icons} />
+            <IconPicker bind:selectedIcons={icons} />
 
             {#each icons as icon}
                 {@const Comp = LucideIconMap[icon.icon]}

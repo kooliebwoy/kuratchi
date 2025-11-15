@@ -1,3 +1,12 @@
+import type { SiteRegionState } from './presets/types';
+
+const uuid = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+};
+
 /**
  * Single source of truth for all page data
  */
@@ -31,6 +40,120 @@ export interface PageData {
    */
   content: Array<Record<string, unknown>>;
 }
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogPost {
+  id: string;
+  pageId: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  publishedOn?: string;
+  coverImage?: {
+    url: string;
+    alt?: string;
+  };
+  categories: string[];
+  tags: string[];
+  featured?: boolean;
+}
+
+export interface BlogSettings {
+  layout?: 'classic' | 'grid' | 'minimal';
+  showAuthor?: boolean;
+  heroStyle?: 'cover' | 'split';
+  themeId?: string;
+  featuredPostId?: string | null;
+}
+
+export interface BlogData {
+  categories: BlogCategory[];
+  tags: BlogTag[];
+  posts: BlogPost[];
+  settings: BlogSettings;
+}
+
+const blogSeed: BlogData = {
+  categories: [
+    { id: uuid(), name: 'Announcements', slug: 'announcements' },
+    { id: uuid(), name: 'Guides', slug: 'guides' },
+    { id: uuid(), name: 'Inspiration', slug: 'inspiration' }
+  ],
+  tags: [
+    { id: uuid(), name: 'tips', slug: 'tips' },
+    { id: uuid(), name: 'design', slug: 'design' },
+    { id: uuid(), name: 'product', slug: 'product' }
+  ],
+  posts: [
+    {
+      id: uuid(),
+      pageId: 'sample-post-1',
+      title: 'Designing immersive brand experiences',
+      slug: 'designing-immersive-brand-experiences',
+      excerpt: 'Learn how to craft memorable, high-converting landing pages that capture your audience.',
+      publishedOn: new Date().toISOString().slice(0, 10),
+      coverImage: {
+        url: 'https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?auto=format&fit=crop&w=1600&q=80',
+        alt: 'Creative studio moodboard'
+      },
+      categories: ['guides'],
+      tags: ['design', 'tips'],
+      featured: true
+    },
+    {
+      id: uuid(),
+      pageId: 'sample-post-2',
+      title: 'April product drop: tactile essentials',
+      slug: 'april-product-drop',
+      excerpt: 'A closer look at our latest release and what inspired the textures behind each piece.',
+      publishedOn: new Date().toISOString().slice(0, 10),
+      coverImage: {
+        url: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=1600&q=80',
+        alt: 'Product flatlay'
+      },
+      categories: ['announcements'],
+      tags: ['product'],
+      featured: false
+    },
+    {
+      id: uuid(),
+      pageId: 'sample-post-3',
+      title: 'Styling minimalist retail interiors',
+      slug: 'styling-minimalist-retail-interiors',
+      excerpt: 'Create flexible retail displays using modular blocks you can rearrange overnight.',
+      publishedOn: new Date().toISOString().slice(0, 10),
+      coverImage: {
+        url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80',
+        alt: 'Retail interior'
+      },
+      categories: ['inspiration'],
+      tags: ['design'],
+      featured: false
+    }
+  ],
+  settings: {
+    themeId: 'classic',
+    layout: 'classic',
+    showAuthor: true,
+    heroStyle: 'cover',
+    featuredPostId: null
+  }
+};
+
+export const createDefaultBlogData = (): BlogData => structuredClone(blogSeed);
+
+export const defaultBlogData: BlogData = createDefaultBlogData();
 
 export interface EditorOptions {
   /**
@@ -102,25 +225,29 @@ export interface EditorOptions {
    */
   autoSaveDelay?: number;
   /**
-   * Site-level header block (shared across all pages)
+   * Site-level header region (shared across all pages)
    */
-  siteHeader?: Record<string, unknown> | null;
+  siteHeader?: SiteRegionState | null;
   /**
-   * Site-level footer block (shared across all pages)
+   * Site-level footer region (shared across all pages)
    */
-  siteFooter?: Record<string, unknown> | null;
+  siteFooter?: SiteRegionState | null;
   /**
    * Site-level metadata (theme, colors, fonts, etc.)
    */
   siteMetadata?: Record<string, unknown>;
   /**
+   * Blog collections (posts, categories, tags)
+   */
+  blog?: BlogData;
+  /**
    * Callback when site header changes
    */
-  onSiteHeaderUpdate?: (header: Record<string, unknown> | null) => void | Promise<void>;
+  onSiteHeaderUpdate?: (header: SiteRegionState | null) => void | Promise<void>;
   /**
    * Callback when site footer changes
    */
-  onSiteFooterUpdate?: (footer: Record<string, unknown> | null) => void | Promise<void>;
+  onSiteFooterUpdate?: (footer: SiteRegionState | null) => void | Promise<void>;
   /**
    * Callback when site metadata changes
    */
@@ -149,5 +276,9 @@ export const defaultEditorOptions: Required<Pick<EditorOptions, 'editable' | 'is
   pages: undefined,
   reservedPages: undefined,
   onUpdate: undefined,
-  autoSaveDelay: 1000
+  autoSaveDelay: 1000,
+  siteMetadata: {
+    blog: createDefaultBlogData()
+  },
+  blog: createDefaultBlogData()
 };

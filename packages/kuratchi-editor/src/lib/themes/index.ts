@@ -4,6 +4,14 @@
  */
 
 import type { PageData } from '../types';
+import type { SiteRegionState } from '../presets/types';
+import { createHeaderRegion } from '../presets/headers.js';
+import { createFooterRegion } from '../presets/footers.js';
+import { createLayoutBlocks } from '../presets/layouts.js';
+import { createDefaultBlogData } from '../types';
+
+const composePage = (...presetIds: string[]) =>
+  presetIds.flatMap((presetId) => createLayoutBlocks(presetId));
 
 export interface ThemeMetadata {
   id: string;
@@ -17,8 +25,8 @@ export interface ThemeMetadata {
 export interface ThemeTemplate {
   metadata: ThemeMetadata;
   defaultHomepage: Omit<PageData, 'id' | 'domain'>;
-  siteHeader: Record<string, unknown> | null;
-  siteFooter: Record<string, unknown> | null;
+  siteHeader: SiteRegionState | null;
+  siteFooter: SiteRegionState | null;
   siteMetadata: Record<string, unknown>;
 }
 
@@ -38,43 +46,14 @@ const minimalTheme: ThemeTemplate = {
     seoTitle: 'Welcome to Your Site',
     seoDescription: 'A beautiful minimal website',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Welcome to Your Site',
-        alignment: 'center'
-      },
-      {
-        type: 'paragraph',
-        text: 'Start building your website by adding blocks from the sidebar.',
-        alignment: 'center'
-      }
-    ]
+    content: composePage('hero-figure', 'icon-bar', 'services-grid')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('saige-blake-header'),
+  siteFooter: createFooterRegion('saige-blake-footer'),
   siteMetadata: {
     backgroundColor: '#ffffff',
-    themeId: 'minimal'
+    themeId: 'minimal',
+    blog: createDefaultBlogData()
   }
 };
 
@@ -94,51 +73,14 @@ const modernTheme: ThemeTemplate = {
     seoTitle: 'Modern Design - Your Site',
     seoDescription: 'A contemporary website with modern aesthetics',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Modern Design',
-        alignment: 'left'
-      },
-      {
-        type: 'paragraph',
-        text: 'Experience contemporary design with clean lines and bold typography.',
-        alignment: 'left'
-      },
-      {
-        type: 'divider'
-      },
-      {
-        type: 'paragraph',
-        text: 'Add your content here to get started.',
-        alignment: 'left'
-      }
-    ]
+    content: composePage('hero-overlay', 'grid-ctas', 'card-with-slider')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('twig-and-pearl-header'),
+  siteFooter: createFooterRegion('twig-and-pearl-footer'),
   siteMetadata: {
     backgroundColor: '#f8f9fa',
-    themeId: 'modern'
+    themeId: 'modern',
+    blog: createDefaultBlogData()
   }
 };
 
@@ -158,43 +100,14 @@ const classicTheme: ThemeTemplate = {
     seoTitle: 'Classic Elegance - Your Site',
     seoDescription: 'A timeless website with elegant design',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Classic Elegance',
-        alignment: 'center'
-      },
-      {
-        type: 'paragraph',
-        text: 'Timeless design that never goes out of style.',
-        alignment: 'center'
-      }
-    ]
+    content: composePage('about-us-hero', 'about-us-card', 'grid-ctas')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('saige-blake-header'),
+  siteFooter: createFooterRegion('twig-and-pearl-footer'),
   siteMetadata: {
     backgroundColor: '#fafafa',
-    themeId: 'classic'
+    themeId: 'classic',
+    blog: createDefaultBlogData()
   }
 };
 
@@ -214,43 +127,14 @@ const boldTheme: ThemeTemplate = {
     seoTitle: 'Make a Statement - Your Site',
     seoDescription: 'A bold and vibrant website that stands out',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Make a Statement',
-        alignment: 'center'
-      },
-      {
-        type: 'paragraph',
-        text: 'Bold design for those who dare to be different.',
-        alignment: 'center'
-      }
-    ]
+    content: composePage('hero-overlay', 'icon-bar', 'services-grid')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('twig-and-pearl-header'),
+  siteFooter: createFooterRegion('saige-blake-footer'),
   siteMetadata: {
     backgroundColor: '#1a1a1a',
-    themeId: 'bold'
+    themeId: 'bold',
+    blog: createDefaultBlogData()
   }
 };
 
@@ -270,43 +154,14 @@ const creativeTheme: ThemeTemplate = {
     seoTitle: 'Creative Expression - Your Site',
     seoDescription: 'An artistic website for creative minds',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Creative Expression',
-        alignment: 'left'
-      },
-      {
-        type: 'paragraph',
-        text: 'Unleash your creativity with unique design elements.',
-        alignment: 'left'
-      }
-    ]
+    content: composePage('hero-figure', 'card-with-slider', 'grid-ctas')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('twig-and-pearl-header'),
+  siteFooter: createFooterRegion('twig-and-pearl-footer'),
   siteMetadata: {
     backgroundColor: '#f0f4f8',
-    themeId: 'creative'
+    themeId: 'creative',
+    blog: createDefaultBlogData()
   }
 };
 
@@ -326,43 +181,14 @@ const professionalTheme: ThemeTemplate = {
     seoTitle: 'Professional Solutions - Your Business',
     seoDescription: 'A professional website for your business',
     slug: 'homepage',
-    content: [
-      {
-        type: 'heading',
-        level: 1,
-        text: 'Professional Solutions',
-        alignment: 'center'
-      },
-      {
-        type: 'paragraph',
-        text: 'Business-focused design that builds trust and credibility.',
-        alignment: 'center'
-      }
-    ]
+    content: composePage('hero-overlay', 'services-grid', 'about-us-card')
   },
-  siteHeader: {
-    type: 'saige-blake-header',
-    id: 'default-header',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    reverseOrder: false,
-    icons: [
-      { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-      { icon: 'x', link: '#', name: 'X', enabled: true },
-      { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-    ],
-    menu: []
-  },
-  siteFooter: {
-    type: 'saige-blake-footer',
-    id: 'default-footer',
-    backgroundColor: '#ffffff',
-    textColor: '#92c8c8',
-    menu: []
-  },
+  siteHeader: createHeaderRegion('saige-blake-header'),
+  siteFooter: createFooterRegion('saige-blake-footer'),
   siteMetadata: {
     backgroundColor: '#ffffff',
-    themeId: 'professional'
+    themeId: 'professional',
+    blog: createDefaultBlogData()
   }
 };
 

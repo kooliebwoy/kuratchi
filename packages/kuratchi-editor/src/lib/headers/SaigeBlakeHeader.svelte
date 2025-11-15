@@ -1,7 +1,13 @@
 <script lang="ts">
-    import { LayoutBlock, SearchIcons } from '../shell/index.js';
+    import { LayoutBlock } from '../shell/index.js';
+    import { IconPicker, ImagePicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
+
+    interface LogoData {
+        url: string;
+        alt: string;
+    }
 
     interface Props {
         type?: string;
@@ -10,6 +16,8 @@
         reverseOrder?: boolean;
         icons?: any;
         menu?: any;
+        logo?: LogoData;
+        editable?: boolean;
     }
 
     let {
@@ -22,8 +30,16 @@
             { icon: 'x', link: '#', name: "X", enabled: true },
             { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
         ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[],
-        menu = []
+        menu = [],
+        logo: initialLogo = {
+            url: '/clutch-cms-logo.png',
+            alt: 'Clutch CMS Logo'
+        },
+        editable = true
     }: Props = $props();
+
+    // Use local state for logo so changes trigger reactivity
+    let logo = $state<LogoData>(initialLogo);
 
     if ( menu.length === 0 ) {
         menu = [
@@ -42,13 +58,13 @@
 
     let id = crypto.randomUUID();
     let localMenu = $state(menu);
+    let logoUrl = $derived(logo?.url || logo?.src || '');
+    let logoAlt = $derived(logo?.alt || 'Logo');
 
-    // default image since we are only showing examples
-    let image = {
-        src: '/clutch-cms-logo.png',
-        alt: 'Clutch CMS Logo',
-        title: 'Clutch CMS Logo',
-    }
+    // Debug logo changes
+    $effect(() => {
+        console.log('[SaigeBlakeHeader] Logo changed:', { logo, logoUrl, logoAlt });
+    });
 
     let content = $derived({
         backgroundColor,
@@ -57,6 +73,7 @@
         type,
         icons,
         menu: localMenu,
+        logo,
     })
 </script>
 
@@ -86,9 +103,14 @@
 
             <div class="divider"></div>
 
+            <h4>Logo</h4>
+            <ImagePicker bind:selectedImage={logo} mode="single" />
+
+            <div class="divider"></div>
+
             <h4>Icons</h4>
 
-            <SearchIcons bind:selectedIcons={icons} />
+            <IconPicker bind:selectedIcons={icons} />
 
             {#each icons as icon}
                 {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
@@ -113,7 +135,7 @@
                     <div class="flex items-center ml-4 space-x-3">
                         {#each icons as {icon, link, name}}
                             {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                            <button class="btn btn-ghost btn-circle !mx-0" style:color={textColor}>
+                            <button class="btn btn-ghost btn-circle mx-0!" style:color={textColor}>
                                 <Comp class="text-lg" />
                             </button>
                         {/each}
@@ -122,7 +144,9 @@
             {:else}
                 <div class="navbar-start hidden xl:flex grow">
                     <a class="btn btn-ghost text-xl hover:bg-transparent font-normal" href="homepage">
-                        <img src={image.src} class="me-3 h-6 sm:h-9 my-0" alt={image.alt} title={image.title} />
+                        {#if logoUrl}
+                            <img src={logoUrl} class="me-3 h-6 sm:h-9 my-0" alt={logoAlt} />
+                        {/if}
                     </a>
                     <ul class="menu menu-horizontal px-1 items-center">
                         {#each localMenu as item}
@@ -176,7 +200,9 @@
             {#if reverseOrder}
                 <div class="navbar-end hidden xl:flex grow">
                     <a class="btn btn-ghost text-xl hover:bg-transparent font-normal" href="homepage">
-                        <img src={image.src} class="me-3 h-6 sm:h-9 my-0" alt={image.alt} title={image.title} />
+                        {#if logoUrl}
+                            <img src={logoUrl} class="me-3 h-6 sm:h-9 my-0" alt={logoAlt} />
+                        {/if}
                     </a>
                     <ul class="menu menu-horizontal px-1 items-center">
                         {#each localMenu as item}
@@ -204,7 +230,7 @@
                     <div class="flex items-center ml-4 space-x-3">
                         {#each icons as {icon, link, name}}
                             {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                            <button class="btn btn-ghost btn-circle !mx-0" style:color={textColor}>
+                            <button class="btn btn-ghost btn-circle mx-0!" style:color={textColor}>
                                 <Comp class="text-lg" />
                             </button>
                         {/each}

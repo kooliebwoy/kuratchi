@@ -1,13 +1,14 @@
 <script lang="ts">
     import { onDestroy, onMount, tick } from "svelte";
     import { blocks, getBlock } from "./registry/blocks.svelte";
-    import { layouts, getLayout } from "./registry/layouts.svelte";
+    import type { BlockDefinition } from "./registry/blocks.svelte";
     import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
-    import { getFooterBlock } from "./registry/footerBlocks.svelte";
-    import { getHeaderBlock } from "./registry/headerBlocks.svelte";
     import Sortable from "sortablejs";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
+    import { layoutPresets } from "./presets/layouts.js";
+    import PresetPreview from "./presets/PresetPreview.svelte";
+    import type { SiteRegionState } from "./presets/types.js";
 
     interface Props {
         editor?: HTMLElement | null;
@@ -15,13 +16,13 @@
         editable?: boolean;
         isWebpage?: boolean;
         backgroundColor?: string;
-        header?: Record<string, unknown> | null;
-        footer?: Record<string, unknown> | null;
+        header?: SiteRegionState | null;
+        footer?: SiteRegionState | null;
         layoutsEnabled?: boolean;
         imageConfig?: { uploadEndpoint?: string };
         onContentChange?: (content: Array<Record<string, unknown>>) => void;
-        onHeaderChange?: (header: Record<string, unknown> | null) => void;
-        onFooterChange?: (footer: Record<string, unknown> | null) => void;
+        onHeaderChange?: (header: SiteRegionState | null) => void;
+        onFooterChange?: (footer: SiteRegionState | null) => void;
         navigation?: {
             header?: { visible?: boolean; useMobileMenuOnDesktop?: boolean; items?: any[] };
             footer?: { visible?: boolean; items?: any[] };
@@ -34,8 +35,8 @@
         editable = true,
         isWebpage = true,
         backgroundColor = $bindable('#000000'),
-        header = $bindable(null),
-        footer = $bindable(null),
+        header = $bindable<SiteRegionState | null>(null),
+        footer = $bindable<SiteRegionState | null>(null),
         layoutsEnabled = true,
         imageConfig: editorImageConfig = {},
         onContentChange,
@@ -50,11 +51,12 @@
     let inlineBlockSearch = $state('');
     let inlineFilteredBlocks = $state([]);
     let inlineDropdown = $state({ open: false });
+    const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
 
     const filteredBlocks = $derived(
         blockSearchTerm === ""
-        ? blocks
-        : blocks.filter((block) =>
+        ? paletteBlocks
+        : paletteBlocks.filter((block) =>
             block.name.toLowerCase().includes(blockSearchTerm.toLowerCase())
         )
     );
@@ -76,30 +78,44 @@
     const updateHeaderData = async () => {
         if (!headerElement) return;
         const blocks = await saveEditorHeaderBlocks(headerElement);
-        if (JSON.stringify(blocks) !== JSON.stringify(header)) {
-            header = blocks;
-            onHeaderChange?.(blocks);
+        if (!blocks) return;
+        if (JSON.stringify(blocks) !== JSON.stringify(header?.blocks)) {
+            const next = { presetId: header?.presetId ?? null, blocks };
+            header = next;
+            onHeaderChange?.(next);
         }
-    }
+    };
 
     const updateFooterData = async () => {
         if (!footerElement) return;
         const blocks = await saveEditorFooterBlocks(footerElement);
-        if (JSON.stringify(blocks) !== JSON.stringify(footer)) {
-            footer = blocks;
-            onFooterChange?.(blocks);
+        if (!blocks) return;
+        if (JSON.stringify(blocks) !== JSON.stringify(footer?.blocks)) {
+            const next = { presetId: footer?.presetId ?? null, blocks };
+            footer = next;
+            onFooterChange?.(next);
         }
-    }
+    };
 
-    const addComponent = (component: any) => {
-        addComponentToEditor(editor, component);
+    const addComponent = (definition: BlockDefinition, initialProps?: Record<string, unknown>) => {
+        addComponentToEditor(editor, definition.component, initialProps);
         blockSearchTerm = '';
         inlineDropdown.open = false;
         inlineBlockSearch = '';
         inlineBlockSearchInput?.focus();
     }
 
-    const loadEditorBlock = (type: string) => getBlock(type) || getLayout(type);
+    const loadEditorBlock = (type: string) => getBlock(type);
+
+    const insertLayoutPreset = (presetId: string) => {
+        const preset = layoutPresets.find((candidate) => candidate.id === presetId);
+        if (!preset) return;
+        preset.create().forEach((snapshot) => {
+            const definition = getBlock(snapshot.type);
+            if (!definition) return;
+            addComponent(definition, { ...snapshot });
+        });
+    };
 
     const handleInlineSearch = () => {
         inlineDropdown.open = false;
@@ -169,7 +185,7 @@
             });
         }
         
-        if (false && footerElement) {
+        if (footerElement) {
             const footerObserver = new MutationObserver((mutations) => {
                 clearTimeout(footerUpdateTimeout);
                 footerUpdateTimeout = setTimeout(updateFooterData, 1500);
@@ -199,8 +215,8 @@
 
     let layoutModal: HTMLDialogElement;
 
-    const headerComponent = getHeaderBlock((header as any)?.type) ?? getHeaderBlock('saige-blake-header');
-    const footerComponent = getFooterBlock((footer as any)?.type) ?? getFooterBlock('saige-blake-footer');
+    const headerBlocksState = $derived(header?.blocks ?? []);
+    const footerBlocksState = $derived(footer?.blocks ?? []);
 
     const headerMenuHidden = $derived(
         navigation?.header?.visible === false
@@ -212,13 +228,22 @@
 
 <div class="h-full bg-base-100 flex flex-col max-w-8xl mx-auto rounded-3xl shadow-sm" style:background-color={backgroundColor}>
     {#if isWebpage}
-        <div bind:this={headerElement} class="flex-none">
-            <headerComponent.component
-                {...header}
-                menu={navigation?.header?.items ?? (header as any)?.menu}
-                useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (header as any)?.useMobileMenuOnDesktop}
-                menuHidden={headerMenuHidden}
-            />
+        <div bind:this={headerElement} class="flex-none space-y-4">
+            {#if headerBlocksState.length === 0}
+                <div class="text-center text-sm text-base-content/60 py-4 border-b border-base-300">Select a header preset to get started</div>
+            {:else}
+                {#each headerBlocksState as block, index (blockKey(block, index))}
+                    {@const blockDefinition = loadEditorBlock(block.type)}
+                    {#if blockDefinition}
+                        <blockDefinition.component
+                            {...block}
+                            menu={navigation?.header?.items ?? (block as any)?.menu}
+                            useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (block as any)?.useMobileMenuOnDesktop}
+                            menuHidden={headerMenuHidden}
+                        />
+                    {/if}
+                {/each}
+            {/if}
         </div> 
     {/if}
 
@@ -257,7 +282,7 @@
                         {#if filteredBlocks.length > 0}
                             {#each filteredBlocks as component}
                                 <li>
-                                    <button class="btn btn-ghost" onclick={() => addComponent(component.component)}>
+                                    <button class="btn btn-ghost" onclick={() => addComponent(component)}>
                                         <component.icon class="text-lg" />
                                         <span>{component.name}</span>
                                     </button> 
@@ -281,7 +306,7 @@
                         <div class="absolute top-full left-0 mt-2 menu bg-base-100 rounded-box w-52 p-2 shadow-lg z-50 border border-base-300">
                             {#each inlineFilteredBlocks as component}
                                 <li>
-                                    <button class="btn btn-ghost justify-start" onclick={() => addComponent(component.component)}>
+                                    <button class="btn btn-ghost justify-start" onclick={() => addComponent(component)}>
                                         <component.icon class="text-lg" />
                                         <span>{component.name}</span>
                                     </button> 
@@ -302,15 +327,17 @@
                 </form>
                 <h3 class="text-2xl font-bold mb-4">Select Layout</h3>
                 <div class="grid grid-cols-3 gap-4 w-full overflow-y-scroll">
-                    {#each layouts as block}
-                        <div class="card card-side bg-base-100 shadow-xl hover:cursor-pointer" role="button" onclick={() => {
-                            addComponent(block.component);
-                            layoutModal.close();
-                        }}>
-                            <figure>
-                                <img src={block.image} alt={block.name} class="object-contain" />
-                            </figure>
-                        </div>
+                    {#each layoutPresets as preset}
+                        <button
+                            class="card card-side bg-base-100 shadow-xl text-left p-3 hover:ring-2 hover:ring-primary transition flex flex-col gap-2"
+                            onclick={() => {
+                                insertLayoutPreset(preset.id);
+                                layoutModal.close();
+                            }}
+                        >
+                            <PresetPreview {preset} />
+                            <div class="w-full text-sm font-semibold">{preset.name}</div>
+                        </button>
                     {/each}
                 </div> 
             </div>
@@ -318,12 +345,21 @@
     {/if}
 
     {#if isWebpage}
-        <div bind:this={footerElement} class="flex-none"> 
-            <footerComponent.component
-                {...footer}
-                menu={navigation?.footer?.items ?? (footer as any)?.menu}
-                menuHidden={footerMenuHidden}
-            />
+        <div bind:this={footerElement} class="flex-none space-y-4"> 
+            {#if footerBlocksState.length === 0}
+                <div class="text-center text-sm text-base-content/60 py-4 border-t border-base-300">Select a footer preset to get started</div>
+            {:else}
+                {#each footerBlocksState as block, index (blockKey(block, index))}
+                    {@const blockDefinition = loadEditorBlock(block.type)}
+                    {#if blockDefinition}
+                        <blockDefinition.component
+                            {...block}
+                            menu={navigation?.footer?.items ?? (block as any)?.menu}
+                            menuHidden={footerMenuHidden}
+                        />
+                    {/if}
+                {/each}
+            {/if}
         </div>
     {/if}
 </div>

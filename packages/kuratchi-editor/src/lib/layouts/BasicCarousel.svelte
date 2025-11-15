@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { SearchImages, LayoutBlock } from '../shell/index.js';
+    import { LayoutBlock } from '../shell/index.js';
+    import { ImagePicker } from '../plugins/index.js';
 
     interface CarouselImage {
         src?: string;
@@ -41,7 +42,7 @@
         <div class="space-y-6">
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">Images</legend>
-                <SearchImages bind:selectedImages={images} />
+                <ImagePicker bind:selectedImages={images} mode="multiple" />
             </fieldset>
         </div>
     {/snippet}

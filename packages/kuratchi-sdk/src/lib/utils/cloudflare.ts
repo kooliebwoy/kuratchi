@@ -367,6 +367,78 @@ export class CloudflareClient {
         }
     }
 
+    /**
+     * Add an R2 binding to an existing worker
+     * Re-uploads the worker script with updated bindings (D1 + secrets + R2)
+     */
+    async addR2BindingToWorker(args: {
+        workerName: string;
+        bucketName: string;
+        bindingName: string;
+        databaseId: string;
+        gatewayKey: string;
+    }): Promise<{ success: boolean; error?: string }> {
+        const { workerName, bucketName, bindingName, databaseId, gatewayKey } = args;
+        
+        try {
+            console.log('[CloudflareClient] Adding R2 binding to worker via re-upload:', workerName);
+            
+            // Get current settings to find existing bindings
+            const settingsUrl = `${this.base}/accounts/${this.accountId}/workers/scripts/${workerName}/settings`;
+            const settingsResponse = await fetch(settingsUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.apiToken}`
+                }
+            });
+            
+            let currentBindings: any[] = [];
+            if (settingsResponse.ok) {
+                const settings = await settingsResponse.json();
+                currentBindings = settings.result?.bindings || [];
+                console.log('[CloudflareClient] Current bindings:', currentBindings);
+            }
+            
+            // Check if R2 binding already exists
+            const hasR2Binding = currentBindings.some(
+                (b: any) => b.type === 'r2_bucket' && b.name === bindingName
+            );
+            
+            if (hasR2Binding) {
+                console.log(`[CloudflareClient] Worker ${workerName} already has R2 binding ${bindingName}`);
+                return { success: true };
+            }
+            
+            // Import the worker template
+            const { DEFAULT_D1_WORKER_SCRIPT } = await import('../database/deployment/worker-template.js');
+            
+            // Build complete bindings list: secrets + D1 + R2
+            const bindings: any[] = [
+                { type: 'secret_text', name: 'API_KEY', text: gatewayKey },
+                { type: 'd1', name: 'DB', id: databaseId },
+                { type: 'r2_bucket', name: bindingName, bucket_name: bucketName }
+            ];
+            
+            console.log('[CloudflareClient] Re-uploading worker with bindings:', {
+                workerName,
+                bindingName,
+                bucketName,
+                databaseId: databaseId.substring(0, 8) + '...',
+                totalBindings: bindings.length
+            });
+            
+            // Re-upload worker with all bindings
+            await this.uploadWorkerModule(workerName, DEFAULT_D1_WORKER_SCRIPT, bindings, { skipDoMigrations: true });
+            
+            console.log('[CloudflareClient] ✓ Successfully added R2 binding to worker');
+            
+            return { success: true };
+        } catch (error: any) {
+            console.error('[CloudflareClient] Error adding R2 binding:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // ===== Queues =====
     /** Create a Queue */
     async createQueue(queueName: string): Promise<CloudflareAPIResponse<any>> {

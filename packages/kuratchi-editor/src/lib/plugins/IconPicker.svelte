@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Search, X } from "@lucide/svelte";
-    import { LucideIconMap, lucideIconKeys, type LucideIconKey } from "../../utils/lucide-icons.js";
+    import { LucideIconMap, lucideIconKeys, type LucideIconKey } from "../utils/lucide-icons.js";
 
     interface Props {
         selectedIcons?: { icon: LucideIconKey; name?: string }[];
@@ -10,10 +10,7 @@
 
     let showLoading = $state(false);
     let searchValue = $state('');
-
     let icons = $state<LucideIconKey[]>([]);
-    
-
     let searchDetails: HTMLDetailsElement | undefined = $state();
 
     const search = async () => {
@@ -67,30 +64,6 @@
                 {/each}
             {/if}
         </div>
-        <!-- <ul class="p-2 shadow menu dropdown-content z-[1] bg-base-200 rounded-box min-w-full w-full flex flex-wrap">
-            {#if showLoading}
-                <Loading />
-            {:else}
-                {#each icons as icon}
-                    <li>
-                        <button type="button" onclick={() => {
-                            if ( 
-                                !selectedIcons.find(t => t === icon)
-                            ) {
-                                selectedIcons = [...selectedIcons, icon]
-                            }
-                            searchDetails.removeAttribute('open');
-                        }} class="card-title text-base">
-                        <Icon icon={icon} class="text-sm" />    
-                    </button>
-                    </li>
-                {:else}
-                    <li>
-                        <p class="text-center text-base">No Icons Found</p>
-                    </li>
-                {/each}
-            {/if}
-        </ul> -->
     {/if}
 </details>
 

@@ -241,6 +241,49 @@ export const createSite = guardedForm(
 				workerName: created.workerName
 			});
 
+			// Step 1.5: If R2 bucket was created, bind it to the worker and redeploy
+			if (r2Created && created.workerName && created.databaseId) {
+				try {
+					console.log('[createSite] Binding R2 bucket to worker:', {
+						workerName: created.workerName,
+						bucketName: r2BucketName,
+						binding: r2Binding,
+						databaseId: created.databaseId
+					});
+					
+					const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+					const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+					const gatewayKey = env.KURATCHI_GATEWAY_KEY;
+					
+					if (apiToken && accountId && gatewayKey) {
+						// Add R2 binding to worker using r2 namespace
+						const bindResult = await r2.addWorkerBinding(
+							created.workerName,
+							r2BucketName,
+							r2Binding,
+							created.databaseId,
+							gatewayKey,
+							{ apiToken, accountId }
+						);
+						
+						if (bindResult?.success) {
+							console.log('[createSite] ✓ R2 bucket bound to worker successfully');
+						} else {
+							console.warn('[createSite] Failed to bind R2 bucket to worker:', bindResult);
+						}
+					} else {
+						console.warn('[createSite] Missing credentials for R2 binding:', {
+							hasApiToken: !!apiToken,
+							hasAccountId: !!accountId,
+							hasGatewayKey: !!gatewayKey
+						});
+					}
+				} catch (bindError) {
+					console.error('[createSite] Error binding R2 bucket to worker:', bindError);
+					// Non-fatal: worker exists, just without R2 for now
+				}
+			}
+
 			// Step 2: Store database info in admin databases table
 			const adminDb = await getAdminDatabase(locals);
 			const newDB = await adminDb.databases.insert({

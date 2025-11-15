@@ -1,18 +1,41 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { getAllMedia, getFolders, uploadMedia, updateMedia, deleteMedia, createFolder, updateFolder, deleteFolder } from '$lib/functions/storage.remote';
+  import { page } from '$app/state';
+  import { getAllMedia, getFolders, getBucketDetails, uploadMedia, updateMedia, deleteMedia, createFolder, updateFolder, deleteFolder } from '$lib/functions/storage.remote';
   import { Modal, Badge, Button, InfoCard } from '@kuratchi/ui';
-  import { Upload, FolderPlus, Trash2, Edit, Image, Film, FileText, File as FileIcon, X, Grid3x3, List, Folder, Eye, ArrowLeft } from 'lucide-svelte';
+  import { Upload, FolderPlus, Trash2, Edit, Image, Film, FileText, File as FileIcon, X, Grid3x3, List, Folder, Eye, ArrowLeft, Copy, CheckCircle, Globe } from 'lucide-svelte';
 
   // Get bucket name from route params
-  let bucketName = $derived($page.params.bucket);
+  let bucketName = $derived(page.params.bucket);
 
-  // Load data directly
-  let mediaQuery = getAllMedia();
-  let foldersQuery = getFolders();
+  // Load data for this specific bucket
+  let bucketDetailsQuery = $derived(getBucketDetails(bucketName));
+  let mediaQuery = $derived(getAllMedia(bucketName));
+  let foldersQuery = $derived(getFolders(bucketName));
   
+  let bucketDetails = $derived(bucketDetailsQuery.current);
   let media = $derived<any[]>(mediaQuery.current ?? []);
   let folders = $derived<any[]>(foldersQuery.current ?? []);
+  
+  // Get public URL for file access
+  let publicUrl = $derived(bucketDetails?.publicUrl);
+  
+  // Helper to get full file URL
+  function getFileUrl(key: string) {
+    if (!publicUrl) return null;
+    return `${publicUrl}/${key}`;
+  }
+  
+  // Copy URL to clipboard
+  let copiedUrl = $state(false);
+  async function copyUrl(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      copiedUrl = true;
+      setTimeout(() => copiedUrl = false, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }
   
   // State
   let selectedFolder = $state<string | null>(null);
@@ -198,13 +221,36 @@
 <section class="space-y-6">
   <!-- Header -->
   <div class="flex flex-wrap items-center justify-between gap-4">
-    <div>
+    <div class="flex-1">
       <div class="flex items-center gap-3 mb-1">
         <a href="/storage" class="btn btn-ghost btn-sm btn-circle">
           <ArrowLeft class="h-4 w-4" />
         </a>
         <h1 class="text-2xl font-semibold">{bucketName}</h1>
       </div>
+      {#if publicUrl}
+        <div class="flex items-center gap-2 ml-12">
+          <Globe class="h-4 w-4 text-success" />
+          <code class="text-sm text-base-content/70">{publicUrl}</code>
+          <button 
+            class="btn btn-ghost btn-xs btn-square"
+            onclick={() => copyUrl(publicUrl)}
+            title="Copy URL"
+          >
+            {#if copiedUrl}
+              <CheckCircle class="h-3 w-3 text-success" />
+            {:else}
+              <Copy class="h-3 w-3" />
+            {/if}
+          </button>
+        </div>
+      {:else}
+        <div class="flex items-center gap-2 ml-12 text-warning">
+          <Globe class="h-4 w-4" />
+          <span class="text-sm">Public domain not enabled</span>
+          <a href="/storage" class="link link-primary text-xs">Enable in settings</a>
+        </div>
+      {/if}
       <p class="text-sm text-base-content/60 ml-12">Manage files and media in this bucket</p>
     </div>
     <div class="flex gap-2">
@@ -442,6 +488,7 @@
   </div>
     <div class="space-y-4">
       <form {...uploadMedia} onsubmit={handleUploadSubmit} class="space-y-4" enctype="multipart/form-data">
+        <input type="hidden" name="bucketName" value={bucketName} />
         <div class="space-y-2">
           <label class="label" for="file-upload"><span class="label-text">Select files</span></label>
           <input
@@ -533,6 +580,7 @@
     <h3 class="font-bold text-lg">Edit File</h3>
   </div>
     <form {...updateMedia} onsubmit={() => { showEditModal = false; resetMediaForm(); }} class="space-y-3">
+      <input type="hidden" name="bucketName" value={bucketName} />
       <input type="hidden" name="id" value={editingMedia?.id} />
       <div class="form-control">
         <label class="label" for="media-filename"><span class="label-text">Filename</span></label>
@@ -565,6 +613,7 @@
   </div>
     {#if folderModalMode === 'create'}
       <form {...createFolder} onsubmit={() => { showFolderModal = false; resetFolderForm(); }} class="space-y-3">
+        <input type="hidden" name="bucketName" value={bucketName} />
         <div class="form-control">
           <label class="label" for="folder-name"><span class="label-text">Name</span></label>
           <input id="folder-name" {...createFolder.fields.name.as('text')} class="input input-bordered" placeholder="My Folder" required />
@@ -580,6 +629,7 @@
       </form>
     {:else}
       <form {...updateFolder} onsubmit={() => { showFolderModal = false; resetFolderForm(); }} class="space-y-3">
+        <input type="hidden" name="bucketName" value={bucketName} />
         <input type="hidden" name="id" value={editingFolder?.id} />
         <div class="form-control">
           <label class="label" for="folder-name-edit"><span class="label-text">Name</span></label>
@@ -613,6 +663,7 @@
           Cancel
         </button>
         <form {...deleteMedia} onsubmit={() => { showDeleteConfirm = false; deletingMedia = null; }}>
+          <input type="hidden" name="bucketName" value={bucketName} />
           <input type="hidden" name="id" value={deletingMedia?.id} />
           <button type="submit" class="btn btn-error">Delete File</button>
         </form>
@@ -636,6 +687,7 @@
           Cancel
         </button>
         <form {...deleteFolder} onsubmit={() => { showDeleteFolderConfirm = false; deletingFolder = null; }}>
+          <input type="hidden" name="bucketName" value={bucketName} />
           <input type="hidden" name="id" value={deletingFolder?.id} />
           <button type="submit" class="btn btn-error">Delete Folder</button>
         </form>

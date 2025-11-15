@@ -1,15 +1,21 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import type { EditorOptions, PageData } from "./types.js";
-    import { defaultEditorOptions, defaultPageData } from "./types.js";
-    import { blocks, layouts } from "./registry";
-    import { headerBlocks } from "./registry/headerBlocks.svelte";
-    import { footerBlocks } from "./registry/footerBlocks.svelte";
+    import type { EditorOptions, PageData, BlogData, BlogPost, BlogSettings } from "./types.js";
+    import type { SiteRegionState } from "./presets/types.js";
+    import { defaultEditorOptions, defaultPageData, createDefaultBlogData } from "./types.js";
+    import { blocks, getBlock } from "./registry";
     import { addComponentToEditor } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
-    import { MenuWidget } from "./shell";
+    import { MenuWidget } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
+    import PresetPreview from "./presets/PresetPreview.svelte";
+    import { layoutPresets } from "./presets/layouts.js";
+    import { headerPresets, createHeaderRegion } from "./presets/headers.js";
+    import { footerPresets, createFooterRegion } from "./presets/footers.js";
+    import { blogStore } from "./stores/blog";
+    import ThemePreview from "./themes/ThemePreview.svelte";
+    import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
     import {
         Box,
         ChevronLeft,
@@ -25,12 +31,14 @@
         PanelTop,
         PanelBottom,
         FileText,
-        Plus
+        Plus,
+        Palette,
+        BookOpen
     } from "@lucide/svelte";
 
     type Props = EditorOptions;
 
-    let { 
+let { 
         editor = $bindable(defaultEditorOptions.editor),
         pageData = $bindable(defaultPageData),
         editable = defaultEditorOptions.editable,
@@ -43,16 +51,19 @@
         reservedPages = defaultEditorOptions.reservedPages,
         onUpdate = defaultEditorOptions.onUpdate,
         autoSaveDelay = defaultEditorOptions.autoSaveDelay,
-        siteHeader = $bindable(null),
-        siteFooter = $bindable(null),
-        siteMetadata = $bindable({}),
+        siteHeader = $bindable<SiteRegionState | null>(null),
+        siteFooter = $bindable<SiteRegionState | null>(null),
+        siteMetadata = $bindable(defaultEditorOptions.siteMetadata ?? {}),
+        blog = $bindable(defaultEditorOptions.blog),
         onSiteHeaderUpdate,
         onSiteFooterUpdate,
         onSiteMetadataUpdate,
         currentPageId,
         onPageSwitch,
         onCreatePage
-    }: Props = $props();
+}: Props = $props();
+
+    const getPageList = () => Array.isArray(pages) ? pages : [];
     
     // Local mutable state for the page data
     let localPageData = $state<PageData>({ ...defaultPageData, ...pageData });
@@ -62,6 +73,29 @@
     let activeTab = $state('blocks');
     let browserMockup: HTMLDivElement;
     let activeSize = $state(initialDeviceSize);
+    const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
+    const themeOptions = getAllThemes();
+    let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
+    let blogData = $state<BlogData>(blog ?? (siteMetadata as any)?.blog ?? createDefaultBlogData());
+    let blogSnapshot = JSON.stringify(blogData);
+    blogStore.set(blogData);
+    let selectedPostId = $state(blogData.posts[0]?.id ?? null);
+    let selectedPageForBlog = $state(getPageList()[0]?.id ?? null);
+
+    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2));
+
+    const slugify = (value: string) =>
+        value
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'entry';
+
+    const toDateInputValue = (value?: string) => value ?? new Date().toISOString().slice(0, 10);
+
+    const withLeadingSlash = (slug: string) => (slug.startsWith('/') ? slug : `/${slug}`);
 
     const toggleSidebar = (tab: string) => {
         if (activeTab === tab && sidebarOpen) {
@@ -85,99 +119,87 @@
         }, autoSaveDelay);
     };
 
+    const persistBlog = async (next: BlogData) => {
+        blogData = next;
+        blogSnapshot = JSON.stringify(blogData);
+        blogStore.set(blogData);
+        blog = blogData;
+        siteMetadata = { ...(siteMetadata || {}), blog: blogData };
+        if (onSiteMetadataUpdate) {
+            await onSiteMetadataUpdate(siteMetadata);
+        }
+    };
+
+    const updateBlog = async (updater: (current: BlogData) => BlogData) => {
+        const next = updater(JSON.parse(JSON.stringify(blogData)));
+        await persistBlog(next);
+        if (!selectedPostId && next.posts.length > 0) {
+            selectedPostId = next.posts[0].id;
+        }
+    };
+
+    const selectedPost = $derived(() => blogData.posts.find((post) => post.id === selectedPostId) ?? null);
+
     // Handle changes from EditorCanvas
     const handleContentChange = (content: Array<Record<string, unknown>>) => {
         localPageData.content = content;
         triggerSave();
     };
 
-    const handleHeaderChange = async (newHeader: Record<string, unknown> | null) => {
-        if (!newHeader) {
-            siteHeader = null;
-        } else {
-            // Merge with existing header data or use defaults based on type
-            const headerType = newHeader.type as string;
-            const baseHeader = {
-                ...newHeader,
-                id: newHeader.id || crypto.randomUUID(),
-                menu: siteHeader?.menu || [],
-                icons: siteHeader?.icons || [
-                    { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-                    { icon: 'x', link: '#', name: 'X', enabled: true },
-                    { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-                ]
-            };
-
-            // Add type-specific defaults
-            if (headerType === 'saige-blake-header') {
-                siteHeader = {
-                    ...baseHeader,
-                    backgroundColor: siteHeader?.backgroundColor || '#ffffff',
-                    textColor: siteHeader?.textColor || '#92c8c8',
-                    reverseOrder: siteHeader?.reverseOrder || false
-                };
-            } else if (headerType === 'twig-and-pearl-header') {
-                siteHeader = {
-                    ...baseHeader,
-                    backgroundColor: siteHeader?.backgroundColor || '#212121',
-                    textColor: siteHeader?.textColor || '#ffffff',
-                    homeIconColor: siteHeader?.homeIconColor || '#575757',
-                    searchEnabled: siteHeader?.searchEnabled !== undefined ? siteHeader.searchEnabled : true,
-                    reverseOrder: siteHeader?.reverseOrder || false
-                };
-            } else {
-                siteHeader = baseHeader;
-            }
-        }
-        
+    const handleHeaderChange = async (next: SiteRegionState | null) => {
+        siteHeader = next;
         if (onSiteHeaderUpdate) {
             await onSiteHeaderUpdate(siteHeader);
         }
     };
 
-    const handleFooterChange = async (newFooter: Record<string, unknown> | null) => {
-        if (!newFooter) {
-            siteFooter = null;
-        } else {
-            // Merge with existing footer data or use defaults based on type
-            const footerType = newFooter.type as string;
-            const baseFooter = {
-                ...newFooter,
-                id: newFooter.id || crypto.randomUUID(),
-                menu: siteFooter?.menu || [],
-                icons: siteFooter?.icons || [
-                    { icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-                    { icon: 'x', link: '#', name: 'X', enabled: true },
-                    { icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-                ]
-            };
-
-            // Add type-specific defaults
-            if (footerType === 'saige-blake-footer') {
-                siteFooter = {
-                    ...baseFooter,
-                    backgroundColor: siteFooter?.backgroundColor || '#ffffff',
-                    textColor: siteFooter?.textColor || '#92c8c8'
-                };
-            } else if (footerType === 'twig-and-pearl-footer') {
-                siteFooter = {
-                    ...baseFooter,
-                    backgroundColor: siteFooter?.backgroundColor || '#212121',
-                    textColor: siteFooter?.textColor || '#ffffff',
-                    reverseOrder: siteFooter?.reverseOrder || false,
-                    copyrightText: siteFooter?.copyrightText || {
-                        href: 'https://yoursite.com',
-                        by: 'Your Company'
-                    }
-                };
-            } else {
-                siteFooter = baseFooter;
-            }
-        }
-        
+    const handleFooterChange = async (next: SiteRegionState | null) => {
+        siteFooter = next;
         if (onSiteFooterUpdate) {
             await onSiteFooterUpdate(siteFooter);
         }
+    };
+
+    const applyHeaderPreset = async (presetId: string) => {
+        await handleHeaderChange(createHeaderRegion(presetId));
+    };
+
+    const applyFooterPreset = async (presetId: string) => {
+        await handleFooterChange(createFooterRegion(presetId));
+    };
+
+    const insertLayoutPreset = (presetId: string) => {
+        if (!editor) return;
+        const preset = layoutPresets.find((candidate) => candidate.id === presetId);
+        if (!preset) return;
+        preset.create().forEach((snapshot) => {
+            const definition = getBlock(snapshot.type);
+            if (!definition) return;
+            const props = { ...snapshot };
+            addComponentToEditor(editor, definition.component, props);
+        });
+    };
+
+    const applyTheme = async (themeId: string) => {
+        const template = getThemeTemplate(themeId);
+        selectedThemeId = themeId;
+        const homepage = template.defaultHomepage;
+        localPageData = { ...localPageData, ...homepage };
+        siteMetadata = { ...(template.siteMetadata || {}), themeId };
+        if (!(siteMetadata as any)?.blog) {
+            (siteMetadata as any).blog = createDefaultBlogData();
+        }
+        blogData = JSON.parse(JSON.stringify((siteMetadata as any).blog)) as BlogData;
+        blogSnapshot = JSON.stringify(blogData);
+        blogStore.set(blogData);
+        blog = blogData;
+        selectedPostId = blogData.posts[0]?.id ?? null;
+        await handleHeaderChange(template.siteHeader);
+        await handleFooterChange(template.siteFooter);
+        if (onSiteMetadataUpdate) {
+            await onSiteMetadataUpdate(siteMetadata);
+        }
+        navState = ensureNavigation();
     };
 
     const adjustBrowserSize = (size: 'phone' | 'tablet' | 'desktop') => {
@@ -214,6 +236,36 @@
         }
     });
 
+    $effect(() => {
+        const incomingBlog = (siteMetadata as any)?.blog;
+        if (incomingBlog) {
+            const incomingSnapshot = JSON.stringify(incomingBlog);
+            if (incomingSnapshot !== blogSnapshot) {
+                blogData = JSON.parse(incomingSnapshot) as BlogData;
+                blogSnapshot = incomingSnapshot;
+                blogStore.set(blogData);
+                blog = blogData;
+                if (!selectedPostId && blogData.posts.length > 0) {
+                    selectedPostId = blogData.posts[0].id;
+                }
+            }
+        }
+    });
+
+    $effect(() => {
+        const incomingTheme = (siteMetadata as any)?.themeId;
+        if (incomingTheme && incomingTheme !== selectedThemeId) {
+            selectedThemeId = incomingTheme;
+        }
+    });
+
+    $effect(() => {
+        const firstPage = getPageList()[0];
+        if (!selectedPageForBlog && firstPage) {
+            selectedPageForBlog = firstPage.id;
+        }
+    });
+
     onMount(() => {
         $sideBarStore = false;
     });
@@ -230,14 +282,20 @@
         custom: {} as Record<string, any[]>
     };
 
+    const extractMenu = (region: SiteRegionState | null | undefined) => {
+        const block = region?.blocks?.[0];
+        const menu = (block && typeof block === 'object') ? (block as any).menu : undefined;
+        return Array.isArray(menu) ? menu : [];
+    };
+
     function ensureNavigation() {
         const nav = (siteMetadata as any)?.navigation || {};
         const seededHeaderItems = (nav.header?.items && nav.header.items.length > 0)
             ? nav.header.items
-            : ((siteHeader as any)?.menu || []);
+            : extractMenu(siteHeader);
         const seededFooterItems = (nav.footer?.items && nav.footer.items.length > 0)
             ? nav.footer.items
-            : ((siteFooter as any)?.menu || []);
+            : extractMenu(siteFooter);
         const next = {
             header: { ...navDefaults.header, ...(nav.header || {}), items: seededHeaderItems },
             footer: { ...navDefaults.footer, ...(nav.footer || {}), items: seededFooterItems },
@@ -283,7 +341,7 @@
     // Quick-add a page into a menu location (header/footer)
     const addPageToMenu = async (location: 'header' | 'footer', page: any) => {
         const item = {
-            id: crypto.randomUUID(),
+            id: randomId(),
             label: page.title,
             slug: page.slug,
             pageId: page.id
@@ -291,6 +349,176 @@
         if (location === 'header') navState.header.items = [...(navState.header.items || []), item];
         else navState.footer.items = [...(navState.footer.items || []), item];
         await saveNavigation(navState);
+    };
+
+    const addCustomNavItem = async (location: 'header' | 'footer', label: string, slug: string) => {
+        const item = {
+            id: randomId(),
+            label,
+            slug: withLeadingSlash(slug)
+        };
+        if (location === 'header') navState.header.items = [...(navState.header.items || []), item];
+        else navState.footer.items = [...(navState.footer.items || []), item];
+        await saveNavigation(navState);
+    };
+
+    const addCategory = async () => {
+        await updateBlog((blog) => {
+            const name = `Category ${blog.categories.length + 1}`;
+            blog.categories.push({
+                id: randomId(),
+                name,
+                slug: slugify(name)
+            });
+            return blog;
+        });
+    };
+
+    const updateCategoryField = async (index: number, field: 'name' | 'slug', value: string) => {
+        await updateBlog((blog) => {
+            const category = blog.categories[index];
+            if (!category) return blog;
+            if (field === 'name') {
+                category.name = value;
+            } else {
+                category.slug = slugify(value);
+            }
+            return blog;
+        });
+    };
+
+    const removeCategory = async (index: number) => {
+        await updateBlog((blog) => {
+            const removed = blog.categories[index];
+            if (!removed) return blog;
+            blog.categories.splice(index, 1);
+            blog.posts.forEach((post) => {
+                post.categories = post.categories.filter((slug) => slug !== removed.slug);
+            });
+            return blog;
+        });
+    };
+
+    const addTag = async () => {
+        await updateBlog((blog) => {
+            const name = `Tag ${blog.tags.length + 1}`;
+            blog.tags.push({
+                id: randomId(),
+                name,
+                slug: slugify(name)
+            });
+            return blog;
+        });
+    };
+
+    const updateTagField = async (index: number, field: 'name' | 'slug', value: string) => {
+        await updateBlog((blog) => {
+            const tag = blog.tags[index];
+            if (!tag) return blog;
+            if (field === 'name') {
+                tag.name = value;
+            } else {
+                tag.slug = slugify(value);
+            }
+            return blog;
+        });
+    };
+
+    const removeTag = async (index: number) => {
+        await updateBlog((blog) => {
+            const removed = blog.tags[index];
+            if (!removed) return blog;
+            blog.tags.splice(index, 1);
+            blog.posts.forEach((post) => {
+                post.tags = post.tags.filter((slug) => slug !== removed.slug);
+            });
+            return blog;
+        });
+    };
+
+    const addPostFromPageId = async (pageId: string | null | undefined) => {
+        if (!pageId) return;
+        const page = getPageList().find((entry) => entry.id === pageId);
+        if (!page) return;
+        const title = page.title ?? 'Untitled Post';
+        const slugValue = page.slug ?? slugify(title);
+        const newPost: BlogPost = {
+            id: randomId(),
+            pageId: page.id,
+            title,
+            slug: slugValue,
+            excerpt: 'Add a short description for this article.',
+            publishedOn: toDateInputValue(),
+            coverImage: undefined,
+            categories: [],
+            tags: [],
+            featured: blogData.posts.length === 0
+        };
+        await updateBlog((blog) => {
+            blog.posts = [newPost, ...blog.posts];
+            if (!blog.settings.featuredPostId) {
+                blog.settings.featuredPostId = newPost.id;
+            }
+            return blog;
+        });
+        selectedPostId = newPost.id;
+    };
+
+    const updatePost = async (postId: string, mutate: (post: BlogPost) => void) => {
+        await updateBlog((blog) => {
+            const post = blog.posts.find((p) => p.id === postId);
+            if (post) {
+                mutate(post);
+            }
+            return blog;
+        });
+    };
+
+    const removePost = async (postId: string) => {
+        await updateBlog((blog) => {
+            blog.posts = blog.posts.filter((post) => post.id !== postId);
+            if (blog.settings.featuredPostId === postId) {
+                blog.settings.featuredPostId = blog.posts[0]?.id ?? null;
+            }
+            return blog;
+        });
+        if (selectedPostId === postId) {
+            selectedPostId = blogData.posts[0]?.id ?? null;
+        }
+    };
+
+    const togglePostCategory = async (postId: string, slug: string) => {
+        await updatePost(postId, (post) => {
+            if (post.categories.includes(slug)) {
+                post.categories = post.categories.filter((entry) => entry !== slug);
+            } else {
+                post.categories.push(slug);
+            }
+        });
+    };
+
+    const togglePostTag = async (postId: string, slug: string) => {
+        await updatePost(postId, (post) => {
+            if (post.tags.includes(slug)) {
+                post.tags = post.tags.filter((entry) => entry !== slug);
+            } else {
+                post.tags.push(slug);
+            }
+        });
+    };
+
+    const setFeaturedPost = async (postId: string | null) => {
+        await updateBlog((blog) => {
+            blog.settings.featuredPostId = postId;
+            return blog;
+        });
+    };
+
+    const updateBlogSetting = async (field: keyof BlogSettings, value: string | boolean | null) => {
+        await updateBlog((blog) => {
+            (blog.settings as any)[field] = value;
+            return blog;
+        });
     };
 </script>
 
@@ -338,6 +566,20 @@
                 <PanelTop class="w-5 h-5" />
             </button>
             <button 
+                class="p-3 rounded-lg transition-all {activeTab === 'themes' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                onclick={() => toggleSidebar('themes')}
+                title="Themes"
+            >
+                <Palette class="w-5 h-5" />
+            </button>
+            <button 
+                class="p-3 rounded-lg transition-all {activeTab === 'blog' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                onclick={() => toggleSidebar('blog')}
+                title="Blog"
+            >
+                <BookOpen class="w-5 h-5" />
+            </button>
+            <button 
                 class="p-3 rounded-lg transition-all {activeTab === 'navigation' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
                 onclick={() => toggleSidebar('navigation')}
                 title="Navigation"
@@ -361,12 +603,14 @@
         </div>
 
         <!-- Collapsible Sidebar -->
-        <div class="{sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-base-200 border-r border-base-300 flex flex-col overflow-hidden shadow-lg">
+        <div class="{sidebarOpen ? 'w-[24rem]' : 'w-0'} transition-all duration-300 bg-base-200 border-r border-base-300 flex flex-col overflow-hidden shadow-lg">
             <div class="flex items-center justify-between p-3 border-b border-base-300 flex-shrink-0">
                 <h2 class="text-sm font-medium text-base-content">
                     {activeTab === 'blocks' ? 'Blocks' : 
                      activeTab === 'layouts' ? 'Layouts' : 
                      activeTab === 'site' ? 'Site' : 
+                     activeTab === 'themes' ? 'Themes' :
+                     activeTab === 'blog' ? 'Blog' :
                      activeTab === 'navigation' ? 'Navigation' : 
                      activeTab === 'settings' ? 'Settings' : 
                      activeTab === 'pages' ? 'Pages' : 'Page Builder'}
@@ -383,7 +627,7 @@
                 {#if activeTab === 'blocks'}
                         {#if editor}
                             <div class="flex flex-col gap-1 p-2">
-                                {#each blocks as block}
+                                {#each paletteBlocks as block}
                                     <button
                                         class="flex items-center gap-2 px-2 py-1 rounded hover:bg-base-300 transition"
                                         onclick={() => addComponentToEditor(editor, block.component)}
@@ -398,14 +642,14 @@
                         {/if}
                     {:else if activeTab === 'layouts'}
                         {#if editor}
-                            <div class="flex flex-wrap gap-2 p-2">
-                                {#each layouts as block}
+                            <div class="flex flex-col gap-3 p-3">
+                                {#each layoutPresets as preset}
                                     <button
-                                        class="bg-base-100 rounded shadow hover:ring-2 hover:ring-primary transition"
-                                        onclick={() => addComponentToEditor(editor, block.component)}
+                                        class="flex flex-col gap-2 bg-base-100 rounded-lg shadow hover:ring-2 hover:ring-primary transition text-left p-2"
+                                        onclick={() => insertLayoutPreset(preset.id)}
                                     >
-                                        <img src={block.image} alt={block.name} class="w-full aspect-video object-cover rounded-t" />
-                                        <div class="text-xs text-center py-1">{block.name}</div>
+                                        <PresetPreview {preset} />
+                                        <div class="text-xs font-medium">{preset.name}</div>
                                     </button>
                                 {/each}
                             </div>
@@ -421,13 +665,13 @@
                                     <span class="text-xs font-medium text-base-content/60 uppercase tracking-wide">Header</span>
                                 </div>
                                 <div class="space-y-2">
-                                    {#each headerBlocks as headerBlock}
+                                    {#each headerPresets as preset}
                                         <button
-                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteHeader?.type === headerBlock.type ? 'ring-2 ring-primary' : 'hover:ring-primary/50'}"
-                                            onclick={() => handleHeaderChange({ type: headerBlock.type, id: crypto.randomUUID() })}
+                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteHeader?.presetId === preset.id ? 'ring-2 ring-primary' : 'hover:ring-primary/50'} text-left p-2"
+                                            onclick={() => applyHeaderPreset(preset.id)}
                                         >
-                                            <img src={headerBlock.image} alt="Header" class="w-full aspect-video object-cover rounded-t" />
-                                            <div class="text-xs text-center py-1">{headerBlock.type}</div>
+                                            <PresetPreview {preset} />
+                                            <div class="text-xs text-center py-1">{preset.name}</div>
                                         </button>
                                     {/each}
                                 </div>
@@ -440,15 +684,344 @@
                                     <span class="text-xs font-medium text-base-content/60 uppercase tracking-wide">Footer</span>
                                 </div>
                                 <div class="space-y-2">
-                                    {#each footerBlocks as footerBlock}
+                                    {#each footerPresets as preset}
                                         <button
-                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteFooter?.type === footerBlock.type ? 'ring-2 ring-primary' : 'hover:ring-primary/50'}"
-                                            onclick={() => handleFooterChange({ type: footerBlock.type, id: crypto.randomUUID() })}
+                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteFooter?.presetId === preset.id ? 'ring-2 ring-primary' : 'hover:ring-primary/50'} text-left p-2"
+                                            onclick={() => applyFooterPreset(preset.id)}
                                         >
-                                            <img src={footerBlock.image} alt="Footer" class="w-full aspect-video object-cover rounded-t" />
-                                            <div class="text-xs text-center py-1">{footerBlock.type}</div>
+                                            <PresetPreview {preset} />
+                                            <div class="text-xs text-center py-1">{preset.name}</div>
                                         </button>
                                     {/each}
+                                </div>
+                            </div>
+                        </div>
+                    {:else if activeTab === 'themes'}
+                        <div class="p-3 space-y-3">
+                            {#each themeOptions as theme}
+                                <button
+                                    class="w-full bg-base-100 rounded-lg shadow hover:ring-2 transition text-left p-3 flex flex-col gap-2 {selectedThemeId === theme.metadata.id ? 'ring-2 ring-primary' : 'hover:ring-primary/60'}"
+                                    onclick={() => applyTheme(theme.metadata.id)}
+                                >
+                                    <ThemePreview theme={theme} scale={0.35} />
+                                    <div class="space-y-0.5">
+                                        <div class="text-sm font-semibold text-base-content">{theme.metadata.name}</div>
+                                        <p class="text-xs text-base-content/70">{theme.metadata.description}</p>
+                                    </div>
+                                </button>
+                            {/each}
+                        </div>
+                    {:else if activeTab === 'blog'}
+                        <div class="p-3 space-y-4">
+                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
+                                    <div>
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Blog Settings</p>
+                                        <p class="text-xs text-base-content/60">Manage blog appearance and navigation</p>
+                                    </div>
+                                    <div class="flex gap-1">
+                                        <button class="btn btn-ghost btn-xs" onclick={() => addCustomNavItem('header', 'Blog', 'blog')}>
+                                            + Header
+                                        </button>
+                                        <button class="btn btn-ghost btn-xs" onclick={() => addCustomNavItem('footer', 'Blog', 'blog')}>
+                                            + Footer
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-3 space-y-3">
+                                    <label class="form-control">
+                                        <span class="label-text text-xs">Layout Style</span>
+                                        <select
+                                            class="select select-sm select-bordered"
+                                            value={blogData.settings.layout ?? 'classic'}
+                                            onchange={(e) => updateBlogSetting('layout', (e.currentTarget as HTMLSelectElement).value as BlogSettings['layout'])}
+                                        >
+                                            <option value="classic">Classic</option>
+                                            <option value="grid">Grid</option>
+                                            <option value="minimal">Minimal</option>
+                                        </select>
+                                    </label>
+                                    <label class="form-control">
+                                        <span class="label-text text-xs">Hero Style</span>
+                                        <select
+                                            class="select select-sm select-bordered"
+                                            value={blogData.settings.heroStyle ?? 'cover'}
+                                            onchange={(e) => updateBlogSetting('heroStyle', (e.currentTarget as HTMLSelectElement).value as BlogSettings['heroStyle'])}
+                                        >
+                                            <option value="cover">Cover</option>
+                                            <option value="split">Split</option>
+                                        </select>
+                                    </label>
+                                    <label class="label cursor-pointer justify-start gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            class="checkbox checkbox-sm"
+                                            checked={blogData.settings.showAuthor ?? true}
+                                            onchange={(e) => updateBlogSetting('showAuthor', (e.currentTarget as HTMLInputElement).checked)}
+                                        />
+                                        <span class="label-text">Display author information</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Categories</span>
+                                    <button class="btn btn-primary btn-xs" onclick={addCategory}>Add</button>
+                                </div>
+                                <div class="p-3 space-y-2 max-h-48 overflow-y-auto">
+                                    {#if blogData.categories.length > 0}
+                                        {#each blogData.categories as category, index (category.id)}
+                                            <div class="bg-base-100 border border-base-300 rounded-lg p-2 space-y-1">
+                                                <input
+                                                    type="text"
+                                                    class="input input-xs input-bordered w-full"
+                                                    value={category.name}
+                                                    oninput={(e) => updateCategoryField(index, 'name', (e.currentTarget as HTMLInputElement).value)}
+                                                    placeholder="Category name"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    class="input input-xs input-bordered w-full"
+                                                    value={category.slug}
+                                                    oninput={(e) => updateCategoryField(index, 'slug', (e.currentTarget as HTMLInputElement).value)}
+                                                    placeholder="Slug"
+                                                />
+                                                <button class="btn btn-ghost btn-xs text-error" onclick={() => removeCategory(index)}>Remove</button>
+                                            </div>
+                                        {/each}
+                                    {:else}
+                                        <p class="text-xs text-base-content/60 text-center py-4">No categories yet.</p>
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Tags</span>
+                                    <button class="btn btn-primary btn-xs" onclick={addTag}>Add</button>
+                                </div>
+                                <div class="p-3 space-y-2 max-h-40 overflow-y-auto">
+                                    {#if blogData.tags.length > 0}
+                                        {#each blogData.tags as tag, index (tag.id)}
+                                            <div class="bg-base-100 border border-base-300 rounded-lg p-2 space-y-1">
+                                                <input
+                                                    type="text"
+                                                    class="input input-xs input-bordered w-full"
+                                                    value={tag.name}
+                                                    oninput={(e) => updateTagField(index, 'name', (e.currentTarget as HTMLInputElement).value)}
+                                                    placeholder="Tag name"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    class="input input-xs input-bordered w-full"
+                                                    value={tag.slug}
+                                                    oninput={(e) => updateTagField(index, 'slug', (e.currentTarget as HTMLInputElement).value)}
+                                                    placeholder="Slug"
+                                                />
+                                                <button class="btn btn-ghost btn-xs text-error" onclick={() => removeTag(index)}>Remove</button>
+                                            </div>
+                                        {/each}
+                                    {:else}
+                                        <p class="text-xs text-base-content/60 text-center py-4">No tags yet.</p>
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
+                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Posts</span>
+                                    <div class="flex items-center gap-2">
+                                        <select
+                                            class="select select-xs select-bordered"
+                                            bind:value={selectedPageForBlog}
+                                        >
+                                            {#if getPageList().length > 0}
+                                                {#each getPageList() as page}
+                                                    <option value={page.id}>{page.title || 'Untitled'} ({page.slug || 'no slug'})</option>
+                                                {/each}
+                                            {:else}
+                                                <option disabled selected>No pages available</option>
+                                            {/if}
+                                        </select>
+                                        <button class="btn btn-primary btn-xs gap-1" onclick={() => addPostFromPageId(selectedPageForBlog)}>
+                                            <Plus class="w-3 h-3" />
+                                            Link Page
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-3 bg-base-200 rounded-b-lg">
+                                    <div class="grid grid-cols-1 md:grid-cols-[180px,1fr] gap-3">
+                                        <div class="space-y-1 max-h-64 overflow-y-auto">
+                                            {#if blogData.posts.length > 0}
+                                                {#each blogData.posts as post (post.id)}
+                                                    <button
+                                                        class="w-full rounded-lg px-2 py-1 text-left transition {selectedPostId === post.id ? 'bg-primary text-primary-content' : 'bg-base-100 hover:bg-base-300'}"
+                                                        onclick={() => selectedPostId = post.id}
+                                                    >
+                                                        <span class="text-sm font-semibold truncate">{post.title}</span>
+                                                        <span class="block text-xs opacity-70 truncate">/{post.slug}</span>
+                                                    </button>
+                                                {/each}
+                                            {:else}
+                                                <p class="text-xs text-base-content/60 text-center py-6">No posts yet. Create one above.</p>
+                                            {/if}
+                                        </div>
+                                        <div class="bg-base-100 rounded-lg p-3 space-y-2">
+                                            {#if selectedPost}
+                                                <div class="space-y-2">
+                                                    <label class="form-control">
+                                                        <span class="label-text text-xs">Linked Page</span>
+                                                        <select
+                                                            class="select select-sm select-bordered"
+                                                            value={selectedPost.pageId}
+                                                            onchange={(e) => {
+                                                                const pageId = (e.currentTarget as HTMLSelectElement).value;
+                                                                const page = getPageList().find((entry) => entry.id === pageId);
+                                                                if (!page) return;
+                                                                updatePost(selectedPost.id, (post) => {
+                                                                    post.pageId = page.id;
+                                                                    post.title = page.title ?? post.title;
+                                                                    post.slug = page.slug ?? slugify(post.title);
+                                                                });
+                                                            }}
+                                                        >
+                                                            {#each getPageList() as page}
+                                                                <option value={page.id}>{page.title || 'Untitled'} ({page.slug || 'no slug'})</option>
+                                                            {/each}
+                                                        </select>
+                                                    </label>
+                                                    <div>
+                                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Title</p>
+                                                        <p class="text-sm">{selectedPost.title}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Slug</p>
+                                                        <p class="text-sm text-base-content/70">/{selectedPost.slug}</p>
+                                                    </div>
+                                                    <button
+                                                        class="btn btn-outline btn-xs"
+                                                        onclick={() => {
+                                                            const page = getPageList().find((entry) => entry.id === selectedPost.pageId);
+                                                            if (!page) return;
+                                                            updatePost(selectedPost.id, (post) => {
+                                                                post.title = page.title ?? post.title;
+                                                                post.slug = page.slug ?? slugify(post.title);
+                                                            });
+                                                        }}
+                                                    >
+                                                        Sync title & slug from page
+                                                    </button>
+                                                    <label class="form-control">
+                                                        <span class="label-text text-xs">Excerpt</span>
+                                                        <textarea
+                                                            class="textarea textarea-sm textarea-bordered"
+                                                            rows="3"
+                                                            value={selectedPost.excerpt}
+                                                            oninput={(e) => updatePost(selectedPost.id, (post) => post.excerpt = (e.currentTarget as HTMLTextAreaElement).value)}
+                                                        ></textarea>
+                                                    </label>
+                                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        <label class="form-control">
+                                                            <span class="label-text text-xs">Cover Image URL</span>
+                                                            <input
+                                                                type="text"
+                                                                class="input input-sm input-bordered"
+                                                                value={selectedPost.coverImage?.url ?? ''}
+                                                                oninput={(e) => updatePost(selectedPost.id, (post) => {
+                                                                    post.coverImage = { ...(post.coverImage ?? {}), url: (e.currentTarget as HTMLInputElement).value };
+                                                                })}
+                                                            />
+                                                        </label>
+                                                        <label class="form-control">
+                                                            <span class="label-text text-xs">Image Alt Text</span>
+                                                            <input
+                                                                type="text"
+                                                                class="input input-sm input-bordered"
+                                                                value={selectedPost.coverImage?.alt ?? ''}
+                                                                oninput={(e) => updatePost(selectedPost.id, (post) => {
+                                                                    post.coverImage = { ...(post.coverImage ?? {}), alt: (e.currentTarget as HTMLInputElement).value };
+                                                                })}
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        <label class="form-control">
+                                                            <span class="label-text text-xs">Author</span>
+                                                            <input
+                                                                type="text"
+                                                                class="input input-sm input-bordered"
+                                                                value={selectedPost.author ?? ''}
+                                                                oninput={(e) => updatePost(selectedPost.id, (post) => post.author = (e.currentTarget as HTMLInputElement).value)}
+                                                            />
+                                                        </label>
+                                                        <label class="form-control">
+                                                            <span class="label-text text-xs">Publish Date</span>
+                                                            <input
+                                                                type="date"
+                                                                class="input input-sm input-bordered"
+                                                                value={selectedPost.publishedOn ?? toDateInputValue()}
+                                                                onchange={(e) => updatePost(selectedPost.id, (post) => post.publishedOn = (e.currentTarget as HTMLInputElement).value)}
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                    <div class="space-y-1">
+                                                        <span class="text-xs font-semibold uppercase tracking-wide">Categories</span>
+                                                        <div class="flex flex-wrap gap-1">
+                                                            {#each blogData.categories as category}
+                                                                <label class="badge badge-lg gap-1 cursor-pointer {selectedPost?.categories?.includes(category.slug) ? 'badge-primary' : 'badge-outline'}">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        class="hidden"
+                                                                        checked={selectedPost?.categories?.includes(category.slug) ?? false}
+                                                                        onchange={() => selectedPost && togglePostCategory(selectedPost.id, category.slug)}
+                                                                    />
+                                                                    {category.name}
+                                                                </label>
+                                                            {/each}
+                                                            {#if blogData.categories.length === 0}
+                                                                <span class="text-xs text-base-content/60">No categories defined.</span>
+                                                            {/if}
+                                                        </div>
+                                                    </div>
+                                                    <div class="space-y-1">
+                                                        <span class="text-xs font-semibold uppercase tracking-wide">Tags</span>
+                                                        <div class="flex flex-wrap gap-1">
+                                                            {#each blogData.tags as tag}
+                                                                <label class="badge badge-sm gap-1 cursor-pointer {selectedPost?.tags?.includes(tag.slug) ? 'badge-secondary' : 'badge-outline'}">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        class="hidden"
+                                                                        checked={selectedPost?.tags?.includes(tag.slug) ?? false}
+                                                                        onchange={() => selectedPost && togglePostTag(selectedPost.id, tag.slug)}
+                                                                    />
+                                                                    {tag.name}
+                                                                </label>
+                                                            {/each}
+                                                            {#if blogData.tags.length === 0}
+                                                                <span class="text-xs text-base-content/60">No tags defined.</span>
+                                                            {/if}
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center justify-between">
+                                                        <button class="btn btn-error btn-sm" onclick={() => removePost(selectedPost.id)}>
+                                                            Delete Post
+                                                        </button>
+                                                        <button
+                                                            class={`btn btn-sm ${blogData.settings.featuredPostId === selectedPost.id ? 'btn-primary text-primary-content' : 'btn-outline'}`}
+                                                            onclick={() => setFeaturedPost(selectedPost.id)}
+                                                        >
+                                                            {blogData.settings.featuredPostId === selectedPost.id ? 'Featured' : 'Set as Featured'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            {:else}
+                                                <div class="text-sm text-base-content/60 text-center py-6">
+                                                    Select a post to edit its details.
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

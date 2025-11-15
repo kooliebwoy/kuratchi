@@ -136,115 +136,348 @@ function getR2Bucket(name: string): R2Bucket {
   return bucket as R2Bucket;
 }
 
+export interface R2WorkerConfig {
+  workerName?: string;  // Worker name to construct URL (e.g., "db-abc-123")
+  workerUrl?: string;   // Or provide full URL directly
+  workersSubdomain?: string; // Workers subdomain (e.g., "kuratchi" for kuratchi.workers.dev)
+  gatewayKey: string;
+  token: string;
+  databaseName: string;
+}
+
 /**
- * Get an object from R2
- * @param bucketName - R2 bucket binding name (from wrangler.toml)
+ * Get worker URL from config
+ */
+function getWorkerUrl(config: R2WorkerConfig): string {
+  if (config.workerUrl) {
+    return config.workerUrl;
+  }
+  if (config.workerName) {
+    const subdomain = config.workersSubdomain || 'workers';
+    return `https://${config.workerName}.${subdomain}`;
+  }
+  console.error('[Kuratchi R2] Worker config missing workerUrl and workerName:', config);
+  throw new Error('[Kuratchi R2] Either workerUrl or workerName must be provided in config');
+}
+
+/**
+ * Get an object from R2 via worker HTTP endpoint
+ * @param bucketName - R2 bucket binding name (not used in HTTP mode, kept for API compatibility)
  * @param key - Object key to retrieve
  * @param options - Optional get options
+ * @param workerConfig - Worker configuration (workerUrl, gatewayKey, token, databaseName)
  */
 export async function get(
   bucketName: string,
   key: string,
-  options?: { onlyIf?: any; range?: any }
+  options?: { onlyIf?: any; range?: any },
+  workerConfig?: R2WorkerConfig
 ): Promise<R2Object | null> {
+  // Require worker config
+  if (!workerConfig) {
+    console.warn('[Kuratchi R2] No worker config provided for get(). Returning null.');
+    return null;
+  }
+  
+  // Use worker HTTP endpoint
   try {
-    const bucket = getR2Bucket(bucketName);
-    return await bucket.get(key, options);
-  } catch (error) {
-    if (error instanceof R2NotAvailableError) {
-      console.warn(error.message);
+    const workerUrl = getWorkerUrl(workerConfig);
+    const response = await fetch(`${workerUrl}/api/storage/get`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${workerConfig.gatewayKey}`,
+        'x-db-token': workerConfig.token,
+        'x-db-name': workerConfig.databaseName
+      },
+      body: JSON.stringify({ key })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to get object');
+    }
+    
+    const result = await response.json();
+    if (!result.success) {
       return null;
     }
-    throw error;
+    
+    // Decode base64 data
+    const base64Data = result.results.data;
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    return {
+      key: result.results.key,
+      size: result.results.size,
+      httpMetadata: result.results.httpMetadata,
+      customMetadata: result.results.customMetadata,
+      etag: result.results.etag,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        }
+      }),
+      arrayBuffer: async () => bytes.buffer,
+      text: async () => new TextDecoder().decode(bytes),
+      json: async () => JSON.parse(new TextDecoder().decode(bytes)),
+      blob: async () => new Blob([bytes])
+    } as any;
+  } catch (error) {
+    console.warn('[Kuratchi R2] Get error:', error);
+    return null;
   }
 }
 
 /**
  * Put an object into R2
- * @param bucketName - R2 bucket binding name (from wrangler.toml)
+ * @param bucketName - R2 bucket binding name (not used in HTTP mode, kept for API compatibility)
  * @param key - Object key to store
  * @param value - Value to store
  * @param options - Optional put options
+ * @param workerConfig - Worker configuration (workerUrl, gatewayKey, token, databaseName)
  */
 export async function put(
   bucketName: string,
   key: string,
   value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob,
-  options?: R2PutOptions
+  options?: R2PutOptions,
+  workerConfig?: R2WorkerConfig
 ): Promise<R2Object | null> {
+  // Require worker config
+  if (!workerConfig) {
+    console.warn('[Kuratchi R2] No worker config provided for put(). Returning null.');
+    return null;
+  }
+  
+  // Use worker HTTP endpoint
   try {
-    const bucket = getR2Bucket(bucketName);
-    return await bucket.put(key, value, options);
-  } catch (error) {
-    if (error instanceof R2NotAvailableError) {
-      console.warn(error.message);
-      return null;
+    // Convert value to base64
+    let arrayBuffer: ArrayBuffer;
+    if (value instanceof ReadableStream) {
+      const reader = value.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
+        chunks.push(chunk);
+      }
+      const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+      arrayBuffer = result.buffer;
+    } else if (value instanceof ArrayBuffer) {
+      arrayBuffer = value;
+    } else if (ArrayBuffer.isView(value)) {
+      arrayBuffer = value.buffer as ArrayBuffer;
+    } else if (value instanceof Blob) {
+      arrayBuffer = await value.arrayBuffer();
+    } else if (typeof value === 'string') {
+      arrayBuffer = new TextEncoder().encode(value).buffer;
+    } else {
+      arrayBuffer = new ArrayBuffer(0);
     }
-    throw error;
+    
+    // Convert to base64
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Data = btoa(binary);
+    
+    const workerUrl = getWorkerUrl(workerConfig);
+    const response = await fetch(`${workerUrl}/api/storage/put`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${workerConfig.gatewayKey}`,
+        'x-db-token': workerConfig.token,
+        'x-db-name': workerConfig.databaseName
+      },
+      body: JSON.stringify({
+        key,
+        data: base64Data,
+        httpMetadata: options?.httpMetadata,
+        customMetadata: options?.customMetadata
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to put object');
+    }
+    
+    const result = await response.json();
+    return result.success ? { key } as any : null;
+  } catch (error) {
+    console.warn('[Kuratchi R2] Put error:', error);
+    return null;
   }
 }
 
 /**
  * Delete an object or objects from R2
- * @param bucketName - R2 bucket binding name (from wrangler.toml)
+ * @param bucketName - R2 bucket binding name (not used in HTTP mode, kept for API compatibility)
  * @param keys - Key or array of keys to delete
+ * @param workerConfig - Worker configuration (workerUrl, gatewayKey, token, databaseName)
  */
 export async function del(
   bucketName: string,
-  keys: string | string[]
+  keys: string | string[],
+  workerConfig?: R2WorkerConfig
 ): Promise<boolean> {
+  // Require worker config
+  if (!workerConfig) {
+    console.warn('[Kuratchi R2] No worker config provided for del(). Returning false.');
+    return false;
+  }
+  
+  // Use worker HTTP endpoint
   try {
-    const bucket = getR2Bucket(bucketName);
-    await bucket.delete(keys);
-    return true;
-  } catch (error) {
-    if (error instanceof R2NotAvailableError) {
-      console.warn(error.message);
-      return false;
+    const workerUrl = getWorkerUrl(workerConfig);
+    const response = await fetch(`${workerUrl}/api/storage/delete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${workerConfig.gatewayKey}`,
+        'x-db-token': workerConfig.token,
+        'x-db-name': workerConfig.databaseName
+      },
+      body: JSON.stringify({ key: keys })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete object');
     }
-    throw error;
+    
+    const result = await response.json();
+    return result.success;
+  } catch (error) {
+    console.warn('[Kuratchi R2] Delete error:', error);
+    return false;
   }
 }
 
 /**
  * Get object metadata from R2 without downloading the body
- * @param bucketName - R2 bucket binding name (from wrangler.toml)
+ * @param bucketName - R2 bucket binding name (not used in HTTP mode, kept for API compatibility)
  * @param key - Object key
+ * @param workerConfig - Worker configuration (workerUrl, gatewayKey, token, databaseName)
  */
 export async function head(
   bucketName: string,
-  key: string
+  key: string,
+  workerConfig?: R2WorkerConfig
 ): Promise<R2Object | null> {
+  // Require worker config
+  if (!workerConfig) {
+    console.warn('[Kuratchi R2] No worker config provided for head(). Returning null.');
+    return null;
+  }
+  
+  // Use worker HTTP endpoint
   try {
-    const bucket = getR2Bucket(bucketName);
-    return await bucket.head(key);
-  } catch (error) {
-    if (error instanceof R2NotAvailableError) {
-      console.warn(error.message);
+    const workerUrl = getWorkerUrl(workerConfig);
+    const response = await fetch(`${workerUrl}/api/storage/head`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${workerConfig.gatewayKey}`,
+        'x-db-token': workerConfig.token,
+        'x-db-name': workerConfig.databaseName
+      },
+      body: JSON.stringify({ key })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to get object metadata');
+    }
+    
+    const result = await response.json();
+    if (!result.success) {
       return null;
     }
-    throw error;
+    
+    return {
+      key: result.results.key,
+      size: result.results.size,
+      httpMetadata: result.results.httpMetadata,
+      customMetadata: result.results.customMetadata,
+      etag: result.results.etag
+    } as any;
+  } catch (error) {
+    console.warn('[Kuratchi R2] Head error:', error);
+    return null;
   }
 }
 
 /**
  * List objects in R2
- * @param bucketName - R2 bucket binding name (from wrangler.toml)
+ * @param bucketName - R2 bucket binding name (not used in HTTP mode, kept for API compatibility)
  * @param options - Optional list options
+ * @param workerConfig - Worker configuration (workerUrl, gatewayKey, token, databaseName)
  */
 export async function list(
   bucketName: string,
-  options?: R2ListOptions
+  options?: R2ListOptions,
+  workerConfig?: R2WorkerConfig
 ): Promise<R2Objects | null> {
+  // Require worker config
+  if (!workerConfig) {
+    console.warn('[Kuratchi R2] No worker config provided for list(). Returning null.');
+    return null;
+  }
+  
+  // Use worker HTTP endpoint
   try {
-    const bucket = getR2Bucket(bucketName);
-    return await bucket.list(options);
-  } catch (error) {
-    if (error instanceof R2NotAvailableError) {
-      console.warn(error.message);
+    const workerUrl = getWorkerUrl(workerConfig);
+    const response = await fetch(`${workerUrl}/api/storage/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${workerConfig.gatewayKey}`,
+        'x-db-token': workerConfig.token,
+        'x-db-name': workerConfig.databaseName
+      },
+      body: JSON.stringify({
+        prefix: options?.prefix,
+        limit: options?.limit,
+        cursor: options?.cursor,
+        delimiter: options?.delimiter
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to list objects');
+    }
+    
+    const result = await response.json();
+    if (!result.success) {
       return null;
     }
-    throw error;
+    
+    return {
+      objects: result.results.objects || [],
+      truncated: result.results.truncated || false,
+      cursor: result.results.cursor,
+      delimitedPrefixes: result.results.prefixes || []
+    };
+  } catch (error) {
+    console.warn('[Kuratchi R2] List error:', error);
+    return null;
   }
 }
 
@@ -342,6 +575,260 @@ export async function createBucket(name: string, config?: CreateBucketConfig): P
 }
 
 /**
+ * Enable R2.dev public domain for a bucket
+ * @param bucketName - Name of the R2 bucket
+ * @param config - Optional config with apiToken and accountId
+ */
+export async function enablePublicDomain(bucketName: string, config?: CreateBucketConfig): Promise<any> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken || !accountId) {
+    throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  const client = new CloudflareClient({ apiToken, accountId });
+  
+  // Enable the managed R2.dev domain
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/domains/managed`,
+    {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ enabled: true })
+    }
+  );
+
+  return await response.json();
+}
+
+/**
+ * Disable R2.dev public domain for a bucket
+ * @param bucketName - Name of the R2 bucket
+ * @param config - Optional config with apiToken and accountId
+ */
+export async function disablePublicDomain(bucketName: string, config?: CreateBucketConfig): Promise<any> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken || !accountId) {
+    throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/domains/managed`,
+    {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ enabled: false })
+    }
+  );
+
+  return await response.json();
+}
+
+/**
+ * Get R2.dev public domain status for a bucket
+ * @param bucketName - Name of the R2 bucket
+ * @param config - Optional config with apiToken and accountId
+ */
+export async function getPublicDomain(bucketName: string, config?: CreateBucketConfig): Promise<any> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken || !accountId) {
+    throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/domains/managed`,
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    }
+  );
+
+  return await response.json();
+}
+
+/**
+ * Add custom domain to R2 bucket (e.g., sitename-storage.kuratchi.dev)
+ * @param bucketName - Name of the R2 bucket
+ * @param customDomain - Custom domain to add
+ * @param config - Optional config with apiToken and accountId
+ */
+export async function addCustomDomain(bucketName: string, customDomain: string, config?: CreateBucketConfig): Promise<any> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken || !accountId) {
+    throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/domains/custom`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ domain: customDomain })
+    }
+  );
+
+  return await response.json();
+}
+
+/**
+ * Remove custom domain from R2 bucket
+ * @param bucketName - Name of the R2 bucket
+ * @param customDomain - Custom domain to remove
+ * @param config - Optional config with apiToken and accountId
+ */
+export async function removeCustomDomain(bucketName: string, customDomain: string, config?: CreateBucketConfig): Promise<any> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken || !accountId) {
+    throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/domains/custom/${customDomain}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    }
+  );
+
+  return await response.json();
+}
+
+/**
+ * Add R2 binding to an existing worker
+ * 
+ * @param workerName - Name of the worker script
+ * @param bucketName - Name of the R2 bucket
+ * @param bindingName - Name of the binding (e.g., 'STORAGE')
+ * @param databaseId - D1 database ID for the worker
+ * @param gatewayKey - Gateway key for authentication
+ * @param config - Optional config with apiToken and accountId
+ * @returns Result object with success flag and optional error message
+ * 
+ * @example
+ * ```typescript
+ * import { r2 } from 'kuratchi-sdk';
+ * const result = await r2.addWorkerBinding(
+ *   'my-worker',
+ *   'my-bucket',
+ *   'STORAGE',
+ *   'database-uuid',
+ *   'gateway-key',
+ *   { apiToken: 'your-token', accountId: 'your-account-id' }
+ * );
+ * ```
+ */
+export async function addWorkerBinding(
+  workerName: string,
+  bucketName: string,
+  bindingName: string,
+  databaseId: string,
+  gatewayKey: string,
+  config?: CreateBucketConfig
+): Promise<{ success: boolean; error?: string }> {
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken) {
+    throw new Error('[Kuratchi R2] Cloudflare API token is required. Set CF_API_TOKEN, CLOUDFLARE_API_TOKEN, or KURATCHI_CF_API_TOKEN.');
+  }
+  if (!accountId) {
+    throw new Error('[Kuratchi R2] Cloudflare Account ID is required. Set CF_ACCOUNT_ID, CLOUDFLARE_ACCOUNT_ID, or KURATCHI_CF_ACCOUNT_ID.');
+  }
+
+  const client = new CloudflareClient({ apiToken, accountId });
+  
+  return await client.addR2BindingToWorker({
+    workerName,
+    bucketName,
+    bindingName,
+    databaseId,
+    gatewayKey
+  });
+}
+
+/**
  * Convenience namespace export
  */
 export const r2 = {
@@ -351,7 +838,13 @@ export const r2 = {
   head,
   list,
   bucket,
-  createBucket
+  createBucket,
+  addWorkerBinding,
+  enablePublicDomain,
+  disablePublicDomain,
+  getPublicDomain,
+  addCustomDomain,
+  removeCustomDomain
 };
 
 // Re-export types
