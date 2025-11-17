@@ -43,9 +43,11 @@ import { sessionPlugin, adminPlugin } from 'kuratchi-sdk/auth';
  *     plugins: [sessionPlugin(), adminPlugin({ ... })]
  *   },
  *   notifications: {
- *     resendApiKey: process.env.RESEND_API_KEY,
- *     resendFrom: 'notifications@yourdomain.com',
- *     resendFromName: 'Your App Name',
+ *     sesRegion: 'us-east-1',
+ *     sesAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+ *     sesSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+ *     sesFrom: 'notifications@yourdomain.com',
+ *     sesFromName: 'Your App Name',
  *     cloudflareEmail: {
  *       from: 'system@yourdomain.com',
  *     },
@@ -141,7 +143,7 @@ export async function getUserNotificationsList(
 // ============================================================================
 
 /**
- * Send a user email via Resend
+ * Send a user email via Amazon SES
  */
 export async function sendDatabaseReadyEmail(
   event: RequestEvent,
@@ -162,7 +164,7 @@ export async function sendDatabaseReadyEmail(
     message: `Your database ${databaseName} is ready.`,
     category: 'database',
     priority: 'high',
-    provider: 'resend',
+    provider: 'ses',
     userId,
   });
 }
@@ -406,7 +408,7 @@ export async function queueWeeklyDigest(
     emailData: {
       subject: 'Your Weekly Digest',
       html: generateWeeklyDigestHTML(digestData),
-      provider: 'resend',
+      provider: 'ses',
     },
     scheduledFor: getNextMondayAt9AM().toISOString(),
   });
@@ -578,9 +580,11 @@ export const exampleConfig = {
     plugins: [sessionPlugin(), adminPlugin({ /* ... */ })]
   },
   notifications: {
-    resendApiKey: process.env.RESEND_API_KEY!,
-    resendFrom: 'notifications@yourdomain.com',
-    resendFromName: 'Your App Name',
+    sesRegion: 'us-east-1',
+    sesAccessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    sesSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    sesFrom: 'notifications@yourdomain.com',
+    sesFromName: 'Your App Name',
     cloudflareEmail: {
       from: 'system@yourdomain.com',
       apiToken: process.env.CLOUDFLARE_API_TOKEN,

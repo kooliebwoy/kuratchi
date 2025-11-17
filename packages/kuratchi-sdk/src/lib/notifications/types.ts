@@ -23,7 +23,7 @@ export type NotificationChannel = 'in-app' | 'email' | 'both';
 /**
  * Email provider types
  */
-export type EmailProvider = 'resend' | 'cloudflare';
+export type EmailProvider = 'ses' | 'cloudflare';
 
 /**
  * Notification categories for organization and filtering
@@ -261,7 +261,7 @@ export interface SendEmailNotificationOptions extends BaseNotification {
   replyTo?: string;
   cc?: string | string[];
   bcc?: string | string[];
-  provider?: EmailProvider; // 'resend' for users, 'cloudflare' for system
+  provider?: EmailProvider; // 'ses' for users, 'cloudflare' for system
   userId?: string;
   organizationId?: string;
   tags?: { name: string; value: string }[];
@@ -332,31 +332,24 @@ export interface MonitoringThresholds {
  * Notification plugin options
  */
 export interface NotificationPluginOptions {
-  /**
-   * Resend API key for user emails
-   */
-  resendApiKey?: string;
+	/**
+	 * Amazon SES configuration for user emails
+	 */
+	sesRegion?: string;
+	sesAccessKeyId?: string;
+	sesSecretAccessKey?: string;
+	sesFrom?: string;
+	sesFromName?: string;
+	sesConfigurationSetName?: string;
 
-  /**
-   * Default from email for Resend
-   */
-  resendFrom?: string;
-
-  /**
-   * Default from name for Resend
-   */
-  resendFromName?: string;
-
-  /**
-   * Cloudflare Email Routing configuration for system emails
-   */
-  cloudflareEmail?: {
-    from: string; // e.g., 'noreply@yourdomain.com'
-    apiToken?: string;
-    accountId?: string;
-  };
-
-  /**
+	/**
+	 * Cloudflare Email Routing configuration for system emails
+	 */
+	cloudflareEmail?: {
+		from: string; // e.g., 'noreply@yourdomain.com'
+		apiToken?: string;
+		accountId?: string;
+	};  /**
    * System admin email for platform alerts
    */
   systemEmail?: string;

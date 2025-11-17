@@ -150,16 +150,9 @@ export const getSiteById = guardedQuery('sites.read', async () => {
 	}
 });
 
-// Create site schema
+// Create site schema - only require the site name
 const createSiteSchema = v.object({
-	name: v.pipe(v.string(), v.minLength(1, 'Site name is required')),
-	subdomain: v.pipe(
-		v.string(),
-		v.minLength(1, 'Subdomain is required'),
-		v.regex(/^[a-z0-9-]+$/, 'Subdomain must contain only lowercase letters, numbers, and hyphens')
-	),
-	description: v.optional(v.string(), ''),
-	theme: v.optional(v.string(), 'minimal')
+	name: v.pipe(v.string(), v.minLength(1, 'Site name is required'))
 });
 
 // Create a new site
@@ -181,16 +174,65 @@ export const createSite = guardedForm(
 			const now = new Date().toISOString();
 			const siteId = crypto.randomUUID();
 			const dbId = crypto.randomUUID();
-			const themeId = data.theme || DEFAULT_THEME_ID;
+			const themeId = DEFAULT_THEME_ID;
+
+			// Derive a base subdomain from the site name
+			const baseSlug = data.name
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-+|-+$/g, '')
+				.slice(0, 50) || `site-${siteId.substring(0, 8)}`;
+
+			const { locals } = getRequestEvent();
+			const db = await getDatabase(locals);
+			const kv = (locals.kuratchi as any)?.kv?.default;
+
+			// Ensure subdomain uniqueness using KV and org DB
+			let subdomain = baseSlug;
+			for (let i = 0; i < 20; i++) {
+				const candidate = i === 0 ? baseSlug : `${baseSlug}-${i + 1}`;
+
+				let kvExists = false;
+				if (kv) {
+					try {
+						const existing = await kv.get(`site:subdomain:${candidate}`);
+						kvExists = !!existing;
+					} catch (kvErr) {
+						console.error('[createSite] KV check failed:', kvErr);
+					}
+				}
+
+				let dbExists = false;
+				try {
+					const existingSite = await db.sites
+						.where({ subdomain: candidate, deleted_at: { isNullish: true } })
+						.first();
+					if (existingSite.success && existingSite.data) {
+						dbExists = true;
+					}
+				} catch (dbErr) {
+					console.error('[createSite] DB subdomain check failed:', dbErr);
+				}
+
+				if (!kvExists && !dbExists) {
+					subdomain = candidate;
+					break;
+				}
+			}
+
+			if (!subdomain) {
+				console.error('[createSite] Failed to generate unique subdomain for site:', data.name);
+				error(400, 'Unable to generate a unique subdomain. Please try again with a different name.');
+			}
 
 			console.log('[createSite] Creating site:', {
 				siteId,
 				name: data.name,
-				subdomain: data.subdomain,
+				subdomain,
 			});
 			
 			// Provision R2 bucket for site storage
-			const r2BucketName = `site-${data.subdomain}-${crypto.randomUUID().substring(0, 8)}`;
+			const r2BucketName = `site-${subdomain}-${crypto.randomUUID().substring(0, 8)}`;
 			const r2Binding = 'STORAGE';
 			
 			let r2Created = false;
@@ -227,7 +269,7 @@ export const createSite = guardedForm(
 			// Step 1: Create the site database with sites schema
 			// Use siteId prefix (first 8 chars) + subdomain to keep under 63 char limit
 			const shortId = siteId.substring(0, 8);
-			const dbName = `site-${shortId}-${data.subdomain}`;
+			const dbName = `site-${shortId}-${subdomain}`;
 			const created = await database.create({
 				name: dbName,
 				schema: sitesSchema,
@@ -313,7 +355,7 @@ export const createSite = guardedForm(
 			const dbApiToken = await adminDb.dbApiTokens.insert({
 				id: crypto.randomUUID(),
 				token: created.token,
-				name: `${data.subdomain}-token`,
+				name: `${subdomain}-token`,
 				databaseId: dbId,
 				created_at: now,
 				updated_at: now,
@@ -332,10 +374,10 @@ export const createSite = guardedForm(
 			const siteResult = await db.sites.insert({
 				id: siteId,
 				name: data.name,
-				subdomain: data.subdomain,
+				subdomain,
 				description: data.description || null,
 				status: true,
-				domain: `${data.subdomain}.kuratchi.com`,
+				domain: `${subdomain}.kuratchi.site`,
 				environment: 'preview',
 				theme: themeId,
 				databaseId: dbId,
@@ -400,7 +442,7 @@ export const createSite = guardedForm(
 					id: homepageId,
 					title: themeHomepage.title || data.name || 'Homepage',
 					seoTitle: themeHomepage.seoTitle || themeHomepage.title || data.name || 'Homepage',
-					seoDescription: themeHomepage.seoDescription || data.description || '',
+					seoDescription: themeHomepage.seoDescription || '',
 					slug: themeHomepage.slug || 'homepage',
 					pageType: 'homepage',
 					isSpecialPage: true,
@@ -418,14 +460,14 @@ export const createSite = guardedForm(
 			try {
 				const kv = (locals.kuratchi as any)?.kv?.default;
 				if (kv) {
-					await kv.put(`site:subdomain:${data.subdomain}`, JSON.stringify({
+					await kv.put(`site:subdomain:${subdomain}`, JSON.stringify({
 						siteId,
 						orgId: activeOrgId,
 						databaseId: dbId,
 						dbuuid: created.databaseId || created.databaseName,
 						workerName: created.workerName
 					}));
-					console.log('[createSite] Subdomain mapping stored in KV:', data.subdomain);
+					console.log('[createSite] Subdomain mapping stored in KV:', subdomain);
 				} else {
 					console.warn('[createSite] KV not available, skipping subdomain mapping');
 				}

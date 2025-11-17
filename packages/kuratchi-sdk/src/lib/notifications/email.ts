@@ -1,10 +1,10 @@
 /**
  * Email Notification Handlers
- * Supports both Cloudflare Email Routing (system emails) and Resend (user emails)
+ * Supports both Cloudflare Email Routing (system emails) and Amazon SES (user emails)
  */
 
 import type { RequestEvent } from '@sveltejs/kit';
-import { Resend } from 'resend';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type {
 	EmailNotification,
 	SendEmailNotificationOptions,
@@ -14,7 +14,7 @@ import type {
 	NotificationFilters,
 } from './types.js';
 
-let resendClient: Resend | null = null;
+let sesClient: SESv2Client | null = null;
 let pluginOptions: NotificationPluginOptions | null = null;
 
 /**
@@ -23,8 +23,14 @@ let pluginOptions: NotificationPluginOptions | null = null;
 export function initEmailNotifications(options: NotificationPluginOptions) {
 	pluginOptions = options;
 
-	if (options.resendApiKey) {
-		resendClient = new Resend(options.resendApiKey);
+	if (options.sesRegion && options.sesAccessKeyId && options.sesSecretAccessKey) {
+		sesClient = new SESv2Client({
+			region: options.sesRegion,
+			credentials: {
+				accessKeyId: options.sesAccessKeyId,
+				secretAccessKey: options.sesSecretAccessKey,
+			}
+		});
 	}
 }
 
@@ -39,7 +45,7 @@ export async function sendEmailNotification(
 		return { success: false, error: 'Email notifications are disabled' };
 	}
 
-	const provider: EmailProvider = options.provider || 'resend';
+	const provider: EmailProvider = options.provider || 'ses';
 
 	try {
 		let result: NotificationResult;
@@ -47,7 +53,7 @@ export async function sendEmailNotification(
 		if (provider === 'cloudflare') {
 			result = await sendViaCloudflare(event, options);
 		} else {
-			result = await sendViaResend(event, options);
+			result = await sendViaSES(event, options);
 		}
 
 		// Track email in database if successful
@@ -87,50 +93,97 @@ export async function sendEmailNotification(
 }
 
 /**
- * Send email via Resend (for user emails)
+ * Send email via Amazon SES V2 (for user emails)
  */
-async function sendViaResend(
+async function sendViaSES(
 	event: RequestEvent,
 	options: SendEmailNotificationOptions
 ): Promise<NotificationResult> {
-	if (!resendClient) {
+	if (!sesClient) {
 		return {
 			success: false,
-			error: 'Resend not configured. Please provide resendApiKey in plugin options.',
+			error: 'Amazon SES not configured. Please provide sesRegion, sesAccessKeyId, and sesSecretAccessKey in plugin options.',
 		};
 	}
 
-	const from = options.fromName && (options.from || pluginOptions?.resendFrom)
-		? `${options.fromName} <${options.from || pluginOptions?.resendFrom}>`
-		: options.from || pluginOptions?.resendFrom;
+	const from = options.fromName && (options.from || pluginOptions?.sesFrom)
+		? `${options.fromName} <${options.from || pluginOptions?.sesFrom}>`
+		: options.from || pluginOptions?.sesFrom;
 
 	if (!from) {
 		return {
 			success: false,
-			error: 'No from email address configured for Resend',
+			error: 'No from email address configured for Amazon SES',
 		};
 	}
 
 	try {
-		const result = await resendClient.emails.send({
-			from,
-			to: options.to,
-			subject: options.subject,
-			html: options.html,
-			text: options.text || '',
-			replyTo: options.replyTo,
-			cc: options.cc,
-			bcc: options.bcc,
-			tags: options.tags,
-			headers: options.headers,
-		});
+		// Prepare email content
+		const content: any = {
+			Simple: {
+				Subject: { Data: options.subject, Charset: 'UTF-8' },
+				Body: {}
+			}
+		};
+
+		if (options.html && options.text) {
+			content.Simple.Body.Html = { Data: options.html, Charset: 'UTF-8' };
+			content.Simple.Body.Text = { Data: options.text, Charset: 'UTF-8' };
+		} else if (options.html) {
+			content.Simple.Body.Html = { Data: options.html, Charset: 'UTF-8' };
+		} else if (options.text) {
+			content.Simple.Body.Text = { Data: options.text, Charset: 'UTF-8' };
+		} else {
+			return {
+				success: false,
+				error: 'Either html or text content is required',
+			};
+		}
+
+		// Prepare destination
+		const destination: any = {
+			ToAddresses: Array.isArray(options.to) ? options.to : [options.to]
+		};
+		if (options.cc) {
+			destination.CcAddresses = Array.isArray(options.cc) ? options.cc : [options.cc];
+		}
+		if (options.bcc) {
+			destination.BccAddresses = Array.isArray(options.bcc) ? options.bcc : [options.bcc];
+		}
+
+		// Prepare command parameters
+		const params: any = {
+			FromEmailAddress: from,
+			Destination: destination,
+			Content: content
+		};
+
+		// Add optional parameters
+		if (options.replyTo) {
+			params.ReplyToAddresses = Array.isArray(options.replyTo) ? options.replyTo : [options.replyTo];
+		}
+		if (options.headers) {
+			params.EmailHeaders = Object.entries(options.headers).map(([Name, Value]) => ({ Name, Value }));
+		}
+		if (pluginOptions?.sesConfigurationSetName) {
+			params.ConfigurationSetName = pluginOptions.sesConfigurationSetName;
+		}
+
+		// Add email tags (SES uses different format than Resend)
+		if (options.tags) {
+			params.EmailTags = options.tags.map(tag => ({ Name: tag.name, Value: tag.value }));
+		}
+
+		// Send email via SES V2
+		const command = new SendEmailCommand(params);
+		const result = await sesClient.send(command);
 
 		return {
 			success: true,
-			id: result.data?.id,
+			id: result.MessageId,
 		};
 	} catch (error: any) {
-		console.error('[Email Notifications] Resend error:', error);
+		console.error('[Email Notifications] Amazon SES error:', error);
 		return {
 			success: false,
 			error: error.message,
@@ -266,7 +319,7 @@ async function trackEmailNotification(
 		const emailRecord: EmailNotification = {
 			id: crypto.randomUUID(),
 			to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-			from: options.from || pluginOptions?.resendFrom || pluginOptions?.cloudflareEmail?.from || '',
+			from: options.from || pluginOptions?.sesFrom || pluginOptions?.cloudflareEmail?.from || '',
 			subject: options.subject,
 			html: options.html,
 			text: options.text,

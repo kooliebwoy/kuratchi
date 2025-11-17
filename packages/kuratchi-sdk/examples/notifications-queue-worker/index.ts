@@ -23,7 +23,10 @@ export interface Env {
 	ADMIN_DB?: any;
 
 	// Environment variables
-	RESEND_API_KEY?: string;
+	AWS_ACCESS_KEY_ID?: string;
+	AWS_SECRET_ACCESS_KEY?: string;
+	AWS_REGION?: string;
+	SES_FROM_EMAIL?: string;
 	CLOUDFLARE_API_TOKEN?: string;
 	CLOUDFLARE_ACCOUNT_ID?: string;
 	SYSTEM_EMAIL?: string;

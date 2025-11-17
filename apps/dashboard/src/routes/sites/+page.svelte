@@ -84,7 +84,7 @@
                     </div>
                   </td>
                   <td>
-                    <code class="text-sm">{site.subdomain}.kuratchi.com</code>
+                    <code class="text-sm">{site.subdomain}.kuratchi.site</code>
                   </td>
                   <td>
                     <span class="badge badge-outline badge-sm">{site.theme || 'Default'}</span>
@@ -102,7 +102,7 @@
                         <Settings class="h-4 w-4" />
                       </a>
                       <a
-                        href="https://{site.subdomain}.kuratchi.com"
+                        href="https://{site.subdomain}.kuratchi.site"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="btn btn-ghost btn-sm btn-square"
@@ -184,40 +184,6 @@
         <div class="label">
           <span class="label-text-alt">A friendly name for your site</span>
         </div>
-      </div>
-
-      <div class="form-control">
-        <label class="label" for="site-subdomain">
-          <span class="label-text">Subdomain</span>
-        </label>
-        <div class="join w-full">
-          <input 
-            id="site-subdomain"
-            type="text" 
-            name="subdomain"
-            placeholder="my-site" 
-            class="input input-bordered join-item flex-1" 
-            pattern="[a-z0-9-]+"
-            required
-          />
-          <span class="btn btn-ghost join-item no-animation">.kuratchi.com</span>
-        </div>
-        <div class="label">
-          <span class="label-text-alt">Use lowercase letters, numbers, and hyphens only</span>
-        </div>
-      </div>
-
-      <div class="form-control">
-        <label class="label" for="site-description">
-          <span class="label-text">Description (Optional)</span>
-        </label>
-        <textarea 
-          id="site-description"
-          name="description"
-          class="textarea textarea-bordered" 
-          placeholder="Describe your site..."
-          rows="3"
-        ></textarea>
       </div>
 
       <div class="modal-action">

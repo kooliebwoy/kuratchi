@@ -5,12 +5,6 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "routes": [
-    {
-      "pattern": "site-renderer.kuratchi.dev",
-      "custom_domain": true
-    }
-  ],
   "compatibility_date": "2025-09-24",
   "assets": {
     "binding": "ASSETS",
