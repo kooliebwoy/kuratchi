@@ -27,6 +27,12 @@ export type { OAuthPluginOptions, OAuthProviderConfig } from './oauth.js';
 export { credentialsPlugin } from './credentials.js';
 export type { CredentialsPluginOptions } from './credentials.js';
 
+export { rateLimitPlugin } from './rate-limit.js';
+export type { RateLimitPluginOptions, RateLimitRouteConfig } from './rate-limit.js';
+
+export { turnstilePlugin } from './turnstile.js';
+export type { TurnstilePluginOptions, TurnstileRouteConfig, TurnstileVerificationResult } from './turnstile.js';
+
 // Roles plugin
 export { rolesPlugin } from './roles.js';
 export type { RolesPluginOptions, PermissionDef, RoleDefinitions } from './roles.js';

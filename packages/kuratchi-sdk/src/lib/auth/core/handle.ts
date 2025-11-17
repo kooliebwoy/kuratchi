@@ -8,6 +8,10 @@ import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { ensurePlatformEnv, runWithPlatform } from '../../utils/platform-context.js';
 import { PluginRegistry, type AuthPlugin } from './plugin.js';
 import type { CreateAuthHandleOptions, AuthHandleEnv } from '../utils/types.js';
+import { rateLimitPlugin } from '../plugins/rate-limit.js';
+import type { RateLimitPluginOptions } from '../plugins/rate-limit.js';
+import { turnstilePlugin } from '../plugins/turnstile.js';
+import type { TurnstilePluginOptions } from '../plugins/turnstile.js';
 import { sessionPlugin } from '../plugins/session.js';
 import { storagePlugin } from '../plugins/storage.js';
 import { adminPlugin } from '../plugins/admin.js';
@@ -54,7 +58,13 @@ async function defaultGetEnv(event: RequestEvent): Promise<AuthHandleEnv> {
     KURATCHI_ADMIN_DB_NAME: pick('KURATCHI_ADMIN_DB_NAME'),
     KURATCHI_ADMIN_DB_TOKEN: pick('KURATCHI_ADMIN_DB_TOKEN'),
     KURATCHI_ADMIN_DB_ID: pick('KURATCHI_ADMIN_DB_ID'),
-    KURATCHI_GATEWAY_KEY: pick('KURATCHI_GATEWAY_KEY')
+    KURATCHI_GATEWAY_KEY: pick('KURATCHI_GATEWAY_KEY'),
+    CLOUDFLARE_TURNSTILE_SECRET:
+      pick('KURATCHI_CLOUDFLARE_TURNSTILE_SECRET') || pick('CLOUDFLARE_TURNSTILE_SECRET'),
+    CLOUDFLARE_TURNSTILE_SITE_KEY:
+      pick('KURATCHI_CLOUDFLARE_TURNSTILE_SITE_KEY') || pick('CLOUDFLARE_TURNSTILE_SITE_KEY'),
+    TURNSTILE_SECRET: pick('KURATCHI_TURNSTILE_SECRET') || pick('TURNSTILE_SECRET'),
+    TURNSTILE_SITE_KEY: pick('KURATCHI_TURNSTILE_SITE_KEY') || pick('TURNSTILE_SITE_KEY')
   } as AuthHandleEnv;
 }
 
@@ -72,7 +82,35 @@ function initializeLocals(locals: any): void {
  */
 export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: AuthPlugin[] } = {}): Handle {
   const registry = new PluginRegistry();
-  
+
+  const rateLimitDisabled = options.rateLimit === false;
+  const baseRateLimitOptions: RateLimitPluginOptions = (!rateLimitDisabled && options.rateLimit)
+    ? options.rateLimit as RateLimitPluginOptions
+    : {};
+
+  if (!rateLimitDisabled) {
+    const kvBindingFromOptions = options.kvNamespaces?.rateLimit;
+    const shouldInjectKvBinding =
+      kvBindingFromOptions &&
+      baseRateLimitOptions.kvBinding === undefined &&
+      baseRateLimitOptions.kvNamespace === undefined;
+
+    const finalRateLimitOptions = shouldInjectKvBinding
+      ? { ...baseRateLimitOptions, kvBinding: kvBindingFromOptions }
+      : baseRateLimitOptions;
+
+    registry.register(rateLimitPlugin(finalRateLimitOptions));
+  }
+
+  const turnstileDisabled = options.turnstile === false;
+  const baseTurnstileOptions: TurnstilePluginOptions = (!turnstileDisabled && options.turnstile)
+    ? options.turnstile as TurnstilePluginOptions
+    : {};
+
+  if (!turnstileDisabled) {
+    registry.register(turnstilePlugin(baseTurnstileOptions));
+  }
+
   // Register user-provided plugins
   if (options.plugins && options.plugins.length > 0) {
     // Always register storage plugin if storage config is provided,

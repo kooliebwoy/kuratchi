@@ -1711,51 +1711,87 @@ export const handle = createAuthHandle({
 });
 ```
 
-### Plugin with Configuration
+### Rate Limit Plugin (Built-in)
+
+Kuratchi automatically adds `rateLimitPlugin()` to protect sensitive auth flows. By default it throttles `POST /auth/signin`, `POST /auth/credentials/login`, and `POST /auth/signup` using an IP-based limiter (10 requests/min for sign-in, 5 requests/min for sign-up). To customise behaviour or add additional routes, pass `rateLimit` options when creating the auth handle:
 
 ```typescript
-// lib/auth-plugins/rate-limit.ts
-import type { AuthPlugin } from 'kuratchi-sdk/auth';
-
-export function rateLimitPlugin(options: {
-  maxRequests: number;
-  windowMs: number;
-}): AuthPlugin {
-  return {
-    name: 'rate-limit',
-    priority: 10, // Run early
-    
-    async onRequest(ctx) {
-      const kv = ctx.locals.kuratchi.kv?.default;
-      if (!kv) return;
-      
-      const ip = ctx.event.request.headers.get('cf-connecting-ip') || 'unknown';
-      const key = `ratelimit:${ip}`;
-      
-      const current = await kv.get(key);
-      const count = parseInt(current || '0');
-      
-      if (count >= options.maxRequests) {
-        return new Response('Rate limit exceeded', { status: 429 });
-      }
-      
-      await kv.put(key, String(count + 1), {
-        expirationTtl: Math.floor(options.windowMs / 1000)
-      });
-    }
-  };
-}
-
-// Use it
 import { createAuthHandle, sessionPlugin } from 'kuratchi-sdk/auth';
 
 export const handle = createAuthHandle({
+  rateLimit: {
+    // Add extra limits (e.g. contact form)
+    routes: [
+      {
+        id: 'contact-form',
+        path: '/api/contact',
+        methods: ['POST'],
+        maxRequests: 3,
+        windowMs: 60_000,
+        message: 'Too many contact attempts. Please try again later.'
+      }
+    ],
+    // Automatically picks up `kvNamespaces.rateLimit` (if configured) to store counters
+  },
   plugins: [
-    rateLimitPlugin({ maxRequests: 100, windowMs: 60000 }), // 100 req/min
-    sessionPlugin()
+    sessionPlugin(),
+    // other plugins...
   ]
 });
 ```
+
+To disable built-in rate limiting entirely, set `rateLimit: false` when calling `createAuthHandle()`.
+
+### Cloudflare Turnstile Plugin (Built-in)
+
+Kuratchi also ships with a ready-made `turnstilePlugin()` that performs server-side verification of [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) challenges. The plugin is registered automatically by `createAuthHandle()` and watches the same sensitive auth routes as the rate limiter (`POST /auth/signin`, `POST /auth/credentials/login`, `POST /auth/signup`). When a request hits one of those routes the plugin:
+
+- Looks for a Turnstile token in the request (`cf-turnstile-response` form field, JSON property, or `cf-turnstile-token` header)
+- Verifies it against Cloudflare using the secret key you provide (env or option)
+- Short-circuits with a `400`/`403` response if the challenge is missing or invalid
+- Populates `locals.kuratchi.security.turnstile` with helper data so your UI can render widgets and inspect the verification result
+
+Because Cloudflare only issues valid tokens for domains you configure, the plugin automatically skips verification during `svelte-kit dev` (it still exposes helper metadata but marks the widget as disabled). Set `disableInDev: false` if you have a custom dev domain that issues valid challenges.
+
+Configure the plugin by passing a `turnstile` option when creating the auth handle. Provide your Turnstile secret/site key (directly or via env) and add extra routes if needed:
+
+```typescript
+import { createAuthHandle, sessionPlugin } from 'kuratchi-sdk/auth';
+
+export const handle = createAuthHandle({
+  turnstile: {
+    // Defaults to env.CLOUDFLARE_TURNSTILE_SITE_KEY / env.CLOUDFLARE_TURNSTILE_SECRET
+    siteKey: process.env.CLOUDFLARE_TURNSTILE_SITE_KEY,
+    secret: process.env.CLOUDFLARE_TURNSTILE_SECRET,
+    routes: [
+      {
+        id: 'support.form.turnstile',
+        path: '/support/contact',
+        methods: ['POST'],
+        tokenField: 'turnstileToken',
+        expectedAction: 'support_form'
+      }
+    ]
+  },
+  plugins: [
+    sessionPlugin(),
+    // ...
+  ]
+});
+```
+
+On every request the plugin exposes Turnstile helpers via `locals.kuratchi.security.turnstile`:
+
+```ts
+// Example inside a SvelteKit load/action
+const { siteKey, scriptUrl, enabled, verified } = locals.kuratchi.security.turnstile ?? {};
+```
+
+- `siteKey` / `scriptUrl` help render the widget client-side
+- `enabled` reflects whether a secret was resolved and the plugin is active for the current environment
+- `verified`, `token`, and `result` are set after a request successfully passes validation
+
+To disable Turnstile entirely, set `turnstile: false` when calling `createAuthHandle()`.
 
 ---
 
@@ -1839,6 +1875,8 @@ await admin.deleteOrganization(org.id);
 | **`emailAuthPlugin()`** | **Magic links** | ❌ **Optional** | `sessionPlugin()` |
 | **`oauthPlugin()`** | **Social login** | ❌ **Optional** | `sessionPlugin()` |
 | **`credentialsPlugin()`** | **Email/password** | ❌ **Optional** | `sessionPlugin()` |
+| `rateLimitPlugin()` | Request throttling for auth flows | ✅ Default | None |
+| `turnstilePlugin()` | Cloudflare Turnstile verification | ✅ Default | None |
 
 ### Use Case → Setup
 
