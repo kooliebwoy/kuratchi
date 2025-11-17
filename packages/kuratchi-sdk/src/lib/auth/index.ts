@@ -20,6 +20,8 @@ export {
   emailAuthPlugin,
   oauthPlugin,
   credentialsPlugin,
+  rateLimitPlugin,
+  turnstilePlugin,
   rolesPlugin,
   activityPlugin
 } from './plugins/index.js';
@@ -45,6 +47,11 @@ export type {
   OAuthPluginOptions,
   OAuthProviderConfig,
   CredentialsPluginOptions,
+  RateLimitPluginOptions,
+  RateLimitRouteConfig,
+  TurnstilePluginOptions,
+  TurnstileRouteConfig,
+  TurnstileVerificationResult,
   RolesPluginOptions,
   PermissionDef,
   RoleDefinitions,
