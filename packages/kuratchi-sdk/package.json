@@ -115,9 +115,9 @@
 		"svelte"
 	],
 	"dependencies": {
+		"@aws-sdk/client-ses": "^3.705.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.3",
 		"cloudflare": "^5.2.0",
-		"resend": "^4.8.0",
 		"stripe": "^19.1.0",
 		"tsx": "^4.19.2"
 	}

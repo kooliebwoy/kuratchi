@@ -55,8 +55,10 @@ export const { handle }: { handle: Handle } = kuratchi({
     ]
   },
   email: {
-    apiKey: env.RESEND_API_KEY,
-    from: env.RESEND_FROM_EMAIL,
+    region: env.AWS_SES_REGION || 'us-east-1',
+    accessKeyId: env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
+    from: env.RESEND_FROM_EMAIL || 'noreply@kuratchi.dev',
     fromName: 'Kuratchi',
     trackEmails: true,
     trackingDb: 'admin',

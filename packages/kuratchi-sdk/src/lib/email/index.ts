@@ -1,14 +1,20 @@
 /**
  * Email Plugin - Standalone email service with tracking
- * Uses Resend for email delivery and tracks all sent emails
+ * Uses Amazon SES V2 for email delivery with tenant isolation
  */
 
 import type { RequestEvent } from '@sveltejs/kit';
-import { Resend } from 'resend';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 
 export interface EmailPluginOptions {
-	/** Resend API key */
-	apiKey: string;
+	/** AWS Region for SES (e.g., 'us-east-1') */
+	region: string;
+	
+	/** AWS Access Key ID */
+	accessKeyId: string;
+	
+	/** AWS Secret Access Key */
+	secretAccessKey: string;
 	
 	/** Default from email address */
 	from: string;
@@ -24,6 +30,9 @@ export interface EmailPluginOptions {
 	
 	/** Table name for email tracking (default: 'emails') */
 	trackingTable?: string;
+	
+	/** Optional SES configuration set name */
+	configurationSetName?: string;
 }
 
 export interface SendEmailOptions {
@@ -33,11 +42,16 @@ export interface SendEmailOptions {
 	text?: string;
 	from?: string;
 	fromName?: string;
-	replyTo?: string;
+	replyTo?: string | string[];
 	cc?: string | string[];
 	bcc?: string | string[];
-	tags?: { name: string; value: string }[];
+	tags?: Record<string, string>; // SES tags for categorization
 	headers?: Record<string, string>;
+	
+	// SES V2-specific options
+	configurationSetName?: string; // Override default configuration set
+	returnPath?: string; // Email address for bounces
+	fromEmailAddressIdentityArn?: string; // ARN for specific identity
 	
 	// Tracking metadata
 	userId?: string;
@@ -53,7 +67,7 @@ export interface EmailRecord {
 	subject: string;
 	emailType?: string;
 	status: 'sent' | 'failed' | 'pending';
-	resendId?: string;
+	sesMessageId?: string;
 	error?: string;
 	userId?: string;
 	organizationId?: string;
@@ -62,22 +76,28 @@ export interface EmailRecord {
 	createdAt: string;
 }
 
-let resendClient: Resend | null = null;
+let sesClient: SESv2Client | null = null;
 let pluginOptions: EmailPluginOptions | null = null;
 
 export function initEmailPlugin(options: EmailPluginOptions) {
 	pluginOptions = options;
-	resendClient = new Resend(options.apiKey);
+	sesClient = new SESv2Client({
+		region: options.region,
+		credentials: {
+			accessKeyId: options.accessKeyId,
+			secretAccessKey: options.secretAccessKey,
+		}
+	});
 }
 
 /**
- * Send an email via Resend and optionally track it
+ * Send an email via Amazon SES V2 and optionally track it
  */
 export async function sendEmail(
 	event: RequestEvent,
 	options: SendEmailOptions
 ): Promise<{ success: boolean; id?: string; error?: string }> {
-	if (!resendClient || !pluginOptions) {
+	if (!sesClient || !pluginOptions) {
 		throw new Error('Email plugin not initialized. Call initEmailPlugin() first.');
 	}
 
@@ -86,25 +106,68 @@ export async function sendEmail(
 		: options.from || pluginOptions.from;
 
 	try {
-		// Send email via Resend
-		const result = await resendClient.emails.send({
-			from,
-			to: options.to,
-			subject: options.subject,
-			html: options.html,
-			text: options.text,
-			reply_to: options.replyTo,
-			cc: options.cc,
-			bcc: options.bcc,
-			tags: options.tags,
-			headers: options.headers,
-		});
+		// Prepare email content
+		const content: any = {
+			Simple: {
+				Subject: { Data: options.subject, Charset: 'UTF-8' },
+				Body: {}
+			}
+		};
+
+		if (options.html && options.text) {
+			content.Simple.Body.Html = { Data: options.html, Charset: 'UTF-8' };
+			content.Simple.Body.Text = { Data: options.text, Charset: 'UTF-8' };
+		} else if (options.html) {
+			content.Simple.Body.Html = { Data: options.html, Charset: 'UTF-8' };
+		} else if (options.text) {
+			content.Simple.Body.Text = { Data: options.text, Charset: 'UTF-8' };
+		} else {
+			throw new Error('Either html or text content is required');
+		}
+
+		// Prepare destination
+		const destination: any = {
+			ToAddresses: Array.isArray(options.to) ? options.to : [options.to]
+		};
+		if (options.cc) {
+			destination.CcAddresses = Array.isArray(options.cc) ? options.cc : [options.cc];
+		}
+		if (options.bcc) {
+			destination.BccAddresses = Array.isArray(options.bcc) ? options.bcc : [options.bcc];
+		}
+
+		// Prepare command parameters
+		const params: any = {
+			FromEmailAddress: from,
+			Destination: destination,
+			Content: content
+		};
+
+		// Add optional parameters
+		if (options.replyTo) {
+			params.ReplyToAddresses = Array.isArray(options.replyTo) ? options.replyTo : [options.replyTo];
+		}
+		if (options.configurationSetName || pluginOptions.configurationSetName) {
+			params.ConfigurationSetName = options.configurationSetName || pluginOptions.configurationSetName;
+		}
+		if (options.fromEmailAddressIdentityArn) {
+			params.FromEmailAddressIdentityArn = options.fromEmailAddressIdentityArn;
+		}
+
+		// Add email tags
+		if (options.tags) {
+			params.EmailTags = Object.entries(options.tags).map(([Name, Value]) => ({ Name, Value }));
+		}
+
+		// Send email via SES V2
+		const command = new SendEmailCommand(params);
+		const result = await sesClient.send(command);
 
 		// Track email if enabled
 		if (pluginOptions.trackEmails !== false) {
 			await trackEmail(event, {
 				...options,
-				resendId: result.data?.id,
+				sesMessageId: result.MessageId,
 				status: 'sent',
 				from,
 			});
@@ -112,7 +175,7 @@ export async function sendEmail(
 
 		return {
 			success: true,
-			id: result.data?.id,
+			id: result.MessageId,
 		};
 	} catch (error: any) {
 		console.error('[Email] Failed to send email:', error);
@@ -140,7 +203,7 @@ export async function sendEmail(
 async function trackEmail(
 	event: RequestEvent,
 	options: SendEmailOptions & { 
-		resendId?: string; 
+		sesMessageId?: string; 
 		status: 'sent' | 'failed' | 'pending';
 		error?: string;
 		from: string;
@@ -170,7 +233,7 @@ async function trackEmail(
 			subject: options.subject,
 			emailType: options.emailType,
 			status: options.status,
-			resendId: options.resendId,
+			sesMessageId: options.sesMessageId,
 			error: options.error,
 			userId: options.userId,
 			organizationId: options.organizationId,

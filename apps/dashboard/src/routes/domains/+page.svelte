@@ -215,7 +215,7 @@
               <h3 class="card-title text-lg">Email Sending</h3>
             </div>
             <p class="text-sm text-base-content/70">
-              Send professional emails from your own domain using Resend. Perfect for newsletters, notifications, and drip campaigns.
+              Send professional emails from your own domain using AWS SES. Perfect for newsletters, notifications, and drip campaigns.
             </p>
           </div>
         </div>
@@ -348,10 +348,15 @@
                               <div class="flex items-start justify-between gap-4">
                                 <div class="flex-1 min-w-0">
                                   <div class="flex items-center gap-2 mb-2">
-                                    <span class="badge badge-sm badge-primary">{record.type || record.record_type || 'TXT'}</span>
+                                    <span class="badge badge-sm badge-primary">{record.type}</span>
                                     <span class="text-xs font-medium text-base-content/60">
-                                      {record.name === '@' ? 'Root domain (@)' : record.name}
+                                      {record.name}
                                     </span>
+                                    {#if record.type === 'TXT'}
+                                      <span class="badge badge-sm badge-ghost">Domain Verification</span>
+                                    {:else if record.type === 'CNAME'}
+                                      <span class="badge badge-sm badge-ghost">DKIM</span>
+                                    {/if}
                                   </div>
                                   <div class="flex items-center gap-2">
                                     <code class="text-xs font-mono break-all flex-1 bg-base-200 p-2 rounded">
@@ -458,9 +463,10 @@
               <div class="text-sm">
                 <p class="font-semibold mb-1">Next steps:</p>
                 <ol class="list-decimal list-inside space-y-1 text-base-content/70">
-                  <li>We'll register your domain with Resend</li>
-                  <li>You'll get DNS records to add to your domain provider</li>
-                  <li>After adding DNS records, verify to start using</li>
+                  <li>We'll register your domain with AWS SES</li>
+                  <li>You'll get DNS records (TXT + DKIM CNAMEs) to add to your domain provider</li>
+                  <li>After adding DNS records, verify to start sending emails</li>
+                  <li>Each verified domain can send emails with your branding</li>
                 </ol>
               </div>
             </div>

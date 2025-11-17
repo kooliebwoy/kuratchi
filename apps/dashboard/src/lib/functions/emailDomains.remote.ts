@@ -1,25 +1,92 @@
 /**
  * Email Domains API
- * Manages organization-level domains for email sending via Resend
+ * Manages organization-level domains for email sending via AWS SES
  */
 
 import { getRequestEvent, query, command } from '$app/server';
 import { error } from '@sveltejs/kit';
-import { Resend } from 'resend';
+import { 
+  SESv2Client,
+  CreateEmailIdentityCommand,
+  DeleteEmailIdentityCommand,
+  GetEmailIdentityCommand,
+  PutEmailIdentityDkimAttributesCommand,
+  CreateTenantCommand,
+  GetTenantCommand,
+  DeleteTenantCommand,
+  type EmailIdentity,
+  type DkimAttributes
+} from '@aws-sdk/client-sesv2';
 import { env } from '$env/dynamic/private';
 import * as v from 'valibot';
 import { getAdminDatabase } from '$lib/server/db-context';
 
-// Resend client helper
-let resendClient: Resend | null = null;
-const getResendClient = () => {
-  if (!env.RESEND_API_KEY) {
-    error(500, 'Resend API key not configured');
+// SES V2 client helper
+let sesClient: SESv2Client | null = null;
+const getSESClient = () => {
+  if (!env.AWS_SES_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    error(500, 'AWS SES credentials not configured');
   }
-  if (!resendClient) {
-    resendClient = new Resend(env.RESEND_API_KEY);
+  if (!sesClient) {
+    sesClient = new SESv2Client({
+      region: env.AWS_SES_REGION,
+      credentials: {
+        accessKeyId: env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      }
+    });
   }
-  return resendClient;
+  return sesClient;
+};
+
+/**
+ * Ensure organization has a SES tenant
+ * Creates tenant if it doesn't exist
+ */
+const ensureTenant = async (db: any, organizationId: string, organizationName: string) => {
+  const ses = getSESClient();
+  
+  // Get organization
+  const org = await db.query.organizations.findFirst({
+    where: (fields: any, { eq }: any) => eq(fields.id, organizationId)
+  });
+
+  if (!org) {
+    throw new Error('Organization not found');
+  }
+
+  // If tenant already exists, return it
+  if (org.sesTenantId) {
+    try {
+      const getTenant = await ses.send(new GetTenantCommand({ TenantName: org.sesTenantId }));
+      return org.sesTenantId;
+    } catch (err) {
+      // Tenant doesn't exist in SES, create it
+      console.warn('[ensureTenant] Tenant exists in DB but not in SES, recreating');
+    }
+  }
+
+  // Create new tenant
+  const tenantName = `org-${organizationId.slice(0, 8)}-${Date.now()}`;
+  
+  try {
+    await ses.send(new CreateTenantCommand({
+      TenantName: tenantName,
+      EngagementEventDestinations: [],
+      EmailSendingEnabled: true
+    }));
+
+    // Update organization with tenant ID
+    await db.update.organizations(
+      { sesTenantId: tenantName },
+      (fields: any, { eq }: any) => eq(fields.id, organizationId)
+    );
+
+    return tenantName;
+  } catch (err) {
+    console.error('[ensureTenant] Failed to create tenant:', err);
+    throw new Error('Failed to create SES tenant');
+  }
 };
 
 const ensureSession = () => {
@@ -89,7 +156,7 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
   try {
     const { event } = ensureSession();
     const db = await getAdminDatabase(event.locals);
-    const resend = getResendClient();
+    const ses = getSESClient();
     
     if (!db) {
       return { success: false, error: 'Database not available' };
@@ -100,6 +167,18 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       return { success: false, error: 'Organization not found' };
     }
 
+    // Get organization
+    const org = await db.query.organizations.findFirst({
+      where: (fields: any, { eq }: any) => eq(fields.id, organizationId)
+    });
+
+    if (!org) {
+      return { success: false, error: 'Organization not found' };
+    }
+
+    // Ensure organization has a SES tenant
+    const tenantId = await ensureTenant(db, organizationId, org.organizationName || 'Organization');
+
     // Normalize domain
     const normalizedDomain = data.name
       .toLowerCase()
@@ -107,18 +186,45 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       .replace(/^www\./, '')
       .replace(/\/$/, '');
 
-    // Create domain in Resend
-    const resendDomain = await resend.domains.create({
-      name: normalizedDomain,
-      region: 'us-east-1' // or make this configurable
+    // Create email identity in SES V2 with tenant isolation
+    const createIdentityCommand = new CreateEmailIdentityCommand({
+      EmailIdentity: normalizedDomain,
+      DkimSigningAttributes: {
+        DomainSigningSelector: 'ses',
+      },
+      Tags: [
+        { Key: 'OrganizationId', Value: organizationId },
+        { Key: 'TenantId', Value: tenantId },
+        { Key: 'ManagedBy', Value: 'Kuratchi' }
+      ]
     });
 
-    if (!resendDomain.data?.id) {
-      return { success: false, error: 'Failed to create domain in Resend' };
+    const identityResponse = await ses.send(createIdentityCommand);
+
+    if (!identityResponse.IdentityType) {
+      return { success: false, error: 'Failed to create email identity in SES' };
     }
 
-    // Get DNS records from Resend
-    const dnsRecords = (resendDomain.data as any)?.records || [];
+    // Get identity details including DKIM tokens
+    const getIdentityCommand = new GetEmailIdentityCommand({
+      EmailIdentity: normalizedDomain
+    });
+    const identityDetails = await ses.send(getIdentityCommand);
+
+    const dkimTokens = identityDetails.DkimAttributes?.Tokens || [];
+    const verificationToken = identityDetails.DkimAttributes?.SigningAttributesOrigin;
+
+    // Build DNS records for user to configure
+    const dnsRecords = [
+      // DKIM CNAME records
+      ...dkimTokens.map((token) => ({
+        type: 'CNAME',
+        name: `${token}._domainkey.${normalizedDomain}`,
+        value: `${token}.dkim.amazonses.com`,
+        priority: null,
+        description: 'DKIM signing record for email authentication'
+      }))
+    ];
 
     // Insert domain in database
     const result = await db.insert.domains({
@@ -127,24 +233,31 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       organizationId,
       emailEnabled: true,
       emailVerified: false,
-      resendDomainId: resendDomain.data.id,
-      emailDnsRecords: JSON.stringify(dnsRecords)
+      sesVerificationToken: verificationToken || '',
+      sesDkimTokens: JSON.stringify(dkimTokens),
+      emailDnsRecords: JSON.stringify(dnsRecords),
+      sesTenantId: tenantId
     });
 
     if (!result.success) {
-      // Cleanup: delete from Resend if DB insert fails
-      await resend.domains.remove(resendDomain.data.id);
+      // Cleanup: delete from SES if DB insert fails
+      try {
+        await ses.send(new DeleteEmailIdentityCommand({ EmailIdentity: normalizedDomain }));
+      } catch (cleanupErr) {
+        console.error('[emailDomains.add] Cleanup failed:', cleanupErr);
+      }
       return { success: false, error: 'Failed to save domain' };
     }
 
     return { 
       success: true, 
       domain: result.results,
-      dnsRecords
+      dnsRecords,
+      tenantId
     };
   } catch (err) {
     console.error('[emailDomains.add] error:', err);
-    return { success: false, error: 'Failed to add domain' };
+    return { success: false, error: 'Failed to add domain: ' + (err as Error).message };
   }
 });
 
@@ -159,7 +272,7 @@ export const verifyEmailDomain = guardedCommand(verifyDomainSchema, async (data)
   try {
     const { event } = ensureSession();
     const db = await getAdminDatabase(event.locals);
-    const resend = getResendClient();
+    const ses = getSESClient();
     
     if (!db) {
       return { success: false, error: 'Database not available' };
@@ -170,14 +283,22 @@ export const verifyEmailDomain = guardedCommand(verifyDomainSchema, async (data)
       where: (fields: any, { eq }: any) => eq(fields.id, data.domainId)
     });
 
-    if (!domain || !domain.resendDomainId) {
+    if (!domain) {
       return { success: false, error: 'Domain not found' };
     }
 
-    // Verify with Resend
-    const resendDomain = await resend.domains.verify(domain.resendDomainId);
+    // Get identity details from SES V2
+    const getIdentityCommand = new GetEmailIdentityCommand({
+      EmailIdentity: domain.name
+    });
+    const identityDetails = await ses.send(getIdentityCommand);
 
-    if ((resendDomain.data as any)?.status === 'verified') {
+    const dkimStatus = identityDetails.DkimAttributes?.Status;
+    const verifiedForSending = identityDetails.VerifiedForSendingStatus;
+
+    const isFullyVerified = dkimStatus === 'SUCCESS' && verifiedForSending === true;
+
+    if (isFullyVerified) {
       // Update database
       await db.update.domains(
         { emailVerified: true },
@@ -189,12 +310,15 @@ export const verifyEmailDomain = guardedCommand(verifyDomainSchema, async (data)
 
     return { 
       success: false, 
-      error: 'Domain not yet verified. Please ensure all DNS records are configured.',
-      status: (resendDomain.data as any)?.status
+      error: 'Domain not yet verified. Please ensure all DNS records are configured and have propagated.',
+      status: {
+        dkim: dkimStatus || 'PENDING',
+        verifiedForSending: verifiedForSending || false
+      }
     };
   } catch (err) {
     console.error('[emailDomains.verify] error:', err);
-    return { success: false, error: 'Failed to verify domain' };
+    return { success: false, error: 'Failed to verify domain: ' + (err as Error).message };
   }
 });
 
@@ -209,7 +333,7 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
   try {
     const { event } = ensureSession();
     const db = await getAdminDatabase(event.locals);
-    const resend = getResendClient();
+    const ses = getSESClient();
     
     if (!db) {
       return { success: false, error: 'Database not available' };
@@ -224,14 +348,15 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
       return { success: false, error: 'Domain not found' };
     }
 
-    // Delete from Resend if it exists
-    if (domain.resendDomainId) {
-      try {
-        await resend.domains.remove(domain.resendDomainId);
-      } catch (err) {
-        console.warn('[emailDomains.delete] Failed to delete from Resend:', err);
-        // Continue with DB deletion even if Resend fails
-      }
+    // Delete email identity from SES V2
+    try {
+      const deleteCommand = new DeleteEmailIdentityCommand({
+        EmailIdentity: domain.name
+      });
+      await ses.send(deleteCommand);
+    } catch (err) {
+      console.warn('[emailDomains.delete] Failed to delete from SES:', err);
+      // Continue with DB deletion even if SES fails
     }
 
     // Delete from database

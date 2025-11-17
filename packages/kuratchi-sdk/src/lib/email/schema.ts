@@ -11,7 +11,7 @@ export const emailsTableSchema = {
 		subject: 'text not null',
 		emailType: 'text', // e.g., 'magic_link', 'password_reset', 'notification'
 		status: 'enum(sent,failed,pending) default sent',
-		resendId: 'text', // Resend email ID for tracking
+		sesMessageId: 'text', // SES Message ID for tracking
 		error: 'text', // Error message if failed
 		userId: 'text',
 		organizationId: 'text',
