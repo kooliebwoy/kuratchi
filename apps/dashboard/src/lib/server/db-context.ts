@@ -65,9 +65,23 @@ export async function getDatabase(locals: RequestEvent['locals'], orgId?: string
 }
 
 /**
- * Force admin database access (for superadmin-only operations)
+ * Get admin database access (for normal operations that need admin DB)
+ * This is used for storing site metadata, database records, etc.
  */
 export async function getAdminDatabase(locals: RequestEvent['locals']) {
+  const adminDb = await locals.kuratchi?.getAdminDb?.();
+  if (!adminDb) {
+    error(500, 'Admin database not available');
+  }
+  
+  return adminDb;
+}
+
+/**
+ * Get admin database with superadmin check (for explicit superadmin-only operations)
+ * Use this for operations that should only be accessible to superadmins
+ */
+export async function getSuperadminDatabase(locals: RequestEvent['locals']) {
   const isSuperadmin = locals.kuratchi?.superadmin?.isSuperadmin?.();
   
   if (!isSuperadmin) {

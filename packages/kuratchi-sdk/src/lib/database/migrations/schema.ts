@@ -106,7 +106,7 @@ function parseColumnDef(name: string, def: string): Column {
     case 'integer': col.type = 'integer'; break;
     case 'real': col.type = 'real'; break;
     case 'blob': col.type = 'blob'; break;
-    case 'json': col.type = 'json'; break;
+    case 'json': col.type = 'json'; break; // JSON is stored as TEXT in SQLite
     default:
       // allow alias: timestamp_ms -> integer mode timestamp_ms
       if (typeTok === 'timestamp_ms') { col.type = 'integer'; col.mode = 'timestamp_ms'; }

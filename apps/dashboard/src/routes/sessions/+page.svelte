@@ -6,7 +6,7 @@
     revokeSession,
     revokeAllUserSessions,
     cleanupExpiredSessions
-  } from '../../lib/api/sessions.remote';
+  } from '$lib/functions/sessions.remote';
 
   // Data sources
   const sessions = getSessions();

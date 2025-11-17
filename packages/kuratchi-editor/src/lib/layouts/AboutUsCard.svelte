@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { LayoutBlock, SearchImage } from '../shell/index.js';
+    import { LayoutBlock } from '../shell/index.js';
+    import { ImagePicker } from '../plugins/index.js';
         
     interface CardImage {
         url: string;
@@ -111,7 +112,7 @@
 
             <fieldset class="fieldset">
                 <legend class="fieldset-legend">Image</legend>
-                <SearchImage bind:selectedImage={image} />
+                <ImagePicker bind:selectedImage={image} mode="single" />
             </fieldset>
         </div>
     {/snippet}

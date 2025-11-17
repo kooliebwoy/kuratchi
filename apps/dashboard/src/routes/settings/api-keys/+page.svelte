@@ -6,7 +6,7 @@
     createApiKey,
     rotateApiKey,
     deleteApiKey
-  } from '$lib/api/api-keys.remote';
+  } from '$lib/functions/api-keys.remote';
 
   const apiKeys = getApiKeys();
   const apiKeysData = $derived(apiKeys.current || []);

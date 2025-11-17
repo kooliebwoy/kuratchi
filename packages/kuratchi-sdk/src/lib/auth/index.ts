@@ -46,7 +46,11 @@ export type {
   OAuthProviderConfig,
   CredentialsPluginOptions,
   RolesPluginOptions,
-  ActivityLogOptions
+  PermissionDef,
+  RoleDefinitions,
+  ActivityLogOptions,
+  ActivityTypeDefinition,
+  ActivityPluginOptions
 } from './plugins/index.js';
 
 export type {

@@ -1,20 +1,62 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Mail, Zap, Users, FileText, BarChart3, ArrowRight } from 'lucide-svelte';
-  import { getEmails, getEmailStats } from '$lib/api/emails.remote';
-  import { listDripCampaigns, listSegments } from '$lib/api/newsletter.remote';
+  import { Mail, Zap, Users, FileText, BarChart3, ArrowRight, Globe, CheckCircle, Circle, ChevronDown } from 'lucide-svelte';
+  import { getEmails, getEmailStats } from '$lib/functions/emails.remote';
+  import { listDripCampaigns, listSegments } from '$lib/functions/newsletter.remote';
+  import { getEmailDomains } from '$lib/functions/emailDomains.remote';
 
   const emails = getEmails();
   const stats = getEmailStats();
   const dripResource = listDripCampaigns();
   const segmentsResource = listSegments();
+  const domainsResource = getEmailDomains();
 
   const statsData = $derived(stats.current || { total: 0, sent: 0, failed: 0, pending: 0, last24h: 0 });
   const campaigns = $derived(Array.isArray(dripResource.current) ? dripResource.current : []);
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);
+  const domains = $derived(Array.isArray(domainsResource.current) ? domainsResource.current : []);
   
   const activeCampaigns = $derived(campaigns.filter((c: any) => c.status === 'active').length);
   const totalContacts = $derived(segments.reduce((sum: number, seg: any) => sum + (seg.contactCount ?? 0), 0));
+  const verifiedDomains = $derived(domains.filter(d => d.emailVerified));
+  const hasVerifiedDomain = $derived(verifiedDomains.length > 0);
+  const hasAnyDomain = $derived(domains.length > 0);
+
+  // Domain context switching
+  let selectedDomain = $state<any>(null);
+  $effect(() => {
+    if (verifiedDomains.length > 0 && !selectedDomain) {
+      selectedDomain = verifiedDomains[0];
+    }
+  });
+
+  // Setup progress tracking
+  const setupSteps = $derived([
+    { 
+      id: 'domain', 
+      title: 'Add & Verify Domain', 
+      description: 'Set up your email domain',
+      completed: hasVerifiedDomain,
+      link: '/domains'
+    },
+    { 
+      id: 'campaign', 
+      title: 'Create First Campaign', 
+      description: 'Build your first drip sequence',
+      completed: campaigns.length > 0,
+      link: '/emails/drip'
+    },
+    { 
+      id: 'launch', 
+      title: 'Launch Campaign', 
+      description: 'Start sending emails',
+      completed: activeCampaigns > 0,
+      link: '/emails/drip'
+    }
+  ]);
+  
+  const setupComplete = $derived(setupSteps.every(step => step.completed));
+  const completedSteps = $derived(setupSteps.filter(step => step.completed).length);
 </script>
 
 <svelte:head>
@@ -26,13 +68,99 @@
   <div class="flex items-center justify-between">
     <div>
       <h1 class="text-3xl font-bold">Email Dashboard</h1>
-      <p class="text-base-content/70 mt-1">Welcome, let's dive into your email marketing.</p>
+      <p class="text-base-content/70 mt-1">Manage your email marketing campaigns.</p>
     </div>
-    <a href="/emails/drip" class="btn btn-primary">
-      <Zap class="h-4 w-4" />
-      Create Campaign
-    </a>
+    <div class="flex items-center gap-3">
+      {#if verifiedDomains.length > 0}
+        <!-- Domain Context Switcher -->
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-ghost gap-2">
+            <Globe class="h-4 w-4" />
+            <span class="hidden sm:inline">{selectedDomain?.name || 'Select Domain'}</span>
+            <ChevronDown class="h-4 w-4" />
+          </div>
+          <ul tabindex="0" class="dropdown-content z-1 menu p-2 shadow-lg bg-base-100 rounded-box w-64 border border-base-200 mt-2">
+            <li class="menu-title">
+              <span>Verified Domains</span>
+            </li>
+            {#each verifiedDomains as domain}
+              <li>
+                <button 
+                  class="flex items-center justify-between {selectedDomain?.id === domain.id ? 'active' : ''}"
+                  onclick={() => selectedDomain = domain}
+                >
+                  <span class="truncate">{domain.name}</span>
+                  {#if selectedDomain?.id === domain.id}
+                    <CheckCircle class="h-4 w-4 text-primary" />
+                  {/if}
+                </button>
+              </li>
+            {/each}
+            <div class="divider my-1"></div>
+            <li>
+              <a href="/domains" class="text-primary">
+                <Globe class="h-4 w-4" />
+                Manage Domains
+              </a>
+            </li>
+          </ul>
+        </div>
+      {/if}
+      <a href="/emails/drip" class="btn btn-primary gap-2">
+        <Zap class="h-4 w-4" />
+        Create Campaign
+      </a>
+    </div>
   </div>
+
+  <!-- Getting Started Section (show if not complete) -->
+  {#if !setupComplete}
+    <div class="card bg-linear-to-br from-primary/5 via-secondary/5 to-accent/5 border-2 border-primary/20 shadow-lg">
+      <div class="card-body">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="card-title text-2xl">Getting Started with Email</h2>
+            <p class="text-base-content/70 mt-1">
+              {completedSteps} of {setupSteps.length} steps completed
+            </p>
+          </div>
+          <div class="radial-progress text-primary" style="--value:{(completedSteps / setupSteps.length) * 100};" role="progressbar">
+            {completedSteps}/{setupSteps.length}
+          </div>
+        </div>
+        
+        <div class="grid md:grid-cols-3 gap-4">
+          {#each setupSteps as step, index}
+            <a 
+              href={step.link}
+              class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary/40 transition-all"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-full {step.completed ? 'bg-success' : 'bg-base-300'} flex items-center justify-center shrink-0">
+                    {#if step.completed}
+                      <CheckCircle class="h-5 w-5 text-white" />
+                    {:else}
+                      <span class="text-sm font-bold text-base-content/70">{index + 1}</span>
+                    {/if}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-sm mb-1">{step.title}</h3>
+                    <p class="text-xs text-base-content/60">{step.description}</p>
+                    {#if !step.completed}
+                      <div class="mt-2">
+                        <span class="text-xs text-primary font-medium">Get started →</span>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </a>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Key Metrics -->
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -98,7 +226,7 @@
   </div>
 
   <!-- Navigation Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
     <!-- Drip Campaigns -->
     <a href="/emails/drip" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
       <div class="card-body">
@@ -174,10 +302,29 @@
         </div>
       </div>
     </a>
+
+    <!-- Domains -->
+    <a href="/domains" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
+      <div class="card-body">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="card-title text-lg flex items-center gap-2">
+              <Globe class="h-5 w-5 text-secondary" />
+              Domains
+            </h3>
+            <p class="text-sm text-base-content/70 mt-2">Verify domains for sending emails from your own domain.</p>
+          </div>
+          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+        </div>
+        <div class="mt-4 pt-4 border-t border-base-200">
+          <p class="text-xs text-base-content/60">DNS verification required</p>
+        </div>
+      </div>
+    </a>
   </div>
 
   <!-- Quick Stats -->
-  <div class="card bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
+  <div class="card bg-linear-to-br from-primary/5 to-primary/10 border border-primary/20">
     <div class="card-body">
       <h3 class="card-title">Performance Overview</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">

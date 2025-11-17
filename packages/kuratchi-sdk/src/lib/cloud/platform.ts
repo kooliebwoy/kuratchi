@@ -1,12 +1,30 @@
 /**
  * Platform Management Client
  * 
- * Provides convenient methods for managing databases, organizations, and other
- * platform resources through the Kuratchi Platform API.
+ * Provides convenient methods for managing databases, organizations, roles,
+ * permissions, and other platform resources through the Kuratchi Platform API.
  * 
- * Note: This is typically used internally by ManagedClient.
- * For most use cases, use `managed.Client` instead.
+ * @example
+ * ```typescript
+ * import { cloud } from 'kuratchi-sdk';
+ * 
+ * const platform = cloud.createPlatform({
+ *   apiKey: process.env.KURATCHI_API_KEY
+ * });
+ * 
+ * // Manage databases
+ * const databases = await platform.databases.list();
+ * 
+ * // Manage roles & permissions
+ * const roles = await platform.roles.list();
+ * await platform.roles.create({
+ *   name: 'editor',
+ *   permissions: ['posts.create', 'posts.edit']
+ * });
+ * ```
  */
+
+import type { RolesAPI, PermissionsAPI } from './platform-roles.js';
 
 export interface PlatformClientConfig {
   apiKey: string;
@@ -66,16 +84,29 @@ export interface ApiResponse<T = any> {
 export class PlatformClient {
   private apiKey: string;
   private baseUrl: string;
+  
+  /** Roles management API */
+  public readonly roles: RolesAPI;
+  
+  /** Permissions registry API */
+  public readonly permissions: PermissionsAPI;
 
   constructor(config: PlatformClientConfig) {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl || 'https://kuratchi.dev';
+    
+    // Lazy load to avoid circular dependency
+    // @ts-ignore - will be properly typed after import
+    const { RolesAPI: RolesAPIClass, PermissionsAPI: PermissionsAPIClass } = require('./platform-roles.js');
+    this.roles = new RolesAPIClass(this);
+    this.permissions = new PermissionsAPIClass(this);
   }
 
   /**
    * Make an authenticated request to the platform API
+   * Public to allow API extensions
    */
-  private async request<T = any>(
+  async request<T = any>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {

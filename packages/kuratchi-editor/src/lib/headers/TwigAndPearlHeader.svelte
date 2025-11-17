@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { SearchIcons } from '../shell/index.js';
+    import { LayoutBlock } from '../shell/index.js';
+    import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
-    import { Home, Search, Menu, Pencil } from '@lucide/svelte';
-    import { openRightPanel } from '../stores/right-panel.js';
+    import { Home, Search, Menu } from '@lucide/svelte';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
 
@@ -13,9 +13,6 @@
         title: 'Clutch CMS Logo',
     }
 
-    let component: HTMLElement;
-    let componentEditor: HTMLElement;
-    
     // Default menu data
     interface Props {
         searchEnabled?: boolean;
@@ -85,7 +82,8 @@
     }
 </script>
 
-{#snippet headerEditorContent()}
+<LayoutBlock {id} type={type}>
+{#snippet drawerContent()}
     <div class="space-y-6">
         <!-- Display Options -->
         <div class="space-y-3">
@@ -130,7 +128,7 @@
         <!-- Icons -->
         <div class="space-y-3">
             <h3 class="text-sm font-semibold text-base-content">Icons</h3>
-            <SearchIcons bind:selectedIcons={icons} />
+            <IconPicker bind:selectedIcons={icons} />
             <div class="space-y-2">
                 {#each icons as icon}
                     {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
@@ -149,24 +147,12 @@
     </div>
 {/snippet}
 
-<div class="{editable ? 'editor-header-item group relative' : ''}">
-    <!-- Edit Button - Hidden on hover -->
-    {#if editable}
-        <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-50 flex flex-row gap-1" bind:this={componentEditor}>
-            <button 
-                class="btn btn-xs btn-circle btn-ghost bg-base-100 border border-base-300 shadow-sm hover:bg-base-200"
-                onclick={() => openRightPanel(headerEditorContent, `Edit ${type}`)}
-            >
-                <Pencil class="text-base text-base-content/70" />
-            </button>
-        </div>
-    {/if}
-    <div class="container mx-auto" id={id} bind:this={component} style:background-color={backgroundColor} data-type={type}>
-        {#if editable}
-            <div class="hidden" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </div>
-        {/if}
+{#snippet metadata()}
+    {JSON.stringify(content)}
+{/snippet}
+
+{#snippet children()}
+    <div class="container mx-auto" id={id} style:background-color={backgroundColor} data-type={type}>
         <div class="navbar">
             {#if reverseOrder}
                 <div class="navbar-start grow">
@@ -315,6 +301,5 @@
             {/if}
         </div>
     </div>
-</div>
-
-
+{/snippet}
+</LayoutBlock>

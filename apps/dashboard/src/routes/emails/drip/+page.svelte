@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw } from 'lucide-svelte';
+  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight } from 'lucide-svelte';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
   import {
     listSegments,
@@ -9,7 +9,8 @@
     launchDripCampaign,
     processDripBranches,
     type DripCampaignRecord
-  } from '$lib/api/newsletter.remote';
+  } from '$lib/functions/newsletter.remote';
+  import { getEmailDomains } from '$lib/functions/emailDomains.remote';
 
   type StepInput = {
     id: string;
@@ -33,9 +34,13 @@
 
   const segmentsResource = listSegments();
   const dripResource = listDripCampaigns();
+  const domainsResource = getEmailDomains();
 
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);
   const campaigns = $derived(Array.isArray(dripResource.current) ? dripResource.current : []);
+  const domains = $derived(Array.isArray(domainsResource.current) ? domainsResource.current : []);
+  const verifiedDomains = $derived(domains.filter(d => d.emailVerified));
+  const hasVerifiedDomain = $derived(verifiedDomains.length > 0);
 
   const activeCampaigns = $derived(campaigns.filter((c) => c.status === 'active'));
   const totalScheduled = $derived(campaigns.reduce((total, campaign) => total + (campaign.metrics?.totalScheduled ?? 0), 0));
@@ -140,6 +145,10 @@
   }
 
   function openCreateModal() {
+    if (!hasVerifiedDomain) {
+      // Don't open modal if no verified domain
+      return;
+    }
     resetForm();
     showEditor = true;
   }
@@ -342,6 +351,23 @@
 </div>
 
 <section class="space-y-8 p-8">
+  <!-- Domain Verification Alert -->
+  {#if !hasVerifiedDomain}
+    <div class="alert alert-warning shadow-lg border border-warning/20">
+      <AlertTriangle class="h-6 w-6 shrink-0" />
+      <div class="flex-1">
+        <h3 class="font-bold text-lg mb-1">Verified Domain Required</h3>
+        <p class="text-sm mb-3">
+          You need to add and verify a domain before you can create drip campaigns. This ensures your emails are sent from your own domain.
+        </p>
+        <a href="/domains" class="btn btn-warning btn-sm gap-2">
+          <ArrowRight class="h-4 w-4" />
+          Go to Domains
+        </a>
+      </div>
+    </div>
+  {/if}
+
   <div class="flex flex-wrap items-center justify-between gap-4">
     <div>
       <p class="text-xs font-semibold uppercase tracking-wide text-primary/70">Automation</p>
@@ -357,7 +383,12 @@
         {/if}
         Sync branches
       </button>
-      <button class="btn btn-primary btn-sm" onclick={openCreateModal}>
+      <button 
+        class="btn btn-primary btn-sm" 
+        onclick={openCreateModal}
+        disabled={!hasVerifiedDomain}
+        title={!hasVerifiedDomain ? 'Add and verify a domain first' : 'Create new campaign'}
+      >
         <Plus class="h-4 w-4" />
         New campaign
       </button>
@@ -409,9 +440,28 @@
           </div>
         {:else if campaigns.length === 0}
           <div class="rounded-2xl border border-dashed border-base-300 bg-base-100 p-8 text-center shadow-sm">
-            <p class="text-lg font-semibold">No drips yet</p>
-            <p class="text-sm text-base-content/70">Kick off your first journey and keep leads warm automatically.</p>
-            <button class="btn btn-primary btn-sm mt-4" onclick={openCreateModal}>Create campaign</button>
+            <div class="w-16 h-16 rounded-2xl bg-linear-to-br from-primary/10 to-secondary/10 flex items-center justify-center mx-auto mb-4">
+              <Mail class="h-8 w-8 text-primary" />
+            </div>
+            <p class="text-lg font-semibold mb-2">No drip campaigns yet</p>
+            <p class="text-sm text-base-content/70 mb-4 max-w-md mx-auto">
+              {#if !hasVerifiedDomain}
+                First, add and verify a domain. Then create automated email sequences to nurture your audience.
+              {:else}
+                Create automated email sequences to nurture your audience and keep leads engaged.
+              {/if}
+            </p>
+            {#if hasVerifiedDomain}
+              <button class="btn btn-primary btn-sm" onclick={openCreateModal}>
+                <Plus class="h-4 w-4" />
+                Create your first campaign
+              </button>
+            {:else}
+              <a href="/domains" class="btn btn-primary btn-sm gap-2">
+                <ArrowRight class="h-4 w-4" />
+                Add Domain First
+              </a>
+            {/if}
           </div>
         {:else}
           <div class="space-y-5">

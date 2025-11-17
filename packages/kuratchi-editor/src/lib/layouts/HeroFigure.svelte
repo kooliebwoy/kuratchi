@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { SearchImage, LayoutBlock } from "../shell/index.js";
+    import { LayoutBlock } from "../shell/index.js";
+    import { ImagePicker } from "../plugins/index.js";
     import { ArrowRight } from "@lucide/svelte";
 
     interface Props {
@@ -109,7 +110,7 @@
 
             <div class="divider"></div>
 
-            <SearchImage bind:selectedImage={image} />
+            <ImagePicker bind:selectedImage={image} mode="single" />
         </div>
     {/snippet}
 

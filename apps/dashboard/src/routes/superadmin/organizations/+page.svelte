@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Building2, Plus, Pencil, Trash2, X } from 'lucide-svelte';
 	import { Dialog, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
-	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from '$lib/api/organizations.remote';
+	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from '$lib/functions/organizations.remote';
 
 	// Fetch organizations
 	const organizations = getOrganizations();

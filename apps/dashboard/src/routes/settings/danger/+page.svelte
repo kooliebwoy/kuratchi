@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AlertTriangle, X } from 'lucide-svelte';
-  import { cancelSubscription, deleteAccount } from '$lib/api/settings.remote';
+  import { cancelSubscription, deleteAccount } from '$lib/functions/settings.remote';
 
   // Modal state
   let showCancelModal = $state(false);

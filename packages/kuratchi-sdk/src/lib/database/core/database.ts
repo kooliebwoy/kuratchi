@@ -15,7 +15,7 @@ import { CloudflareClient } from '../../utils/cloudflare.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { createHttpClient } from '../clients/http-client.js';
 import { createOrmClient } from '../clients/orm-client.js';
-import { splitSqlStatements } from '../migrations/migration-utils.js';
+import { synchronizeSchema } from '../schema-sync.js';
 import { deployWorker } from '../deployment/worker-deployment.js';
 
 /**
@@ -52,7 +52,7 @@ export class KuratchiDatabase {
    * For direct D1 bindings (e.g., admin DB in SvelteKit), pass the binding directly to the plugin
    */
   async createDatabase(options: CreateDatabaseOptions): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
-    const { databaseName, gatewayKey, migrate, schema, schemaName } = options;
+    const { databaseName, gatewayKey, migrate, schema, schemaName, r2 } = options;
     
     if (!databaseName) {
       throw new Error('databaseName is required');
@@ -76,12 +76,28 @@ export class KuratchiDatabase {
     // Generate worker name from database name (sanitize for worker naming)
     const workerName = `${this.scriptNamePrefix}-${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
     
+    // Parse R2 options if provided
+    let r2BucketName: string | undefined;
+    let r2Binding: string | undefined;
+    if (r2) {
+      if (typeof r2 === 'boolean' && r2) {
+        // Auto-generate R2 bucket name from database name
+        r2BucketName = `${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}-storage`;
+        r2Binding = 'STORAGE';
+      } else if (typeof r2 === 'object') {
+        r2BucketName = r2.bucketName || `${databaseName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}-storage`;
+        r2Binding = r2.bindingName || 'STORAGE';
+      }
+    }
+    
     // Deploy D1 database and worker
     const { databaseId, workerName: deployedWorkerName } = await deployWorker({
       scriptName: workerName,
       databaseName,
       gatewayKey,
-      cloudflareClient: this.cloudflareClient
+      cloudflareClient: this.cloudflareClient,
+      r2BucketName,
+      r2Binding
     });
     
     console.log(`[Kuratchi] D1 worker deployed: ${deployedWorkerName} (DB ID: ${databaseId})`);
@@ -105,9 +121,9 @@ export class KuratchiDatabase {
     
     console.log(`[Kuratchi] Worker ${deployedWorkerName} is ready`);
     
-    // Apply migrations if requested (via HTTP)
-    if (migrate && schemaName) {
-      await this.applyInitialMigration(httpClient, schema, schemaName);
+    // Apply schema synchronization if requested
+    if (migrate && schema) {
+      await this.applyInitialSchemaSync(httpClient, databaseName, schema);
     }
     
     return { databaseName, token, databaseId, workerName: deployedWorkerName };
@@ -241,23 +257,16 @@ export class KuratchiDatabase {
    * Apply migrations during database creation (via HTTP)
    * Uses the same migration runner as runtime, loading from generated migrations folder
    */
-  private async applyInitialMigration(client: D1Client, schema: any, schemaName: string): Promise<void> {
-    const { applyMigrations } = await import('../migrations/migration-runner.js');
-    
-    console.log('[Kuratchi] Applying migrations via HTTP...');
-    
-    // Use the existing migration runner - it will:
-    // 1. Create migrations_history table
-    // 2. Load migrations from /migrations-{schemaName} folder
-    // 3. Apply all pending migrations
-    // 4. Skip already-applied migrations
-    await applyMigrations({
+  private async applyInitialSchemaSync(client: D1Client, databaseName: string, schema: any): Promise<void> {
+    console.log('[Kuratchi] Synchronizing schema via HTTP during provisioning...');
+
+    await synchronizeSchema({
       client,
-      schemaName,
-      schema  // Fallback if no migrations folder exists
+      schema,
+      databaseName
     });
-    
-    console.log('[Kuratchi] ✓ Migrations applied');
+
+    console.log('[Kuratchi] ✓ Schema synchronized');
   }
 
   /**

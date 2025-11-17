@@ -107,8 +107,15 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
         const bindingName = options.adminDatabase || 'DB';
         const d1Binding = platform?.env?.[bindingName];
         
+        console.log('[AdminPlugin] Debug - platform:', !!platform);
+        console.log('[AdminPlugin] Debug - platform.env:', !!platform?.env);
+        console.log('[AdminPlugin] Debug - bindingName:', bindingName);
+        console.log('[AdminPlugin] Debug - d1Binding:', !!d1Binding);
+        console.log('[AdminPlugin] Debug - d1Binding.prepare:', typeof d1Binding?.prepare);
+        
         // Check if D1 binding is available
         if (d1Binding && typeof d1Binding.prepare === 'function') {
+          console.log('[AdminPlugin] Using D1 direct binding for', bindingName);
           const { createOrmClient } = await import('../../database/clients/orm-client.js');
           
           // Wrap D1 binding in D1Client interface
@@ -139,10 +146,11 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             }
           };
           
-          adminDbClient = createOrmClient({
+          adminDbClient = await createOrmClient({
             httpClient: d1Client,
             schema: options.adminSchema,
-            databaseName: 'kuratchi-admin'
+            databaseName: bindingName, // Use binding name as database name for consistency
+            bindingName: bindingName // Pass the actual binding name for detection
           });
           
           return adminDbClient;
@@ -293,6 +301,35 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             scriptName: 'kuratchi-d1'
           });
           
+          // Provision R2 bucket for organization storage
+          const sanitizedOrgName = orgData.organizationName
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .substring(0, 32);
+          const r2BucketName = `org-${sanitizedOrgName}-${crypto.randomUUID().substring(0, 8)}`;
+          const r2Binding = 'STORAGE';
+          
+          let r2Created = false;
+          try {
+            console.log('[Admin] Creating R2 bucket:', r2BucketName);
+            const { CloudflareClient } = await import('../../utils/cloudflare.js');
+            const cfClient = new CloudflareClient({
+              apiToken: apiToken,
+              accountId: accountId
+            });
+            const r2Result = await cfClient.createR2Bucket(r2BucketName);
+            if (r2Result.success) {
+              console.log('[Admin] ✓ R2 bucket created:', r2BucketName);
+              r2Created = true;
+            } else {
+              console.warn('[Admin] R2 bucket creation failed:', r2Result.errors);
+            }
+          } catch (r2Error: any) {
+            console.error('[Admin] Failed to create R2 bucket:', r2Error.message);
+            // Non-fatal: continue without R2
+          }
+          
           // Create database with organization schema
           const result = await dbService.createDatabase({
             databaseName,
@@ -306,12 +343,14 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const dbUuid = result.databaseId;
           const workerName = result.workerName;
           
-          // 3. Store database record in admin DB (matches schema: id, name, dbuuid, workerName, organizationId)
+          // 3. Store database record in admin DB (matches schema: id, name, dbuuid, workerName, r2BucketName, r2Binding, organizationId)
           await adminDb.databases.insert({
             id: databaseId,
             name: databaseName,
             dbuuid: dbUuid,
             workerName: workerName,
+            r2BucketName: r2Created ? r2BucketName : null,
+            r2Binding: r2Created ? r2Binding : null,
             organizationId: organizationId,
             isPrimary: true,
             isActive: true,

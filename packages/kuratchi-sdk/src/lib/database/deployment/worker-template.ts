@@ -1,8 +1,10 @@
 // Default D1 SQLite Worker script with Session support
 // Provides HTTP endpoints for D1 database access with session bookmarks
+// and optional R2 storage operations
 // Bindings expected:
 // - env.DB (D1 database binding)
 // - env.API_KEY (secret master gateway key)
+// - env.STORAGE (optional R2 bucket binding)
 
 export const DEFAULT_D1_WORKER_SCRIPT = `
 
@@ -277,6 +279,131 @@ async function handleRequest(request, session, env) {
         sessionBookmark: session.getBookmark()
       });
     }, shouldRetry);
+  } else if (pathname === '/api/storage/get') {
+    if (!env.STORAGE) {
+      return Response.json({ success: false, error: 'R2 storage not configured' }, { status: 501 });
+    }
+    const { key } = await request.json();
+    if (!key) {
+      return Response.json({ success: false, error: 'Missing key parameter' }, { status: 400 });
+    }
+    try {
+      const object = await env.STORAGE.get(key);
+      if (!object) {
+        return Response.json({ success: false, error: 'Object not found' }, { status: 404 });
+      }
+      const data = await object.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
+      return Response.json({
+        success: true,
+        results: {
+          key,
+          data: base64,
+          size: object.size,
+          httpMetadata: object.httpMetadata,
+          customMetadata: object.customMetadata,
+          etag: object.etag
+        }
+      });
+    } catch (error) {
+      return Response.json({ success: false, error: String(error) }, { status: 500 });
+    }
+  } else if (pathname === '/api/storage/put') {
+    if (!env.STORAGE) {
+      return Response.json({ success: false, error: 'R2 storage not configured' }, { status: 501 });
+    }
+    const { key, data, httpMetadata, customMetadata } = await request.json();
+    if (!key || !data) {
+      return Response.json({ success: false, error: 'Missing key or data parameter' }, { status: 400 });
+    }
+    try {
+      // Decode base64 data
+      const binaryString = atob(data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const options = {};
+      if (httpMetadata) options.httpMetadata = httpMetadata;
+      if (customMetadata) options.customMetadata = customMetadata;
+      await env.STORAGE.put(key, bytes, options);
+      return Response.json({ success: true, results: { key } });
+    } catch (error) {
+      return Response.json({ success: false, error: String(error) }, { status: 500 });
+    }
+  } else if (pathname === '/api/storage/delete') {
+    if (!env.STORAGE) {
+      return Response.json({ success: false, error: 'R2 storage not configured' }, { status: 501 });
+    }
+    const { key } = await request.json();
+    if (!key) {
+      return Response.json({ success: false, error: 'Missing key parameter' }, { status: 400 });
+    }
+    try {
+      if (Array.isArray(key)) {
+        await env.STORAGE.delete(key);
+      } else {
+        await env.STORAGE.delete(key);
+      }
+      return Response.json({ success: true, results: { deleted: key } });
+    } catch (error) {
+      return Response.json({ success: false, error: String(error) }, { status: 500 });
+    }
+  } else if (pathname === '/api/storage/list') {
+    if (!env.STORAGE) {
+      return Response.json({ success: false, error: 'R2 storage not configured' }, { status: 501 });
+    }
+    const { prefix, limit, cursor, delimiter } = await request.json();
+    try {
+      const options = {};
+      if (prefix) options.prefix = prefix;
+      if (limit) options.limit = limit;
+      if (cursor) options.cursor = cursor;
+      if (delimiter) options.delimiter = delimiter;
+      const listed = await env.STORAGE.list(options);
+      return Response.json({
+        success: true,
+        results: {
+          objects: listed.objects.map(obj => ({
+            key: obj.key,
+            size: obj.size,
+            uploaded: obj.uploaded,
+            etag: obj.etag
+          })),
+          truncated: listed.truncated,
+          cursor: listed.cursor,
+          prefixes: listed.delimitedPrefixes
+        }
+      });
+    } catch (error) {
+      return Response.json({ success: false, error: String(error) }, { status: 500 });
+    }
+  } else if (pathname === '/api/storage/head') {
+    if (!env.STORAGE) {
+      return Response.json({ success: false, error: 'R2 storage not configured' }, { status: 501 });
+    }
+    const { key } = await request.json();
+    if (!key) {
+      return Response.json({ success: false, error: 'Missing key parameter' }, { status: 400 });
+    }
+    try {
+      const object = await env.STORAGE.head(key);
+      if (!object) {
+        return Response.json({ success: false, error: 'Object not found' }, { status: 404 });
+      }
+      return Response.json({
+        success: true,
+        results: {
+          key,
+          size: object.size,
+          httpMetadata: object.httpMetadata,
+          customMetadata: object.customMetadata,
+          etag: object.etag
+        }
+      });
+    } catch (error) {
+      return Response.json({ success: false, error: String(error) }, { status: 500 });
+    }
   } else if (pathname === '/api/kv/get') {
     // KV operations not supported in D1 - return error
     return Response.json({ success: false, error: 'KV operations not supported in D1 mode' }, { status: 501 });

@@ -7,7 +7,7 @@
     updateBillingEmail,
     upgradePlan,
     manageBilling
-  } from '$lib/api/settings.remote';
+  } from '$lib/functions/settings.remote';
 
   // Data sources
   const billing = getBillingInfo();

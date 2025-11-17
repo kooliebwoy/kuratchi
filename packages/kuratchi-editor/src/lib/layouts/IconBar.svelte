@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { SearchIcons, LayoutBlock } from "../shell/index.js";
+    import { LayoutBlock } from "../shell/index.js";
+    import { IconPicker } from "../plugins/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
     interface IconItem {
@@ -98,7 +99,7 @@
             <div class="divider"></div>
 
             <div class="space-y-4">
-                <SearchIcons bind:selectedIcons={iconsState} />
+                <IconPicker bind:selectedIcons={iconsState} />
 
                 <div class="grid grid-cols-1 gap-4">
                     {#each iconsState as icon, i}

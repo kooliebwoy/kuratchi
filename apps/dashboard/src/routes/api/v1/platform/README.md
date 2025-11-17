@@ -16,9 +16,15 @@ curl -H "x-api-key: your-api-key-here" https://your-domain.com/api/v1/platform/d
 curl -H "Authorization: Bearer your-api-key-here" https://your-domain.com/api/v1/platform/databases
 ```
 
-## Endpoints
+## Table of Contents
 
-### Database Management
+- [Database Management](#database-management)
+- [Roles Management](#roles-management)
+- [Permissions Management](#permissions-management)
+
+---
+
+## Database Management
 
 #### List Databases
 `GET /databases`
@@ -276,6 +282,384 @@ curl -H "x-api-key: your-key" \
     }
   }
 }
+```
+
+---
+
+## Roles Management
+
+### List Roles
+`GET /roles`
+
+List all roles with optional filtering.
+
+**Query Parameters:**
+- `organizationId` (optional): Filter by organization ID
+- `includeArchived` (optional): Include archived roles (default: false)
+- `includePermissions` (optional): Include permission objects (default: false)
+
+**Example Request:**
+```bash
+curl -H "x-api-key: your-key" \
+  "https://your-domain.com/api/v1/platform/roles?organizationId=org-123&includePermissions=true"
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "role-uuid",
+      "name": "editor",
+      "description": "Content editor role",
+      "permissions": ["posts.create", "posts.edit"],
+      "isArchived": false,
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "permissionObjects": [
+        {
+          "id": "perm-uuid",
+          "value": "posts.create",
+          "label": "Create Posts",
+          "description": "Ability to create new posts"
+        }
+      ]
+    }
+  ],
+  "count": 1,
+  "meta": {
+    "organizationId": "org-123",
+    "includeArchived": false,
+    "includePermissions": true
+  }
+}
+```
+
+---
+
+### Get Role Details
+`GET /roles/:id`
+
+Get detailed information about a specific role.
+
+**Query Parameters:**
+- `includePermissions` (optional): Include permission objects (default: false)
+- `includeOrganizations` (optional): Include organization objects (default: false)
+
+**Example Request:**
+```bash
+curl -H "x-api-key: your-key" \
+  "https://your-domain.com/api/v1/platform/roles/role-uuid?includePermissions=true&includeOrganizations=true"
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "role-uuid",
+    "name": "editor",
+    "description": "Content editor role",
+    "permissions": ["posts.create", "posts.edit"],
+    "permissionObjects": [
+      {
+        "id": "perm-uuid",
+        "value": "posts.create",
+        "label": "Create Posts"
+      }
+    ],
+    "organizations": ["org-123", "org-456"]
+  }
+}
+```
+
+---
+
+### Create Role
+`POST /roles`
+
+Create a new role.
+
+**Request Body:**
+```json
+{
+  "name": "editor",
+  "description": "Content editor role",
+  "permissions": [
+    { "value": "posts.create", "label": "Create Posts" },
+    { "value": "posts.edit", "label": "Edit Posts" }
+  ]
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST \
+  -H "x-api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"editor","description":"Content editor","permissions":[{"value":"posts.create"}]}' \
+  https://your-domain.com/api/v1/platform/roles
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "role-uuid",
+    "name": "editor",
+    "description": "Content editor role",
+    "created_at": "2024-01-01T00:00:00.000Z"
+  },
+  "message": "Role created successfully"
+}
+```
+
+---
+
+### Update Role
+`PATCH /roles/:id`
+
+Update role details.
+
+**Request Body:**
+```json
+{
+  "name": "senior-editor",
+  "description": "Updated description",
+  "permissions": [
+    { "value": "posts.*", "label": "All Post Permissions" }
+  ]
+}
+```
+
+**Example Request:**
+```bash
+curl -X PATCH \
+  -H "x-api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Updated description"}' \
+  https://your-domain.com/api/v1/platform/roles/role-uuid
+```
+
+---
+
+### Archive Role
+`DELETE /roles/:id`
+
+Archive a role (soft delete).
+
+**Example Request:**
+```bash
+curl -X DELETE \
+  -H "x-api-key: your-key" \
+  https://your-domain.com/api/v1/platform/roles/role-uuid
+```
+
+---
+
+### Get Role Permissions
+`GET /roles/:id/permissions`
+
+Get all permissions assigned to a role.
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "perm-uuid",
+      "value": "posts.create",
+      "label": "Create Posts"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### Attach Permission to Role
+`POST /roles/:id/permissions`
+
+Attach a permission to a role.
+
+**Request Body:**
+```json
+{
+  "permissionId": "perm-uuid"
+}
+```
+
+---
+
+### Detach Permission from Role
+`DELETE /roles/:id/permissions/:permissionId`
+
+Remove a permission from a role.
+
+**Example Request:**
+```bash
+curl -X DELETE \
+  -H "x-api-key: your-key" \
+  https://your-domain.com/api/v1/platform/roles/role-uuid/permissions/perm-uuid
+```
+
+---
+
+### Get Role Organizations
+`GET /roles/:id/organizations`
+
+Get all organizations that have this role assigned.
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": ["org-123", "org-456"],
+  "count": 2
+}
+```
+
+---
+
+### Attach Role to Organization
+`POST /roles/:id/organizations`
+
+Assign a role to an organization.
+
+**Request Body:**
+```json
+{
+  "organizationId": "org-123"
+}
+```
+
+---
+
+### Detach Role from Organization
+`DELETE /roles/:id/organizations/:organizationId`
+
+Remove a role from an organization.
+
+---
+
+## Permissions Management
+
+### List Permissions
+`GET /permissions`
+
+List all permissions with optional filtering.
+
+**Query Parameters:**
+- `category` (optional): Filter by category (auth, users, content, etc.)
+- `includeArchived` (optional): Include archived permissions (default: false)
+
+**Example Request:**
+```bash
+curl -H "x-api-key: your-key" \
+  "https://your-domain.com/api/v1/platform/permissions?category=content"
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "perm-uuid",
+      "value": "posts.create",
+      "label": "Create Posts",
+      "description": "Ability to create new posts",
+      "category": "content",
+      "isArchived": false,
+      "created_at": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "count": 1,
+  "meta": {
+    "category": "content",
+    "includeArchived": false
+  }
+}
+```
+
+---
+
+### Get Permission Details
+`GET /permissions/:id`
+
+Get detailed information about a specific permission.
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "perm-uuid",
+    "value": "posts.create",
+    "label": "Create Posts",
+    "description": "Ability to create new posts",
+    "category": "content"
+  }
+}
+```
+
+---
+
+### Create Permission
+`POST /permissions`
+
+Create a new permission.
+
+**Request Body:**
+```json
+{
+  "value": "posts.create",
+  "label": "Create Posts",
+  "description": "Ability to create new posts",
+  "category": "content"
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST \
+  -H "x-api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"value":"posts.create","label":"Create Posts","category":"content"}' \
+  https://your-domain.com/api/v1/platform/permissions
+```
+
+---
+
+### Update Permission
+`PATCH /permissions/:id`
+
+Update permission details.
+
+**Request Body:**
+```json
+{
+  "label": "Create Blog Posts",
+  "description": "Updated description",
+  "category": "content"
+}
+```
+
+---
+
+### Archive Permission
+`DELETE /permissions/:id`
+
+Archive a permission (soft delete).
+
+**Example Request:**
+```bash
+curl -X DELETE \
+  -H "x-api-key: your-key" \
+  https://your-domain.com/api/v1/platform/permissions/perm-uuid
 ```
 
 ---

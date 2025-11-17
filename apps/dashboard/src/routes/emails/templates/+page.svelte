@@ -6,7 +6,7 @@
     deleteTemplate,
     getTemplate,
     type EmailTemplate
-  } from '$lib/api/newsletter.remote';
+  } from '$lib/functions/newsletter.remote';
 
   const templatesResource = listTemplates();
   const templates = $derived(Array.isArray(templatesResource.current) ? templatesResource.current : []);

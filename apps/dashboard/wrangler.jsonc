@@ -1,5 +1,5 @@
 {
-  "name": "kuratchi",
+  "name": "dashboard-kuratchi",
   "account_id": "290c1a3b978d0f44f83b515983a1c951",
   "main": ".svelte-kit/cloudflare/_worker.js",
   "compatibility_flags": [
@@ -31,8 +31,8 @@
   "d1_databases": [
     {
       "binding": "ADMIN_DB",
-      "database_name": "kayde-admin-db",
-      "database_id": "463a4d89-599f-4c7b-93b9-62514c6eeb65"
+      "database_name": "kuratchi-admin-db",
+      "database_id": "dd5cdabf-fb70-40c5-8c62-ed71343f5cc7"
     }
   ],
   "r2_buckets": [
@@ -61,6 +61,13 @@
   "vars": {
     "ORIGIN": "https://build.kuratchi.dev",
     "APP_LOGIN_PATH": "/auth/signin",
-    "APP_SIGNUP_PATH": "/auth/signup"
+    "APP_SIGNUP_PATH": "/auth/signup",
+    "CLOUDFLARE_WORKERS_SUBDOMAIN": "krys-gillett.workers.dev",
+    "GITHUB_CLIENT_ID": "Ov23liW9khIYJo38ufUb",
+    "GOOGLE_CLIENT_ID": "367098244519-nduvgfuuiklui3pomb4ehunrsaqkiebv.apps.googleusercontent.com",
+    "CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
+    "CLOUDFLARE_TURNSTILE_SITE_KEY": "0x4AAAAAACAWkMlq15ZRTA1Q",
+    "KURATCHI_ADMIN_DB_ID": "a915922d-0cfe-495e-aae1-3561c165847d",
+    "KURATCHI_ADMIN_DB_NAME": "kuratchi-admin-db"
   }
 }

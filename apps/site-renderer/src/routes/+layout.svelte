@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { getBlock, getHeaderBlock, getFooterBlock } from '@kuratchi/editor';
+	import { getBlock } from '@kuratchi/editor';
 	
 	let { children, data } = $props();
 	
@@ -38,32 +38,36 @@
 {:else}
 	<div class="min-h-screen bg-base-100 text-base-content" style:background-color={backgroundColor}>
 		<!-- Site Header -->
-		{#if siteHeader}
-			{@const headerType = typeof siteHeader.type === 'string' ? siteHeader.type : null}
-			{#if headerType}
-				{@const headerEntry = getHeaderBlock(headerType)}
-				{#if headerEntry?.component}
-					{@const HeaderComponent = headerEntry.component}
-					{@const headerProps = { ...siteHeader, editable: false } satisfies Record<string, unknown>}
-					<HeaderComponent {...headerProps} />
+		{#if siteHeader?.blocks && Array.isArray(siteHeader.blocks)}
+			{#each siteHeader.blocks as headerBlock}
+				{@const headerType = typeof headerBlock.type === 'string' ? headerBlock.type : null}
+				{#if headerType}
+					{@const headerEntry = getBlock(headerType)}
+					{#if headerEntry?.component}
+						{@const HeaderComponent = headerEntry.component}
+						{@const headerProps = { ...headerBlock, editable: false } satisfies Record<string, unknown>}
+						<HeaderComponent {...headerProps} />
+					{/if}
 				{/if}
-			{/if}
+			{/each}
 		{/if}
 
 		<!-- Page Content -->
 		{@render children?.()}
 
 		<!-- Site Footer -->
-		{#if siteFooter}
-			{@const footerType = typeof siteFooter.type === 'string' ? siteFooter.type : null}
-			{#if footerType}
-				{@const footerEntry = getFooterBlock(footerType)}
-				{#if footerEntry?.component}
-					{@const FooterComponent = footerEntry.component}
-					{@const footerProps = { ...siteFooter, editable: false } satisfies Record<string, unknown>}
-					<FooterComponent {...footerProps} />
+		{#if siteFooter?.blocks && Array.isArray(siteFooter.blocks)}
+			{#each siteFooter.blocks as footerBlock}
+				{@const footerType = typeof footerBlock.type === 'string' ? footerBlock.type : null}
+				{#if footerType}
+					{@const footerEntry = getBlock(footerType)}
+					{#if footerEntry?.component}
+						{@const FooterComponent = footerEntry.component}
+						{@const footerProps = { ...footerBlock, editable: false } satisfies Record<string, unknown>}
+						<FooterComponent {...footerProps} />
+					{/if}
 				{/if}
-			{/if}
+			{/each}
 		{/if}
 	</div>
 {/if}

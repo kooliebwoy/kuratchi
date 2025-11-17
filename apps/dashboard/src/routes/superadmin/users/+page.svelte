@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Users, Trash2, X } from 'lucide-svelte';
   import { Dialog } from '@kuratchi/ui';
-  import { getAllUsers, deleteSuperadmin } from '$lib/api/superadmin.remote';
+  import { getAllUsers, deleteSuperadmin } from '$lib/functions/superadmin.remote';
 
   const usersQuery = getAllUsers();
 

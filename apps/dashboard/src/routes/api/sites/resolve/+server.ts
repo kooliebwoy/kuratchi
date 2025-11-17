@@ -17,15 +17,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 
 		const body = await request.json();
-		const { subdomain } = body;
+		const { subdomain, hostname } = body;
 
-		if (!subdomain) {
-			error(400, 'Subdomain is required');
+		if (!subdomain && !hostname) {
+			error(400, 'Subdomain or hostname is required');
 		}
 
-		console.log('[api/sites/resolve] Resolving subdomain:', subdomain);
+		console.log('[api/sites/resolve] Resolving:', { subdomain, hostname });
 
-		// Step 1: Check KV for fast subdomain lookup
+		// Step 1: Check KV for fast lookup (subdomain or custom domain)
         console.log('locals.kuratchi', locals.kuratchi);
 		const kv = locals.kuratchi?.kv?.default;
 		if (!kv) {
@@ -33,11 +33,25 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			error(500, 'KV storage not available');
 		}
 
-		const kvKey = `site:subdomain:${subdomain}`;
-		const kvData = await kv.get(kvKey, 'text');
+		let kvKey: string;
+		let kvData: string | null = null;
+
+		// Try custom domain first if hostname provided
+		if (hostname && hostname !== `${subdomain}.kuratchi.com`) {
+			kvKey = `site:domain:${hostname}`;
+			kvData = await kv.get(kvKey, 'text');
+			console.log('[api/sites/resolve] Custom domain lookup:', { hostname, found: !!kvData });
+		}
+
+		// Fall back to subdomain lookup
+		if (!kvData && subdomain) {
+			kvKey = `site:subdomain:${subdomain}`;
+			kvData = await kv.get(kvKey, 'text');
+			console.log('[api/sites/resolve] Subdomain lookup:', { subdomain, found: !!kvData });
+		}
 		
 		if (!kvData) {
-			console.log('[api/sites/resolve] Site not found in KV:', subdomain);
+			console.log('[api/sites/resolve] Site not found in KV');
 			return json({ site: null, siteDatabase: null });
 		}
 

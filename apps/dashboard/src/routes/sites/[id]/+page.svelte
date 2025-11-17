@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Editor, type PageData, defaultPageData } from '@kuratchi/editor';
-  import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/api/editor.remote';
+  import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/functions/editor.remote';
+  import { uploadSiteMedia } from '$lib/functions/storage.remote';
 
   const clone = <T>(value: T): T => {
     if (typeof structuredClone === 'function') {
@@ -232,7 +233,7 @@
   }
 </script>
 
-<div class="card border border-base-200 bg-base-200/30">
+<div class="card border border-base-200 bg-base-200/30 p-5">
   <div class="card-body p-0">
     {#if queryError}
       <div class="alert alert-error m-6">
@@ -249,6 +250,7 @@
       <div class="flex items-center justify-between border-b border-base-200 bg-base-100 px-4 py-2 text-sm">
         <div class="flex items-center gap-3">
           <div class="font-medium">{site?.name ?? 'Site'}</div>
+          <a class="btn btn-neutral btn-xs" href="/sites">Back to Sites</a>
           {#if saving}
             <div class="flex items-center gap-1 text-base-content/80">
               <span class="loading loading-spinner loading-xs"></span>
@@ -347,6 +349,24 @@
           {currentPageId}
           onPageSwitch={switchToPage}
           onCreatePage={openCreatePageModal}
+          imageConfig={{
+            uploadHandler: async (file, folder) => {
+              if (!site?.id) throw new Error('Site not loaded');
+              
+              // Convert File to ArrayBuffer for command serialization
+              const fileData = await file.arrayBuffer();
+              
+              const result = await uploadSiteMedia({
+                siteId: site.id,
+                fileData,
+                fileName: file.name,
+                fileType: file.type,
+                folder: folder || 'images'
+              });
+              
+              return result;
+            }
+          }}
         />
       {/key}
     {/if}

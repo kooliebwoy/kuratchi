@@ -8,9 +8,8 @@ import type { Column, DatabaseSchema, Index, Table } from './schema.js';
 // === SQL Generation Functions ===
 
 function q(str: string): string {
-  // For SQLite in our controlled schema names we avoid quoting by default
-  // to match existing SQL. This can be upgraded if needed.
-  return str;
+  // Quote identifiers to handle reserved keywords (e.g., 'to', 'from', 'order', etc.)
+  return `"${str.replace(/"/g, '""')}"`;
 }
 
 function sqlType(col: Column): string {

@@ -4,6 +4,7 @@
     import type { ActionResult } from "@sveltejs/kit";
     import { SideActions } from "../shell/index.js";
     import { onMount } from "svelte";
+    import { imageConfig } from "../stores/imageConfig.js";
 
     interface Props {
         id?: string;
@@ -28,11 +29,22 @@
     let uploadedImage: Object = $state(image);
 
     const deleteImage = async () => {
+        // Use custom delete handler if provided
+        if ($imageConfig.deleteHandler && uploadedImage.id) {
+            try {
+                await $imageConfig.deleteHandler(uploadedImage.id);
+                uploadedImage = {};
+                return;
+            } catch (err) {
+                console.error('Delete failed:', err);
+                return;
+            }
+        }
+
+        // Fallback to default endpoint
         const formData = new FormData();
-        
         formData.append('id', uploadedImage.id);
 
-        // we have a form endpoint that returns a list of images
         const response = await fetch('/website/media?/delete', {
             method: 'POST',
             body: formData
@@ -46,13 +58,30 @@
     }
 
     const uploadImage = async () => {
-        const formData = new FormData();
-        
-        formData.append('file', profilePhotoFile.files[0]);
-        formData.append('alt', profilePhotoFile.files[0].name);
-        formData.append('fileName', profilePhotoFile.files[0].name);
+        const file = profilePhotoFile.files[0];
 
-        // we have a form endpoint that returns a list of images
+        // Use custom upload handler if provided
+        if ($imageConfig.uploadHandler) {
+            try {
+                const result = await $imageConfig.uploadHandler(file, 'images');
+                return {
+                    id: result.key || result.filename,
+                    url: result.url,
+                    alt: file.name,
+                    ...result
+                };
+            } catch (err) {
+                console.error('Upload failed:', err);
+                throw err;
+            }
+        }
+
+        // Fallback to default endpoint
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('alt', file.name);
+        formData.append('fileName', file.name);
+
         const response = await fetch('/website/media?/upload', {
             method: 'POST',
             body: formData

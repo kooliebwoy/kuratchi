@@ -4,7 +4,7 @@
     getSites, 
     createSite,
     deleteSite
-  } from '$lib/api/sites.remote';
+  } from '$lib/functions/sites.remote';
   import { Layout, Plus, ExternalLink, Settings, Trash2, Palette, X } from 'lucide-svelte';
 
   let createDialog: HTMLDialogElement;

@@ -17,6 +17,15 @@ import type { EmailPluginOptions } from './email/index.js';
 import { stripe as stripeNamespace, initStripePlugin } from './stripe/index.js';
 import type { StripePluginOptions } from './stripe/index.js';
 import { handleStripeCallback } from './stripe/callback.js';
+import type { NotificationPluginOptions } from './notifications/types.js';
+import {
+  initInAppNotifications,
+  initEmailNotifications,
+  initPlatformMonitoring,
+  initQueue,
+  initTemplates,
+  initPreferences,
+} from './notifications/index.js';
 
 /**
  * Unified Kuratchi configuration object
@@ -71,6 +80,11 @@ export interface KuratchiConfig {
    * Stripe payment and subscription configuration
    */
   stripe?: StripePluginOptions;
+
+  /**
+   * Notifications configuration
+   */
+  notifications?: NotificationPluginOptions;
 }
 
 /**
@@ -93,12 +107,12 @@ export interface KuratchiSDK {
 
 /**
  * Create a unified Kuratchi SDK instance with all services configured
- * 
+ *
  * @example
  * ```typescript
  * import { kuratchi } from 'kuratchi-sdk';
  * import { sessionPlugin, adminPlugin } from 'kuratchi-sdk/auth';
- * 
+ *
  * const app = kuratchi({
  *   auth: {
  *     plugins: [sessionPlugin(), adminPlugin()]
@@ -112,7 +126,7 @@ export interface KuratchiSDK {
  *     d1: { analytics: 'ANALYTICS_DB' }
  *   }
  * });
- * 
+ *
  * export const handle = app.handle;
  * ```
  */
@@ -125,6 +139,16 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
   // Initialize Stripe plugin if configured
   if (config.stripe) {
     initStripePlugin(config.stripe);
+  }
+
+  // Initialize notifications plugin if configured
+  if (config.notifications) {
+    initInAppNotifications(config.notifications);
+    initEmailNotifications(config.notifications);
+    initPlatformMonitoring(config.notifications);
+    initQueue(config.notifications);
+    initTemplates(config.notifications);
+    initPreferences(config.notifications);
   }
 
   // Create auth handle with plugin-based configuration
@@ -145,7 +169,7 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
   // Wrap handle to intercept Stripe callback route
   const handle: Handle = async ({ event, resolve }) => {
     const callbackPath = config.stripe?.callbackPath || '/kuratchi/stripe/callback';
-    
+
     // Check if this is the Stripe callback route
     if (config.stripe && event.url.pathname === callbackPath) {
       return await handleStripeCallback(event);

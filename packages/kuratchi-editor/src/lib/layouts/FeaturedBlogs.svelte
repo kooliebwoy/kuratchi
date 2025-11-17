@@ -1,6 +1,7 @@
 <script lang="ts">
     import { ArrowRight } from "@lucide/svelte";
     import { LayoutBlock } from '../shell/index.js';
+    import { blogStore } from '../stores/blog';
 
     interface Props {
         id?: string;
@@ -27,6 +28,8 @@
         buttonColor = '#3b82f6',
         editable = true
     }: Props = $props();
+
+    const blog = blogStore;
 
     let content = $derived({
         id,
@@ -120,7 +123,40 @@
 
             <div class="space-y-14 pb-20 px-0 md:px-12">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <!-- Blog cards would go here -->
+                    {#if $blog?.posts?.length}
+                        {#each $blog.posts.slice(0, 4) as post (post.id)}
+                            <article class="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden flex flex-col">
+                                {#if post.coverImage?.url}
+                                    <div class="h-48 w-full overflow-hidden">
+                                        <img src={post.coverImage.url} alt={post.coverImage.alt ?? post.title} class="w-full h-full object-cover" />
+                                    </div>
+                                {/if}
+                                <div class="p-5 flex flex-col gap-2 flex-1">
+                                    <div class="flex flex-wrap gap-1 text-xs uppercase tracking-wide text-base-content/60">
+                                        {#if post.categories.length > 0}
+                                            {#each post.categories as categorySlug}
+                                                {@const category = ($blog?.categories ?? []).find((entry) => entry.slug === categorySlug)}
+                                                <span class="badge badge-ghost">{category?.name ?? categorySlug}</span>
+                                            {/each}
+                                        {:else}
+                                            <span class="badge badge-ghost">Blog</span>
+                                        {/if}
+                                    </div>
+                                    <h4 class="text-lg font-semibold">{post.title}</h4>
+                                    <p class="text-sm text-base-content/70 line-clamp-3">{post.excerpt}</p>
+                                    <div class="mt-auto flex items-center justify-between pt-2">
+                                        <span class="text-xs text-base-content/50">{post.publishedOn}</span>
+                                        <a class="btn btn-link btn-sm text-primary" href={`/blog/${post.slug}`}>
+                                            Read article
+                                            <ArrowRight class="w-4 h-4" />
+                                        </a>
+                                    </div>
+                                </div>
+                            </article>
+                        {/each}
+                    {:else}
+                        <p class="text-base-content/60 text-sm">No posts yet. Add a blog post to populate this section.</p>
+                    {/if}
                 </div>
             </div>
         </div>
@@ -152,7 +188,40 @@
 
         <div class="space-y-14 pb-20 px-0 md:px-12">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Blog cards would go here -->
+                {#if $blog?.posts?.length}
+                    {#each $blog.posts.slice(0, 4) as post (post.id)}
+                        <article class="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden flex flex-col">
+                            {#if post.coverImage?.url}
+                                <div class="h-48 w-full overflow-hidden">
+                                    <img src={post.coverImage.url} alt={post.coverImage.alt ?? post.title} class="w-full h-full object-cover" />
+                                </div>
+                            {/if}
+                            <div class="p-5 flex flex-col gap-2 flex-1">
+                                <div class="flex flex-wrap gap-1 text-xs uppercase tracking-wide text-base-content/60">
+                                    {#if post.categories.length > 0}
+                                        {#each post.categories as categorySlug}
+                                            {@const category = ($blog?.categories ?? []).find((entry) => entry.slug === categorySlug)}
+                                            <span class="badge badge-ghost">{category?.name ?? categorySlug}</span>
+                                        {/each}
+                                    {:else}
+                                        <span class="badge badge-ghost">Blog</span>
+                                    {/if}
+                                </div>
+                                <h4 class="text-lg font-semibold">{post.title}</h4>
+                                <p class="text-sm text-base-content/70 line-clamp-3">{post.excerpt}</p>
+                                <div class="mt-auto flex items-center justify-between pt-2">
+                                    <span class="text-xs text-base-content/50">{post.publishedOn}</span>
+                                    <a class="btn btn-link btn-sm text-primary" href={`/blog/${post.slug}`}>
+                                        Read article
+                                        <ArrowRight class="w-4 h-4" />
+                                    </a>
+                                </div>
+                            </div>
+                        </article>
+                    {/each}
+                {:else}
+                    <p class="text-base-content/60 text-sm">No posts yet. Add a blog post to populate this section.</p>
+                {/if}
             </div>
         </div>
     </section>

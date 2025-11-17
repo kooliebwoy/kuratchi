@@ -1,13 +1,16 @@
 # Email Plugin
 
-Standalone email service with tracking powered by Resend.
+Standalone email service with tracking powered by Amazon SES V2 with tenant isolation.
 
 ## Features
 
-- ✅ **Resend Integration** - 100% powered by Resend SDK
+- ✅ **Amazon SES V2 Integration** - Latest SES API with advanced features
+- ✅ **Tenant Isolation** - Each organization gets isolated sending reputation and quotas
+- ✅ **Multiple Domain Support** - Configure different sender domains per client/site
 - ✅ **Email Tracking** - Track all sent emails in your database
 - ✅ **Email History** - Query sent emails by user, org, type, status
 - ✅ **Metadata Support** - Attach custom metadata to emails
+- ✅ **SES V2 Features** - Configuration sets, email tags, identity ARNs
 - ✅ **Type Safety** - Full TypeScript support
 
 ## Setup
@@ -15,7 +18,7 @@ Standalone email service with tracking powered by Resend.
 ### 1. Install Dependencies
 
 ```bash
-npm install resend
+npm install @aws-sdk/client-sesv2
 ```
 
 ### 2. Add Email Table to Schema
@@ -34,7 +37,38 @@ export const adminSchema = {
 };
 ```
 
-### 3. Configure in hooks.server.ts
+### 3. Set Up AWS SES V2
+
+1. **Verify your domain(s)** programmatically through the dashboard
+2. **Move out of SES sandbox** to send to any email address
+3. **Create IAM credentials** with SES V2 permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:CreateEmailIdentity",
+        "ses:DeleteEmailIdentity",
+        "ses:GetEmailIdentity",
+        "ses:PutEmailIdentityDkimAttributes",
+        "ses:CreateTenant",
+        "ses:GetTenant",
+        "ses:DeleteTenant"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+4. **Tenant isolation** - Each organization automatically gets its own SES tenant for isolated reputation
+
+### 4. Configure in hooks.server.ts
 
 ```typescript
 import { kuratchi } from 'kuratchi-sdk';
@@ -44,12 +78,15 @@ export const { handle } = kuratchi({
     plugins: [/* your auth plugins */]
   },
   email: {
-    apiKey: env.RESEND_API_KEY,
+    region: env.AWS_REGION, // e.g., 'us-east-1'
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
     from: 'noreply@yourdomain.com',
     fromName: 'Your App',
     trackEmails: true, // Enable tracking (default: true)
     trackingDb: 'admin', // Store in admin DB (default: 'admin')
-    trackingTable: 'emails' // Table name (default: 'emails')
+    trackingTable: 'emails', // Table name (default: 'emails')
+    configurationSetName: 'my-config-set' // Optional SES configuration set
   }
 });
 ```
@@ -135,17 +172,19 @@ interface SendEmailOptions {
   text?: string;
   
   // Sender (optional, uses defaults from config)
-  from?: string;
+  from?: string; // Override default from email - useful for multi-domain
   fromName?: string;
-  replyTo?: string;
+  replyTo?: string | string[];
   
   // Recipients
   cc?: string | string[];
   bcc?: string | string[];
   
-  // Resend features
-  tags?: { name: string; value: string }[];
+  // SES features
+  tags?: Record<string, string>; // For categorization and filtering
   headers?: Record<string, string>;
+  configurationSetName?: string; // Override default configuration set
+  returnPath?: string; // Email address for bounces
   
   // Tracking metadata
   userId?: string;
@@ -179,7 +218,7 @@ The emails table stores:
   subject: string;         // Email subject
   emailType?: string;      // Type for filtering
   status: 'sent' | 'failed' | 'pending';
-  resendId?: string;       // Resend email ID
+  sesMessageId?: string;   // SES Message ID
   error?: string;          // Error message if failed
   userId?: string;         // Associated user
   organizationId?: string; // Associated organization
@@ -217,12 +256,92 @@ async function sendMagicLink(event, email: string, token: string) {
 }
 ```
 
+## Multi-Domain Email Marketing
+
+Amazon SES allows you to verify and send from multiple domains, making it perfect for multi-tenant applications. Here's how to implement per-site domain configuration:
+
+### 1. Verify Multiple Domains in SES
+
+Each site can have its own verified domain for sending emails.
+
+### 2. Store Domain Configuration Per Site
+
+```typescript
+// In your site/organization settings
+interface SiteEmailConfig {
+  fromEmail: string;      // e.g., 'hello@clientdomain.com'
+  fromName: string;       // e.g., 'Client Company'
+  replyTo?: string;       // Optional reply-to address
+  returnPath?: string;    // For bounce handling
+}
+```
+
+### 3. Override From Address Per Email
+
+```typescript
+import { sendEmail } from 'kuratchi-sdk/email';
+
+export const POST = async (event) => {
+  // Get site-specific email config
+  const site = await getSiteConfig(event.params.siteId);
+  
+  const result = await sendEmail(event, {
+    from: site.emailConfig.fromEmail,     // Override with site's domain
+    fromName: site.emailConfig.fromName,
+    replyTo: site.emailConfig.replyTo,
+    to: 'customer@example.com',
+    subject: 'Newsletter from ' + site.name,
+    html: emailTemplate,
+    tags: {
+      site: site.id,
+      campaign: 'weekly-newsletter'
+    },
+    organizationId: site.organizationId,
+    emailType: 'newsletter'
+  });
+  
+  return json(result);
+};
+```
+
+### 4. Centralized Email for All Sites
+
+You can still use a central email configuration and override only when needed:
+
+```typescript
+// Default: uses global config from hooks.server.ts
+await sendEmail(event, {
+  to: user.email,
+  subject: 'System notification',
+  html: template
+});
+
+// Override: use site-specific domain
+await sendEmail(event, {
+  from: `noreply@${site.domain}`,
+  fromName: site.name,
+  to: user.email,
+  subject: 'Welcome!',
+  html: template
+});
+```
+
+## SES Best Practices
+
+1. **Monitor Bounce and Complaint Rates** - Use SES configuration sets
+2. **Implement Bounce Handling** - Set up SNS notifications for bounces
+3. **Use DKIM and SPF** - Improve deliverability with proper DNS records
+4. **Warm Up New Domains** - Gradually increase sending volume
+5. **Track Email Engagement** - Use SES event publishing to CloudWatch
+6. **Handle Unsubscribes** - Implement List-Unsubscribe headers
+
 ## Future Enhancements
 
 - [ ] Email templates system
-- [ ] Batch email sending
+- [ ] Batch email sending with SES SendBulkTemplatedEmail
 - [ ] Email scheduling
-- [ ] Webhook handling (delivery status)
+- [ ] SNS webhook handling (delivery, bounce, complaint status)
 - [ ] Email analytics dashboard
-- [ ] Multiple provider support (SendGrid, Mailgun, etc.)
+- [ ] Domain reputation tracking per site
 - [ ] Email queue system
+- [ ] Automatic bounce list management

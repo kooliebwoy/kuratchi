@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { changePassword } from '$lib/api/settings.remote';
+  import { changePassword } from '$lib/functions/settings.remote';
 
   // Form state
   let passwordForm = $state({

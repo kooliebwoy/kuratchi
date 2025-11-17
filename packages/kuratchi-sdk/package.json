@@ -2,7 +2,8 @@
 	"name": "kuratchi-sdk",
 	"version": "0.0.8",
 	"bin": {
-		"kuratchi-sdk": "bin/kuratchi-sdk.mjs"
+		"kuratchi-sdk": "bin/kuratchi-sdk.mjs",
+		"kuratchi-spaces-deploy": "bin/kuratchi-spaces-deploy.mjs"
 	},
 	"scripts": {
 		"dev": "vite dev",
@@ -17,7 +18,8 @@
 		"lint": "eslint . --ext .ts,.svelte",
 		"type-check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"clean": "rimraf dist .svelte-kit",
-		"cli": "node bin/kuratchi-sdk.mjs"
+		"cli": "node bin/kuratchi-sdk.mjs",
+		"deploy:spaces": "node bin/kuratchi-sdk.mjs deploy-spaces"
 	},
 	"files": [
 		"dist",
@@ -71,6 +73,16 @@
 			"types": "./src/lib/email/index.ts",
 			"svelte": "./src/lib/email/index.ts",
 			"default": "./src/lib/email/index.ts"
+		},
+		"./notifications": {
+			"types": "./src/lib/notifications/index.ts",
+			"svelte": "./src/lib/notifications/index.ts",
+			"default": "./src/lib/notifications/index.ts"
+		},
+		"./spaces": {
+			"types": "./src/lib/spaces/index.ts",
+			"svelte": "./src/lib/spaces/index.ts",
+			"default": "./src/lib/spaces/index.ts"
 		}
 	},
 	"peerDependencies": {
@@ -103,9 +115,9 @@
 		"svelte"
 	],
 	"dependencies": {
+		"@aws-sdk/client-ses": "^3.705.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.3",
 		"cloudflare": "^5.2.0",
-		"resend": "^4.8.0",
 		"stripe": "^19.1.0",
 		"tsx": "^4.19.2"
 	}
