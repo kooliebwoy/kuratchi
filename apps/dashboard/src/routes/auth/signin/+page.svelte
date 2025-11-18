@@ -3,6 +3,12 @@
   import { FormField, FormInput } from '@kuratchi/ui';
   import { goto } from '$app/navigation';
   import { LogIn } from 'lucide-svelte';
+
+  const { data } = $props();
+  const turnstile = data.turnstile;
+  const turnstileEnabled = !!turnstile?.siteKey && !turnstile?.devDisabled && turnstile?.enabled !== false;
+  const turnstileScriptUrl = turnstile?.scriptUrl || 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+  const turnstileAction = 'dashboard-signin';
   
   // Handle successful sign in
   $effect(() => {
@@ -18,6 +24,9 @@
 
 <svelte:head>
   <title>Sign In - Kuratchi Dashboard</title>
+  {#if turnstileEnabled}
+    <script src={turnstileScriptUrl} async defer></script>
+  {/if}
 </svelte:head>
 
 <div class="min-h-screen bg-gradient-to-br from-base-100 to-base-200 flex items-center justify-center p-4">
@@ -94,6 +103,16 @@
               class="w-full rounded-md border border-base-300 bg-base-100 px-3 py-2 text-sm placeholder:text-base-content/40 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </FormField>
+
+          {#if turnstileEnabled}
+            <div class="mt-2 flex justify-center">
+              <div
+                class="cf-turnstile"
+                data-sitekey={turnstile.siteKey}
+                data-action={turnstileAction}
+              ></div>
+            </div>
+          {/if}
           
           <button
             type="submit"

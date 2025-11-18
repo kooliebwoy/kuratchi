@@ -39,8 +39,6 @@ export interface KuratchiConfig {
     cookieName?: string;
     /** Auth plugins (session, admin, organization, oauth, email, credentials, etc.) */
     plugins?: AuthPlugin[];
-    /** Additional auth options */
-    options?: Partial<CreateAuthHandleOptions>;
   };
 
   /**
@@ -152,19 +150,23 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
   }
 
   // Create auth handle with plugin-based configuration
+  const hasCustomAuthPlugins = !!config.auth?.plugins && config.auth.plugins.length > 0;
+
   const authConfig: CreateAuthHandleOptions & { plugins?: AuthPlugin[] } = {
-    ...config.auth?.options,
     cookieName: config.auth?.cookieName,
     kvNamespaces: config.storage?.kv,
     r2Buckets: config.storage?.r2,
     d1Databases: config.storage?.d1,
+    // If the host app provides explicit auth plugins via kuratchi({ auth: { plugins } }),
+    // disable the built-in rateLimit/turnstile auto-plugins to avoid duplication.
+    ...(hasCustomAuthPlugins
+      ? { rateLimit: false, turnstile: false }
+      : {}),
+    plugins: config.auth?.plugins || []
   };
 
   // Create auth handle with plugins and Stripe callback handling
-  const baseHandle = createAuthHandle({
-    ...authConfig,
-    plugins: config.auth?.plugins || []
-  });
+  const baseHandle = createAuthHandle(authConfig);
 
   // Wrap handle to intercept Stripe callback route
   const handle: Handle = async ({ event, resolve }) => {
