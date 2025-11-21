@@ -1,37 +1,37 @@
 # Kuratchi SDK Documentation
 
-Welcome to the in-repo documentation for the Kuratchi SDK. Each guide focuses on a practical workflow so you can quickly decide which API surface to use and how to wire it into your project.
+This is the in-repo, source-of-truth documentation for the Kuratchi SDK. Every guide mirrors the current exports in `src/lib` and is organized by capability so you can wire the SDK into new or existing SvelteKit apps quickly.
 
 ## Navigation
 
-- [Auth](./auth.md) — SvelteKit handle, organization management, and sign-in helpers.
-- [Database](./database.md) — Durable Object database provisioning and typed access clients.
-- [ORM](./orm.md) — JSON schema model, query primitives, includes, and migration guidance.
-- [CLI](./cli.md) — Command-line tooling for admin provisioning and schema migrations.
-
-## Choosing the Right Tool
-
-| Goal | Start With |
-| --- | --- |
-| Provision the admin database and obtain tokens | [`CLI`](./cli.md) → `init-admin-db`
-| Generate SQL migrations from a JSON schema | [`CLI`](./cli.md) → `generate-migrations`
-| Add auth/session handling to SvelteKit | [`Auth`](./auth.md) → `auth.handle()`
-| Programmatically create organizations & org databases | [`Auth`](./auth.md) → `auth.admin()`
-| Query an organization database with typed ORM helpers | [`Auth`](./auth.md) → `forOrganization()` or [`Database`](./database.md) → `database.client()`
-| Apply JSON-schema ORM features (includes, counting, paging) | [`ORM`](./orm.md)
+- [Auth](./auth.md) — SvelteKit handle, plugins, and organization-aware helpers.
+- [Database](./database.md) — Durable Object database provisioning and clients.
+- [ORM](./orm.md) — JSON schema model, queries, includes, and migrations.
+- [Storage](./storage.md) — KV, R2, and D1 bindings surfaced through the SDK.
+- [Notifications](./notifications.md) — In-app, email, and monitoring alerts.
+- [Spaces](./spaces.md) — Real-time chat rooms powered by Durable Objects.
+- [Stripe](./stripe.md) — Subscription lifecycle hooks, checkout, and billing data.
+- [Kuratchi Cloud](./cloud.md) — Managed platform access with a single API key.
+- [CLI](./cli.md) — Provisioning and migration tooling for admin and org databases.
 
 ## Prerequisites
 
 - Node.js 18+
-- Cloudflare Workers account with D1 access and a deployed Kuratchi Durable Object worker
-- Required environment variables in `.env` (see individual guides for exact keys)
-- Build artifacts in `dist/` when using the CLI or running the SDK from a package install (`npm run build`)
+- Cloudflare Workers (with D1) deployed for the Kuratchi Durable Object worker
+- `.env` containing your auth secret plus any provider keys you choose to enable (see each guide)
+- `pnpm run build` or `npm run build` to generate `dist/` before publishing the SDK
 
-## How to Use These Docs
+## Picking the Right Entry Point
 
-1. Ensure your environment variables are set (auth & Cloudflare credentials).
-2. Run through the [`CLI`](./cli.md) guide once to provision the admin database.
-3. Wire the [`Auth`](./auth.md) and [`Database`](./database.md) modules into your application.
-4. Reference [`ORM`](./orm.md) for defining schemas, writing queries, and generating migrations.
+| Goal | Guide to Read |
+| --- | --- |
+| Add authentication/session handling to SvelteKit | [Auth](./auth.md)
+| Provision the admin database and issue org DB tokens | [CLI](./cli.md) → `init-admin-db`
+| Query an org DB with type-safe helpers | [Auth](./auth.md) → `locals.kuratchi.orgDatabaseClient()` or [Database](./database.md)
+| Use KV/R2/D1 bindings in routes | [Storage](./storage.md)
+| Send notifications or platform alerts | [Notifications](./notifications.md)
+| Deploy real-time chat spaces | [Spaces](./spaces.md)
+| Accept payments and manage subscriptions | [Stripe](./stripe.md)
+| Use Kuratchi-managed infrastructure without Cloudflare keys | [Kuratchi Cloud](./cloud.md)
 
-Each guide includes copy-paste snippets that align with the current SDK exports in `src/lib/` and favor explicit, typed clients (no dynamic schema usage).
+Each guide favors explicit, typed clients over dynamic schema usage and documents only the non-deprecated APIs currently available in `src/lib`.
