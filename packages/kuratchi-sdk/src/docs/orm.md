@@ -1,16 +1,16 @@
 # ORM Guide
 
-Kuratchi ships a lightweight JSON schema–driven ORM tailored for Cloudflare Workers and Durable Objects. This guide shows how to define schemas, generate migrations, and run typed queries without falling back to dynamic SQL.
+Kuratchi includes a lightweight JSON schema–driven ORM optimized for Cloudflare Workers and Durable Objects. It builds parameterized SQL, hydrates JSON columns, and keeps schemas synchronized through the same helpers the database module uses.
 
 ---
 
 ## Define a Schema
 
-Schemas are plain JSON objects (or TypeScript modules) that describe tables, columns, and relations. Use the helpers exported from `src/lib/orm/json-schema.ts` or author objects manually.
+Schemas are plain objects that describe tables, columns, indexes, and relations. Import the DSL types from the SDK and co-locate schema files with your app code.
 
 ```ts
 // src/lib/schema/organization.ts
-import type { SchemaDsl } from 'kuratchi-sdk/orm';
+import type { SchemaDsl } from 'kuratchi-sdk';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
@@ -22,10 +22,11 @@ export const organizationSchema: SchemaDsl = {
         email: { type: 'text', notNull: true, unique: true },
         password_hash: { type: 'text' },
         name: { type: 'text' },
+        metadata: { type: 'json' },
         created_at: { type: 'integer', mode: 'timestamp_ms', default: { kind: 'raw', sql: 'strftime("%s","now")*1000' } }
       }
     },
-    session: {
+    sessions: {
       primaryKey: 'id',
       columns: {
         id: { type: 'text', notNull: true },
@@ -37,15 +38,15 @@ export const organizationSchema: SchemaDsl = {
 };
 ```
 
-- Each column specifies type, nullability, defaults, and optional foreign key references.
-- Relationships drive ORM features such as `.include()`.
-- The runtime strongly prefers explicit schemas (no dynamic clients), aligning with the project preference in `src/lib/orm/kuratchi-orm.ts`.
+- Relationships declared via `references` power `.include()` joins.
+- JSON columns are automatically stringified on write and parsed on read.
+- Use the same schema for both migrations and runtime clients to avoid drift.
 
 ---
 
 ## Generate Migrations
 
-Use the CLI command documented in [`src/docs/cli.md`](./cli.md):
+Use the CLI documented in [`./cli.md`](./cli.md) to keep D1 in sync with your schema:
 
 ```sh
 npx kuratchi-sdk generate-migrations \
@@ -53,15 +54,15 @@ npx kuratchi-sdk generate-migrations \
   --outDir migrations-organization
 ```
 
-- The CLI normalizes the schema, produces SQL, and snapshots the structure under `meta/_schema.json`.
-- Subsequent runs diff against the snapshot and emit incremental migrations.
-- Commit both the schema and migration files to keep deployments synchronized.
-
-Deploy bundled migrations (for Vite builds) under `/migrations-organization` so the runtime loader in `src/lib/orm/loader.ts` can apply them. Without the bundle, the runtime falls back to generating the initial migration only.
+- The CLI normalizes the schema, emits SQL, and writes a snapshot under `meta/_schema.json` for future diffs.
+- Re-run after schema changes; only new migrations are emitted when the snapshot already exists.
+- Bundle the generated `migrations-organization` folder with your Worker so the runtime loader can apply them without regenerating.
 
 ---
 
 ## Create a Typed Client
+
+The database namespace builds an ORM client tied to your schema and database token:
 
 ```ts
 import { database } from 'kuratchi-sdk';
@@ -72,38 +73,36 @@ const orm = await database.client({
   dbToken: 'token-from-admin-db',
   schema: organizationSchema
 });
-
-// Optional: interact with Durable Object KV alongside tables
-await orm.kv?.put({ key: 'org-acme:settings', value: { theme: 'dark' } });
-const kvSettings = await orm.kv?.get({ key: 'org-acme:settings' });
-console.log(kvSettings?.value?.theme); // 'dark'
 ```
 
-The client exposes tables as properties and ensures request/response types match the schema definition. JSON columns are automatically serialized and hydrated.
+- The adapter auto-detects D1 bindings (for `wrangler dev`/Workers) and falls back to the HTTP worker client.
+- Migrations run by default unless you pass `skipMigrations: true`.
+- The returned client exposes each table as a property; optional KV helpers are only present if you provide a KV implementation when constructing the client manually.
 
-For admin flows, `auth.admin()` returns `getOrganizationDb(orgId)` which internally reuses `createClientFromJsonSchema()` from `src/lib/orm/kuratchi-orm.ts`.
+If you already have a `D1Client`, you can import `createOrmClient()` directly from `kuratchi-sdk/database` or call `createClientFromJsonSchema()` from `kuratchi-sdk/orm` to build a client around your own executor.
 
 ---
 
 ## Query Basics
 
-Every table exposes chainable helpers:
+Each table exposes a fluent API for common patterns:
 
 ```ts
 const users = await orm.users
   .where({ deleted_at: { is: null } })
   .orderBy({ created_at: 'desc' })
   .limit(20)
-  .offset(1)          // page number when used with limit (see `src/lib/orm/runtime.ts`)
-  .many();            // fetch array of results
+  .offset(2) // when limit is set, treated as page number (page 2 => offset 20)
+  .many();
 
-const oneUser = await orm.users.where({ id: 'user_123' }).first();
-const count = await orm.users.count({ status: 'active' });
+const firstUser = await orm.users.where({ id: 'user_123' }).first();
+const activeCount = await orm.users.count({ status: 'active' });
 ```
 
-- `.many()` returns `{ data, meta }` objects; `.first()` returns a single row.
-- `.limit(n)` + `.offset(page)` treat `offset` as `(page-1)*limit` (memory `26532eeb-16ff-4329-a282-37412bbadece`). Without a limit, `offset` is a raw row offset.
-- `.select([...])` narrows columns; `.where({ column: value })` performs structural comparisons including nested operators like `{ is: null }`.
+- `.many()` returns `{ success, data }` with hydrated JSON columns; `.first()` and `.one()` return a single row.
+- `.where()` accepts primitives or operator objects (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `like`, `in`, `notIn`, `is`, `isNull`, `isNullish`).
+- `.offset(n)` is a page number when `limit` is present; without a limit it becomes a raw row offset.
+- Raw fragments can be added with `.sql({ query, params })` and combined with existing filters.
 
 ---
 
@@ -121,69 +120,38 @@ await orm.users.where({ status: 'invited' }).updateMany({ status: 'active' });
 await orm.users.delete({ id: 'user_123' });
 ```
 
-- `update()` affects the first matching row (prefers `id` when present).
-- `updateMany()` updates all matching rows in a single statement.
-- Deletions respect your schema constraints (for example, cascading via foreign keys).
+- `update()` fetches the first matching row and performs an `UPDATE ... WHERE id = ?` when an `id` column exists; otherwise it falls back to `updateMany()`.
+- `updateMany()` applies a single statement to all matching rows.
+- JSON columns are serialized automatically before writes and parsed on reads.
 
 ---
 
 ## Includes & Relations
 
-`.include()` performs eager joins based on foreign keys declared in the schema.
+Eager-load relations declared in your schema with `.include()`:
 
 ```ts
-const sessions = await orm.session
-  .include({ users: true })
+const sessions = await orm.sessions
+  .include({ users: { select: ['id', 'email'], as: 'owner', single: true } })
   .where({ created_at: { gt: Date.now() - 7 * 24 * 3600 * 1000 } })
   .many();
 
-// Access parent row: sessions.data[0].users
+const ownerEmail = sessions.data?.[0]?.owner?.email;
 ```
 
-- Parent include (`posts` referencing `users`) attaches the parent row as `{ users: { ... } }`.
-- Child include (`users` with `session`) attaches arrays of related rows.
-- Use projections: `.include({ users: { select: ['id', 'email'], as: 'owner' } })`.
+- Parent relations attach the referenced row; child relations attach arrays.
+- Use `as` to alias the nested property and `select` to project columns.
 
 ---
 
-## JSON Columns
+## Raw Helpers
 
-Declare JSON types to automatically encode/decode objects.
-
-```ts
-await orm.organizations.where({ id: 'org_1' }).update({
-  metadata: { theme: 'dark', plan: 'pro' }
-});
-
-const org = await orm.organizations.where({ id: 'org_1' }).first();
-org?.data?.metadata?.plan; // 'pro'
-```
-
-The ORM transparently stringifies values on write and parses on read using schema metadata.
-
----
-
-## KV Helpers
-
-- **Shared API surface**: `orm.kv` mirrors the Durable Object synchronous KV API (`get`, `put`, `delete`, `list`). Each method accepts the same options described in [Cloudflare’s docs](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#synchronous-kv-api).
-- **Binary data**: values stored as `ArrayBuffer`/`Uint8Array` are returned to the client as `Uint8Array` instances. Strings and objects are preserved as-is.
-- **Use cases**: cache derived query results, store lightweight metadata, or coordinate background tasks without adding dedicated tables.
-- **Availability**: `orm.kv` is present when the client is created through `KuratchiDatabase` (DO-backed). When connecting to other backends, it may be `undefined`; guard with optional chaining as shown above.
-
----
-
-## Best Practices
-
-- Stick to typed clients—avoid dynamic schema usage (memory `1f38e360-99fe-4fee-a9ec-47687a0ddea6`).
-- Reuse schema modules between CLI migrations and runtime clients to keep drift minimal.
-- Keep migrations checked into source control and deploy them alongside your Worker bundle.
-- For testing, construct clients with `createClientFromJsonSchema()` and an in-memory adapter if desired.
+Every table API exposes `sql()` for ad-hoc fragments and the client inherits `query`, `exec`, `batch`, `raw`, and `first` from the underlying adapter via the database namespace. Combine them when you need specialized SQL outside the fluent builder.
 
 ---
 
 ## Troubleshooting
 
-- **Missing migrations**: ensure Vite bundles under `/migrations-<schema>` are present; otherwise, only the initial migration applies.
-- **Runtime schema mismatch**: regenerate migrations after schema changes to update both SQL and snapshot metadata.
-- **Include returns empty**: confirm foreign key definitions in the schema; includes rely on them.
-- **`normalizeSchema` errors**: run `npm run build` to populate `dist/` so the CLI/runtime can import compiled helpers (also noted in `src/lib/orm/normalize.ts`).
+- **Missing migrations**: bundle the `migrations-<schema>` folder or run with `skipMigrations: true` only when you manage migrations yourself.
+- **Unexpected transport**: pass `bindingName` when constructing the ORM client if your D1 binding name differs from the database name so the adapter prefers the direct binding.
+- **JSON parse errors**: ensure columns marked as `json` store valid JSON strings; malformed data will be returned as-is without parsing.
