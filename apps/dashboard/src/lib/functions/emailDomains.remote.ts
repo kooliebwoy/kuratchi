@@ -14,7 +14,9 @@ import {
 } from '@aws-sdk/client-sesv2';
 import { env } from '$env/dynamic/private';
 import * as v from 'valibot';
-import { getAdminDatabase } from '$lib/server/db-context';
+import { getAdminDatabase, getDatabase } from '$lib/server/db-context';
+import { deleteCustomHostname } from 'kuratchi-sdk/domains';
+import { removeCustomDomainFromKV } from '$lib/server/kv-sync';
 
 // SES V2 client helper
 let sesClient: SESv2Client | null = null;
@@ -109,14 +111,15 @@ export const getEmailDomains = guardedQuery(async () => {
  * Add an email domain
  */
 const addDomainSchema = v.object({
-  name: v.pipe(v.string(), v.minLength(3), v.maxLength(255))
+  name: v.pipe(v.string(), v.minLength(3), v.maxLength(255)),
+  purpose: v.optional(v.picklist(['email', 'site', 'both']))
 });
 
 export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
   try {
     const { event } = ensureSession();
     const db = await getAdminDatabase(event.locals);
-    const ses = getSESClient();
+    const purpose = data.purpose || 'email';
     
     if (!db) {
       return { success: false, error: 'Database not available' };
@@ -142,62 +145,77 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
     const tenantId = getTenantId(organizationId);
 
     // Normalize domain
-    const normalizedDomain = data.name
+    let normalizedDomain = data.name
       .toLowerCase()
       .replace(/^https?:\/\//, '')
-      .replace(/^www\./, '')
       .replace(/\/$/, '');
-
-    // Create email identity in SES V2 with tenant isolation
-    // Let AWS manage DKIM signing automatically
-    const createIdentityCommand = new CreateEmailIdentityCommand({
-      EmailIdentity: normalizedDomain,
-      Tags: [
-        { Key: 'OrganizationId', Value: organizationId },
-        { Key: 'TenantId', Value: tenantId },
-        { Key: 'ManagedBy', Value: 'Kuratchi' }
-      ]
-    });
-
-    const identityResponse = await ses.send(createIdentityCommand);
-
-    if (!identityResponse.IdentityType) {
-      return { success: false, error: 'Failed to create email identity in SES' };
+    
+    // Only strip www. for email-only domains
+    if (purpose === 'email') {
+      normalizedDomain = normalizedDomain.replace(/^www\./, '');
     }
 
-    // Get identity details including DKIM tokens
-    const getIdentityCommand = new GetEmailIdentityCommand({
-      EmailIdentity: normalizedDomain
-    });
-    const identityDetails = await ses.send(getIdentityCommand);
+    let dkimTokens: string[] = [];
+    let verificationToken: string | undefined;
+    let dnsRecords: any[] = [];
+    let emailEnabled = false;
 
-    const dkimTokens = identityDetails.DkimAttributes?.Tokens || [];
-    const verificationToken = identityDetails.DkimAttributes?.SigningAttributesOrigin;
+    // Only set up SES if email is enabled
+    if (purpose !== 'site') {
+      emailEnabled = true;
+      const ses = getSESClient();
 
-    console.log('[emailDomains.add] DKIM tokens:', dkimTokens);
-    console.log('[emailDomains.add] Verification token:', verificationToken);
+      // Create email identity in SES V2 with tenant isolation
+      // Let AWS manage DKIM signing automatically
+      const createIdentityCommand = new CreateEmailIdentityCommand({
+        EmailIdentity: normalizedDomain,
+        Tags: [
+          { Key: 'OrganizationId', Value: organizationId },
+          { Key: 'TenantId', Value: tenantId },
+          { Key: 'ManagedBy', Value: 'Kuratchi' }
+        ]
+      });
 
-    // Build DNS records for user to configure
-    const dnsRecords = [
-      // DKIM CNAME records for email authentication
-      ...dkimTokens.map((token) => ({
-        type: 'CNAME',
-        name: `${token}._domainkey.${normalizedDomain}`,
-        value: `${token}.dkim.amazonses.com`,
-        priority: null,
-        description: 'DKIM signing record for email authentication'
-      })),
-      // DMARC policy record (recommended for email deliverability)
-      {
-        type: 'TXT',
-        name: `_dmarc.${normalizedDomain}`,
-        value: 'v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@' + normalizedDomain,
-        priority: null,
-        description: 'DMARC policy for email authentication and reporting'
+      const identityResponse = await ses.send(createIdentityCommand);
+
+      if (!identityResponse.IdentityType) {
+        return { success: false, error: 'Failed to create email identity in SES' };
       }
-    ];
 
-    console.log('[emailDomains.add] DNS records to save:', dnsRecords);
+      // Get identity details including DKIM tokens
+      const getIdentityCommand = new GetEmailIdentityCommand({
+        EmailIdentity: normalizedDomain
+      });
+      const identityDetails = await ses.send(getIdentityCommand);
+
+      dkimTokens = identityDetails.DkimAttributes?.Tokens || [];
+      verificationToken = identityDetails.DkimAttributes?.SigningAttributesOrigin;
+
+      console.log('[emailDomains.add] DKIM tokens:', dkimTokens);
+      console.log('[emailDomains.add] Verification token:', verificationToken);
+
+      // Build DNS records for user to configure
+      dnsRecords = [
+        // DKIM CNAME records for email authentication
+        ...dkimTokens.map((token) => ({
+          type: 'CNAME',
+          name: `${token}._domainkey.${normalizedDomain}`,
+          value: `${token}.dkim.amazonses.com`,
+          priority: null,
+          description: 'DKIM signing record for email authentication'
+        })),
+        // DMARC policy record (recommended for email deliverability)
+        {
+          type: 'TXT',
+          name: `_dmarc.${normalizedDomain}`,
+          value: 'v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@' + normalizedDomain,
+          priority: null,
+          description: 'DMARC policy for email authentication and reporting'
+        }
+      ];
+
+      console.log('[emailDomains.add] DNS records to save:', dnsRecords);
+    }
 
     // Insert domain in database
     const now = new Date().toISOString();
@@ -205,7 +223,7 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       id: crypto.randomUUID(),
       name: normalizedDomain,
       organizationId,
-      emailEnabled: true,
+      emailEnabled,
       emailVerified: false,
       sesVerificationToken: verificationToken || '',
       sesDkimTokens: JSON.stringify(dkimTokens),
@@ -218,11 +236,14 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
     });
 
     if (!result.success) {
-      // Cleanup: delete from SES if DB insert fails
-      try {
-        await ses.send(new DeleteEmailIdentityCommand({ EmailIdentity: normalizedDomain }));
-      } catch (cleanupErr) {
-        console.error('[emailDomains.add] Cleanup failed:', cleanupErr);
+      // Cleanup: delete from SES if DB insert fails and email was enabled
+      if (emailEnabled) {
+        try {
+          const ses = getSESClient();
+          await ses.send(new DeleteEmailIdentityCommand({ EmailIdentity: normalizedDomain }));
+        } catch (cleanupErr) {
+          console.error('[emailDomains.add] Cleanup failed:', cleanupErr);
+        }
       }
       return { success: false, error: 'Failed to save domain' };
     }
@@ -312,15 +333,15 @@ const deleteDomainSchema = v.object({
 export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data) => {
   try {
     const { event } = ensureSession();
-    const db = await getAdminDatabase(event.locals);
-    const ses = getSESClient();
+    const adminDb = await getAdminDatabase(event.locals);
+    const orgDb = await getDatabase(event.locals);
     
-    if (!db) {
+    if (!adminDb) {
       return { success: false, error: 'Database not available' };
     }
 
     // Get domain
-    const domainResult = await db.domains
+    const domainResult = await adminDb.domains
       .where({ id: data.domainId, deleted_at: { isNullish: true } })
       .first();
 
@@ -330,20 +351,64 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
 
     const domain = domainResult.data;
 
-    // Delete email identity from SES V2
-    try {
-      const deleteCommand = new DeleteEmailIdentityCommand({
-        EmailIdentity: domain.name
-      });
-      await ses.send(deleteCommand);
-    } catch (err) {
-      console.warn('[emailDomains.delete] Failed to delete from SES:', err);
-      // Continue with DB deletion even if SES fails
+    // If domain is linked to a site, clean up Cloudflare and site custom domain
+    if (domain.siteId && domain.cloudflareHostnameId) {
+      try {
+        const zoneId = env.CF_SSL_FOR_SAAS_ZONE_ID;
+        if (zoneId) {
+          // Delete custom hostname from Cloudflare
+          await deleteCustomHostname(zoneId, domain.cloudflareHostnameId);
+        }
+      } catch (err) {
+        console.warn('[emailDomains.delete] Failed to delete Cloudflare hostname:', err);
+        // Continue with other cleanup even if Cloudflare fails
+      }
+
+      // Remove from KV store
+      try {
+        await removeCustomDomainFromKV(event.locals, domain.name);
+      } catch (err) {
+        console.warn('[emailDomains.delete] Failed to remove from KV:', err);
+      }
+
+      // Delete site custom domain record
+      if (orgDb && domain.siteCustomDomainId) {
+        try {
+          await orgDb.siteCustomDomains.delete({ id: domain.siteCustomDomainId });
+        } catch (err) {
+          console.warn('[emailDomains.delete] Failed to delete site custom domain record:', err);
+        }
+      }
+
+      // Unlink domain from site in admin DB
+      await adminDb.domains
+        .where({ id: data.domainId })
+        .update({
+          siteId: null,
+          siteCustomDomainId: null,
+          cloudflareHostnameId: null,
+          cloudflareHostnameStatus: null,
+          cloudflareVerification: null
+        });
+    }
+
+    // Delete email identity from SES V2 (if email was enabled)
+    if (domain.emailEnabled) {
+      try {
+        const ses = getSESClient();
+        const deleteCommand = new DeleteEmailIdentityCommand({
+          EmailIdentity: domain.name
+        });
+        await ses.send(deleteCommand);
+      } catch (err) {
+        console.warn('[emailDomains.delete] Failed to delete from SES:', err);
+        // Continue with DB deletion even if SES fails
+      }
     }
 
     // Soft delete from database
     const now = new Date().toISOString();
-    const result = await db.domains
+    const result = await adminDb.domains
       .where({ id: data.domainId })
       .update({ deleted_at: now });
 

@@ -47,12 +47,14 @@
             textColor: '#475569',
             buttonColor: '#0f172a'
         }) as LayoutMetadata,
-        image = $bindable<HeroImage>({
+        image: initialImage = {
             url: 'https://fakeimg.pl/489x600/?text=World&font=lobster',
             alt: 'Hero figure image'
-        }),
+        },
         editable = true
     }: Props = $props();
+
+    let image = $state<HeroImage>(initialImage);
 
     const layoutStyle = $derived(
         `--krt-heroFigure-bg: ${layoutMetadata.backgroundColor}; --krt-heroFigure-heading: ${layoutMetadata.headingColor}; --krt-heroFigure-text: ${layoutMetadata.textColor}; --krt-heroFigure-button: ${layoutMetadata.buttonColor};`

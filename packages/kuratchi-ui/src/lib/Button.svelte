@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { HTMLButtonAttributes } from 'svelte/elements';
+  import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
   
-  interface Props extends HTMLButtonAttributes {
+  type AnchorOnlyAttributes = Omit<HTMLAnchorAttributes, keyof HTMLButtonAttributes>;
+
+  interface Props extends HTMLButtonAttributes, AnchorOnlyAttributes {
     variant?: 'primary' | 'secondary' | 'accent' | 'ghost' | 'link' | 'neutral' | 'success' | 'warning' | 'error';
     size?: 'xs' | 'sm' | 'md' | 'lg';
     outline?: boolean;
@@ -16,6 +18,7 @@
     class?: string;
     children: Snippet;
     onclick?: (event: MouseEvent) => void;
+    href?: string;
   }
   
   let {
@@ -32,7 +35,8 @@
     class: className = '',
     children,
     onclick,
-    type = 'button',
+    href,
+    type,
     ...restProps
   }: Props = $props();
   
@@ -48,18 +52,47 @@
     glass ? 'kui-button--glass' : '',
     className
   ].filter(Boolean).join(' '));
+
+  const resolvedType = $derived(href ? undefined : type ?? 'button');
+
+  const handleClick = (event: MouseEvent) => {
+    if (disabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    onclick?.(event);
+  };
 </script>
 
-<button
-  {type}
-  class={buttonClasses}
-  {disabled}
-  {onclick}
-  aria-busy={loading ? 'true' : undefined}
-  {...restProps}
->
-  {#if loading}
-    <span class="kui-button__spinner" aria-hidden="true"></span>
-  {/if}
-  {@render children()}
-</button>
+{#if href}
+  <a
+    class={buttonClasses}
+    href={disabled ? undefined : href}
+    aria-disabled={disabled ? 'true' : undefined}
+    aria-busy={loading ? 'true' : undefined}
+    tabindex={disabled ? -1 : undefined}
+    onclick={handleClick}
+    {...(restProps as HTMLAnchorAttributes)}
+  >
+    {#if loading}
+      <span class="kui-button__spinner" aria-hidden="true"></span>
+    {/if}
+    {@render children()}
+  </a>
+{:else}
+  <button
+    type={resolvedType}
+    class={buttonClasses}
+    {disabled}
+    onclick={handleClick}
+    aria-busy={loading ? 'true' : undefined}
+    {...(restProps as HTMLButtonAttributes)}
+  >
+    {#if loading}
+      <span class="kui-button__spinner" aria-hidden="true"></span>
+    {/if}
+    {@render children()}
+  </button>
+{/if}

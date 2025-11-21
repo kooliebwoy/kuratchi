@@ -65,227 +65,327 @@
   <header class="kui-overview__header">
     <div>
       <p class="kui-overview__eyebrow">Dashboard</p>
-      <h1>Overview</h1>
-      <p class="kui-overview__lede">Welcome back. Here's what's happening with your account.</p>
+      <h1 class="kui-overview__title">Overview</h1>
+      <p class="kui-overview__description">Welcome back. Here's what's happening with your account.</p>
     </div>
   </header>
 
   <section class="kui-overview__metrics">
-    {#each metrics as metric, idx}
-      <a class="kui-overview__metric" href={metric.href}>
-        <MetricCard
-          label={metric.label}
-          value={metric.value}
-          variant={idx === 0 ? 'primary' : 'secondary'}
-          class="kui-overview__metric-card"
-        />
-        <ArrowRight class="kui-overview__metric-icon" />
+    {#each metrics as metric}
+      <a class="kui-overview__metricCard" href={metric.href}>
+        <div class="kui-overview__metricContent">
+          <p class="kui-overview__metricLabel">{metric.label}</p>
+          <p class="kui-overview__metricValue">{metric.value}</p>
+        </div>
+        <ArrowRight class="kui-overview__metricArrow" />
       </a>
     {/each}
   </section>
 
   <section class="kui-overview__grid">
-    <Card class="kui-panel kui-panel--wide" title="Recent Activity">
+    <div class="kui-overview__activityPanel">
+      <div class="kui-overview__panelHeader">
+        <h2 class="kui-overview__panelTitle">Recent Activity</h2>
+      </div>
       {#if recentActivity.length > 0}
-        <div class="kui-activity">
+        <div class="kui-overview__activity">
           {#each recentActivity as activity}
-            <div class="kui-activity__item">
-              <span class="kui-activity__dot" data-type={activity.type}></span>
-              <div class="kui-activity__body">
-                <p class="kui-activity__title">{activity.title}</p>
-                <p class="kui-activity__meta">{activity.time}</p>
+            <div class="kui-overview__activityItem">
+              <span class="kui-overview__activityDot" data-type={activity.type}></span>
+              <div class="kui-overview__activityContent">
+                <p class="kui-overview__activityTitle">{activity.title}</p>
+                <p class="kui-overview__activityMeta">{activity.time}</p>
               </div>
             </div>
           {/each}
         </div>
       {:else}
-        <p class="kui-empty">No recent activity</p>
+        <p class="kui-overview__emptyState">No recent activity</p>
       {/if}
-    </Card>
+    </div>
 
-    <Card class="kui-panel" title="Actions">
-      <div class="kui-actions">
+    <div class="kui-overview__actionsPanel">
+      <div class="kui-overview__panelHeader">
+        <h2 class="kui-overview__panelTitle">Quick Actions</h2>
+      </div>
+      <div class="kui-overview__actions">
         {#each actions as action}
-          <a class="kui-action" href={action.href}>
+          <a class="kui-overview__actionItem" href={action.href}>
             <span>{action.label}</span>
             <ArrowRight />
           </a>
         {/each}
       </div>
-      <div class="kui-actions__footer">
-        <a class="kui-button kui-button--primary kui-button--size-sm" href="/sites">
+      <div class="kui-overview__actionFooter">
+        <a class="kui-overview__primaryButton" href="/sites">
           Go to Sites
         </a>
       </div>
-    </Card>
+    </div>
   </section>
 </div>
 
 <style>
   .kui-overview {
     display: grid;
-    gap: var(--kui-spacing-lg);
+    gap: 2rem;
+    padding: 2rem;
+    max-width: 100%;
   }
 
-  .kui-overview__header h1 {
-    margin: 0.15rem 0 0.25rem;
-    font-size: 1.6rem;
-    font-weight: 700;
+  .kui-overview__header {
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 1.5rem;
   }
 
   .kui-overview__eyebrow {
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: var(--kui-color-muted);
-    font-weight: 700;
-    font-size: 0.8rem;
-    margin: 0;
+    color: #6b7280;
+    font-weight: 600;
+    font-size: 0.75rem;
+    margin: 0 0 0.5rem 0;
   }
 
-  .kui-overview__lede {
+  .kui-overview__title {
+    margin: 0 0 0.5rem 0;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .kui-overview__description {
     margin: 0;
-    color: var(--kui-color-muted);
+    color: #6b7280;
+    font-size: 0.95rem;
   }
 
   .kui-overview__metrics {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: var(--kui-spacing-md);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
   }
 
-  .kui-overview__metric {
-    position: relative;
-    display: block;
+  .kui-overview__metricCard {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: white;
     text-decoration: none;
     color: inherit;
-    transition: transform var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease;
+    transition: all 150ms ease;
   }
 
-  .kui-overview__metric:hover {
-    transform: translateY(-2px);
+  .kui-overview__metricCard:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
   }
 
-  .kui-overview__metric-card {
-    padding-right: calc(var(--kui-spacing-md) * 1.5);
+  .kui-overview__metricContent {
+    flex: 1;
   }
 
-  .kui-overview__metric-icon {
-    position: absolute;
-    right: var(--kui-spacing-md);
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--kui-color-muted);
-    width: 1.1rem;
-    height: 1.1rem;
+  .kui-overview__metricLabel {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 500;
+  }
+
+  .kui-overview__metricValue {
+    margin: 0.5rem 0 0 0;
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .kui-overview__metricArrow {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: #d1d5db;
+    margin-left: 1rem;
+    flex-shrink: 0;
+    transition: color 150ms ease;
+  }
+
+  .kui-overview__metricCard:hover .kui-overview__metricArrow {
+    color: #9ca3af;
   }
 
   .kui-overview__grid {
     display: grid;
-    gap: var(--kui-spacing-md);
+    gap: 1.5rem;
     grid-template-columns: 2fr 1fr;
   }
 
-  .kui-panel {
-    height: 100%;
+  .kui-overview__activityPanel,
+  .kui-overview__actionsPanel {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: white;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  .kui-panel .kui-card__body {
-    gap: var(--kui-spacing-md);
+  .kui-overview__panelHeader {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
   }
 
-  .kui-panel--wide .kui-card__body {
-    gap: var(--kui-spacing-md);
+  .kui-overview__panelTitle {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
   }
 
-  .kui-activity {
+  .kui-overview__activity {
     display: grid;
-    gap: var(--kui-spacing-sm);
+    gap: 0;
   }
 
-  .kui-activity__item {
+  .kui-overview__activityItem {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: var(--kui-spacing-sm);
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--kui-color-border);
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #f3f4f6;
   }
 
-  .kui-activity__item:last-child {
+  .kui-overview__activityItem:last-child {
     border-bottom: none;
   }
 
-  .kui-activity__dot {
-    width: 0.7rem;
-    height: 0.7rem;
+  .kui-overview__activityDot {
+    width: 0.625rem;
+    height: 0.625rem;
     border-radius: 999px;
-    background: var(--kui-color-primary);
-    margin-top: 0.4rem;
+    background: #3b82f6;
+    margin-top: 0.35rem;
+    flex-shrink: 0;
   }
 
-  .kui-activity__dot[data-type="site"] {
-    background: var(--kui-color-accent);
+  .kui-overview__activityDot[data-type="site"] {
+    background: #6366f1;
   }
 
-  .kui-activity__dot[data-type="user"] {
-    background: var(--kui-color-secondary);
+  .kui-overview__activityDot[data-type="user"] {
+    background: #8b5cf6;
   }
 
-  .kui-activity__title {
+  .kui-overview__activityContent {
+    min-width: 0;
+  }
+
+  .kui-overview__activityTitle {
     margin: 0;
-    font-weight: 700;
+    font-weight: 500;
+    color: #111827;
+    font-size: 0.9375rem;
   }
 
-  .kui-activity__meta {
-    margin: 0.2rem 0 0;
-    color: var(--kui-color-muted);
-    font-size: 0.9rem;
+  .kui-overview__activityMeta {
+    margin: 0.25rem 0 0 0;
+    color: #9ca3af;
+    font-size: 0.875rem;
   }
 
-  .kui-empty {
-    color: var(--kui-color-muted);
+  .kui-overview__emptyState {
+    color: #9ca3af;
     margin: 0;
+    padding: 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
   }
 
-  .kui-actions {
+  .kui-overview__actions {
     display: grid;
     gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    flex: 1;
   }
 
-  .kui-action {
+  .kui-overview__actionItem {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.65rem 0.75rem;
-    border: 1px solid var(--kui-color-border);
-    border-radius: var(--kui-radius-md);
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
     text-decoration: none;
-    color: inherit;
-    background: var(--kui-color-surface-muted);
-    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease, transform var(--kui-duration-base) ease;
-    font-weight: 600;
+    color: #111827;
+    background: #f9fafb;
+    transition: all 150ms ease;
+    font-weight: 500;
+    font-size: 0.9375rem;
   }
 
-  .kui-action:hover {
-    border-color: color-mix(in srgb, var(--kui-color-primary) 35%, var(--kui-color-border) 65%);
-    box-shadow: var(--kui-shadow-xs);
-    transform: translateY(-1px);
+  .kui-overview__actionItem:hover {
+    border-color: #d1d5db;
+    background: white;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
-  .kui-action svg {
+  .kui-overview__actionItem svg {
     width: 1rem;
     height: 1rem;
-    color: var(--kui-color-muted);
+    color: #d1d5db;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+    transition: color 150ms ease;
   }
 
-  .kui-actions__footer {
-    margin-top: var(--kui-spacing-md);
+  .kui-overview__actionItem:hover svg {
+    color: #9ca3af;
+  }
+
+  .kui-overview__actionFooter {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e5e7eb;
     display: flex;
     justify-content: flex-end;
   }
 
-  @media (max-width: 960px) {
+  .kui-overview__primaryButton {
+    padding: 0.625rem 1rem;
+    background: #111827;
+    color: white;
+    border: 1px solid #111827;
+    border-radius: 0.375rem;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 150ms ease;
+    display: inline-block;
+  }
+
+  .kui-overview__primaryButton:hover {
+    background: #1f2937;
+    border-color: #1f2937;
+  }
+
+  @media (max-width: 1024px) {
     .kui-overview__grid {
       grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .kui-overview {
+      padding: 1rem;
+      gap: 1.5rem;
+    }
+
+    .kui-overview__metrics {
+      grid-template-columns: 1fr;
+    }
+
+    .kui-overview__title {
+      font-size: 1.5rem;
     }
   }
 </style>

@@ -10,7 +10,15 @@ interface ResolveResponse {
 export const handle: Handle = async ({ event, resolve }) => {
 	const hostname = event.url.hostname;
 	const subdomain = hostname.split('.')[0];
-	console.log('[site-renderer] Incoming request:', { hostname, subdomain });
+	const pathname = event.url.pathname;
+	
+	console.log('[site-renderer] Incoming request:', { hostname, subdomain, pathname });
+
+	// Skip site resolution for API routes and Cloudflare validation endpoints
+	if (pathname.startsWith('/api/') || pathname.startsWith('/.well-known/')) {
+		console.log('[site-renderer] Skipping site resolution for:', pathname);
+		return resolve(event);
+	}
 
 	if (!subdomain) {
 		throw redirect(307, 'https://kuratchi.com');

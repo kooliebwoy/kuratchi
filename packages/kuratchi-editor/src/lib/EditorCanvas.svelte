@@ -2,7 +2,7 @@
     import { onDestroy, onMount, tick } from "svelte";
     import { blocks, getBlock } from "./registry/blocks.svelte";
     import type { BlockDefinition } from "./registry/blocks.svelte";
-import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
+    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
     import { layoutPresets } from "./presets/layouts.js";
@@ -322,11 +322,11 @@ import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEdi
     );
 </script>
 
-<div class="h-full bg-base-100 flex flex-col max-w-8xl mx-auto rounded-3xl shadow-sm" style:background-color={backgroundColor}>
+<div class="krt-editorCanvas" style:background-color={backgroundColor}>
     {#if isWebpage}
-        <div bind:this={headerElement} class="flex-none space-y-4">
+        <div bind:this={headerElement} class="krt-editorCanvas__header">
             {#if headerBlocksState.length === 0}
-                <div class="text-center text-sm text-base-content/60 py-4 border-b border-base-300">Select a header preset to get started</div>
+                <div class="krt-editorCanvas__emptyState">Select a header preset to get started</div>
             {:else}
                 {#each headerBlocksState as block, index (blockKey(block, index))}
                     {@const blockDefinition = loadEditorBlock(block.type)}
@@ -343,43 +343,43 @@ import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEdi
         </div> 
     {/if}
 
-    <div class="flex grow overflow-hidden hover:overflow-y-scroll pb-52 mb-8" role="application">
-        <div class="w-full px-16">
+    <div class="krt-editorCanvas__main" role="application">
+        <div class="krt-editorCanvas__container">
             <article 
                 bind:this={editor} 
                 role="application" 
-                class="prose lg:prose-lg py-8 text-base-content w-full max-w-none relative space-y-3"
+                class="krt-editorCanvas__article"
             >
                 {#each editorBlocks as block, index (blockKey(block, index))}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
-                        <div class="relative editor-block">
+                        <div class="krt-editorCanvas__block editor-block">
                             <editorBlock.component {...block} />
                         </div>
                     {/if}
                 {/each}
             </article>
-            <div class="relative group">
-                <div class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-row gap-1 z-10">
+            <div class="krt-editorCanvas__addBlock">
+                <div class="krt-editorCanvas__addBlock__buttons">
                     {#if layoutsEnabled}
-                        <button class="btn btn-xs btn-square" onclick={() => layoutModal.showModal()}>
-                            <PanelsTopLeft class="text-base" />
+                        <button class="krt-editorCanvas__iconButton" onclick={() => layoutModal.showModal()} aria-label="Add layout">
+                            <PanelsTopLeft />
                         </button>
                     {/if}     
-                    <button popovertarget="searchBlocksPopover" style="anchor-name:--searchBlocksPopover" class="btn btn-xs btn-square" >
-                        <Plus class="text-base" />
+                    <button class="krt-editorCanvas__iconButton" popovertarget="searchBlocksPopover" style="anchor-name:--searchBlocksPopover" aria-label="Add block">
+                        <Plus />
                     </button>
-                    <ul popover="" id="searchBlocksPopover" style="position-anchor:--searchBlocksPopover" class="dropdown dropdown-end dropdown-start menu !bg-base-300 rounded-box w-50 p-2 shadow">
+                    <ul popover="" id="searchBlocksPopover" style="position-anchor:--searchBlocksPopover" class="krt-editorCanvas__blockMenu">
                         <li>
-                            <label class="input input-bordered flex items-center gap-2 w-44 h-8 rounded-md">
-                                <input type="text" class="input-xs" placeholder="Search" bind:value={blockSearchTerm} />
+                            <label class="krt-editorCanvas__searchLabel">
+                                <input type="text" class="krt-editorCanvas__searchInput" placeholder="Search" bind:value={blockSearchTerm} />
                             </label>
                         </li>
                         {#if filteredBlocks.length > 0}
                             {#each filteredBlocks as component}
                                 <li>
-                                    <button class="btn btn-ghost" onclick={() => addComponent(component)}>
-                                        <component.icon class="text-lg" />
+                                    <button class="krt-editorCanvas__menuButton" onclick={() => addComponent(component)}>
+                                        <component.icon />
                                         <span>{component.name}</span>
                                     </button> 
                                 </li>
@@ -387,26 +387,22 @@ import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEdi
                         {/if}
                     </ul>
                 </div>
-                <div class="relative">
+                <div class="krt-editorCanvas__inlineSearch">
                     <input 
-                        class="input w-full !border-0 !outline-none bg-transparent focus:!outline-none px-0 placeholder:opacity-30" 
+                        class="krt-editorCanvas__inlineInput" 
                         style="{backgroundColor === '#ffffff' || !backgroundColor ? 'color: rgba(0,0,0,0.8)' : 'color: rgba(255,255,255,0.8)'}" 
                         bind:value={inlineBlockSearch} 
                         bind:this={inlineBlockSearchInput} 
                         oninput={handleInlineSearch} 
-                        placeholder="Type / to browse blocks" 
-                        class:placeholder-black={backgroundColor === '#ffffff' || !backgroundColor}
-                        class:placeholder-white={backgroundColor !== '#ffffff' && backgroundColor}
+                        placeholder="Type / to browse blocks"
                     />
                     {#if inlineDropdown?.open && inlineFilteredBlocks.length > 0}
-                        <div class="absolute top-full left-0 mt-2 menu bg-base-100 rounded-box w-52 p-2 shadow-lg z-50 border border-base-300">
+                        <div class="krt-editorCanvas__inlineDropdown">
                             {#each inlineFilteredBlocks as component}
-                                <li>
-                                    <button class="btn btn-ghost justify-start" onclick={() => addComponent(component)}>
-                                        <component.icon class="text-lg" />
-                                        <span>{component.name}</span>
-                                    </button> 
-                                </li>
+                                <button class="krt-editorCanvas__inlineButton" onclick={() => addComponent(component)}>
+                                    <component.icon />
+                                    <span>{component.name}</span>
+                                </button>
                             {/each}
                         </div>
                     {/if}
@@ -416,34 +412,37 @@ import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEdi
     </div>
 
     {#if layoutsEnabled}
-        <dialog id="layoutModal" class="modal" bind:this={layoutModal}>
-            <div class="modal-box w-11/12 max-w-5xl">
+        <dialog class="krt-editorCanvas__modal" bind:this={layoutModal}>
+            <div class="krt-editorCanvas__modalBox">
                 <form method="dialog">
-                    <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                    <button type="button" class="krt-editorCanvas__closeButton" onclick={() => layoutModal.close()}>✕</button>
                 </form>
-                <h3 class="text-2xl font-bold mb-4">Select Layout</h3>
-                <div class="grid grid-cols-3 gap-4 w-full overflow-y-scroll">
+                <h3 class="krt-editorCanvas__modalTitle">Select Layout</h3>
+                <div class="krt-editorCanvas__layoutGrid">
                     {#each layoutPresets as preset}
                         <button
-                            class="card card-side bg-base-100 shadow-xl text-left p-3 hover:ring-2 hover:ring-primary transition flex flex-col gap-2"
+                            class="krt-editorCanvas__layoutCard"
                             onclick={() => {
                                 insertLayoutPreset(preset.id);
                                 layoutModal.close();
                             }}
                         >
                             <PresetPreview {preset} />
-                            <div class="w-full text-sm font-semibold">{preset.name}</div>
+                            <div class="krt-editorCanvas__layoutName">{preset.name}</div>
                         </button>
                     {/each}
                 </div> 
             </div>
+            <form method="dialog" class="krt-editorCanvas__modalBackdrop">
+                <button>close</button>
+            </form>
         </dialog>
     {/if}
 
     {#if isWebpage}
-        <div bind:this={footerElement} class="flex-none space-y-4"> 
+        <div bind:this={footerElement} class="krt-editorCanvas__footer"> 
             {#if footerBlocksState.length === 0}
-                <div class="text-center text-sm text-base-content/60 py-4 border-t border-base-300">Select a footer preset to get started</div>
+                <div class="krt-editorCanvas__emptyState krt-editorCanvas__emptyState--footer">Select a footer preset to get started</div>
             {:else}
                 {#each footerBlocksState as block, index (blockKey(block, index))}
                     {@const blockDefinition = loadEditorBlock(block.type)}
@@ -474,5 +473,322 @@ import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEdi
         pointer-events: none;
         box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
         transition: transform 120ms ease;
+    }
+
+    .krt-editorCanvas {
+        height: 100%;
+        background: #f5f5f5;
+        display: flex;
+        flex-direction: column;
+        max-width: 96rem;
+        margin: 0 auto;
+        border-radius: 1.5rem;
+        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    }
+
+    .krt-editorCanvas__header,
+    .krt-editorCanvas__footer {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .krt-editorCanvas__emptyState {
+        text-align: center;
+        font-size: 0.875rem;
+        color: rgba(0, 0, 0, 0.6);
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .krt-editorCanvas__emptyState--footer {
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        border-bottom: none;
+    }
+
+    .krt-editorCanvas__main {
+        display: flex;
+        flex: 1 1 0%;
+        overflow: hidden;
+        padding-bottom: 13rem;
+        margin-bottom: 2rem;
+    }
+
+    .krt-editorCanvas__main:hover {
+        overflow-y: scroll;
+    }
+
+    .krt-editorCanvas__container {
+        width: 100%;
+        padding: 0 4rem;
+    }
+
+    .krt-editorCanvas__article {
+        padding: 2rem 0;
+        color: inherit;
+        width: 100%;
+        max-width: none;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-editorCanvas__block {
+        position: relative;
+    }
+
+    .krt-editorCanvas__addBlock {
+        position: relative;
+    }
+
+    .krt-editorCanvas__addBlock:hover .krt-editorCanvas__addBlock__buttons {
+        opacity: 1;
+    }
+
+    .krt-editorCanvas__addBlock__buttons {
+        position: absolute;
+        left: -3.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0;
+        transition: opacity 150ms ease;
+        display: flex;
+        flex-direction: row;
+        gap: 0.25rem;
+        z-index: 10;
+    }
+
+    .krt-editorCanvas__iconButton {
+        width: 1.75rem;
+        height: 1.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.25rem;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: white;
+        cursor: pointer;
+        transition: all 150ms ease;
+    }
+
+    .krt-editorCanvas__iconButton:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .krt-editorCanvas__iconButton :global(svg) {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .krt-editorCanvas__blockMenu {
+        list-style: none;
+        padding: 0.5rem;
+        margin: 0;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 0.5rem;
+        min-width: 12.5rem;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+
+    .krt-editorCanvas__searchLabel {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 11rem;
+        height: 2rem;
+        border-radius: 0.375rem;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        padding: 0 0.5rem;
+        background: white;
+    }
+
+    .krt-editorCanvas__searchInput {
+        border: none;
+        outline: none;
+        background: transparent;
+        width: 100%;
+        font-size: 0.75rem;
+    }
+
+    .krt-editorCanvas__menuButton {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.5rem;
+        background: transparent;
+        border: none;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: background 150ms ease;
+        text-align: left;
+    }
+
+    .krt-editorCanvas__menuButton:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .krt-editorCanvas__menuButton :global(svg) {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
+    .krt-editorCanvas__inlineSearch {
+        position: relative;
+    }
+
+    .krt-editorCanvas__inlineInput {
+        width: 100%;
+        border: 0;
+        outline: none;
+        background: transparent;
+        padding: 0;
+    }
+
+    .krt-editorCanvas__inlineInput::placeholder {
+        opacity: 0.3;
+    }
+
+    .krt-editorCanvas__inlineInput:focus {
+        outline: none;
+    }
+
+    .krt-editorCanvas__inlineDropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 0.5rem;
+        background: white;
+        border-radius: 0.5rem;
+        width: 13rem;
+        padding: 0.5rem;
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        z-index: 50;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .krt-editorCanvas__inlineButton {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: transparent;
+        border: none;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: background 150ms ease;
+        text-align: left;
+        width: 100%;
+    }
+
+    .krt-editorCanvas__inlineButton:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .krt-editorCanvas__inlineButton :global(svg) {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
+    .krt-editorCanvas__modal {
+        border: none;
+        padding: 0;
+        background: transparent;
+        max-width: 100vw;
+        max-height: 100vh;
+    }
+
+    .krt-editorCanvas__modal::backdrop {
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .krt-editorCanvas__modalBox {
+        width: 91.666667%;
+        max-width: 64rem;
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        position: relative;
+    }
+
+    .krt-editorCanvas__closeButton {
+        position: absolute;
+        right: 0.5rem;
+        top: 0.5rem;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 150ms ease;
+    }
+
+    .krt-editorCanvas__closeButton:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .krt-editorCanvas__modalTitle {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
+    }
+
+    .krt-editorCanvas__layoutGrid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        width: 100%;
+        overflow-y: scroll;
+        max-height: 60vh;
+    }
+
+    .krt-editorCanvas__layoutCard {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: white;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        text-align: left;
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 150ms ease;
+    }
+
+    .krt-editorCanvas__layoutCard:hover {
+        border-color: #6366f1;
+    }
+
+    .krt-editorCanvas__layoutName {
+        width: 100%;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .krt-editorCanvas__modalBackdrop {
+        position: fixed;
+        inset: 0;
+        background: transparent;
+    }
+
+    .krt-editorCanvas__modalBackdrop button {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: transparent;
+        cursor: default;
+        color: transparent;
     }
 </style>

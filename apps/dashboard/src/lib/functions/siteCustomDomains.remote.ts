@@ -256,6 +256,83 @@ const linkDomainSchema = v.object({
   siteId: v.string()
 });
 
+const domainInstructionsSchema = v.object({
+  domainId: v.string()
+});
+
+export const getDomainLinkInstructions = guardedCommand(domainInstructionsSchema, async (data) => {
+  try {
+    const { event } = ensureSession();
+    const orgDb = await getDatabase(event.locals);
+    const adminDb = await getAdminDatabase(event.locals);
+    
+    if (!adminDb || !orgDb) {
+      return { success: false, error: 'Database not available' };
+    }
+
+    const organizationId = (event.locals.session as any)?.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'Organization not found' };
+    }
+
+    // Get domain from admin DB
+    const domainResult = await adminDb.domains
+      .where({ id: data.domainId, organizationId, deleted_at: { isNullish: true } })
+      .first();
+
+    if (!domainResult.success || !domainResult.data) {
+      return { success: false, error: 'Domain not found' };
+    }
+
+    const domain = domainResult.data;
+
+    // Parse cloudflareVerification JSON if present
+    let httpValidation: { http_url?: string; http_body?: string } | undefined;
+    if (domain.cloudflareVerification) {
+      try {
+        const parsed = typeof domain.cloudflareVerification === 'string' 
+          ? JSON.parse(domain.cloudflareVerification)
+          : domain.cloudflareVerification;
+        
+        // Check for HTTP validation (ownership_verification_http)
+        if (parsed.ownership_verification_http) {
+          httpValidation = parsed.ownership_verification_http;
+        }
+      } catch (e) {
+        console.error('Failed to parse cloudflareVerification:', e);
+      }
+    }
+
+    // Get the linked site to fetch its subdomain for CNAME target
+    let cnameTarget = env.SITE_RENDERER_ORIGIN_HOST || 'Not configured';
+    if (domain.siteId) {
+      const siteResult = await orgDb.sites
+        .where({ id: domain.siteId, deleted_at: { isNullish: true } })
+        .first();
+      
+      if (siteResult.success && siteResult.data?.subdomain) {
+        cnameTarget = `${siteResult.data.subdomain}.kuratchi.site`;
+      }
+    }
+
+    return {
+      success: true,
+      instructions: {
+        httpValidation,
+        cname: {
+          name: domain.name,
+          target: cnameTarget,
+          description: 'Point your domain to this CNAME target. Cloudflare will automatically verify ownership via HTTP.'
+        }
+      },
+      hostnameStatus: domain.cloudflareHostnameStatus || 'pending'
+    };
+  } catch (err) {
+    console.error('[siteCustomDomains.getDomainLinkInstructions] error:', err);
+    return { success: false, error: 'Failed to fetch instructions: ' + (err as Error).message };
+  }
+});
+
 export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) => {
   try {
     const { event } = ensureSession();
@@ -297,13 +374,15 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
     }
 
     // Get site from org DB
-    const site = await orgDb.query.sites.findFirst({
-      where: (fields: any, { eq }: any) => eq(fields.id, data.siteId)
-    });
+    const siteResult = await orgDb.sites
+      .where({ id: data.siteId, deleted_at: { isNullish: true } })
+      .first();
 
-    if (!site) {
+    if (!siteResult.success || !siteResult.data) {
       return { success: false, error: 'Site not found' };
     }
+
+    const site = siteResult.data;
 
     // Get database record for KV mapping
     const dbRecord = await adminDb.databases
@@ -350,13 +429,16 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
     const customDomainId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    const insertResult = await orgDb.insert.siteCustomDomains({
+    // Build CNAME target using site subdomain
+    const cnameTarget = `${site.subdomain}.kuratchi.site`;
+
+    const insertResult = await orgDb.siteCustomDomains.insert({
       id: customDomainId,
       siteId: data.siteId,
       domain: domain.name,
       domainId: data.domainId,
       verified: false,
-      cnameTarget: originHost,
+      cnameTarget: cnameTarget,
       cloudflareStatus: cfHostname.status || 'pending',
       cloudflareHostnameId: cfHostname.id,
       sslStatus: cfHostname.ssl?.status || 'pending',
@@ -380,6 +462,35 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
         updated_at: now
       });
 
+    // Store HTTP validation data in KV for site-renderer to access
+    if (cfHostname.ownership_verification?.ownership_verification_http) {
+      const httpValidation = cfHostname.ownership_verification.ownership_verification_http;
+      const kvKey = `cf-validation:${domain.name}`;
+      
+      try {
+        const kv = (event.locals.kuratchi as any)?.kv?.default;
+        if (kv) {
+          await kv.put(
+            kvKey,
+            JSON.stringify({
+              http_url: httpValidation.http_url,
+              http_body: httpValidation.http_body,
+              hostname: domain.name,
+              created_at: now
+            }),
+            {
+              expirationTtl: 86400 // 24 hours - validation should complete well before this
+            }
+          );
+          console.log(`[siteCustomDomains] Stored validation data in KV for ${domain.name}`);
+        } else {
+          console.warn('[siteCustomDomains] KV not available for storing validation data');
+        }
+      } catch (err) {
+        console.error('[siteCustomDomains] Failed to store validation in KV:', err);
+      }
+    }
+
     // If hostname is already active, sync to KV immediately
     if (cfHostname.status === 'active') {
       await syncCustomDomainToKV(event.locals, domain.name, {
@@ -391,21 +502,32 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
       });
 
       // Update verified status
-      await orgDb.update.siteCustomDomains(
-        { verified: true },
-        (fields: any, { eq }: any) => eq(fields.id, customDomainId)
-      );
+      await orgDb.siteCustomDomains
+        .where({ id: customDomainId })
+        .update({ verified: true });
     }
+
+    const verificationRecord = cfHostname.ownership_verification && typeof cfHostname.ownership_verification === 'object'
+      ? (cfHostname.ownership_verification as { type?: string; name?: string; value?: string })
+      : undefined;
 
     return { 
       success: true,
       customDomain: insertResult.results,
       cloudflareHostname: cfHostname,
       instructions: {
+        verification: verificationRecord?.type && verificationRecord?.name && verificationRecord?.value
+          ? {
+              type: verificationRecord.type.toUpperCase(),
+              name: verificationRecord.name,
+              value: verificationRecord.value,
+              description: 'Add this TXT record to prove ownership so Cloudflare can issue the certificate.'
+            }
+          : undefined,
         cname: {
           name: domain.name,
-          target: originHost,
-          description: 'Point your domain to this CNAME target. Cloudflare will automatically validate via HTTP.'
+          target: cnameTarget,
+          description: 'Point your domain to this CNAME target after verification completes.'
         }
       }
     };

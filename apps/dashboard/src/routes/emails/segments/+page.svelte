@@ -130,13 +130,6 @@
 </svelte:head>
 
 <div class="kui-segments">
-  <nav class="kui-tabs">
-    <a href="/emails/drip" class="kui-tab">Drip Campaigns</a>
-    <a href="/emails/segments" class="kui-tab is-active">Segments</a>
-    <a href="/emails/templates" class="kui-tab">Templates</a>
-    <a href="/emails" class="kui-tab">Email History</a>
-  </nav>
-
   <header class="kui-segments__header">
     <div>
       <p class="kui-eyebrow">Audiences</p>
@@ -483,5 +476,4 @@
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
-}
 </style>

@@ -22,7 +22,7 @@
         textColor = '#ffffff',
         backgroundColor = '#212121',
         type = 'saige-blake-footer',
-        icons = [
+        icons: initialIcons = [
             { icon: 'facebook', slug: '#', name: "Facebook", enabled: true },
             { icon: 'x', slug: '#', name: "X", enabled: true },
             { icon: 'instagram', slug: '#', name: "Instagram", enabled: true },
@@ -40,6 +40,8 @@
         ],
         menuHidden = false
     }: Props = $props();
+
+    let icons = $state(initialIcons);
 
     const defaultMenu = [
         { label: 'Privacy Policy', slug: '/product-a' },

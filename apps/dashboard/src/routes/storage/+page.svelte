@@ -15,8 +15,9 @@
   let siteBuckets = $derived<any[]>(data?.siteBuckets ?? []);
   let stats = $derived(data?.stats ?? { total: 0, managed: 0, unmanaged: 0, orgLevel: 0, siteLevel: 0 });
 
-  let customDomainDialog: HTMLDialogElement;
+  let customDomainDialog: any;
   let selectedBucket = $state<any>(null);
+  let dialogOpen = $state(false);
 
   let selectedTab = $state<'all' | 'org' | 'sites'>('all');
 
@@ -167,7 +168,7 @@
   </Card>
 </div>
 
-<Dialog bind:open={() => false} bind:this={customDomainDialog} size="md">
+<Dialog bind:open={dialogOpen} bind:this={customDomainDialog} size="md">
   {#snippet header()}
     <div class="kui-modal-header">
       <h3>Add Custom Domain</h3>

@@ -3,7 +3,7 @@
   import { Button, Card, Loading, Badge } from '@kuratchi/ui';
   import { getDatabase, getDatabaseTables, executeQuery, getDatabaseAnalytics, getTableData, insertTableRow, deleteTableRow } from '$lib/functions/database.remote';
 
-  let deleteRowDialog: HTMLDialogElement;
+  let deleteRowDialogOpen = $state(false);
   let queryResults = $state<any[]>([]);
   let selectedTable = $state<string | null>(null);
   let tableData = $state<any[]>([]);
@@ -93,7 +93,7 @@
 
   function confirmDeleteRow(row: any) {
     rowToDelete = row;
-    deleteRowDialog.showModal();
+    deleteRowDialogOpen = true;
   }
 
   async function handleDeleteRow() {
@@ -111,7 +111,7 @@
       });
 
       await viewTableData(selectedTable);
-      deleteRowDialog.close();
+      deleteRowDialogOpen = false;
       rowToDelete = null;
     } catch (err) {
       console.error('Error deleting row:', err);
@@ -510,12 +510,14 @@
   </div>
 {/if}
 
-<dialog bind:this={deleteRowDialog} class="kui-modal">
-  <div class="kui-modal__box">
-    <div class="kui-modal__header">
-      <h3>Delete Row</h3>
-      <Button variant="ghost" size="sm" onclick={() => deleteRowDialog.close()}>Close</Button>
-    </div>
+{#if deleteRowDialogOpen}
+  <div class="kui-modal">
+    <div class="kui-modal__backdrop" onclick={() => deleteRowDialogOpen = false}></div>
+    <div class="kui-modal__box">
+      <div class="kui-modal__header">
+        <h3>Delete Row</h3>
+        <Button variant="ghost" size="sm" onclick={() => deleteRowDialogOpen = false}>Close</Button>
+      </div>
 
     <div class="kui-modal__body">
       <p class="kui-subtext">This action cannot be undone.</p>
@@ -543,12 +545,13 @@
       {/if}
     </div>
 
-    <div class="kui-modal__footer">
-      <Button variant="ghost" onclick={() => deleteRowDialog.close()}>Cancel</Button>
-      <Button variant="error" onclick={handleDeleteRow}>Delete Row</Button>
+      <div class="kui-modal__footer">
+        <Button variant="ghost" onclick={() => deleteRowDialogOpen = false}>Cancel</Button>
+        <Button variant="error" onclick={handleDeleteRow}>Delete Row</Button>
+      </div>
     </div>
   </div>
-</dialog>
+{/if}
 
 <style>
   .kui-db {
@@ -814,15 +817,16 @@
   }
 
   .kui-modal {
-    width: 100%;
-    height: 100%;
-    border: none;
-    background: transparent;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
     display: grid;
     place-items: center;
   }
 
-  .kui-modal::backdrop {
+  .kui-modal__backdrop {
+    position: absolute;
+    inset: 0;
     background: rgba(15, 23, 42, 0.35);
     backdrop-filter: blur(4px);
   }
@@ -836,6 +840,8 @@
     padding: var(--kui-spacing-md);
     display: grid;
     gap: var(--kui-spacing-md);
+    position: relative;
+    z-index: 1;
   }
 
   .kui-modal__header,

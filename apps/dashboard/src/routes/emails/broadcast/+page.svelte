@@ -156,13 +156,6 @@
 </svelte:head>
 
 <div class="kui-broadcast">
-  <nav class="kui-tabs">
-    <a href="/emails/drip" class="kui-tab">Drip Campaigns</a>
-    <a href="/emails/segments" class="kui-tab">Segments</a>
-    <a href="/emails/templates" class="kui-tab">Templates</a>
-    <a href="/emails/broadcast" class="kui-tab is-active">Broadcasts</a>
-  </nav>
-
   <header class="kui-broadcast__header">
     <div>
       <p class="kui-eyebrow">Direct Email</p>
@@ -379,28 +372,6 @@
   .kui-broadcast {
     display: grid;
     gap: var(--kui-spacing-md);
-  }
-
-  .kui-tabs {
-    display: flex;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--kui-color-border);
-    padding-bottom: 0.5rem;
-  }
-
-  .kui-tab {
-    padding: 0.55rem 0.9rem;
-    border-radius: var(--kui-radius-md);
-    text-decoration: none;
-    color: var(--kui-color-muted);
-    border: 1px solid transparent;
-  }
-
-  .kui-tab.is-active {
-    border-color: var(--kui-color-border);
-    background: var(--kui-color-surface);
-    color: var(--kui-color-text);
-    box-shadow: var(--kui-shadow-xs);
   }
 
   .kui-broadcast__header {

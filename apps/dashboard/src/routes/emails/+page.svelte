@@ -63,239 +63,583 @@
   <title>Email Dashboard - Kuratchi</title>
 </svelte:head>
 
-<div class="space-y-8">
+<div class="kui-email-dashboard">
   <!-- Getting Started Section (show if not complete) -->
   {#if !setupComplete}
-    <div class="card bg-linear-to-br from-primary/5 via-secondary/5 to-accent/5 border-2 border-primary/20 shadow-lg">
-      <div class="card-body">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h2 class="card-title text-2xl">Getting Started with Email</h2>
-            <p class="text-base-content/70 mt-1">
-              {completedSteps} of {setupSteps.length} steps completed
-            </p>
-          </div>
-          <div class="radial-progress text-primary" style="--value:{(completedSteps / setupSteps.length) * 100};" role="progressbar">
+    <div class="kui-email-dashboard__gettingStarted">
+      <div class="kui-email-dashboard__gettingStarted__header">
+        <div>
+          <h2 class="kui-email-dashboard__title">Getting Started with Email</h2>
+          <p class="kui-email-dashboard__subtitle">
+            {completedSteps} of {setupSteps.length} steps completed
+          </p>
+        </div>
+        <div class="kui-email-dashboard__progress" role="progressbar" aria-valuenow={completedSteps} aria-valuemin={0} aria-valuemax={setupSteps.length}>
+          <div class="kui-email-dashboard__progressInner" style="--value: {(completedSteps / setupSteps.length) * 100}%">
             {completedSteps}/{setupSteps.length}
           </div>
         </div>
-        
-        <div class="grid md:grid-cols-3 gap-4">
-          {#each setupSteps as step, index}
-            <a 
-              href={step.link}
-              class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary/40 transition-all"
-            >
-              <div class="card-body p-4">
-                <div class="flex items-start gap-3">
-                  <div class="w-8 h-8 rounded-full {step.completed ? 'bg-success' : 'bg-base-300'} flex items-center justify-center shrink-0">
-                    {#if step.completed}
-                      <CheckCircle class="h-5 w-5 text-white" />
-                    {:else}
-                      <span class="text-sm font-bold text-base-content/70">{index + 1}</span>
-                    {/if}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <h3 class="font-semibold text-sm mb-1">{step.title}</h3>
-                    <p class="text-xs text-base-content/60">{step.description}</p>
-                    {#if !step.completed}
-                      <div class="mt-2">
-                        <span class="text-xs text-primary font-medium">Get started →</span>
-                      </div>
-                    {/if}
-                  </div>
-                </div>
+      </div>
+      
+      <div class="kui-email-dashboard__setupGrid">
+        {#each setupSteps as step, index}
+          <a 
+            href={step.link}
+            class="kui-email-dashboard__setupCard"
+          >
+            <div class="kui-email-dashboard__setupCard__content">
+              <div class="kui-email-dashboard__setupCard__icon">
+                {#if step.completed}
+                  <CheckCircle class="kui-email-dashboard__checkmark" />
+                {:else}
+                  <span class="kui-email-dashboard__stepNumber">{index + 1}</span>
+                {/if}
               </div>
-            </a>
-          {/each}
-        </div>
+              <div class="kui-email-dashboard__setupCard__text">
+                <h3 class="kui-email-dashboard__setupCard__title">{step.title}</h3>
+                <p class="kui-email-dashboard__setupCard__description">{step.description}</p>
+                {#if !step.completed}
+                  <div class="kui-email-dashboard__setupCard__cta">
+                    <span>Get started →</span>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </a>
+        {/each}
       </div>
     </div>
   {/if}
 
   <!-- Key Metrics -->
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold tracking-wide">Emails Sent</p>
-            <p class="text-3xl font-bold mt-2">{statsData.sent.toLocaleString()}</p>
-            <p class="text-xs text-success mt-1">+12% vs last month</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
-            <Mail class="h-6 w-6 text-success" />
-          </div>
+  <div class="kui-email-dashboard__metrics">
+    <div class="kui-email-dashboard__metricCard">
+      <div class="kui-email-dashboard__metricCard__content">
+        <div>
+          <p class="kui-email-dashboard__metricLabel">Emails Sent</p>
+          <p class="kui-email-dashboard__metricValue">{statsData.sent.toLocaleString()}</p>
+          <p class="kui-email-dashboard__metricChange kui-email-dashboard__metricChange--positive">+12% vs last month</p>
+        </div>
+        <div class="kui-email-dashboard__metricIcon kui-email-dashboard__metricIcon--success">
+          <Mail />
         </div>
       </div>
     </div>
 
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold tracking-wide">Active Campaigns</p>
-            <p class="text-3xl font-bold mt-2">{activeCampaigns}</p>
-            <p class="text-xs text-base-content/50 mt-1">{campaigns.length} total</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Zap class="h-6 w-6 text-primary" />
-          </div>
+    <div class="kui-email-dashboard__metricCard">
+      <div class="kui-email-dashboard__metricCard__content">
+        <div>
+          <p class="kui-email-dashboard__metricLabel">Active Campaigns</p>
+          <p class="kui-email-dashboard__metricValue">{activeCampaigns}</p>
+          <p class="kui-email-dashboard__metricChange">{campaigns.length} total</p>
+        </div>
+        <div class="kui-email-dashboard__metricIcon kui-email-dashboard__metricIcon--primary">
+          <Zap />
         </div>
       </div>
     </div>
 
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold tracking-wide">Total Contacts</p>
-            <p class="text-3xl font-bold mt-2">{totalContacts.toLocaleString()}</p>
-            <p class="text-xs text-base-content/50 mt-1">{segments.length} segments</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-info/10 flex items-center justify-center">
-            <Users class="h-6 w-6 text-info" />
-          </div>
+    <div class="kui-email-dashboard__metricCard">
+      <div class="kui-email-dashboard__metricCard__content">
+        <div>
+          <p class="kui-email-dashboard__metricLabel">Total Contacts</p>
+          <p class="kui-email-dashboard__metricValue">{totalContacts.toLocaleString()}</p>
+          <p class="kui-email-dashboard__metricChange">{segments.length} segments</p>
+        </div>
+        <div class="kui-email-dashboard__metricIcon kui-email-dashboard__metricIcon--info">
+          <Users />
         </div>
       </div>
     </div>
 
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body p-6">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold tracking-wide">Failed</p>
-            <p class="text-3xl font-bold mt-2">{statsData.failed}</p>
-            <p class="text-xs text-error mt-1">-2% vs last month</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
-            <BarChart3 class="h-6 w-6 text-error" />
-          </div>
+    <div class="kui-email-dashboard__metricCard">
+      <div class="kui-email-dashboard__metricCard__content">
+        <div>
+          <p class="kui-email-dashboard__metricLabel">Failed</p>
+          <p class="kui-email-dashboard__metricValue">{statsData.failed}</p>
+          <p class="kui-email-dashboard__metricChange kui-email-dashboard__metricChange--error">-2% vs last month</p>
+        </div>
+        <div class="kui-email-dashboard__metricIcon kui-email-dashboard__metricIcon--error">
+          <BarChart3 />
         </div>
       </div>
     </div>
   </div>
 
   <!-- Navigation Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+  <div class="kui-email-dashboard__navGrid">
     <!-- Drip Campaigns -->
-    <a href="/emails/drip" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
-      <div class="card-body">
-        <div class="flex items-start justify-between">
+    <a href="/emails/drip" class="kui-email-dashboard__navCard kui-email-dashboard__navCard--drip">
+      <div class="kui-email-dashboard__navCard__content">
+        <div class="kui-email-dashboard__navCard__header">
           <div>
-            <h3 class="card-title text-lg flex items-center gap-2">
-              <Zap class="h-5 w-5 text-primary" />
-              Drip Campaigns
+            <h3 class="kui-email-dashboard__navCard__title">
+              <Zap /> Drip Campaigns
             </h3>
-            <p class="text-sm text-base-content/70 mt-2">Build automated email sequences and nurture your audience.</p>
+            <p class="kui-email-dashboard__navCard__description">Build automated email sequences and nurture your audience.</p>
           </div>
-          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+          <ArrowRight class="kui-email-dashboard__navCard__arrow" />
         </div>
-        <div class="mt-4 pt-4 border-t border-base-200">
-          <p class="text-xs text-base-content/60">{activeCampaigns} active • {campaigns.length} total</p>
+        <div class="kui-email-dashboard__navCard__footer">
+          <p class="kui-email-dashboard__navCard__meta">{activeCampaigns} active • {campaigns.length} total</p>
         </div>
       </div>
     </a>
 
     <!-- Broadcasts -->
-    <a href="/emails/broadcast" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
-      <div class="card-body">
-        <div class="flex items-start justify-between">
+    <a href="/emails/broadcast" class="kui-email-dashboard__navCard kui-email-dashboard__navCard--broadcast">
+      <div class="kui-email-dashboard__navCard__content">
+        <div class="kui-email-dashboard__navCard__header">
           <div>
-            <h3 class="card-title text-lg flex items-center gap-2">
-              <Mail class="h-5 w-5 text-success" />
-              Broadcasts
+            <h3 class="kui-email-dashboard__navCard__title">
+              <Mail /> Broadcasts
             </h3>
-            <p class="text-sm text-base-content/70 mt-2">Send direct emails to your audiences instantly.</p>
+            <p class="kui-email-dashboard__navCard__description">Send direct emails to your audiences instantly.</p>
           </div>
-          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+          <ArrowRight class="kui-email-dashboard__navCard__arrow" />
         </div>
-        <div class="mt-4 pt-4 border-t border-base-200">
-          <p class="text-xs text-base-content/60">One-time campaigns</p>
+        <div class="kui-email-dashboard__navCard__footer">
+          <p class="kui-email-dashboard__navCard__meta">One-time campaigns</p>
         </div>
       </div>
     </a>
 
     <!-- Segments -->
-    <a href="/emails/segments" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
-      <div class="card-body">
-        <div class="flex items-start justify-between">
+    <a href="/emails/segments" class="kui-email-dashboard__navCard kui-email-dashboard__navCard--segments">
+      <div class="kui-email-dashboard__navCard__content">
+        <div class="kui-email-dashboard__navCard__header">
           <div>
-            <h3 class="card-title text-lg flex items-center gap-2">
-              <Users class="h-5 w-5 text-info" />
-              Segments
+            <h3 class="kui-email-dashboard__navCard__title">
+              <Users /> Segments
             </h3>
-            <p class="text-sm text-base-content/70 mt-2">Organize and manage your contact lists and audiences.</p>
+            <p class="kui-email-dashboard__navCard__description">Organize and manage your contact lists and audiences.</p>
           </div>
-          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+          <ArrowRight class="kui-email-dashboard__navCard__arrow" />
         </div>
-        <div class="mt-4 pt-4 border-t border-base-200">
-          <p class="text-xs text-base-content/60">{segments.length} segments • {totalContacts.toLocaleString()} contacts</p>
+        <div class="kui-email-dashboard__navCard__footer">
+          <p class="kui-email-dashboard__navCard__meta">{segments.length} segments • {totalContacts.toLocaleString()} contacts</p>
         </div>
       </div>
     </a>
 
     <!-- Templates -->
-    <a href="/emails/templates" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
-      <div class="card-body">
-        <div class="flex items-start justify-between">
+    <a href="/emails/templates" class="kui-email-dashboard__navCard kui-email-dashboard__navCard--templates">
+      <div class="kui-email-dashboard__navCard__content">
+        <div class="kui-email-dashboard__navCard__header">
           <div>
-            <h3 class="card-title text-lg flex items-center gap-2">
-              <FileText class="h-5 w-5 text-warning" />
-              Templates
+            <h3 class="kui-email-dashboard__navCard__title">
+              <FileText /> Templates
             </h3>
-            <p class="text-sm text-base-content/70 mt-2">Create and manage reusable email templates.</p>
+            <p class="kui-email-dashboard__navCard__description">Create and manage reusable email templates.</p>
           </div>
-          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+          <ArrowRight class="kui-email-dashboard__navCard__arrow" />
         </div>
-        <div class="mt-4 pt-4 border-t border-base-200">
-          <p class="text-xs text-base-content/60">Ready to use in campaigns</p>
+        <div class="kui-email-dashboard__navCard__footer">
+          <p class="kui-email-dashboard__navCard__meta">Ready to use in campaigns</p>
         </div>
       </div>
     </a>
 
     <!-- Domains -->
-    <a href="/domains" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md hover:border-primary transition-all cursor-pointer group">
-      <div class="card-body">
-        <div class="flex items-start justify-between">
+    <a href="/domains" class="kui-email-dashboard__navCard kui-email-dashboard__navCard--domains">
+      <div class="kui-email-dashboard__navCard__content">
+        <div class="kui-email-dashboard__navCard__header">
           <div>
-            <h3 class="card-title text-lg flex items-center gap-2">
-              <Globe class="h-5 w-5 text-secondary" />
-              Domains
+            <h3 class="kui-email-dashboard__navCard__title">
+              <Globe /> Domains
             </h3>
-            <p class="text-sm text-base-content/70 mt-2">Verify domains for sending emails from your own domain.</p>
+            <p class="kui-email-dashboard__navCard__description">Verify domains for sending emails from your own domain.</p>
           </div>
-          <ArrowRight class="h-5 w-5 text-base-content/30 group-hover:text-primary transition-colors" />
+          <ArrowRight class="kui-email-dashboard__navCard__arrow" />
         </div>
-        <div class="mt-4 pt-4 border-t border-base-200">
-          <p class="text-xs text-base-content/60">DNS verification required</p>
+        <div class="kui-email-dashboard__navCard__footer">
+          <p class="kui-email-dashboard__navCard__meta">DNS verification required</p>
         </div>
       </div>
     </a>
   </div>
 
   <!-- Quick Stats -->
-  <div class="card bg-linear-to-br from-primary/5 to-primary/10 border border-primary/20">
-    <div class="card-body">
-      <h3 class="card-title">Performance Overview</h3>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-        <div>
-          <p class="text-xs text-base-content/60 uppercase font-semibold">Total Emails</p>
-          <p class="text-2xl font-bold mt-1">{statsData.total.toLocaleString()}</p>
-        </div>
-        <div>
-          <p class="text-xs text-base-content/60 uppercase font-semibold">Last 24h</p>
-          <p class="text-2xl font-bold mt-1">{statsData.last24h.toLocaleString()}</p>
-        </div>
-        <div>
-          <p class="text-xs text-base-content/60 uppercase font-semibold">Success Rate</p>
-          <p class="text-2xl font-bold mt-1">{statsData.total > 0 ? Math.round((statsData.sent / statsData.total) * 100) : 0}%</p>
-        </div>
-        <div>
-          <p class="text-xs text-base-content/60 uppercase font-semibold">Pending</p>
-          <p class="text-2xl font-bold mt-1">{statsData.pending.toLocaleString()}</p>
-        </div>
+  <div class="kui-email-dashboard__overview">
+    <h3 class="kui-email-dashboard__overviewTitle">Performance Overview</h3>
+    <div class="kui-email-dashboard__overviewGrid">
+      <div class="kui-email-dashboard__overviewStat">
+        <p class="kui-email-dashboard__overviewLabel">Total Emails</p>
+        <p class="kui-email-dashboard__overviewValue">{statsData.total.toLocaleString()}</p>
+      </div>
+      <div class="kui-email-dashboard__overviewStat">
+        <p class="kui-email-dashboard__overviewLabel">Last 24h</p>
+        <p class="kui-email-dashboard__overviewValue">{statsData.last24h.toLocaleString()}</p>
+      </div>
+      <div class="kui-email-dashboard__overviewStat">
+        <p class="kui-email-dashboard__overviewLabel">Success Rate</p>
+        <p class="kui-email-dashboard__overviewValue">{statsData.total > 0 ? Math.round((statsData.sent / statsData.total) * 100) : 0}%</p>
+      </div>
+      <div class="kui-email-dashboard__overviewStat">
+        <p class="kui-email-dashboard__overviewLabel">Pending</p>
+        <p class="kui-email-dashboard__overviewValue">{statsData.pending.toLocaleString()}</p>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .kui-email-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .kui-email-dashboard__gettingStarted {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 50%, rgba(236, 72, 153, 0.05) 100%);
+    border: 2px solid rgba(99, 102, 241, 0.2);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  }
+
+  .kui-email-dashboard__gettingStarted__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .kui-email-dashboard__title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .kui-email-dashboard__subtitle {
+    color: rgba(0, 0, 0, 0.7);
+    margin-top: 0.25rem;
+    margin: 0;
+  }
+
+  .kui-email-dashboard__progress {
+    width: 5rem;
+    height: 5rem;
+    border-radius: 50%;
+    background: conic-gradient(
+      #6366f1 0deg,
+      #6366f1 calc(var(--value) * 3.6deg),
+      rgba(0, 0, 0, 0.1) calc(var(--value) * 3.6deg)
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .kui-email-dashboard__progressInner {
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 50%;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #6366f1;
+    font-size: 0.875rem;
+  }
+
+  .kui-email-dashboard__setupGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .kui-email-dashboard__setupCard {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    text-decoration: none;
+    transition: all 150ms ease;
+  }
+
+  .kui-email-dashboard__setupCard:hover {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+
+  .kui-email-dashboard__setupCard__content {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .kui-email-dashboard__setupCard__icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+
+  .kui-email-dashboard__setupCard__icon {
+    background: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .kui-email-dashboard__setupCard.completed .kui-email-dashboard__setupCard__icon {
+    background: #10b981;
+    color: white;
+  }
+
+  .kui-email-dashboard__checkmark {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .kui-email-dashboard__stepNumber {
+    font-size: 0.875rem;
+  }
+
+  .kui-email-dashboard__setupCard__text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kui-email-dashboard__setupCard__title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin: 0 0 0.25rem 0;
+  }
+
+  .kui-email-dashboard__setupCard__description {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.6);
+    margin: 0;
+  }
+
+  .kui-email-dashboard__setupCard__cta {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: #6366f1;
+    font-weight: 500;
+  }
+
+  .kui-email-dashboard__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .kui-email-dashboard__metricCard {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+
+  .kui-email-dashboard__metricCard__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .kui-email-dashboard__metricLabel {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.6);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  .kui-email-dashboard__metricValue {
+    font-size: 1.875rem;
+    font-weight: 700;
+    margin-top: 0.5rem;
+    margin: 0.5rem 0 0 0;
+  }
+
+  .kui-email-dashboard__metricChange {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.5);
+    margin-top: 0.25rem;
+    margin: 0.25rem 0 0 0;
+  }
+
+  .kui-email-dashboard__metricChange--positive {
+    color: #10b981;
+  }
+
+  .kui-email-dashboard__metricChange--error {
+    color: #ef4444;
+  }
+
+  .kui-email-dashboard__metricIcon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .kui-email-dashboard__metricIcon :global(svg) {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .kui-email-dashboard__metricIcon--success {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+  }
+
+  .kui-email-dashboard__metricIcon--primary {
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+  }
+
+  .kui-email-dashboard__metricIcon--info {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+  }
+
+  .kui-email-dashboard__metricIcon--error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+  }
+
+  .kui-email-dashboard__navGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+
+  @media (min-width: 1024px) {
+    .kui-email-dashboard__navGrid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .kui-email-dashboard__navGrid {
+      grid-template-columns: repeat(5, 1fr);
+    }
+  }
+
+  .kui-email-dashboard__navCard {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    text-decoration: none;
+    color: inherit;
+    transition: all 150ms ease;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kui-email-dashboard__navCard:hover {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+
+  .kui-email-dashboard__navCard__content {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    height: 100%;
+  }
+
+  .kui-email-dashboard__navCard__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .kui-email-dashboard__navCard__title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .kui-email-dashboard__navCard__title :global(svg) {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .kui-email-dashboard__navCard__description {
+    font-size: 0.875rem;
+    color: rgba(0, 0, 0, 0.7);
+    margin: 0;
+  }
+
+  .kui-email-dashboard__navCard__arrow {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+    transition: color 150ms ease;
+  }
+
+  .kui-email-dashboard__navCard:hover .kui-email-dashboard__navCard__arrow {
+    color: #6366f1;
+  }
+
+  .kui-email-dashboard__navCard__footer {
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  .kui-email-dashboard__navCard__meta {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.6);
+    margin: 0;
+  }
+
+  .kui-email-dashboard__overview {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(99, 102, 241, 0.1) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+  }
+
+  .kui-email-dashboard__overviewTitle {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+  }
+
+  .kui-email-dashboard__overviewGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+  }
+
+  .kui-email-dashboard__overviewStat {
+    padding: 0.5rem 0;
+  }
+
+  .kui-email-dashboard__overviewLabel {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.6);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  .kui-email-dashboard__overviewValue {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+    margin: 0.25rem 0 0 0;
+  }
+</style>
