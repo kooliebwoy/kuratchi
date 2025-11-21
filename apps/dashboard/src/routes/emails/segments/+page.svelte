@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Users, Plus, Trash2, Mail, Loader2, Search } from 'lucide-svelte';
+  import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
   import {
     listSegments,
     createSegment,
@@ -53,7 +54,6 @@
       newSegmentName = '';
       showCreateModal = false;
     } catch (err) {
-      console.error(err);
       createError = err instanceof Error ? err.message : 'Failed to create segment';
     } finally {
       creating = false;
@@ -80,7 +80,6 @@
       const result = await listSegmentContacts({ segmentId: segment.id, limit: 100 });
       contacts = result.contacts;
     } catch (err) {
-      console.error(err);
       contactsError = err instanceof Error ? err.message : 'Failed to load contacts';
     } finally {
       loadingContacts = false;
@@ -88,11 +87,10 @@
   }
 
   async function handleAddContact() {
-    if (!newContactEmail.trim()) {
+    if (!newContactEmail.trim() || !selectedSegment) {
       addContactError = 'Email is required';
       return;
     }
-    if (!selectedSegment) return;
 
     addingContact = true;
     addContactError = null;
@@ -109,7 +107,6 @@
       newContactFirstName = '';
       newContactLastName = '';
     } catch (err) {
-      console.error(err);
       addContactError = err instanceof Error ? err.message : 'Failed to add contact';
     } finally {
       addingContact = false;
@@ -117,18 +114,13 @@
   }
 
   async function handleRemoveContact(contact: SegmentContact) {
-    if (!confirm(`Remove ${contact.email}?`)) return;
     if (!selectedSegment) return;
-
+    if (!confirm(`Remove ${contact.email}?`)) return;
     try {
-      await removeSegmentContact({
-        segmentId: selectedSegment.id,
-        email: contact.email
-      });
-      const result = await listSegmentContacts({ segmentId: selectedSegment.id, limit: 100 });
-      contacts = result.contacts;
+      await removeSegmentContact({ segmentId: selectedSegment.id, email: contact.email });
+      contacts = contacts.filter((c) => c.email !== contact.email);
     } catch (err) {
-      console.error(err);
+      contactsError = err instanceof Error ? err.message : 'Failed to remove contact';
     }
   }
 </script>
@@ -137,223 +129,359 @@
   <title>Segments - Kuratchi Dashboard</title>
 </svelte:head>
 
-<!-- Navigation Tabs -->
-<div class="border-b border-base-200 bg-base-100">
-  <div class="flex gap-0 px-8">
-    <a href="/emails/drip" class="tab tab-bordered hover:bg-base-200/50 transition">
-      <span class="font-medium">Drip Campaigns</span>
-    </a>
-    <a href="/emails/segments" class="tab tab-active tab-bordered bg-primary/10 text-primary">
-      <span class="font-medium">Segments</span>
-    </a>
-    <a href="/emails/templates" class="tab tab-bordered hover:bg-base-200/50 transition">
-      <span class="font-medium">Templates</span>
-    </a>
-    <a href="/emails/broadcast" class="tab tab-bordered hover:bg-base-200/50 transition">
-      <span class="font-medium">Broadcasts</span>
-    </a>
-  </div>
-</div>
+<div class="kui-segments">
+  <nav class="kui-tabs">
+    <a href="/emails/drip" class="kui-tab">Drip Campaigns</a>
+    <a href="/emails/segments" class="kui-tab is-active">Segments</a>
+    <a href="/emails/templates" class="kui-tab">Templates</a>
+    <a href="/emails" class="kui-tab">Email History</a>
+  </nav>
 
-<section class="space-y-6 p-8">
-  <!-- Header -->
-  <div class="flex items-center justify-between">
+  <header class="kui-segments__header">
     <div>
-      <h1 class="text-2xl font-bold">Segments</h1>
-      <p class="text-sm text-base-content/70 mt-1">Manage {segments.length} segment{segments.length !== 1 ? 's' : ''} with {segments.reduce((total, s) => total + (s.subscriberCount ?? 0), 0)} total contact{segments.reduce((total, s) => total + (s.subscriberCount ?? 0), 0) !== 1 ? 's' : ''}</p>
+      <p class="kui-eyebrow">Audiences</p>
+      <h1>Segments</h1>
+      <p class="kui-subtext">Organize contacts into reusable audiences.</p>
     </div>
-    <button class="btn btn-primary" onclick={() => (showCreateModal = true)}>
-      <Plus class="h-4 w-4" />
-      New Segment
-    </button>
-  </div>
+    <Button variant="primary" onclick={() => (showCreateModal = true)}>
+      <Plus class="kui-icon" />
+      New segment
+    </Button>
+  </header>
 
-  <!-- Search & List -->
-  <div class="space-y-4">
-    <div class="form-control">
-      <label class="input input-bordered flex items-center gap-2">
-        <Search class="h-4 w-4 opacity-50" />
-        <input type="text" class="grow" bind:value={searchQuery} placeholder="Search segments..." />
-      </label>
+  <Card class="kui-panel">
+    <div class="kui-filters">
+      <div class="kui-input-group">
+        <Search class="kui-icon" />
+        <input type="text" class="kui-input" placeholder="Search segments..." bind:value={searchQuery} />
+      </div>
     </div>
 
     {#if segmentsResource.loading}
-      <div class="rounded-2xl border border-base-200 bg-base-100 p-10 text-center shadow-sm">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
-      </div>
+      <div class="kui-center"><Loading size="md" /></div>
     {:else if filteredSegments.length === 0}
-      <div class="rounded-2xl border border-dashed border-base-300 bg-base-100 p-8 text-center shadow-sm">
-        <p class="text-lg font-semibold">No segments yet</p>
-        <p class="text-sm text-base-content/70">Create your first segment to start building contact lists.</p>
-        <button class="btn btn-primary btn-sm mt-4" onclick={() => (showCreateModal = true)}>Create segment</button>
+      <div class="kui-center">
+        <Users class="kui-empty__icon" />
+        <p class="kui-subtext">No segments yet</p>
+        <Button variant="primary" size="sm" onclick={() => (showCreateModal = true)}>Create segment</Button>
       </div>
     {:else}
-      <div class="space-y-2">
+      <div class="kui-grid">
         {#each filteredSegments as segment}
-          <div class="flex items-center justify-between gap-4 rounded-lg border border-base-200 bg-base-100 p-4 transition hover:bg-base-200/30">
-            <div class="flex-1 min-w-0">
-              <h3 class="font-semibold truncate">{segment.name}</h3>
-              <p class="text-xs text-base-content/60">
-                {segment.subscriberCount ?? 0} contact{segment.subscriberCount !== 1 ? 's' : ''}
-              </p>
+          <Card class="kui-panel">
+            <div class="kui-segment-card">
+              <div>
+                <h3>{segment.name}</h3>
+                <p class="kui-subtext">{segment.contactCount || 0} contacts</p>
+              </div>
+              <div class="kui-inline end">
+                <Button variant="outline" size="sm" onclick={() => openContactsModal(segment)}>
+                  <Mail class="kui-icon" /> Contacts
+                </Button>
+                <Button variant="ghost" size="sm" onclick={() => handleDeleteSegment(segment.id)} disabled={deletingId === segment.id}>
+                  {#if deletingId === segment.id}
+                    <Loader2 class="kui-icon spinning" />
+                  {:else}
+                    <Trash2 class="kui-icon error" />
+                  {/if}
+                </Button>
+              </div>
             </div>
-            <div class="flex gap-2 flex-shrink-0">
-              <button
-                class="btn btn-ghost btn-sm"
-                onclick={() => openContactsModal(segment)}
-                title="Manage contacts"
-              >
-                <Users class="h-4 w-4" />
-              </button>
-              <button
-                class="btn btn-ghost btn-sm text-error"
-                onclick={() => handleDeleteSegment(segment.id)}
-                disabled={deletingId === segment.id}
-                title="Delete segment"
-              >
-                {#if deletingId === segment.id}
-                  <Loader2 class="h-4 w-4 animate-spin" />
-                {:else}
-                  <Trash2 class="h-4 w-4" />
-                {/if}
-              </button>
-            </div>
-          </div>
+          </Card>
         {/each}
       </div>
     {/if}
-  </div>
-</section>
+  </Card>
+</div>
 
-<!-- Create Segment Modal -->
 {#if showCreateModal}
-  <div class="modal modal-open">
-    <div class="modal-box w-full max-w-md">
-      <h3 class="text-lg font-semibold">Create new segment</h3>
-      <div class="mt-4 space-y-4">
-        <label class="input input-bordered flex items-center gap-2">
-          <input
-            type="text"
-            class="grow"
-            bind:value={newSegmentName}
-            placeholder="Segment name"
-            onkeydown={(e) => e.key === 'Enter' && handleCreateSegment()}
-          />
-        </label>
+  <Dialog bind:open={showCreateModal} size="sm" onClose={() => { showCreateModal = false; createError = null; }}>
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <h3>Create segment</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showCreateModal = false; createError = null; }}>
+          <X class="kui-icon" />
+        </Button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="kui-stack">
+        <FormField label="Segment name">
+          <FormInput field={{ name: 'segmentName', bind: { value: newSegmentName } } as any} placeholder="Customers" />
+        </FormField>
         {#if createError}
-          <div class="alert alert-error alert-sm">
-            <span>{createError}</span>
-          </div>
+          <div class="kui-callout error">{createError}</div>
         {/if}
+        <div class="kui-modal-actions">
+          <Button variant="ghost" onclick={() => { showCreateModal = false; createError = null; }}>Cancel</Button>
+          <Button variant="primary" onclick={handleCreateSegment} disabled={creating}>
+            {#if creating}
+              <Loading size="sm" /> Creating...
+            {:else}
+              Create Segment
+            {/if}
+          </Button>
+        </div>
       </div>
-      <div class="modal-action mt-6">
-        <button class="btn btn-ghost" onclick={() => (showCreateModal = false)}>Cancel</button>
-        <button class="btn btn-primary" onclick={handleCreateSegment} disabled={creating}>
-          {#if creating}
-            <Loader2 class="h-4 w-4 animate-spin" />
-          {:else}
-            Create
-          {/if}
-        </button>
-      </div>
-    </div>
-    <button class="modal-backdrop" onclick={() => (showCreateModal = false)} aria-label="Close modal"></button>
-  </div>
+    {/snippet}
+  </Dialog>
 {/if}
 
-<!-- Contacts Modal -->
 {#if showContactsModal && selectedSegment}
-  <div class="modal modal-open">
-    <div class="modal-box w-full max-w-2xl">
-      <h3 class="text-lg font-semibold">{selectedSegment.name} - Contacts</h3>
+  <Dialog bind:open={showContactsModal} size="lg" onClose={() => { showContactsModal = false; selectedSegment = null; }}>
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <h3>Contacts in {selectedSegment.name}</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showContactsModal = false; selectedSegment = null; }}>
+          <X class="kui-icon" />
+        </Button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="kui-stack">
+        {#if loadingContacts}
+          <div class="kui-center"><Loading size="md" /></div>
+        {:else}
+          {#if contactsError}
+            <div class="kui-callout error">{contactsError}</div>
+          {:else}
+            <div class="kui-segment-contacts">
+              {#if contacts.length > 0}
+                <div class="kui-table-scroll">
+                  <table class="kui-table">
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th class="text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each contacts as contact}
+                        <tr>
+                          <td>{contact.email}</td>
+                          <td>{contact.firstName} {contact.lastName}</td>
+                          <td class="text-right">
+                            <Button variant="ghost" size="xs" onclick={() => handleRemoveContact(contact)}>
+                              <Trash2 class="kui-icon error" />
+                            </Button>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {:else}
+                <p class="kui-subtext">No contacts yet.</p>
+              {/if}
+            </div>
+          {/if}
+        {/if}
 
-      <!-- Add Contact Form -->
-      <div class="mt-4 space-y-3 rounded-lg bg-base-200/30 p-4">
-        <p class="text-sm font-semibold">Add contact</p>
-        <div class="grid gap-2 md:grid-cols-3">
-          <label class="input input-bordered input-sm flex items-center gap-2">
-            <input
-              type="email"
-              class="grow"
-              bind:value={newContactEmail}
-              placeholder="Email"
-              onkeydown={(e) => e.key === 'Enter' && handleAddContact()}
-            />
-          </label>
-          <label class="input input-bordered input-sm flex items-center gap-2">
-            <input
-              type="text"
-              class="grow"
-              bind:value={newContactFirstName}
-              placeholder="First name"
-              onkeydown={(e) => e.key === 'Enter' && handleAddContact()}
-            />
-          </label>
-          <label class="input input-bordered input-sm flex items-center gap-2">
-            <input
-              type="text"
-              class="grow"
-              bind:value={newContactLastName}
-              placeholder="Last name"
-              onkeydown={(e) => e.key === 'Enter' && handleAddContact()}
-            />
-          </label>
+        <div class="kui-divider">Add Contact</div>
+        <div class="kui-grid">
+          <FormField label="Email">
+            <FormInput field={{ name: 'email', bind: { value: newContactEmail } } as any} placeholder="user@example.com" />
+          </FormField>
+          <FormField label="First Name (optional)">
+            <FormInput field={{ name: 'firstName', bind: { value: newContactFirstName } } as any} />
+          </FormField>
+          <FormField label="Last Name (optional)">
+            <FormInput field={{ name: 'lastName', bind: { value: newContactLastName } } as any} />
+          </FormField>
         </div>
         {#if addContactError}
-          <div class="alert alert-error alert-sm">
-            <span>{addContactError}</span>
-          </div>
+          <div class="kui-callout error">{addContactError}</div>
         {/if}
-        <button class="btn btn-primary btn-sm w-full" onclick={handleAddContact} disabled={addingContact}>
-          {#if addingContact}
-            <Loader2 class="h-4 w-4 animate-spin" />
-            Adding...
-          {:else}
-            Add contact
-          {/if}
-        </button>
+        <div class="kui-inline end">
+          <Button variant="primary" size="sm" onclick={handleAddContact} disabled={addingContact}>
+            {#if addingContact}
+              <Loading size="sm" /> Adding...
+            {:else}
+              <Plus class="kui-icon" /> Add Contact
+            {/if}
+          </Button>
+        </div>
       </div>
-
-      <!-- Contacts List -->
-      <div class="mt-4 space-y-2 max-h-96 overflow-y-auto">
-        {#if loadingContacts}
-          <div class="text-center py-8">
-            <span class="loading loading-spinner loading-sm text-primary"></span>
-          </div>
-        {:else if contactsError}
-          <div class="alert alert-error alert-sm">
-            <span>{contactsError}</span>
-          </div>
-        {:else if contacts.length === 0}
-          <div class="text-center py-8 text-base-content/70">
-            <p class="text-sm">No contacts yet</p>
-          </div>
-        {:else}
-          {#each contacts as contact}
-            <div class="flex items-center justify-between rounded-lg bg-base-200/30 p-3">
-              <div>
-                <p class="text-sm font-medium">{contact.email}</p>
-                {#if contact.first_name || contact.last_name}
-                  <p class="text-xs text-base-content/60">
-                    {contact.first_name} {contact.last_name}
-                  </p>
-                {/if}
-              </div>
-              <button
-                class="btn btn-ghost btn-xs text-error"
-                onclick={() => handleRemoveContact(contact)}
-              >
-                <Trash2 class="h-3 w-3" />
-              </button>
-            </div>
-          {/each}
-        {/if}
-      </div>
-
-      <div class="modal-action mt-6">
-        <button class="btn btn-ghost" onclick={() => (showContactsModal = false)}>Close</button>
-      </div>
-    </div>
-    <button class="modal-backdrop" onclick={() => (showContactsModal = false)} aria-label="Close modal"></button>
-  </div>
+    {/snippet}
+  </Dialog>
 {/if}
+
+<style>
+  .kui-segments {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-tabs {
+    display: flex;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--kui-color-border);
+  }
+
+  .kui-tab {
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--kui-radius-md);
+    text-decoration: none;
+    color: var(--kui-color-muted);
+    border: 1px solid transparent;
+  }
+
+  .kui-tab.is-active {
+    border-color: var(--kui-color-border);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-segments__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    flex-wrap: wrap;
+  }
+
+  h1 {
+    margin: 0.1rem 0 0.2rem;
+    font-size: 1.6rem;
+  }
+
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kui-color-muted);
+    font-weight: 700;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .kui-inline.end {
+    justify-content: flex-end;
+  }
+
+  .kui-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-icon.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  .kui-panel .kui-card__body {
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: 0.45rem 0.6rem;
+    background: var(--kui-color-surface);
+  }
+
+  .kui-input {
+    border: none;
+    outline: none;
+    width: 100%;
+    background: transparent;
+    font-size: 0.95rem;
+    color: var(--kui-color-text);
+  }
+
+  .kui-list {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-grid {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .kui-segment-card {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    align-items: center;
+  }
+
+  .kui-segment-contacts {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .kui-table th,
+  .kui-table td {
+    padding: 0.65rem;
+    border-bottom: 1px solid var(--kui-color-border);
+    text-align: left;
+  }
+
+  .kui-table thead th {
+    background: var(--kui-color-surface-muted);
+    font-weight: 700;
+  }
+
+  .kui-divider {
+    text-align: center;
+    font-weight: 700;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-callout {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: var(--kui-spacing-sm);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-callout.error {
+    border-color: color-mix(in srgb, var(--kui-color-error) 40%, var(--kui-color-border) 60%);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+}
+</style>

@@ -19,32 +19,18 @@
     children
   }: Props = $props();
   
-  const positionClasses = {
-    top: 'tooltip-top',
-    bottom: 'tooltip-bottom',
-    left: 'tooltip-left',
-    right: 'tooltip-right'
-  };
-  
-  const variantClasses = variant ? {
-    primary: 'tooltip-primary',
-    secondary: 'tooltip-secondary',
-    accent: 'tooltip-accent',
-    info: 'tooltip-info',
-    success: 'tooltip-success',
-    warning: 'tooltip-warning',
-    error: 'tooltip-error'
-  }[variant] : '';
-  
-  const tooltipClasses = $derived(`
-    tooltip
-    ${positionClasses[position]}
-    ${variantClasses}
-    ${open ? 'tooltip-open' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const tooltipClasses = $derived([
+    'kui-tooltip',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
-<div class={tooltipClasses} data-tip={text}>
+<div
+  class={tooltipClasses}
+  data-tip={text}
+  data-position={position}
+  data-variant={variant || undefined}
+  data-open={open ? 'true' : 'false'}
+>
   {@render children()}
 </div>

@@ -59,6 +59,7 @@ export interface BlogPost {
   title: string;
   slug: string;
   excerpt: string;
+  author?: string;
   publishedOn?: string;
   coverImage?: {
     url: string;
@@ -75,6 +76,10 @@ export interface BlogSettings {
   heroStyle?: 'cover' | 'split';
   themeId?: string;
   featuredPostId?: string | null;
+  indexPageId?: string | null;
+  indexSlug?: string;
+  postsPerPage?: number;
+  sortOrder?: 'newest' | 'oldest' | 'manual';
 }
 
 export interface BlogData {
@@ -147,7 +152,11 @@ const createBlogSeed = (): BlogData => ({
     layout: 'classic',
     showAuthor: true,
     heroStyle: 'cover',
-    featuredPostId: null
+    featuredPostId: null,
+    indexPageId: null,
+    indexSlug: 'blog',
+    postsPerPage: 6,
+    sortOrder: 'newest'
   }
 });
 

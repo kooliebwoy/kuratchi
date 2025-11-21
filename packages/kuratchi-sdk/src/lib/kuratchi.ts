@@ -7,13 +7,13 @@ import type { Handle } from '@sveltejs/kit';
 import type { CreateAuthHandleOptions } from './auth/utils/types.js';
 import type { AuthPlugin } from './auth/core/plugin.js';
 import { createAuthHandle } from './auth/core/handle.js';
+import { initEmailPlugin, type EmailPluginOptions } from './email/index.js';
+import { initEmailEvents, handleEmailEvent } from './email/events.js';
 import { KuratchiDatabase } from './database/index.js';
 import { database as databaseNamespace } from './database/index.js';
 import { kv as kvNamespace } from './kv/index.js';
 import { r2 as r2Namespace } from './r2/index.js';
 import { domains as domainsNamespace } from './domains/index.js';
-import { initEmailPlugin } from './email/index.js';
-import type { EmailPluginOptions } from './email/index.js';
 import { stripe as stripeNamespace, initStripePlugin } from './stripe/index.js';
 import type { StripePluginOptions } from './stripe/index.js';
 import { handleStripeCallback } from './stripe/callback.js';
@@ -132,6 +132,7 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
   // Initialize email plugin if configured
   if (config.email) {
     initEmailPlugin(config.email);
+    initEmailEvents(config.email);
   }
 
   // Initialize Stripe plugin if configured
@@ -171,13 +172,27 @@ export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
   // Wrap handle to intercept Stripe callback route
   const handle: Handle = async ({ event, resolve }) => {
     const callbackPath = config.stripe?.callbackPath || '/kuratchi/stripe/callback';
+    const emailEventsPath = config.email?.eventsPath || '/.well-known/kuratchi/email-events';
 
-    // Check if this is the Stripe callback route
-    if (config.stripe && event.url.pathname === callbackPath) {
-      return await handleStripeCallback(event);
+    // Check if this is a special route (Stripe callback or Email webhook)
+    const isSpecialRoute = 
+      (config.stripe && event.url.pathname === callbackPath) ||
+      (config.email && event.url.pathname === emailEventsPath);
+
+    // For special routes, run base handle first to populate event.locals.kuratchi
+    if (isSpecialRoute) {
+      await baseHandle({ event, resolve: () => new Response() });
+      
+      // Now handle the specific route
+      if (config.stripe && event.url.pathname === callbackPath) {
+        return await handleStripeCallback(event);
+      }
+      if (config.email && event.url.pathname === emailEventsPath) {
+        return await handleEmailEvent(event);
+      }
     }
 
-    // Otherwise, use the base auth handle
+    // Otherwise, use the base auth handle normally
     return baseHandle({ event, resolve });
   };
 

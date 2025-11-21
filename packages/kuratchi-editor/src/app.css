@@ -1,6 +1,3 @@
-@import "tailwindcss";
-@plugin "daisyui";
-
 /* Remove ugly outline from contenteditable elements */
 [contenteditable] {
   outline: none;
@@ -8,4 +5,35 @@
 
 [contenteditable]:focus {
   outline: none;
+}
+
+/* Kuratchi editor design tokens and root shell */
+:root {
+  --krt-color-bg: #f5f5f7;
+  --krt-color-surface: #ffffff;
+  --krt-color-border-subtle: #e5e7eb;
+  --krt-color-text: #111827;
+  --krt-color-muted: #6b7280;
+  --krt-color-primary: #111827;
+  --krt-color-accent: #4f46e5;
+
+  --krt-radius-sm: 0.375rem;
+  --krt-radius-md: 0.5rem;
+  --krt-radius-lg: 0.75rem;
+  --krt-radius-pill: 9999px;
+
+  --krt-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+
+  --krt-space-xs: 0.25rem;
+  --krt-space-sm: 0.5rem;
+  --krt-space-md: 0.75rem;
+  --krt-space-lg: 1rem;
+}
+
+.krt-editor {
+  min-height: 100vh;
+  display: flex;
+  background-color: var(--krt-color-bg);
+  color: var(--krt-color-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }

@@ -28,53 +28,48 @@
   }: Props = $props();
   
   const iconVariantClasses = {
-    primary: 'text-primary bg-primary/10',
-    secondary: 'text-secondary bg-secondary/10',
-    accent: 'text-accent bg-accent/10',
-    info: 'text-info bg-info/10',
-    success: 'text-success bg-success/10',
-    warning: 'text-warning bg-warning/10',
-    error: 'text-error bg-error/10'
-  };
-  
-  const buttonVariantClasses = {
-    primary: 'btn-primary',
-    secondary: 'btn-secondary',
-    accent: 'btn-accent',
-    ghost: 'btn-ghost'
+    primary: 'kui-action-card__icon--primary',
+    secondary: 'kui-action-card__icon--secondary',
+    accent: 'kui-action-card__icon--accent',
+    info: 'kui-action-card__icon--info',
+    success: 'kui-action-card__icon--success',
+    warning: 'kui-action-card__icon--warning',
+    error: 'kui-action-card__icon--error'
   };
 </script>
 
-<div class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow {className}">
-  <div class="card-body">
-    <div class="flex items-start gap-4">
+<article class={`kui-card kui-action-card ${className}`.trim()}>
+  <div class="kui-card__body">
+    <div class="kui-action-card__header">
       {#if icon}
-        <div class="w-12 h-12 rounded-lg {iconVariantClasses[iconVariant]} flex items-center justify-center flex-shrink-0">
+        <div class={`kui-action-card__icon ${iconVariantClasses[iconVariant]}`.trim()} aria-hidden="true">
           {@render icon()}
         </div>
       {/if}
       
-      <div class="flex-1">
-        <h3 class="card-title text-lg">{title}</h3>
+      <div class="kui-action-card__copy">
+        <h3 class="kui-card__title">{title}</h3>
         {#if description}
-          <p class="text-sm text-base-content/70 mt-1">{description}</p>
+          <p class="kui-action-card__description">{description}</p>
         {/if}
       </div>
     </div>
     
     {#if buttonText}
-      <div class="card-actions justify-end mt-4">
+      <div class="kui-card__actions">
         {#if href}
           <a
             {href}
-            class="btn btn-sm {buttonVariantClasses[buttonVariant]} {disabled ? 'btn-disabled' : ''}"
+            class={`kui-button kui-button--${buttonVariant} kui-button--size-sm`.trim()}
+            aria-disabled={disabled}
+            tabindex={disabled ? -1 : undefined}
           >
             {buttonText}
           </a>
         {:else}
           <button
             type="button"
-            class="btn btn-sm {buttonVariantClasses[buttonVariant]}"
+            class={`kui-button kui-button--${buttonVariant} kui-button--size-sm`.trim()}
             {onclick}
             {disabled}
           >
@@ -84,4 +79,4 @@
       </div>
     {/if}
   </div>
-</div>
+</article>

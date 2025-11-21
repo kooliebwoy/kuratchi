@@ -20,25 +20,6 @@
     class: className = ''
   }: Props = $props();
   
-  const positionClasses = {
-    'top': 'toast-top toast-center',
-    'top-start': 'toast-top toast-start',
-    'top-end': 'toast-top toast-end',
-    'middle': 'toast-middle toast-center',
-    'middle-start': 'toast-middle toast-start',
-    'middle-end': 'toast-middle toast-end',
-    'bottom': 'toast-bottom toast-center',
-    'bottom-start': 'toast-bottom toast-start',
-    'bottom-end': 'toast-bottom toast-end'
-  };
-  
-  const typeClasses = {
-    info: 'alert-info',
-    success: 'alert-success',
-    warning: 'alert-warning',
-    error: 'alert-error'
-  };
-  
   function removeToast(id: string) {
     toasts = toasts.filter(t => t.id !== id);
   }
@@ -54,18 +35,18 @@
 </script>
 
 {#if toasts.length > 0}
-  <div class="toast {positionClasses[position]} {className} z-50">
+  <div class={`kui-toast ${className}`.trim()} data-position={position}>
     {#each toasts as toast (toast.id)}
-      <div class="alert {typeClasses[toast.type]} shadow-lg">
+      <div class="kui-toast__item" data-type={toast.type} role="status">
         <span>{toast.message}</span>
         <button
           type="button"
-          class="btn btn-sm btn-ghost btn-circle"
+          class="kui-toast__close"
           onclick={() => removeToast(toast.id)}
           aria-label="Close toast"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
           </svg>
         </button>
       </div>

@@ -18,21 +18,21 @@ import CardWithSlider from '../layouts/CardWithSlider.svelte';
 import IconBar from '../layouts/IconBar.svelte';
 import GridCTAs from '../layouts/GridCTAs.svelte';
 import ServicesGrid from '../layouts/ServicesGrid.svelte';
+import BlogHero from '../layouts/BlogHero.svelte';
+import BlogPostList from '../layouts/BlogPostList.svelte';
 import SaigeBlakeHeader from '../headers/SaigeBlakeHeader.svelte';
 import TwigAndPearlHeader from '../headers/TwigAndPearlHeader.svelte';
 import SaigeBlakeFooter from '../footers/SaigeBlakeFooter.svelte';
 import TwigAndPearlFooter from '../footers/TwigAndPearlFooter.svelte';
-import type { ComponentType } from 'svelte';
+import type { Component } from 'svelte';
 import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, LayoutGrid, ListChecks, Minus, MousePointerClick, PanelBottom, PanelTop, PanelsTopLeft, Sparkles } from '@lucide/svelte';
-
-type IconComponent = ComponentType;
 
 export interface BlockDefinition {
 	name: string;
 	type: string;
-	icon: IconComponent;
+	icon: Component<any>;
 	description: string;
-	component: ComponentType;
+	component: Component<any>;
 	showInPalette?: boolean;
 }
 
@@ -196,6 +196,22 @@ export const blocks: BlockDefinition[] = [
 		icon: LayoutGrid,
 		description: 'Feature/service grid',
 		component: ServicesGrid,
+		showInPalette: false
+	},
+	{
+		name: 'Blog Hero',
+		type: 'blog-hero',
+		icon: LayoutGrid,
+		description: 'Hero section for blog index pages',
+		component: BlogHero,
+		showInPalette: false
+	},
+	{
+		name: 'Blog Post List',
+		type: 'blog-post-list',
+		icon: LayoutGrid,
+		description: 'Listing of recent blog posts',
+		component: BlogPostList,
 		showInPalette: false
 	},
 	// Site chrome blocks (headers/footers)

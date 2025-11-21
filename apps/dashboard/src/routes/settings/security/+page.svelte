@@ -1,5 +1,6 @@
 <script lang="ts">
   import { changePassword } from '$lib/functions/settings.remote';
+  import { Button, Card, FormField } from '@kuratchi/ui';
 
   // Form state
   let passwordForm = $state({
@@ -17,82 +18,94 @@
   <title>Security - Kuratchi Dashboard</title>
 </svelte:head>
 
-<div class="space-y-6">
-  <!-- Change Password -->
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="text-lg font-bold mb-4">Change Password</h3>
-      <form {...changePassword} onsubmit={resetPasswordForm} class="space-y-4">
-        <div class="form-control">
-          <label class="label" for="current-password">
-            <span class="label-text">Current Password</span>
-          </label>
+<div class="kui-security">
+  <Card class="kui-panel" title="Change Password">
+    <form {...changePassword} onsubmit={resetPasswordForm} class="kui-stack">
+      <FormField label="Current Password" for="current-password">
+        <input
+          id="current-password"
+          class="kui-input"
+          type="password"
+          name="currentPassword"
+          bind:value={passwordForm.currentPassword}
+          placeholder="••••••••"
+          required
+        />
+      </FormField>
+
+      <div class="kui-grid">
+        <FormField label="New Password" for="new-password">
           <input
-            id="current-password"
+            id="new-password"
+            class="kui-input"
             type="password"
-            name="currentPassword"
-            class="input input-bordered"
-            bind:value={passwordForm.currentPassword}
+            name="newPassword"
+            bind:value={passwordForm.newPassword}
+            placeholder="At least 8 characters"
+            minlength="8"
             required
           />
-        </div>
+        </FormField>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="form-control">
-            <label class="label" for="new-password">
-              <span class="label-text">New Password</span>
-            </label>
-            <input
-              id="new-password"
-              type="password"
-              name="newPassword"
-              class="input input-bordered"
-              bind:value={passwordForm.newPassword}
-              minlength="8"
-              required
-            />
-          </div>
+        <FormField label="Confirm New Password" for="confirm-password">
+          <input
+            id="confirm-password"
+            class="kui-input"
+            type="password"
+            name="confirmPassword"
+            bind:value={passwordForm.confirmPassword}
+            placeholder="Match your new password"
+            minlength="8"
+            required
+          />
+        </FormField>
+      </div>
 
-          <div class="form-control">
-            <label class="label" for="confirm-password">
-              <span class="label-text">Confirm New Password</span>
-            </label>
-            <input
-              id="confirm-password"
-              type="password"
-              name="confirmPassword"
-              class="input input-bordered"
-              bind:value={passwordForm.confirmPassword}
-              minlength="8"
-              required
-            />
-          </div>
-        </div>
+      <div class="kui-actions">
+        <Button type="submit" variant="primary">Update Password</Button>
+      </div>
+    </form>
+  </Card>
 
-        <div class="flex justify-end">
-          <button type="submit" class="btn btn-primary">
-            Update Password
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <Card class="kui-panel" title="Two-Factor Authentication">
+    <p class="kui-subtext">Add an extra layer of security to your account</p>
+    <Button variant="outline">Enable 2FA</Button>
+  </Card>
 
-  <!-- Two-Factor Authentication -->
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="text-lg font-bold mb-2">Two-Factor Authentication</h3>
-      <p class="text-base-content/60 mb-4">Add an extra layer of security to your account</p>
-      <button class="btn btn-outline">Enable 2FA</button>
-    </div>
-  </div>
-
-  <!-- Active Sessions -->
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="text-lg font-bold mb-2">Active Sessions</h3>
-      <p class="text-base-content/60 mb-4">Manage your active sessions across devices</p>
-      <a href="/sessions" class="btn btn-outline">View Sessions</a>
-    </div>
-  </div>
+  <Card class="kui-panel" title="Active Sessions">
+    <p class="kui-subtext">Manage your active sessions across devices</p>
+    <a class="kui-button kui-button--outline" href="/sessions">View Sessions</a>
+  </Card>
 </div>
+
+<style>
+  .kui-security {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-panel .kui-card__body {
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-stack {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-grid {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .kui-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .kui-subtext {
+    margin: 0 0 0.5rem;
+    color: var(--kui-color-muted);
+  }
+</style>

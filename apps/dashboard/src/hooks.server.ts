@@ -68,14 +68,15 @@ export const { handle }: { handle: Handle } = kuratchi({
     ]
   },
   email: {
-    region: env.AWS_SES_REGION || 'us-east-1',
+    region: env.AWS_SES_REGION || env.AWS_REGION || 'us-east-2',
     accessKeyId: env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
     from: env.RESEND_FROM_EMAIL || 'noreply@kuratchi.dev',
     fromName: 'Kuratchi',
     trackEmails: true,
-    trackingDb: 'admin',
-    trackingTable: 'emails'
+    trackingDb: 'org',
+    trackingTable: 'email_logs',
+    configurationSetName: 'kuratchi-email-tracking'
   },
   storage: {
     kv: { default: 'KV', KV: 'KV' },

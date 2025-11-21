@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Editor, type PageData, defaultPageData } from '@kuratchi/editor';
+  import { Button, Loading } from '@kuratchi/ui';
   import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/functions/editor.remote';
   import { uploadSiteMedia } from '$lib/functions/storage.remote';
 
@@ -231,105 +232,109 @@
       console.error('Failed to save site footer', err);
     }
   }
+
+  async function handleSiteMetadataUpdate(metadata: Record<string, unknown>) {
+    if (!site?.id) return;
+
+    // Editor passes metadata without header/footer. Reattach them for persistence.
+    const updatedMetadata = { ...metadata, header: siteHeader, footer: siteFooter };
+
+    try {
+      await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
+      siteMetadata = { ...metadata };
+    } catch (err) {
+      console.error('Failed to save site metadata', err);
+    }
+  }
 </script>
 
 <div class="card border border-base-200 bg-base-200/30 p-5">
   <div class="card-body p-0">
     {#if queryError}
-      <div class="alert alert-error m-6">
-        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Failed to load site editor</span>
-      </div>
+      <div class="kui-callout error m-6">Failed to load site editor</div>
     {:else if !loaded || loading}
       <div class="flex justify-center py-12">
-        <span class="loading loading-spinner loading-lg"></span>
+        <Loading />
       </div>
     {:else}
       <div class="flex items-center justify-between border-b border-base-200 bg-base-100 px-4 py-2 text-sm">
-        <div class="flex items-center gap-3">
+          <div class="kui-inline">
           <div class="font-medium">{site?.name ?? 'Site'}</div>
-          <a class="btn btn-neutral btn-xs" href="/sites">Back to Sites</a>
+          <Button variant="ghost" size="xs" href="/sites">Back to Sites</Button>
           {#if saving}
-            <div class="flex items-center gap-1 text-base-content/80">
-              <span class="loading loading-spinner loading-xs"></span>
-              <span>Saving…</span>
+            <div class="kui-inline">
+              <Loading size="sm" />
+              <span class="kui-subtext">Saving…</span>
             </div>
           {:else if saveMessage}
-            <span class="text-success">{saveMessage}</span>
+            <span class="kui-subtext success">{saveMessage}</span>
           {:else}
-            <span class="text-base-content/60">All changes saved</span>
+            <span class="kui-subtext">All changes saved</span>
           {/if}
         </div>
         {#if site?.subdomain}
-          <span class="badge badge-outline">{site.subdomain}.kuratchi.com</span>
+          <span class="kui-pill">{site.subdomain}.kuratchi.com</span>
         {/if}
       </div>
 
       {#if saveError}
-        <div class="alert alert-error m-4">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+        <div class="kui-callout error m-4">
           <span>{saveError}</span>
         </div>
       {/if}
 
       <!-- Create Page Modal -->
       {#if showCreatePageModal}
-        <div class="modal modal-open">
-          <div class="modal-box">
-            <h3 class="font-bold text-lg mb-4">Create New Page</h3>
+        <div class="kui-modal-overlay">
+          <div class="kui-modal">
+            <div class="kui-modal-header">
+              <h3>Create New Page</h3>
+              <Button variant="ghost" size="xs" onclick={closeCreatePageModal} aria-label="Close">✕</Button>
+            </div>
             
-            <div class="form-control mb-4">
-              <label class="label">
-                <span class="label-text">Page Title</span>
+            <div class="kui-stack">
+              <label class="kui-form-control">
+                <span class="kui-label">Page Title</span>
+                <input
+                  type="text"
+                  class="kui-input"
+                  placeholder="About Us"
+                  bind:value={newPageTitle}
+                  disabled={creatingPage}
+                />
               </label>
-              <input
-                type="text"
-                class="input input-bordered"
-                placeholder="About Us"
-                bind:value={newPageTitle}
-                disabled={creatingPage}
-              />
-            </div>
 
-            <div class="form-control mb-4">
-              <label class="label">
-                <span class="label-text">URL Slug</span>
-              </label>
-              <input
-                type="text"
-                class="input input-bordered"
-                placeholder="about-us"
-                bind:value={newPageSlug}
-                disabled={creatingPage}
-              />
-              <label class="label">
-                <span class="label-text-alt">URL: /{newPageSlug || 'page-slug'}</span>
+              <label class="kui-form-control">
+                <span class="kui-label">URL Slug</span>
+                <input
+                  type="text"
+                  class="kui-input"
+                  placeholder="about-us"
+                  bind:value={newPageSlug}
+                  disabled={creatingPage}
+                />
+                <span class="kui-helper">URL: /{newPageSlug || 'page-slug'}</span>
               </label>
             </div>
 
-            <div class="modal-action">
-              <button class="btn" onclick={closeCreatePageModal} disabled={creatingPage}>
+            <div class="kui-modal-actions">
+              <Button variant="ghost" onclick={closeCreatePageModal} disabled={creatingPage}>
                 Cancel
-              </button>
-              <button
-                class="btn btn-primary"
+              </Button>
+              <Button
+                variant="primary"
                 onclick={handleCreatePage}
                 disabled={!newPageTitle || !newPageSlug || creatingPage}
               >
                 {#if creatingPage}
-                  <span class="loading loading-spinner loading-sm"></span>
+                  <Loading size="sm" />
                   Creating...
                 {:else}
                   Create Page
                 {/if}
-              </button>
+              </Button>
             </div>
           </div>
-          <div class="modal-backdrop" onclick={closeCreatePageModal}></div>
         </div>
       {/if}
 
@@ -344,6 +349,7 @@
           onUpdate={handleEditorUpdate}
           onSiteHeaderUpdate={handleSiteHeaderUpdate}
           onSiteFooterUpdate={handleSiteFooterUpdate}
+          onSiteMetadataUpdate={handleSiteMetadataUpdate}
           autoSaveDelay={2000}
           {pages}
           {currentPageId}
@@ -372,3 +378,111 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .kui-callout {
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+  }
+
+  .kui-callout.error {
+    border-color: rgba(248, 113, 113, 0.4);
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .kui-subtext {
+    color: #6b7280;
+  }
+
+  .kui-subtext.success {
+    color: #16a34a;
+  }
+
+  .kui-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f4f4f5;
+    color: #3f3f46;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .kui-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    display: grid;
+    place-items: center;
+    z-index: 40;
+    padding: 16px;
+  }
+
+  .kui-modal {
+    background: white;
+    border-radius: 16px;
+    width: min(460px, 95vw);
+    padding: 16px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+  }
+
+  .kui-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .kui-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kui-form-control {
+    display: grid;
+    gap: 6px;
+  }
+
+  .kui-label {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .kui-input {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid #e4e4e7;
+    padding: 10px 12px;
+    background: white;
+  }
+
+  .kui-input:focus {
+    outline: 2px solid rgba(129, 140, 248, 0.35);
+    border-color: #a5b4fc;
+  }
+
+  .kui-helper {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  .kui-modal-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+</style>

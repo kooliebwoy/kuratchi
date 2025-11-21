@@ -22,10 +22,10 @@
   let visible = $state(true);
   
   const typeClasses = {
-    info: 'alert-info',
-    success: 'alert-success',
-    warning: 'alert-warning',
-    error: 'alert-error'
+    info: 'kui-alert--info',
+    success: 'kui-alert--success',
+    warning: 'kui-alert--warning',
+    error: 'kui-alert--error'
   };
   
   function handleClose() {
@@ -35,24 +35,26 @@
 </script>
 
 {#if visible}
-  <div class="alert {typeClasses[type]} {className}" role="alert">
+  <div class={`kui-alert ${typeClasses[type]} ${className}`.trim()} role="alert">
     {#if icon}
-      {@render icon()}
+      <div class="kui-alert__icon" aria-hidden="true">
+        {@render icon()}
+      </div>
     {/if}
     
-    <div class="flex-1">
+    <div class="kui-alert__content">
       {@render children()}
     </div>
     
     {#if dismissible}
       <button
         type="button"
-        class="btn btn-sm btn-ghost btn-circle"
+        class="kui-alert__close"
         onclick={handleClose}
         aria-label="Close alert"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
         </svg>
       </button>
     {/if}

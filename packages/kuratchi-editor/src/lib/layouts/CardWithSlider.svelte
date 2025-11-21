@@ -37,12 +37,12 @@
         images = $bindable<CarouselImage[]>([]),
         type = 'hero-with-slider',
         metadata = {
-            backgroundColor: '#575757',
-            cardBackgroundColor: '#212121',
+            backgroundColor: '#f4f4f5',
+            cardBackgroundColor: '#ffffff',
             reverseOrder: false,
-            buttonColor: '#212121',
-            headingColor: 'text-content',
-            contentColor: 'text-content'
+            buttonColor: '#111827',
+            headingColor: '#111827',
+            contentColor: '#4b5563'
         },
         editable = true
     }: Props = $props();
@@ -83,42 +83,45 @@
 {#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
-        <div class="space-y-6">
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Swap Card and Slider</legend>
-                <label class="label cursor-pointer justify-start gap-4">
-                    <input type="checkbox" class="checkbox checkbox-accent" bind:checked={reverseOrder} />
-                    <span class="label-text">Reverse order</span>
+        <div class="krt-sliderDrawer">
+            <section class="krt-sliderDrawer__section">
+                <h3>Layout</h3>
+                <label class="krt-sliderDrawer__toggle">
+                    <input type="checkbox" bind:checked={reverseOrder} />
+                    <span>Reverse order</span>
                 </label>
-            </fieldset>
+            </section>
 
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Component Background Color</legend>
-                <input type="color" class="input input-bordered h-12" bind:value={backgroundColor} />
-            </fieldset>
+            <section class="krt-sliderDrawer__section">
+                <h3>Colors</h3>
+                <div class="krt-sliderDrawer__grid">
+                    <label class="krt-sliderDrawer__field">
+                        <span>Background</span>
+                        <input type="color" bind:value={backgroundColor} />
+                    </label>
+                    <label class="krt-sliderDrawer__field">
+                        <span>Card background</span>
+                        <input type="color" bind:value={cardBackgroundColor} />
+                    </label>
+                    <label class="krt-sliderDrawer__field">
+                        <span>Heading</span>
+                        <input type="color" bind:value={headingColor} />
+                    </label>
+                    <label class="krt-sliderDrawer__field">
+                        <span>Body</span>
+                        <input type="color" bind:value={contentColor} />
+                    </label>
+                    <label class="krt-sliderDrawer__field">
+                        <span>Button</span>
+                        <input type="color" bind:value={buttonColor} />
+                    </label>
+                </div>
+            </section>
 
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Card Background Color</legend>
-                <input type="color" class="input input-bordered h-12" bind:value={cardBackgroundColor} />
-            </fieldset>
-
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Heading Color</legend>
-                <input type="color" class="input input-bordered h-12" bind:value={headingColor} />
-            </fieldset>
-
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Content Color</legend>
-                <input type="color" class="input input-bordered h-12" bind:value={contentColor} />
-            </fieldset>
-
-            <div class="divider"></div>
-
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Images</legend>
+            <section class="krt-sliderDrawer__section">
+                <h3>Images</h3>
                 <ImagePicker bind:selectedImages={images} mode="multiple" />
-            </fieldset>
-
+            </section>
         </div>
     {/snippet}
 
@@ -127,45 +130,159 @@
     {/snippet}
 
     {#snippet children()}
-        <div class="flex justify-evenly gap-8 w-full flex-row flex-wrap xl:flex-nowrap container mx-auto" style:background-color={backgroundColor} data-type={type}>
-
-            {#if reverseOrder}
-                <div class="flex-grow">
+        <section class="krt-sliderLayout" style:background-color={backgroundColor} data-type={type}>
+            <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
+                <div class="krt-sliderLayout__card">
+                    <CardNoImage
+                        bind:heading={heading}
+                        bind:body={body}
+                        link={button.link}
+                        bind:button={button.label}
+                        backgroundColor={cardBackgroundColor}
+                        buttonColor={buttonColor}
+                        {headingColor}
+                        {contentColor}
+                    />
+                </div>
+                <div class="krt-sliderLayout__carousel">
                     <NoMarginCarousel bind:images={images} />
                 </div>
-                <div class="flex flex-col flex-1 min-w-[24rem]">
-                    <CardNoImage bind:heading={heading} bind:body={body} link={button.link} bind:button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} />
-                </div>
-            {:else}
-                <div class="flex flex-col flex-1 min-w-[24rem]">
-                    <CardNoImage bind:heading={heading} bind:body={body} link={button.link} bind:button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} />
-                </div>
-                <div class="flex-grow">
-                    <NoMarginCarousel bind:images={images} />
-                </div>
-            {/if}
-        </div>
+            </div>
+        </section>
     {/snippet}
 </LayoutBlock>
 {:else}
-    <section id={id} data-type={type} class="container mx-auto">
-        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
-        <div class="flex justify-evenly gap-8 w-full flex-row flex-wrap xl:flex-nowrap" style:background-color={backgroundColor}>
-            {#if reverseOrder}
-                <div class="flex-grow min-w-[20rem]">
-                    <NoMarginCarousel images={normalizedImages} editable={false} />
-                </div>
-                <div class="flex flex-col flex-1 min-w-[24rem]">
-                    <CardNoImage heading={heading} body={body} link={button.link} button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} editable={false} />
-                </div>
-            {:else}
-                <div class="flex flex-col flex-1 min-w-[24rem]">
-                    <CardNoImage heading={heading} body={body} link={button.link} button={button.label} backgroundColor={cardBackgroundColor} buttonColor={buttonColor} {headingColor} {contentColor} editable={false} />
-                </div>
-                <div class="flex-grow min-w-[20rem]">
-                    <NoMarginCarousel images={normalizedImages} editable={false} />
-                </div>
-            {/if}
+    <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
+        <div class="krt-sliderLayout__metadata">{JSON.stringify(content)}</div>
+        <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
+            <div class="krt-sliderLayout__card">
+                <CardNoImage
+                    heading={heading}
+                    body={body}
+                    link={button.link}
+                    button={button.label}
+                    backgroundColor={cardBackgroundColor}
+                    buttonColor={buttonColor}
+                    {headingColor}
+                    {contentColor}
+                    editable={false}
+                />
+            </div>
+            <div class="krt-sliderLayout__carousel">
+                <NoMarginCarousel images={normalizedImages} editable={false} />
+            </div>
         </div>
     </section>
 {/if}
+
+<style>
+    .krt-sliderLayout {
+        padding: var(--krt-space-3xl, 2.5rem) var(--krt-space-4xl, 3rem);
+        display: flex;
+        justify-content: center;
+    }
+
+    .krt-sliderLayout__metadata {
+        display: none;
+    }
+
+    .krt-sliderLayout__inner {
+        width: min(88rem, 100%);
+        display: grid;
+        gap: var(--krt-space-2xl, 2rem);
+        align-items: stretch;
+        grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    }
+
+    @media (min-width: 64rem) {
+        .krt-sliderLayout__inner {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    .krt-sliderLayout__inner--reverse {
+        direction: rtl;
+    }
+
+    .krt-sliderLayout__inner--reverse > * {
+        direction: ltr;
+    }
+
+    .krt-sliderLayout__card,
+    .krt-sliderLayout__carousel {
+        display: flex;
+        flex: 1 1 0;
+    }
+
+    .krt-sliderLayout__card {
+        min-height: 100%;
+    }
+
+    .krt-sliderLayout__carousel {
+        border-radius: var(--krt-radius-xl, 1rem);
+        overflow: hidden;
+    }
+
+    .krt-sliderDrawer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xl, 1.25rem);
+    }
+
+    .krt-sliderDrawer__section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-sliderDrawer__section h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-sliderDrawer__toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+        font-weight: 600;
+        color: var(--krt-color-text, #111827);
+    }
+
+    .krt-sliderDrawer__toggle input[type='checkbox'] {
+        width: 1.2rem;
+        height: 1.2rem;
+        accent-color: var(--krt-color-primary, #111827);
+    }
+
+    .krt-sliderDrawer__grid {
+        display: grid;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-sliderDrawer__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xs, 0.25rem);
+        padding: var(--krt-space-sm, 0.5rem) var(--krt-space-md, 0.75rem);
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-surface, #ffffff);
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-sliderDrawer__field input[type='color'] {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        padding: 0;
+        cursor: pointer;
+    }
+</style>

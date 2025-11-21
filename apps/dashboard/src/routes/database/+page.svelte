@@ -1,13 +1,12 @@
 <script lang="ts">
+  import { Alert, Badge, Button, Dialog, Dropdown, Loading, Card } from '@kuratchi/ui';
   import { 
     logRouteActivity, 
     getDatabases, 
     createDatabase
   } from '$lib/functions/database.remote';
+  import { EllipsisVertical, Plus, Database } from 'lucide-svelte';
 
-  let createDialog: HTMLDialogElement;
-
-  // Load data using remote functions
   logRouteActivity();
   const databases = getDatabases();
 
@@ -20,208 +19,296 @@
   }
 
   const isSiteDb = (db: any) => !!db?.siteId;
+  let createDialogOpen = $state(false);
 </script>
 
 <svelte:head>
   <title>Databases - Kuratchi Dashboard</title>
 </svelte:head>
 
-<section class="space-y-8">
-  <div class="flex flex-wrap items-center justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-semibold">Databases</h1>
-      <p class="text-sm text-base-content/60">Manage your organization databases</p>
+<section class="kui-dbs">
+  <header class="kui-dbs__header">
+    <div class="kui-inline">
+      <div class="kui-icon-box">
+        <Database />
+      </div>
+      <div>
+        <p class="kui-eyebrow">Data</p>
+        <h1>Databases</h1>
+        <p class="kui-subtext">Manage your organization databases</p>
+      </div>
     </div>
-    <div class="flex gap-2">
-      <button class="btn btn-primary btn-sm text-primary-content" onclick={() => createDialog.showModal()}>
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-        </svg>
-        New Database
-      </button>
-    </div>
-  </div>
+    <Button variant="primary" size="sm" onclick={() => createDialogOpen = true}>
+      <Plus class="kui-icon" />
+      New Database
+    </Button>
+  </header>
 
-  <div class="card border border-base-200 bg-base-200/30">
-    <div class="card-body gap-6">
-      <div class="overflow-hidden rounded-xl border border-base-200/60">
-        <table class="table">
-          <thead class="bg-base-200/50 text-xs uppercase tracking-widest text-base-content/40">
-            <tr>
-              <th>Name</th>
-              <th>Description</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th class="w-[100px]">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if databases.loading}
+  <Card class="kui-panel">
+    <div class="kui-table-scroll">
+      <table class="kui-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#if databases.loading}
+            <tr><td colspan="5" class="kui-center"><Loading /></td></tr>
+          {:else if databases.error}
+            <tr><td colspan="5" class="kui-center text-error">Error loading databases</td></tr>
+          {:else if databases.current && databases.current.length > 0}
+            {#each databases.current as db}
               <tr>
-                <td colspan="5" class="text-center py-8">
-                  <span class="loading loading-spinner loading-md"></span>
-                </td>
-              </tr>
-            {:else if databases.error}
-              <tr>
-                <td colspan="5" class="text-center py-8 text-error">
-                  Error loading databases
-                </td>
-              </tr>
-            {:else if databases.current && databases.current.length > 0}
-              {#each databases.current as db}
-                <tr class="text-sm hover:bg-base-200/50">
-                  <td>
-                    <a href="/database/{db.id}" class="font-semibold text-primary hover:underline">
-                      {db.name}
-                    </a>
-                    {#if isSiteDb(db)}
-                      <span class="badge badge-outline badge-info badge-xs ml-2">Site DB</span>
-                    {:else}
-                      <span class="badge badge-outline badge-secondary badge-xs ml-2">Org DB</span>
-                    {/if}
-                  </td>
-                  <td class="text-base-content/70">{db.description || '-'}</td>
-                  <td>
-                    {#if db.status}
-                      <span class="badge badge-success badge-sm">Active</span>
-                    {:else}
-                      <span class="badge badge-error badge-sm">Inactive</span>
-                    {/if}
-                  </td>
-                  <td class="text-base-content/70">{formatDate(db.created_at)}</td>
-                  <td>
-                    <div class="dropdown dropdown-end">
-                      <button tabindex="0" class="btn btn-ghost btn-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                        </svg>
-                      </button>
-                      <ul tabindex="-1" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                        <li>
-                          <a href="/database/{db.id}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                              <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
-                            </svg>
-                            View Details
-                          </a>
-                        </li>
-                        {#if !isSiteDb(db)}
-                          <li>
-                            <button class="text-error">
-                              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                              </svg>
-                              Delete
-                            </button>
-                          </li>
-                        {/if}
-                      </ul>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            {:else}
-              <tr>
-                <td colspan="5" class="text-center py-12">
-                  <div class="flex flex-col items-center gap-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-base-content/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-                    </svg>
-                    <div class="text-center">
-                      <p class="font-semibold text-base-content/60">No databases yet</p>
-                      <p class="text-sm text-base-content/40">Create your first database to get started</p>
-                    </div>
-                    <button class="btn btn-primary btn-sm" onclick={() => createDialog.showModal()}>
-                      Create Database
-                    </button>
+                <td>
+                  <div class="kui-inline">
+                    <a href="/database/{db.id}" class="kui-strong">{db.name}</a>
+                    <Badge variant="ghost" size="xs">{isSiteDb(db) ? 'Site DB' : 'Org DB'}</Badge>
                   </div>
                 </td>
+                <td class="kui-subtext">{db.description || '-'}</td>
+                <td>
+                  <Badge variant={db.status ? 'success' : 'error'} size="sm">
+                    {db.status ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td class="kui-subtext">{formatDate(db.created_at)}</td>
+                <td class="text-right">
+                  <Dropdown position="bottom-end">
+                    {#snippet trigger()}
+                      <Button variant="ghost" size="xs" aria-label="Open actions">
+                        <EllipsisVertical class="kui-icon" />
+                      </Button>
+                    {/snippet}
+                    <div class="kui-menu">
+                      <a href="/database/{db.id}">View Details</a>
+                      {#if !isSiteDb(db)}
+                        <button type="button" class="text-error">Delete</button>
+                      {/if}
+                    </div>
+                  </Dropdown>
+                </td>
               </tr>
-            {/if}
-          </tbody>
-        </table>
-      </div>
+            {/each}
+          {:else}
+            <tr>
+              <td colspan="5" class="kui-center">
+                <div class="kui-stack center">
+                  <Database class="kui-empty__icon" />
+                  <p class="kui-subtext">No databases yet</p>
+                  <p class="kui-subtext">Create your first database to get started</p>
+                  <Button variant="primary" size="sm" onclick={() => createDialogOpen = true}>
+                    Create Database
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          {/if}
+        </tbody>
+      </table>
     </div>
-  </div>
+  </Card>
 </section>
 
-<!-- Create Database Dialog -->
-<dialog bind:this={createDialog} class="modal">
-  <div class="modal-box">
-    <form method="dialog">
-      <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-    </form>
-    
-    <h3 class="font-bold text-lg mb-4">Create New Database</h3>
+<Dialog bind:open={createDialogOpen} size="md">
+  {#snippet header()}
+    <h3 class="kui-strong">Create New Database</h3>
+  {/snippet}
 
-    {#if createDatabase.result?.success}
-      <div class="alert alert-success mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Database created successfully!</span>
-      </div>
-    {/if}
+  {#if createDatabase.result?.success}
+    <Alert type="success" class="mb-4">
+      Database created successfully!
+    </Alert>
+  {/if}
 
-    {#if createDatabase.pending > 0}
-      <div class="alert alert-info mb-4">
-        <span class="loading loading-spinner loading-sm"></span>
-        <div>
-          <div class="font-semibold">Creating D1 database...</div>
-          <div class="text-sm opacity-70">This may take 5-10 seconds as we deploy your dedicated worker</div>
-        </div>
+  {#if createDatabase.pending > 0}
+    <Alert type="info" class="mb-4">
+      <div>
+        <div class="kui-strong">Creating D1 database...</div>
+        <div class="kui-subtext">This may take 5-10 seconds as we deploy your dedicated worker</div>
       </div>
-    {/if}
-    
-    <form {...createDatabase} class="space-y-4" enctype="multipart/form-data">
-      <div class="form-control">
-        <label class="label" for="db-name">
-          <span class="label-text">Database Name</span>
-        </label>
-        <input 
-          id="db-name"
-          type="text" 
-          name="name"
-          placeholder="my-database" 
-          class="input input-bordered w-full" 
-          pattern="[a-z0-9-]+"
-          required
-        />
-        <div class="label">
-          <span class="label-text-alt">Use lowercase letters, numbers, and hyphens only</span>
-        </div>
-      </div>
+    </Alert>
+  {/if}
+  
+  <form {...createDatabase} class="kui-stack" enctype="multipart/form-data">
+    <label class="kui-form-control" for="db-name">
+      <span class="kui-label">Database Name</span>
+      <input 
+        id="db-name"
+        type="text" 
+        name="name"
+        placeholder="my-database" 
+        class="kui-input" 
+        pattern="[a-z0-9-]+"
+        required
+      />
+      <span class="kui-helper-text">Use lowercase letters, numbers, and hyphens only</span>
+    </label>
 
-      <div class="form-control">
-        <label class="label" for="db-description">
-          <span class="label-text">Description</span>
-        </label>
-        <textarea 
-          id="db-description"
-          name="description"
-          class="textarea textarea-bordered" 
-          placeholder="Describe your database..."
-          required
-        ></textarea>
-      </div>
+    <label class="kui-form-control" for="db-description">
+      <span class="kui-label">Description</span>
+      <textarea 
+        id="db-description"
+        name="description"
+        class="kui-textarea" 
+        placeholder="Describe your database..."
+        required
+      ></textarea>
+    </label>
 
-      <div class="modal-action">
-        <button type="button" class="btn" onclick={() => createDialog.close()}>Cancel</button>
-        <button type="submit" class="btn btn-primary" disabled={createDatabase.pending > 0}>
-          {#if createDatabase.pending > 0}
-            <span class="loading loading-spinner loading-sm"></span>
-            Creating...
-          {:else}
-            Create Database
-          {/if}
-        </button>
-      </div>
-    </form>
-  </div>
-  <form method="dialog" class="modal-backdrop">
-    <button>close</button>
+    <label class="kui-form-control" for="db-type">
+      <span class="kui-label">Database Type</span>
+      <select class="kui-select" name="type" id="db-type" required>
+        <option value="standard">Standard (3 replicas)</option>
+        <option value="edge">Edge Optimized</option>
+      </select>
+    </label>
+
+    <div class="dialog-checkboxes">
+      <label class="kui-checkbox-field">
+        <input type="checkbox" class="kui-checkbox" name="backups" checked />
+        <span class="kui-label">Enable automated backups</span>
+      </label>
+      <label class="kui-checkbox-field">
+        <input type="checkbox" class="kui-checkbox" name="global_replicas" />
+        <span class="kui-label">Enable global read replicas</span>
+      </label>
+    </div>
+
+    {#snippet actions(close)}
+      <Button variant="ghost" type="button" onclick={close}>Cancel</Button>
+      <Button variant="primary" type="submit" disabled={createDatabase.pending > 0}>
+        {#if createDatabase.pending > 0}
+          <Loading />
+          Creating...
+        {:else}
+          Create Database
+        {/if}
+      </Button>
+    {/snippet}
   </form>
-</dialog>
+</Dialog>
 
+<style>
+  .kui-dbs {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-dbs__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .kui-icon-box {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-primary-weak);
+    color: var(--kui-color-primary);
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kui-color-muted);
+    font-weight: 700;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  h1 {
+    margin: 0.1rem 0 0.2rem;
+    font-size: 1.6rem;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-panel .kui-card__body {
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 100%;
+  }
+
+  .kui-table th,
+  .kui-table td {
+    padding: 0.65rem;
+    text-align: left;
+    border-bottom: 1px solid var(--kui-color-border);
+    vertical-align: top;
+  }
+
+  .kui-table thead th {
+    background: var(--kui-color-surface-muted);
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .kui-strong {
+    font-weight: 700;
+  }
+
+  .kui-menu {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .kui-menu a,
+  .kui-menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    background: transparent;
+    border-radius: var(--kui-radius-md, 0.5rem);
+    font-size: 0.9rem;
+    cursor: pointer;
+    color: inherit;
+  }
+
+  .kui-menu a:hover,
+  .kui-menu button:hover {
+    background-color: rgba(80, 70, 228, 0.08);
+  }
+
+  .dialog-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .text-right {
+    text-align: right;
+  }
+</style>

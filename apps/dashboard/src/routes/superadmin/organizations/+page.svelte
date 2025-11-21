@@ -1,20 +1,16 @@
 <script lang="ts">
 	import { Building2, Plus, Pencil, Trash2, X } from 'lucide-svelte';
-	import { Dialog, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
+	import { Badge, Button, Card, Dialog, FormField, FormInput, FormSelect, FormTextarea, Alert, Loading } from '@kuratchi/ui';
 	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from '$lib/functions/organizations.remote';
 
-	// Fetch organizations
 	const organizations = getOrganizations();
-	// Modal state
 	let showModal = $state(false);
 	let modalMode = $state<'create' | 'edit'>('create');
 	let editingOrg = $state<any>(null);
 
-	// Delete confirmation state
 	let showDeleteDialog = $state(false);
 	let deletingOrg = $state<any>(null);
 
-	// Form state
 	let formData = $state({
 		organizationName: '',
 		email: '',
@@ -23,7 +19,6 @@
 		status: 'active' as 'active' | 'inactive' | 'lead'
 	});
 
-	// Reset form
 	function resetForm() {
 		formData = {
 			organizationName: '',
@@ -35,14 +30,12 @@
 		editingOrg = null;
 	}
 
-	// Open create modal
 	function openCreateModal() {
 		resetForm();
 		modalMode = 'create';
 		showModal = true;
 	}
 
-	// Open edit modal
 	function openEditModal(org: any) {
 		editingOrg = org;
 		formData = {
@@ -56,193 +49,137 @@
 		showModal = true;
 	}
 
-	// Auto-generate slug from name
-	function generateSlug() {
-		if (!formData.organizationSlug && formData.organizationName) {
-			formData.organizationSlug = formData.organizationName
-				.toLowerCase()
-				.replace(/[^a-z0-9]+/g, '-')
-				.replace(/^-+|-+$/g, '');
-		}
-	}
-
-	// Handle submit  
-	function handleFormSubmit(event: SubmitEvent) {
-		// Form submission is handled by the remote form
+	function handleFormSubmit() {
 		showModal = false;
 		resetForm();
 	}
 
-	// Open delete confirmation
 	function openDeleteDialog(org: any) {
 		deletingOrg = org;
 		showDeleteDialog = true;
 	}
 
-	// Close delete dialog
 	function closeDeleteDialog() {
 		showDeleteDialog = false;
 		deletingOrg = null;
 	}
 
-	// Handle delete confirmation
 	function handleDeleteConfirm() {
 		showDeleteDialog = false;
-		// The form submission will handle the actual deletion
 	}
 
-	// Status badge colors
-	function getStatusColor(status: string) {
-		switch (status) {
-			case 'active': return 'badge-success';
-			case 'inactive': return 'badge-error';
-			case 'lead': return 'badge-warning';
-			default: return 'badge-neutral';
-		}
+	function formatStatus(status: string) {
+		if (status === 'lead') return { label: 'Lead', variant: 'warning' };
+		if (status === 'inactive') return { label: 'Inactive', variant: 'outline' };
+		return { label: 'Active', variant: 'primary' };
 	}
 </script>
 
-<div class="flex justify-end mb-6">
-	<button class="btn btn-primary" onclick={openCreateModal}>
-		<Plus class="h-4 w-4" />
-		New Organization
-	</button>
-</div>
+<div class="kui-orgs">
+	<header class="kui-orgs__header">
+		<div>
+			<p class="kui-eyebrow">Superadmin</p>
+			<h1>Organizations</h1>
+			<p class="kui-subtext">Manage every organization across the platform.</p>
+		</div>
+		<Button variant="primary" size="sm" onclick={openCreateModal}>
+			<Plus class="kui-icon" />
+			New organization
+		</Button>
+	</header>
 
-	<!-- Organizations Table -->
-	<div class="card bg-base-100 shadow-sm">
-		<div class="overflow-x-auto">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>Name</th>
-						<th>Slug</th>
-						<th>Email</th>
-						<th>Status</th>
-						<th>Created</th>
-						<th class="text-right">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#if organizations.loading}
+	<Card class="kui-panel">
+		{#if organizations.loading}
+			<div class="kui-center"><Loading /></div>
+		{:else}
+			<div class="kui-table-scroll">
+				<table class="kui-table">
+					<thead>
 						<tr>
-							<td colspan="6" class="text-center">
-								<span class="loading loading-spinner loading-md"></span>
-							</td>
+							<th>Name</th>
+							<th>Slug</th>
+							<th>Email</th>
+							<th>Status</th>
+							<th>Created</th>
+							<th class="text-right">Actions</th>
 						</tr>
-					{:else if organizations.current && organizations.current.length > 0}
-						{#each organizations.current as org}
-							<tr class="hover">
-								<td class="font-medium">{org.organizationName || 'Unnamed'}</td>
-								<td>
-									<code class="text-xs bg-base-200 px-2 py-1 rounded">{org.organizationSlug}</code>
-								</td>
-								<td>{org.email}</td>
-								<td>
-									<span class="badge {getStatusColor(org.status)} badge-sm">
-										{org.status}
-									</span>
-								</td>
-								<td class="text-sm text-base-content/70">
-									{new Date(org.created_at).toLocaleDateString()}
-								</td>
-								<td class="text-right">
-									<div class="flex justify-end gap-2">
-										<button 
-											class="btn btn-ghost btn-sm btn-square"
-											onclick={() => openEditModal(org)}
-										>
-											<Pencil class="h-4 w-4" />
-										</button>
-										<button 
-											class="btn btn-ghost btn-sm btn-square text-error"
-											onclick={() => openDeleteDialog(org)}
-										>
-											<Trash2 class="h-4 w-4" />
-										</button>
+					</thead>
+					<tbody>
+						{#if organizations.current && organizations.current.length > 0}
+							{#each organizations.current as org}
+								{@const status = formatStatus(org.status)}
+								<tr>
+									<td class="kui-strong">{org.organizationName || 'Unnamed'}</td>
+									<td><code>{org.organizationSlug}</code></td>
+									<td>{org.email}</td>
+									<td><Badge variant={status.variant} size="xs">{status.label}</Badge></td>
+									<td class="kui-subtext">{new Date(org.created_at).toLocaleDateString()}</td>
+									<td class="text-right">
+										<div class="kui-inline end">
+											<Button variant="ghost" size="xs" onclick={() => openEditModal(org)}>
+												<Pencil class="kui-icon" />
+											</Button>
+											<Button variant="ghost" size="xs" class="danger" onclick={() => openDeleteDialog(org)}>
+												<Trash2 class="kui-icon" />
+											</Button>
+										</div>
+									</td>
+								</tr>
+							{/each}
+						{:else}
+							<tr>
+								<td colspan="6">
+									<div class="kui-empty">
+										<Building2 class="kui-empty__icon" />
+										<p class="kui-subtext">No organizations yet</p>
+										<Button variant="primary" size="sm" onclick={openCreateModal}>
+											Create your first organization
+										</Button>
 									</div>
 								</td>
 							</tr>
-						{/each}
-					{:else}
-						<tr>
-							<td colspan="6" class="text-center py-8">
-								<div class="flex flex-col items-center gap-2">
-									<Building2 class="h-12 w-12 text-base-content/30" />
-									<p class="text-base-content/70">No organizations yet</p>
-									<button class="btn btn-sm btn-primary" onclick={openCreateModal}>
-										Create your first organization
-									</button>
-								</div>
-							</td>
-						</tr>
-					{/if}
-				</tbody>
-			</table>
-		</div>
-	</div>
+						{/if}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</Card>
+</div>
 
-<!-- Create/Edit Dialog -->
 {#if showModal}
-  <Dialog bind:open={showModal} size="md" onClose={resetForm} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+  <Dialog bind:open={showModal} size="md" onClose={resetForm}>
     {#snippet header()}
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-lg">
-          {modalMode === 'create' ? 'Create Organization' : 'Edit Organization'}
-        </h3>
-        <button
-          class="btn btn-ghost btn-sm btn-circle"
-          type="button"
-          onclick={() => { showModal = false; resetForm(); }}
-          aria-label="Close"
-        >
-          <X class="h-4 w-4" />
-        </button>
+      <div class="kui-modal-header">
+        <h3>{modalMode === 'create' ? 'Create organization' : 'Edit organization'}</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showModal = false; resetForm(); }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
     {/snippet}
     {#snippet children()}
       {@const formRef = modalMode === 'create' ? createOrganization : updateOrganization}
-      <form {...formRef} class="space-y-4">
+      <form {...formRef} class="kui-stack" onsubmit={handleFormSubmit}>
         {#if modalMode === 'edit' && editingOrg}
           <input type="hidden" name="id" value={editingOrg.id} />
         {/if}
         
-        <FormField 
-          label="Organization Name" 
-          issues={formRef.fields.organizationName.issues()}
-        >
-          <FormInput 
-            field={formRef.fields.organizationName} 
-            placeholder="Acme Corp"
-          />
+        <FormField label="Organization Name" issues={formRef.fields.organizationName.issues()}>
+          <FormInput field={formRef.fields.organizationName} placeholder="Acme Corp" />
         </FormField>
 
-        <FormField 
-          label="Organization Slug" 
+        <FormField
+          label="Organization Slug"
           issues={formRef.fields.organizationSlug.issues()}
           hint="Lowercase letters, numbers, and hyphens only"
         >
-          <FormInput 
-            field={formRef.fields.organizationSlug} 
-            placeholder="acme-corp"
-          />
+          <FormInput field={formRef.fields.organizationSlug} placeholder="acme-corp" />
         </FormField>
 
-        <FormField 
-          label="Email" 
-          issues={formRef.fields.email.issues()}
-        >
-          <FormInput 
-            field={formRef.fields.email} 
-            type="email"
-            placeholder="contact@acme.com"
-          />
+        <FormField label="Email" issues={formRef.fields.email.issues()}>
+          <FormInput field={formRef.fields.email} type="email" placeholder="contact@acme.com" />
         </FormField>
 
-        <FormField 
-          label="Status" 
-          issues={formRef.fields.status.issues()}
-        >
+        <FormField label="Status" issues={formRef.fields.status.issues()}>
           <FormSelect field={formRef.fields.status}>
             <option value="lead">Lead</option>
             <option value="active">Active</option>
@@ -250,85 +187,168 @@
           </FormSelect>
         </FormField>
 
-        <FormField 
-          label="Notes" 
-          issues={formRef.fields.notes.issues()}
-        >
-          <FormTextarea 
-            field={formRef.fields.notes} 
-            placeholder="Additional notes..."
-            rows={3}
-          />
+        <FormField label="Notes" issues={formRef.fields.notes.issues()}>
+          <FormTextarea field={formRef.fields.notes} placeholder="Additional notes..." rows={3} />
         </FormField>
 
-        <div class="modal-action">
-          <button
-            type="button"
-            class="btn"
-            onclick={() => { showModal = false; resetForm(); }}
-          >
-            Cancel
-          </button>
-          <button type="submit" class="btn btn-primary" aria-busy={!!formRef.pending} disabled={!!formRef.pending}>
+        {#snippet actions(close)}
+          <Button variant="ghost" type="button" onclick={() => { close(); resetForm(); }}>Cancel</Button>
+          <Button type="submit" variant="primary" disabled={!!formRef.pending}>
             {modalMode === 'create' ? 'Create' : 'Save'}
-          </button>
-        </div>
+          </Button>
+        {/snippet}
       </form>
     {/snippet}
   </Dialog>
 {/if}
 
-<!-- Delete Confirmation Dialog -->
 {#if showDeleteDialog && deletingOrg}
-  <Dialog bind:open={showDeleteDialog} size="sm" onClose={closeDeleteDialog} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+  <Dialog bind:open={showDeleteDialog} size="sm" onClose={closeDeleteDialog}>
     {#snippet header()}
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-lg text-error">Delete Organization</h3>
-        <button
-          class="btn btn-ghost btn-sm btn-circle"
-          type="button"
-          onclick={closeDeleteDialog}
-          aria-label="Close"
-        >
-          <X class="h-4 w-4" />
-        </button>
+      <div class="kui-modal-header">
+        <h3 class="danger-text">Delete organization</h3>
+        <Button variant="ghost" size="xs" onclick={closeDeleteDialog} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
     {/snippet}
     {#snippet children()}
-      <div class="space-y-4">
-        <div class="alert alert-warning">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <span>This action cannot be undone!</span>
-        </div>
-        
-        <p class="text-base-content/70">
-          Are you sure you want to delete <strong class="text-base-content">{deletingOrg.organizationName}</strong>?
+      <div class="kui-stack">
+        <Alert type="warning">This action cannot be undone.</Alert>
+        <p class="kui-subtext">
+          Are you sure you want to delete <strong>{deletingOrg.organizationName}</strong>?
         </p>
         
         <form {...deleteOrganization} onsubmit={handleDeleteConfirm}>
           <input type="hidden" name="id" value={deletingOrg.id} />
           
-          <div class="modal-action">
-            <button
-              type="button"
-              class="btn"
-              onclick={closeDeleteDialog}
-            >
-              Cancel
-            </button>
-            <button 
+          {#snippet actions(close)}
+            <Button variant="ghost" type="button" onclick={closeDeleteDialog}>Cancel</Button>
+            <Button 
               type="submit" 
-              class="btn btn-error" 
-              aria-busy={!!deleteOrganization.pending} 
+              variant="primary" 
+              class="danger" 
               disabled={!!deleteOrganization.pending}
             >
               {deleteOrganization.pending ? 'Deleting...' : 'Delete'}
-            </button>
-          </div>
+            </Button>
+          {/snippet}
         </form>
       </div>
     {/snippet}
   </Dialog>
 {/if}
+
+<style>
+	.kui-orgs {
+		display: grid;
+		gap: 14px;
+	}
+
+	.kui-orgs__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 26px;
+	}
+
+	.kui-eyebrow {
+		font-size: 12px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: #6b7280;
+		margin: 0 0 6px;
+	}
+
+	.kui-subtext {
+		color: #6b7280;
+		margin: 0;
+	}
+
+	.kui-panel {
+		padding: 16px;
+	}
+
+	.kui-table-scroll {
+		overflow: auto;
+	}
+
+	.kui-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.kui-table th,
+	.kui-table td {
+		padding: 12px;
+		border-bottom: 1px solid #f1f1f3;
+		text-align: left;
+	}
+
+	.kui-table th {
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		font-size: 13px;
+		color: #6b7280;
+	}
+
+	.kui-empty {
+		padding: 28px 12px;
+		display: grid;
+		gap: 10px;
+		justify-items: center;
+	}
+
+	.kui-empty__icon {
+		width: 40px;
+		height: 40px;
+		color: #d4d4d8;
+	}
+
+	.kui-inline {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.kui-inline.end {
+		justify-content: flex-end;
+	}
+
+	.kui-strong {
+		font-weight: 600;
+	}
+
+	.kui-modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.kui-stack {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	code {
+		background: #f4f4f5;
+		padding: 4px 6px;
+		border-radius: 8px;
+	}
+
+	.danger {
+		color: #b91c1c;
+		border-color: rgba(239, 68, 68, 0.35);
+	}
+
+	.danger-text {
+		color: #b91c1c;
+		margin: 0;
+	}
+</style>

@@ -10,12 +10,7 @@ import {
   CreateEmailIdentityCommand,
   DeleteEmailIdentityCommand,
   GetEmailIdentityCommand,
-  PutEmailIdentityDkimAttributesCommand,
-  CreateTenantCommand,
-  GetTenantCommand,
-  DeleteTenantCommand,
-  type EmailIdentity,
-  type DkimAttributes
+  PutEmailIdentityDkimAttributesCommand
 } from '@aws-sdk/client-sesv2';
 import { env } from '$env/dynamic/private';
 import * as v from 'valibot';
@@ -24,12 +19,13 @@ import { getAdminDatabase } from '$lib/server/db-context';
 // SES V2 client helper
 let sesClient: SESv2Client | null = null;
 const getSESClient = () => {
-  if (!env.AWS_SES_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+  const region = env.AWS_SES_REGION || env.AWS_REGION || 'us-east-1';
+  if (!region || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
     error(500, 'AWS SES credentials not configured');
   }
   if (!sesClient) {
     sesClient = new SESv2Client({
-      region: env.AWS_SES_REGION,
+      region,
       credentials: {
         accessKeyId: env.AWS_ACCESS_KEY_ID,
         secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -40,53 +36,11 @@ const getSESClient = () => {
 };
 
 /**
- * Ensure organization has a SES tenant
- * Creates tenant if it doesn't exist
+ * Generate a unique tenant identifier for the organization
+ * This is used for tagging SES identities per organization
  */
-const ensureTenant = async (db: any, organizationId: string, organizationName: string) => {
-  const ses = getSESClient();
-  
-  // Get organization
-  const org = await db.query.organizations.findFirst({
-    where: (fields: any, { eq }: any) => eq(fields.id, organizationId)
-  });
-
-  if (!org) {
-    throw new Error('Organization not found');
-  }
-
-  // If tenant already exists, return it
-  if (org.sesTenantId) {
-    try {
-      const getTenant = await ses.send(new GetTenantCommand({ TenantName: org.sesTenantId }));
-      return org.sesTenantId;
-    } catch (err) {
-      // Tenant doesn't exist in SES, create it
-      console.warn('[ensureTenant] Tenant exists in DB but not in SES, recreating');
-    }
-  }
-
-  // Create new tenant
-  const tenantName = `org-${organizationId.slice(0, 8)}-${Date.now()}`;
-  
-  try {
-    await ses.send(new CreateTenantCommand({
-      TenantName: tenantName,
-      EngagementEventDestinations: [],
-      EmailSendingEnabled: true
-    }));
-
-    // Update organization with tenant ID
-    await db.update.organizations(
-      { sesTenantId: tenantName },
-      (fields: any, { eq }: any) => eq(fields.id, organizationId)
-    );
-
-    return tenantName;
-  } catch (err) {
-    console.error('[ensureTenant] Failed to create tenant:', err);
-    throw new Error('Failed to create SES tenant');
-  }
+const getTenantId = (organizationId: string) => {
+  return `org-${organizationId.slice(0, 8)}`;
 };
 
 const ensureSession = () => {
@@ -133,12 +87,18 @@ export const getEmailDomains = guardedQuery(async () => {
       return [];
     }
 
-    const domains = await db.query.domains.findMany({
-      where: (fields: any, { eq }: any) => eq(fields.organizationId, organizationId),
-      orderBy: (fields: any, { desc }: any) => [desc(fields.created_at)]
-    });
+    const result = await db.domains
+      .where({ organizationId, deleted_at: { isNullish: true } })
+      .many();
 
-    return domains || [];
+    if (!result.success) {
+      console.error('[emailDomains.get] Failed to fetch domains:', result.error);
+      return [];
+    }
+
+    console.log('[emailDomains.get] Fetched domains:', result.data);
+
+    return result.data || [];
   } catch (err) {
     console.error('[emailDomains.get] error:', err);
     return [];
@@ -168,16 +128,18 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
     }
 
     // Get organization
-    const org = await db.query.organizations.findFirst({
-      where: (fields: any, { eq }: any) => eq(fields.id, organizationId)
-    });
+    const orgResult = await db.organizations
+      .where({ id: organizationId, deleted_at: { isNullish: true } })
+      .first();
 
-    if (!org) {
+    if (!orgResult.success || !orgResult.data) {
       return { success: false, error: 'Organization not found' };
     }
 
-    // Ensure organization has a SES tenant
-    const tenantId = await ensureTenant(db, organizationId, org.organizationName || 'Organization');
+    const org = orgResult.data;
+
+    // Generate tenant ID for tagging
+    const tenantId = getTenantId(organizationId);
 
     // Normalize domain
     const normalizedDomain = data.name
@@ -187,11 +149,9 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       .replace(/\/$/, '');
 
     // Create email identity in SES V2 with tenant isolation
+    // Let AWS manage DKIM signing automatically
     const createIdentityCommand = new CreateEmailIdentityCommand({
       EmailIdentity: normalizedDomain,
-      DkimSigningAttributes: {
-        DomainSigningSelector: 'ses',
-      },
       Tags: [
         { Key: 'OrganizationId', Value: organizationId },
         { Key: 'TenantId', Value: tenantId },
@@ -214,20 +174,34 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
     const dkimTokens = identityDetails.DkimAttributes?.Tokens || [];
     const verificationToken = identityDetails.DkimAttributes?.SigningAttributesOrigin;
 
+    console.log('[emailDomains.add] DKIM tokens:', dkimTokens);
+    console.log('[emailDomains.add] Verification token:', verificationToken);
+
     // Build DNS records for user to configure
     const dnsRecords = [
-      // DKIM CNAME records
+      // DKIM CNAME records for email authentication
       ...dkimTokens.map((token) => ({
         type: 'CNAME',
         name: `${token}._domainkey.${normalizedDomain}`,
         value: `${token}.dkim.amazonses.com`,
         priority: null,
         description: 'DKIM signing record for email authentication'
-      }))
+      })),
+      // DMARC policy record (recommended for email deliverability)
+      {
+        type: 'TXT',
+        name: `_dmarc.${normalizedDomain}`,
+        value: 'v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@' + normalizedDomain,
+        priority: null,
+        description: 'DMARC policy for email authentication and reporting'
+      }
     ];
 
+    console.log('[emailDomains.add] DNS records to save:', dnsRecords);
+
     // Insert domain in database
-    const result = await db.insert.domains({
+    const now = new Date().toISOString();
+    const result = await db.domains.insert({
       id: crypto.randomUUID(),
       name: normalizedDomain,
       organizationId,
@@ -236,7 +210,11 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
       sesVerificationToken: verificationToken || '',
       sesDkimTokens: JSON.stringify(dkimTokens),
       emailDnsRecords: JSON.stringify(dnsRecords),
-      sesTenantId: tenantId
+      sesTenantId: tenantId,
+      siteId: null,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null
     });
 
     if (!result.success) {
@@ -251,7 +229,7 @@ export const addEmailDomain = guardedCommand(addDomainSchema, async (data) => {
 
     return { 
       success: true, 
-      domain: result.results,
+      domain: result.data,
       dnsRecords,
       tenantId
     };
@@ -279,13 +257,15 @@ export const verifyEmailDomain = guardedCommand(verifyDomainSchema, async (data)
     }
 
     // Get domain from database
-    const domain = await db.query.domains.findFirst({
-      where: (fields: any, { eq }: any) => eq(fields.id, data.domainId)
-    });
+    const domainResult = await db.domains
+      .where({ id: data.domainId, deleted_at: { isNullish: true } })
+      .first();
 
-    if (!domain) {
+    if (!domainResult.success || !domainResult.data) {
       return { success: false, error: 'Domain not found' };
     }
+
+    const domain = domainResult.data;
 
     // Get identity details from SES V2
     const getIdentityCommand = new GetEmailIdentityCommand({
@@ -300,10 +280,10 @@ export const verifyEmailDomain = guardedCommand(verifyDomainSchema, async (data)
 
     if (isFullyVerified) {
       // Update database
-      await db.update.domains(
-        { emailVerified: true },
-        (fields: any, { eq }: any) => eq(fields.id, data.domainId)
-      );
+      const now = new Date().toISOString();
+      await db.domains
+        .where({ id: data.domainId })
+        .update({ emailVerified: true, updated_at: now });
 
       return { success: true, verified: true };
     }
@@ -340,13 +320,15 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
     }
 
     // Get domain
-    const domain = await db.query.domains.findFirst({
-      where: (fields: any, { eq }: any) => eq(fields.id, data.domainId)
-    });
+    const domainResult = await db.domains
+      .where({ id: data.domainId, deleted_at: { isNullish: true } })
+      .first();
 
-    if (!domain) {
+    if (!domainResult.success || !domainResult.data) {
       return { success: false, error: 'Domain not found' };
     }
+
+    const domain = domainResult.data;
 
     // Delete email identity from SES V2
     try {
@@ -359,10 +341,11 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
       // Continue with DB deletion even if SES fails
     }
 
-    // Delete from database
-    const result = await db.delete.domains(
-      (fields: any, { eq }: any) => eq(fields.id, data.domainId)
-    );
+    // Soft delete from database
+    const now = new Date().toISOString();
+    const result = await db.domains
+      .where({ id: data.domainId })
+      .update({ deleted_at: now });
 
     if (!result.success) {
       return { success: false, error: 'Failed to delete domain' };

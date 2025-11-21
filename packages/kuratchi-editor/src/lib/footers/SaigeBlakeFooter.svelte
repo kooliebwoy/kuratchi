@@ -41,13 +41,6 @@
         menuHidden = false
     }: Props = $props();
 
-    let footerLogo = {
-        href: 'https://kayde.io',
-        src: '/kayde-logo.png',
-        alt: 'Kayde Logo',
-        name: 'Kayde',
-    }
-    
     const defaultMenu = [
         { label: 'Privacy Policy', slug: '/product-a' },
         { label: 'Terms & Conditions', slug: '/product-b' },
@@ -73,47 +66,72 @@
         subscribeText,
         copyrightText,
     })
+
+    function hrefFrom(item: any): string {
+        if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
+        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
+        return '#';
+    }
 </script>
 
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
-        <div class="flex flex-wrap flex-col justify-between">
-            <fieldset class="fieldset p-4">
-                <label class="fieldset-label">
-                    <input type="checkbox" class="checkbox" bind:checked={reverseOrder} />
-                    Swap Logo and Footer Menu
-                </label>
-            </fieldset>
-            
-            <fieldset class="fieldset p-4">
-                <label class="fieldset-label">
-                    <input type="color" class="input-color" bind:value={backgroundColor} />
-                    Component Background Color
-                </label>
-            </fieldset>
-            
-            <fieldset class="fieldset p-4">
-                <label class="fieldset-label">
-                    <input type="color" class="input-color" bind:value={textColor} />
-                    Text Color
-                </label>
-            </fieldset>
-            
-            <div class="divider"></div>
+        <div class="krt-footerDrawer">
+            <section class="krt-footerDrawer__section">
+                <h3 class="krt-footerDrawer__title">Layout</h3>
+                <div class="krt-footerDrawer__cards">
+                    <label class="krt-footerDrawer__card">
+                        <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
+                        <span>Swap Icons and Footer Menu</span>
+                    </label>
+                </div>
+            </section>
 
-            <h4>Icons</h4>
+            <section class="krt-footerDrawer__section">
+                <h3 class="krt-footerDrawer__title">Colors</h3>
+                <div class="krt-footerDrawer__cards">
+                    <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
+                        <span>Background Color</span>
+                        <div class="krt-footerDrawer__colorControl">
+                            <input type="color" bind:value={backgroundColor} />
+                            <span>{backgroundColor}</span>
+                        </div>
+                    </label>
+                    <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
+                        <span>Text Color</span>
+                        <div class="krt-footerDrawer__colorControl">
+                            <input type="color" bind:value={textColor} />
+                            <span>{textColor}</span>
+                        </div>
+                    </label>
+                </div>
+            </section>
 
-            <IconPicker bind:selectedIcons={icons} />
+            <section class="krt-footerDrawer__section">
+                <h3 class="krt-footerDrawer__title">Icons</h3>
+                <div class="krt-footerDrawer__cards">
+                    <div class="krt-footerDrawer__card">
+                        <IconPicker bind:selectedIcons={icons} />
+                    </div>
 
-            {#each icons as icon}
-                {@const Comp = LucideIconMap[icon.icon]}
-                <fieldset class="fieldset w-xs bg-base-300 border border-base-300 p-4 rounded-box">
-                    <legend class="fieldset-legend">
-                        <Comp class="text-2xl" />
-                    </legend>
-                    <input type="text" class="input" value={icon.slug} onchange={(e) => icon.slug = (e.target as HTMLInputElement).value} />
-                </fieldset>
-            {/each}
+                    {#each icons as icon}
+                        {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                        <label class="krt-footerDrawer__card krt-footerDrawer__card--icon">
+                            <div class="krt-footerDrawer__iconHeading">
+                                <Comp aria-hidden="true" />
+                                <span>{icon.name}</span>
+                            </div>
+                            <input
+                                type="text"
+                                class="krt-footerDrawer__input"
+                                placeholder="https://example.com"
+                                value={icon.slug}
+                                onchange={(e) => icon.slug = (e.target as HTMLInputElement).value}
+                            />
+                        </label>
+                    {/each}
+                </div>
+            </section>
         </div>
     {/snippet}
 
@@ -122,64 +140,417 @@
     {/snippet}
 
     {#snippet children()}
-        <footer class="footer footer-center p-10" style:background-color={backgroundColor} style:color={textColor}>
-            <aside>
-                <h1 class="text-3xl font-bold text-wrap max-w-64" contenteditable bind:innerHTML={subscribeText} style:color={textColor}></h1>
-                <input type="text" placeholder="Email Address" class="input input-bordered input-md w-full max-w-xs rounded-none mt-2 -mb-2" />
-                <button class="btn btn-ghost underline text-lg font-semibold" style:color={textColor}>Subscribe</button>
-            </aside>
-        </footer>
-        
-        <footer class="footer sm:footer-horizontal bg-neutral text-neutral-content items-center p-4" style:background-color={backgroundColor}>
-            {#if reverseOrder}
-                <aside class="grid-flow-col items-center">
-                    {#if !menuHidden}
-                        <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
+        <div
+            class="krt-footer krt-footer--saige"
+            style:background-color={backgroundColor}
+            style:color={textColor}
+        >
+            <section class="krt-footer__cta">
+                <h2 class="krt-footer__heading" contenteditable bind:innerHTML={subscribeText}></h2>
+                <div class="krt-footer__form">
+                    <input
+                        type="email"
+                        class="krt-footer__input"
+                        placeholder="Email Address"
+                        aria-label="Email address"
+                    />
+                    <button class="krt-footer__button" type="button">Subscribe</button>
+                </div>
+            </section>
+
+            <section class="krt-footer__secondary" class:krt-footer__secondary--reversed={reverseOrder}>
+                <div class="krt-footer__segment">
+                    {#if reverseOrder}
+                        {#if !menuHidden}
+                            <nav class="krt-footer__menu">
+                                {#each computedMenu as item}
+                                    <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
+                                {/each}
+                            </nav>
+                        {/if}
+                    {:else}
+                        <div class="krt-footer__icons">
+                            {#each icons as { icon, slug, name }}
+                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                                <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                    <Comp aria-hidden="true" />
+                                </a>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+                <div class="krt-footer__segment">
+                    {#if reverseOrder}
+                        <div class="krt-footer__icons">
+                            {#each icons as { icon, slug, name }}
+                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                                <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                    <Comp aria-hidden="true" />
+                                </a>
+                            {/each}
+                        </div>
+                    {:else if !menuHidden}
+                        <nav class="krt-footer__menu">
                             {#each computedMenu as item}
-                                <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
+                                <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
                             {/each}
                         </nav>
                     {/if}
-                </aside>
-                <nav class="md:place-self-center md:justify-self-end">
-                    <div class="grid grid-flow-col gap-4">
-                        {#each icons as {icon, slug, name}}
-                            {@const Comp = LucideIconMap[icon]}
-                            <button class="btn btn-ghost btn-circle !mx-0" style:color={textColor}>
-                                <Comp class="text-xl opacity-90" />
-                            </button>
-                        {/each}
-                    </div>
-                </nav>
-            {:else}
-                <aside class="grid-flow-col items-center">
-                    <nav class="md:place-self-center md:justify-self-end">
-                        <div class="grid grid-flow-col gap-4">
-                            {#each icons as {icon, slug, name}}
-                                {@const Comp = LucideIconMap[icon]}
-                                <button class="btn btn-ghost btn-circle !mx-0" style:color={textColor}>
-                                    <Comp class="text-xl opacity-90" />
-                                </button>
-                            {/each}
-                        </div>
-                    </nav>
-                </aside>
-                {#if !menuHidden}
-                    <nav class="flex flex-wrap gap-2 md:place-self-center md:justify-self-end">
-                        {#each (menu && Array.isArray(menu) && menu.length > 0 ? menu : defaultMenu) as item}
-                            <a class="link link-hover text-sm font-light opacity-90" style:color={textColor} href={item.slug}>{item.label}</a>
-                        {/each}
-                    </nav>
-                {/if}
-            {/if}
-        </footer>
-        <footer class="footer footer-center p-4" style:background-color={backgroundColor} style:color={textColor}>
-            <aside>
-                <p style:color={textColor} class="opacity-60 text-sm"> {new Date().getFullYear()} {copyrightText.by} All right reserved.</p>
-                <small class="opacity-50">
-                    <a href="https://kayde.io" target="_blank" class="text-content italic">{poweredBy}</a>
+                </div>
+            </section>
+
+            <section class="krt-footer__legal">
+                <p>{new Date().getFullYear()} {copyrightText.by} · All rights reserved.</p>
+                <small>
+                    <a href="https://kayde.io" target="_blank" rel="noreferrer noopener">{poweredBy}</a>
                 </small>
-            </aside>
-        </footer>
+            </section>
+        </div>
     {/snippet}
 </LayoutBlock>
+
+<style>
+    .krt-footerDrawer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-lg, 1rem);
+    }
+
+    .krt-footerDrawer__section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-footerDrawer__title {
+        margin: 0;
+        font-size: 0.8rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-footerDrawer__cards {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-sm, 0.5rem);
+    }
+
+    .krt-footerDrawer__card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--krt-space-sm, 0.5rem);
+        padding: var(--krt-space-md, 0.75rem) var(--krt-space-lg, 1rem);
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-surface, #ffffff);
+        font-size: 0.9rem;
+    }
+
+    .krt-footerDrawer__card span {
+        font-weight: 500;
+    }
+
+    .krt-footerDrawer__card--color {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--krt-space-sm, 0.5rem);
+    }
+
+    .krt-footerDrawer__colorControl {
+        display: flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+        font-family: 'SFMono-Regular', ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.75rem;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-footerDrawer__colorControl input[type='color'] {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 2px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: none;
+        padding: 0;
+        cursor: pointer;
+    }
+
+    .krt-footerDrawer__card--icon {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--krt-space-sm, 0.5rem);
+    }
+
+    .krt-footerDrawer__iconHeading {
+        display: flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-footerDrawer__iconHeading :global(svg) {
+        width: 1.5rem;
+        height: 1.5rem;
+        color: var(--krt-color-accent, #4f46e5);
+    }
+
+    .krt-footerDrawer__input {
+        width: 100%;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        padding: 0.45rem 0.75rem;
+        font-size: 0.85rem;
+        background: #f9fafb;
+    }
+
+    .krt-switch {
+        inline-size: 2.25rem;
+        block-size: 1.25rem;
+        border-radius: 999px;
+        background: var(--krt-color-border-subtle, #e5e7eb);
+        position: relative;
+        appearance: none;
+        cursor: pointer;
+        transition: background 150ms ease;
+    }
+
+    .krt-switch::after {
+        content: '';
+        position: absolute;
+        inset-block: 0.1875rem;
+        inset-inline-start: 0.1875rem;
+        width: 0.875rem;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+        transition: transform 150ms ease;
+    }
+
+    .krt-switch:checked {
+        background: var(--krt-color-primary, #111827);
+    }
+
+    .krt-switch:checked::after {
+        transform: translateX(1rem);
+    }
+
+    .krt-footer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xl, 1.25rem);
+        padding: var(--krt-space-xl, 1.25rem) var(--krt-space-2xl, 2rem);
+        border-radius: var(--krt-radius-2xl, 1.25rem);
+        background: color-mix(in srgb, currentColor 6%, transparent);
+    }
+
+    .krt-footer__cta {
+        display: grid;
+        gap: var(--krt-space-md, 0.75rem);
+        padding: var(--krt-space-lg, 1rem) var(--krt-space-xl, 1.25rem);
+        border-radius: var(--krt-radius-xl, 1rem);
+        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+        background: rgba(0, 0, 0, 0.2);
+        box-shadow: 0 16px 45px rgba(15, 23, 42, 0.18);
+    }
+
+    .krt-footer__heading {
+        margin: 0;
+        font-size: clamp(1.5rem, 2vw + 1rem, 2.25rem);
+        font-weight: 700;
+        line-height: 1.25;
+        max-width: 28ch;
+    }
+
+    .krt-footer__form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-sm, 0.5rem);
+    }
+
+    @media (min-width: 40rem) {
+        .krt-footer__form {
+            flex-direction: row;
+            align-items: center;
+        }
+    }
+
+    .krt-footer__input {
+        flex: 1 1 12rem;
+        border-radius: var(--krt-radius-lg, 0.75rem);
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        padding: 0.65rem 0.9rem;
+        background: rgba(255, 255, 255, 0.88);
+        color: var(--krt-color-neutral-900, #1f2937);
+        font-size: 0.95rem;
+    }
+
+    .krt-footer__input::placeholder {
+        color: rgba(15, 23, 42, 0.55);
+    }
+
+    .krt-footer__button {
+        flex: 0 0 auto;
+        border: none;
+        border-radius: var(--krt-radius-lg, 0.75rem);
+        padding: 0.7rem 1.4rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        background: color-mix(in srgb, currentColor 22%, transparent);
+        color: inherit;
+        cursor: pointer;
+        transition: transform 150ms ease, background 150ms ease;
+    }
+
+    .krt-footer__button:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, currentColor 30%, transparent);
+    }
+
+    .krt-footer__secondary {
+        display: grid;
+        gap: var(--krt-space-lg, 1rem);
+        border-radius: var(--krt-radius-xl, 1rem);
+        border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+        padding: var(--krt-space-lg, 1rem) var(--krt-space-xl, 1.25rem);
+        background: rgba(0, 0, 0, 0.16);
+    }
+
+    @media (min-width: 48rem) {
+        .krt-footer__secondary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .krt-footer__secondary--reversed {
+            direction: rtl;
+        }
+
+        .krt-footer__secondary--reversed .krt-footer__segment {
+            direction: ltr;
+        }
+    }
+
+    .krt-footer__segment {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    @media (min-width: 48rem) {
+        .krt-footer__segment {
+            justify-content: flex-start;
+        }
+    }
+
+    .krt-footer__icons {
+        display: flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+    }
+
+    .krt-footer__iconButton {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: var(--krt-radius-pill, 999px);
+        border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        transition: transform 150ms ease, background 150ms ease;
+    }
+
+    .krt-footer__iconButton:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.22);
+    }
+
+    .krt-footer__iconButton :global(svg) {
+        width: 1.1rem;
+        height: 1.1rem;
+    }
+
+    .krt-footer__menu {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--krt-space-sm, 0.5rem);
+        justify-content: center;
+    }
+
+    @media (min-width: 48rem) {
+        .krt-footer__menu {
+            justify-content: flex-start;
+        }
+    }
+
+    .krt-footer__menuLink {
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        opacity: 0.85;
+        position: relative;
+    }
+
+    .krt-footer__menuLink::after {
+        content: '';
+        position: absolute;
+        inset-inline: 0;
+        inset-block-end: -0.2rem;
+        height: 1px;
+        background: currentColor;
+        opacity: 0;
+        transition: opacity 150ms ease;
+    }
+
+    .krt-footer__menuLink:hover {
+        opacity: 1;
+    }
+
+    .krt-footer__menuLink:hover::after {
+        opacity: 0.6;
+    }
+
+    .krt-footer__legal {
+        display: grid;
+        gap: var(--krt-space-xs, 0.25rem);
+        justify-items: center;
+        padding: var(--krt-space-md, 0.75rem);
+        border-radius: var(--krt-radius-lg, 0.75rem);
+        border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        background: rgba(0, 0, 0, 0.12);
+    }
+
+    @media (min-width: 48rem) {
+        .krt-footer__legal {
+            grid-template-columns: auto auto;
+            justify-content: space-between;
+            justify-items: start;
+            align-items: center;
+            padding-inline: var(--krt-space-xl, 1.25rem);
+        }
+    }
+
+    .krt-footer__legal p,
+    .krt-footer__legal small {
+        margin: 0;
+        font-size: 0.85rem;
+        opacity: 0.8;
+    }
+
+    .krt-footer__legal a {
+        color: inherit;
+        text-decoration: none;
+        font-style: italic;
+    }
+
+    .krt-footer__legal a:hover {
+        opacity: 1;
+    }
+</style>

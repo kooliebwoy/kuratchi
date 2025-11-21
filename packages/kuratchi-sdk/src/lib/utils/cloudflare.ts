@@ -18,6 +18,15 @@ export interface CloudflareClientConfig {
     endpointBase?: string; // default https://api.cloudflare.com/client/v4
 }
 
+export interface CreateCustomHostnamePayload {
+    hostname: string;
+    ssl?: Record<string, unknown>;
+    custom_origin_server?: string;
+    custom_origin_sni?: string;
+    metadata?: Record<string, unknown>;
+    policies?: Array<Record<string, unknown>>;
+}
+
 export class CloudflareClient {
     private apiToken: string;
     private accountId: string;
@@ -567,6 +576,31 @@ export class CloudflareClient {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ value })
+        });
+    }
+
+    // ===== Custom Hostnames (SSL for SaaS) =====
+
+    /** Create a custom hostname for SSL for SaaS */
+    async createCustomHostname(zoneId: string, payload: CreateCustomHostnamePayload): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}/custom_hostnames`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    }
+
+    /** Get a custom hostname */
+    async getCustomHostname(zoneId: string, hostnameId: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}/custom_hostnames/${hostnameId}`, {
+            method: 'GET'
+        });
+    }
+
+    /** Delete a custom hostname */
+    async deleteCustomHostname(zoneId: string, hostnameId: string): Promise<CloudflareAPIResponse<any>> {
+        return this.request(`/zones/${zoneId}/custom_hostnames/${hostnameId}`, {
+            method: 'DELETE'
         });
     }
 }

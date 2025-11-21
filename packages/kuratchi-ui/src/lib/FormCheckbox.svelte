@@ -11,11 +11,11 @@
 	let { field, label, class: className = '' }: Props = $props();
 </script>
 
-<label class="label cursor-pointer gap-2 {className}">
-	<input 
-		{...field.as('checkbox')} 
-		type="checkbox"
-		class="checkbox checkbox-sm"
-	/>
-	<span class="label-text">{label}</span>
+<label class={`kui-checkbox-field ${className}`.trim()}>
+  <input 
+    {...field.as('checkbox')} 
+    type="checkbox"
+    class="kui-checkbox"
+  />
+  <span class="kui-label">{label}</span>
 </label>

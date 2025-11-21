@@ -1,5 +1,6 @@
 <script lang="ts">
     import { HelpCircle, X, MessageSquare, Headphones, Send, Mail, MessageCircle } from 'lucide-svelte';
+    import { Button, Card } from '@kuratchi/ui';
     import { enhance } from '$app/forms';
     import type { SubmitFunction } from '@sveltejs/kit';
     
@@ -7,15 +8,13 @@
     let activeTab = $state<'feedback' | 'support'>('feedback');
     let isSubmitting = $state(false);
     
-    const CHAT_URL = 'https://chat.kuratchi.dev'; // TODO: Update based on environment
+    const CHAT_URL = 'https://chat.kuratchi.dev';
     
-    // Feedback form state
     let feedbackRating = $state<1 | 2 | 3 | 4 | 5>(5);
     let feedbackText = $state('');
     let feedbackImage: File | null = $state(null);
     let feedbackImagePreview = $state('');
     
-    // Support form state
     let supportSubject = $state('');
     let supportMessage = $state('');
     let supportImage: File | null = $state(null);
@@ -27,30 +26,22 @@
         isOpen = !isOpen;
     }
     
-    function handleFeedbackImageChange(event: Event) {
+    function handleImageChange(event: Event, type: 'feedback' | 'support') {
         const target = event.target as HTMLInputElement;
         const file = target.files?.[0];
-        if (file) {
-            feedbackImage = file;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                feedbackImagePreview = e.target?.result as string;
-            };
-            reader.readAsDataURL(file);
-        }
-    }
-    
-    function handleSupportImageChange(event: Event) {
-        const target = event.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (file) {
-            supportImage = file;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                supportImagePreview = e.target?.result as string;
-            };
-            reader.readAsDataURL(file);
-        }
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const preview = e.target?.result as string;
+            if (type === 'feedback') {
+                feedbackImage = file;
+                feedbackImagePreview = preview;
+            } else {
+                supportImage = file;
+                supportImagePreview = preview;
+            }
+        };
+        reader.readAsDataURL(file);
     }
     
     const submitHandler: SubmitFunction = () => {
@@ -60,7 +51,6 @@
             isSubmitting = false;
             
             if (result.type === 'success') {
-                // Reset forms and close widget
                 feedbackText = '';
                 feedbackRating = 5;
                 feedbackImage = null;
@@ -75,222 +65,289 @@
     };
 </script>
 
-<!-- Help Widget Button -->
-<div class="fixed bottom-6 right-6 z-50">
+<div class="kui-help-widget">
     {#if !isOpen}
-        <button
-            class="btn btn-circle btn-ghost border border-base-200 bg-base-100 hover:bg-base-200/50 text-base-content/70 hover:text-base-content shadow-lg"
+        <Button
+            variant="ghost"
+            size="sm"
+            class="kui-help-button"
             onclick={toggleWidget}
             aria-label="Help & Support"
         >
-            <HelpCircle class="h-5 w-5" />
-        </button>
+            <HelpCircle class="kui-icon" />
+        </Button>
     {/if}
     
     {#if isOpen}
-        <div class="bg-base-100 rounded-xl shadow-2xl border border-base-200 w-96 max-h-[80vh] overflow-hidden flex flex-col">
-            <!-- Header -->
-            <div class="flex items-center justify-between px-5 py-3 border-b border-base-200">
-                <h3 class="font-semibold text-base">Help & Support</h3>
-                <button
-                    class="btn btn-ghost btn-xs btn-circle"
-                    onclick={toggleWidget}
-                >
-                    <X class="h-4 w-4" />
-                </button>
+        <Card class="kui-help-card">
+            <div class="kui-help-head">
+                <div>
+                    <p class="kui-eyebrow">Need help?</p>
+                    <h3>Help & Support</h3>
+                </div>
+                <Button variant="ghost" size="xs" onclick={toggleWidget} aria-label="Close">
+                    <X class="kui-icon" />
+                </Button>
             </div>
             
-            <!-- Tabs -->
-            <div class="tabs tabs-boxed m-3 mb-0 gap-1">
-                <button
-                    class="tab tab-sm flex-1 text-xs"
-                    class:tab-active={activeTab === 'feedback'}
-                    onclick={() => activeTab = 'feedback'}
-                >
-                    <MessageSquare class="h-3 w-3 mr-1" />
+            <div class="kui-tabs">
+                <button class:active={activeTab === 'feedback'} onclick={() => activeTab = 'feedback'}>
+                    <MessageSquare class="kui-icon" />
                     Feedback
                 </button>
-                <button
-                    class="tab tab-sm flex-1 text-xs"
-                    class:tab-active={activeTab === 'support'}
-                    onclick={() => activeTab = 'support'}
-                >
-                    <Headphones class="h-3 w-3 mr-1" />
+                <button class:active={activeTab === 'support'} onclick={() => activeTab = 'support'}>
+                    <Headphones class="kui-icon" />
                     Support
                 </button>
             </div>
             
-            <!-- Live Chat Button -->
-            <div class="px-4 py-2">
-                <a
-                    href={CHAT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="btn btn-outline btn-sm w-full text-xs gap-1"
-                >
-                    <MessageCircle class="h-3 w-3" />
-                    Open Live Chat
-                </a>
+            <div class="kui-chat-link">
+                <Button variant="outline" size="sm" href={CHAT_URL} target="_blank">
+                    <MessageCircle class="kui-icon" />
+                    Open live chat
+                </Button>
             </div>
             
-            <!-- Content -->
-            <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div class="kui-content">
                 {#if activeTab === 'feedback'}
-                    <!-- Feedback Form -->
-                    <form method="POST" action="/?/submitFeedback" enctype="multipart/form-data" use:enhance={submitHandler}>
-                        <div class="space-y-3">
-                            <!-- Rating -->
-                            <div>
-                                <label class="label py-1" for="feedback-rating">
-                                    <span class="label-text text-xs font-medium">How would you rate your experience?</span>
-                                </label>
-                                <div class="flex gap-1 justify-center">
-                                    {#each [1, 2, 3, 4, 5] as rating}
-                                        <button
-                                            type="button"
-                                            class="btn btn-ghost btn-sm text-lg"
-                                            class:btn-primary={feedbackRating === rating}
-                                            onclick={() => feedbackRating = rating as 1 | 2 | 3 | 4 | 5}
-                                        >
-                                            {ratingEmojis[rating - 1]}
-                                        </button>
-                                    {/each}
-                                </div>
-                                <input type="hidden" name="rating" id="feedback-rating" value={feedbackRating} />
+                    <form method="POST" action="/?/submitFeedback" enctype="multipart/form-data" use:enhance={submitHandler} class="kui-stack">
+                        <div>
+                            <label class="kui-label">How would you rate your experience?</label>
+                            <div class="kui-rating-row">
+                                {#each [1,2,3,4,5] as rating}
+                                    <Button
+                                        type="button"
+                                        variant={feedbackRating === rating ? 'primary' : 'ghost'}
+                                        size="xs"
+                                        onclick={() => feedbackRating = rating as 1 | 2 | 3 | 4 | 5}
+                                    >
+                                        {ratingEmojis[rating - 1]}
+                                    </Button>
+                                {/each}
                             </div>
-                            
-                            <!-- Feedback Text -->
-                            <div>
-                                <label class="label py-1" for="feedback-text">
-                                    <span class="label-text text-xs font-medium">Tell us more</span>
-                                </label>
-                                <textarea
-                                    name="feedback"
-                                    id="feedback-text"
-                                    bind:value={feedbackText}
-                                    class="textarea textarea-bordered textarea-sm w-full h-20 text-xs"
-                                    placeholder="What's working well? What could be improved?"
-                                    required
-                                ></textarea>
-                            </div>
-                            
-                            <!-- Image Upload -->
-                            <div>
-                                <label class="label py-1" for="feedback-image">
-                                    <span class="label-text text-xs font-medium">Screenshot (optional)</span>
-                                </label>
-                                <input
-                                    type="file"
-                                    name="image"
-                                    id="feedback-image"
-                                    accept="image/*"
-                                    class="file-input file-input-bordered file-input-sm w-full text-xs"
-                                    onchange={handleFeedbackImageChange}
-                                />
-                                {#if feedbackImagePreview}
-                                    <div class="mt-2">
-                                        <img src={feedbackImagePreview} alt="Preview" class="w-full h-24 object-cover rounded" />
-                                    </div>
-                                {/if}
-                            </div>
-                            
-                            <!-- Submit Button -->
-                            <button
-                                type="submit"
-                                class="btn btn-primary btn-sm w-full text-xs"
-                                disabled={isSubmitting || !feedbackText.trim()}
-                            >
-                                {#if isSubmitting}
-                                    <span class="loading loading-spinner loading-xs"></span>
-                                    Sending...
-                                {:else}
-                                    <Send class="h-3 w-3" />
-                                    Send Feedback
-                                {/if}
-                            </button>
+                            <input type="hidden" name="rating" value={feedbackRating} />
                         </div>
+                        
+                        <label class="kui-form-control">
+                            <span class="kui-label">Tell us more</span>
+                            <textarea
+                                name="feedback"
+                                bind:value={feedbackText}
+                                class="kui-textarea"
+                                placeholder="What's working well? What could be improved?"
+                                required
+                            ></textarea>
+                        </label>
+                        
+                        <label class="kui-form-control">
+                            <span class="kui-label">Screenshot (optional)</span>
+                            <input
+                                type="file"
+                                name="image"
+                                accept="image/*"
+                                class="kui-input"
+                                onchange={(e) => handleImageChange(e, 'feedback')}
+                            />
+                            {#if feedbackImagePreview}
+                                <img src={feedbackImagePreview} alt="Preview" class="kui-preview" />
+                            {/if}
+                        </label>
+                        
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            disabled={isSubmitting || !feedbackText.trim()}
+                        >
+                            {#if isSubmitting}
+                                Sending...
+                            {:else}
+                                <Send class="kui-icon" />
+                                Send feedback
+                            {/if}
+                        </Button>
                     </form>
-                    
                 {:else}
-                    <!-- Support Form -->
-                    <form method="POST" action="/?/submitSupport" enctype="multipart/form-data" use:enhance={submitHandler}>
-                        <div class="space-y-3">
-                            <!-- Subject -->
-                            <div>
-                                <label class="label py-1" for="support-subject">
-                                    <span class="label-text text-xs font-medium">Subject</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    name="subject"
-                                    id="support-subject"
-                                    bind:value={supportSubject}
-                                    class="input input-bordered input-sm w-full text-xs"
-                                    placeholder="Brief description of your issue"
-                                    required
-                                />
-                            </div>
-                            
-                            <!-- Message -->
-                            <div>
-                                <label class="label py-1" for="support-message">
-                                    <span class="label-text text-xs font-medium">Message</span>
-                                </label>
-                                <textarea
-                                    name="message"
-                                    id="support-message"
-                                    bind:value={supportMessage}
-                                    class="textarea textarea-bordered textarea-sm w-full h-20 text-xs"
-                                    placeholder="Please describe your issue in detail..."
-                                    required
-                                ></textarea>
-                            </div>
-                            
-                            <!-- Image Upload -->
-                            <div>
-                                <label class="label py-1" for="support-image">
-                                    <span class="label-text text-xs font-medium">Attachment (optional)</span>
-                                </label>
-                                <input
-                                    type="file"
-                                    name="image"
-                                    id="support-image"
-                                    accept="image/*"
-                                    class="file-input file-input-bordered file-input-sm w-full text-xs"
-                                    onchange={handleSupportImageChange}
-                                />
-                                {#if supportImagePreview}
-                                    <div class="mt-2">
-                                        <img src={supportImagePreview} alt="Preview" class="w-full h-24 object-cover rounded" />
-                                    </div>
-                                {/if}
-                            </div>
-                            
-                            <!-- Submit Button -->
-                            <button
-                                type="submit"
-                                class="btn btn-secondary btn-sm w-full text-xs"
-                                disabled={isSubmitting || !supportSubject.trim() || !supportMessage.trim()}
-                            >
-                                {#if isSubmitting}
-                                    <span class="loading loading-spinner loading-xs"></span>
-                                    Sending...
-                                {:else}
-                                    <Mail class="h-3 w-3" />
-                                    Send to Support
-                                {/if}
-                            </button>
-                        </div>
+                    <form method="POST" action="/?/submitSupport" enctype="multipart/form-data" use:enhance={submitHandler} class="kui-stack">
+                        <label class="kui-form-control">
+                            <span class="kui-label">Subject</span>
+                            <input
+                                type="text"
+                                name="subject"
+                                bind:value={supportSubject}
+                                class="kui-input"
+                                placeholder="Brief description of your issue"
+                                required
+                            />
+                        </label>
+                        
+                        <label class="kui-form-control">
+                            <span class="kui-label">Message</span>
+                            <textarea
+                                name="message"
+                                bind:value={supportMessage}
+                                class="kui-textarea"
+                                placeholder="Please describe your issue in detail..."
+                                required
+                            ></textarea>
+                        </label>
+                        
+                        <label class="kui-form-control">
+                            <span class="kui-label">Attachment (optional)</span>
+                            <input
+                                type="file"
+                                name="image"
+                                accept="image/*"
+                                class="kui-input"
+                                onchange={(e) => handleImageChange(e, 'support')}
+                            />
+                            {#if supportImagePreview}
+                                <img src={supportImagePreview} alt="Preview" class="kui-preview" />
+                            {/if}
+                        </label>
+                        
+                        <Button type="submit" variant="primary" disabled={isSubmitting || !supportSubject.trim() || !supportMessage.trim()}>
+                            {#if isSubmitting}
+                                Sending...
+                            {:else}
+                                <Send class="kui-icon" />
+                                Send request
+                            {/if}
+                        </Button>
                     </form>
                 {/if}
             </div>
-            
-            <!-- Footer -->
-            <div class="px-4 py-2 border-t border-base-200 text-center bg-base-200/30">
-                <p class="text-xs text-base-content/60">
-                    We typically respond within 24 hours
-                </p>
-            </div>
-        </div>
+        </Card>
     {/if}
 </div>
+
+<style>
+    .kui-help-widget {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 50;
+    }
+
+    .kui-help-button {
+        border-radius: 999px;
+        width: 42px;
+        height: 42px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    .kui-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    .kui-help-card {
+        width: 360px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 14px;
+    }
+
+    .kui-help-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+
+    h3 {
+        margin: 0;
+    }
+
+    .kui-eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin: 0;
+    }
+
+    .kui-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+
+    .kui-tabs button {
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 8px 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: #f8fafc;
+        cursor: pointer;
+    }
+
+    .kui-tabs button.active {
+        border-color: #a5b4fc;
+        background: #eef2ff;
+    }
+
+    .kui-chat-link {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .kui-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px;
+    }
+
+    .kui-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .kui-form-control {
+        display: grid;
+        gap: 6px;
+    }
+
+    .kui-label {
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .kui-input,
+    .kui-textarea {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #e4e4e7;
+        padding: 10px 12px;
+        background: white;
+    }
+
+    .kui-textarea {
+        min-height: 90px;
+    }
+
+    .kui-input:focus,
+    .kui-textarea:focus {
+        outline: 2px solid rgba(129, 140, 248, 0.35);
+        border-color: #a5b4fc;
+    }
+
+    .kui-rating-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+    }
+
+    .kui-preview {
+        width: 100%;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+    }
+</style>

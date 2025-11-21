@@ -21,9 +21,38 @@ export const load = async ({ locals, params }: RequestEvent) => {
 		};
 	}
 
+	// Derive blog index slug from site metadata (if present)
+	const siteMetadata =
+		typeof (site as any).metadata === 'object' && (site as any).metadata !== null
+			? ((site as any).metadata as Record<string, unknown>)
+			: {};
+	const blog =
+		siteMetadata.blog && typeof (siteMetadata as any).blog === 'object'
+			? ((siteMetadata as any).blog as Record<string, unknown>)
+			: null;
+
+	let indexSlug = 'blog';
+	if (blog && typeof (blog as any).settings === 'object' && (blog as any).settings !== null) {
+		const settings = (blog as any).settings as Record<string, unknown>;
+		if (typeof settings.indexSlug === 'string' && settings.indexSlug.trim().length > 0) {
+			indexSlug = settings.indexSlug.toLowerCase();
+		}
+	}
+
 	// Get the slug from params and normalize (strip slashes, lowercase)
-    const raw = params.slug || '';
-    const slug = raw.replace(/^\/+|\/+$/g, '').toLowerCase();
+	const raw = params.slug || '';
+	const fullSlug = raw.replace(/^\/+|\/+$/g, '').toLowerCase();
+
+	let pageSlug = fullSlug;
+
+	if (fullSlug) {
+		const segments = fullSlug.split('/');
+		if (segments.length > 0 && segments[0] === indexSlug) {
+			// /{indexSlug} -> blog index page (slug = indexSlug)
+			// /{indexSlug}/{postSlug} -> blog post page (slug = postSlug)
+			pageSlug = segments.length === 1 ? indexSlug : segments[segments.length - 1];
+		}
+	}
 
 	try {
 		// Call dashboard API to fetch page by slug
@@ -43,7 +72,7 @@ export const load = async ({ locals, params }: RequestEvent) => {
 			},
 			body: JSON.stringify({
 				subdomain,
-				slug,
+				slug: pageSlug,
 				pageType: undefined // Let the API find by slug
 			})
 		});

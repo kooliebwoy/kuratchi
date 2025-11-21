@@ -17,32 +17,13 @@
     children
   }: Props = $props();
   
-  const variantClasses = {
-    neutral: 'badge-neutral',
-    primary: 'badge-primary',
-    secondary: 'badge-secondary',
-    accent: 'badge-accent',
-    ghost: 'badge-ghost',
-    info: 'badge-info',
-    success: 'badge-success',
-    warning: 'badge-warning',
-    error: 'badge-error'
-  };
-  
-  const sizeClasses = {
-    xs: 'badge-xs',
-    sm: 'badge-sm',
-    md: '',
-    lg: 'badge-lg'
-  };
-  
-  const badgeClasses = $derived(`
-    badge badge-soft
-    ${variantClasses[variant]}
-    ${sizeClasses[size]}
-    ${outline ? 'badge-outline' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const badgeClasses = $derived([
+    'kui-badge',
+    `kui-badge--${variant}`,
+    `kui-badge--size-${size}`,
+    outline ? 'kui-badge--outline' : '',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
 <span class={badgeClasses}>

@@ -38,15 +38,15 @@
 </script>
 
 {#if open}
-  <div class="modal modal-open {className}">
-    <div class="modal-box {boxClass}">
+  <div class={`kui-modal ${className}`.trim()} role="dialog" aria-modal="true">
+    <div class={`kui-modal__panel ${boxClass}`.trim()}>
       {#if header}
         {@render header()}
       {/if}
       {@render children()}
       
       {#if actions}
-        <div class="modal-action">
+        <div class="kui-modal__actions">
           {@render actions()}
         </div>
       {/if}
@@ -54,7 +54,7 @@
     
     <button
       type="button"
-      class="modal-backdrop {backdropClass}"
+      class={`kui-modal__backdrop ${backdropClass}`.trim()}
       onclick={handleBackdropClick}
       aria-label="Close modal"
     ></button>

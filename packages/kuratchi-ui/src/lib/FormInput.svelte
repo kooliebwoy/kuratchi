@@ -16,7 +16,7 @@
 
 <input 
 	{...field.as(type)} 
-	class="input {className}"
+	class={`kui-input ${className}`.trim()}
 	{placeholder}
 	{disabled}
 />

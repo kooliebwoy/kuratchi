@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Key, Plus, Copy, RotateCw, Trash2, X } from 'lucide-svelte';
-  import { Dialog, FormField, FormInput, FormTextarea } from '@kuratchi/ui';
+  import { Dialog, FormField, FormInput, FormTextarea, Button, Card, Badge, Loading } from '@kuratchi/ui';
   import {
     getApiKeys,
     createApiKey,
@@ -69,159 +69,136 @@
   <title>API Keys - Kuratchi Dashboard</title>
 </svelte:head>
 
-<div class="space-y-6">
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="text-lg font-bold">Master API Keys</h3>
-          <p class="text-sm text-base-content/70">Manage API keys for Kuratchi access</p>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick={openCreateKeyModal}>
-          <Plus class="h-4 w-4 mr-2" />
-          Create API Key
-        </button>
+<div class="kui-api-keys">
+  <Card class="kui-panel">
+    <div class="kui-panel__header">
+      <div>
+        <p class="kui-eyebrow">Credentials</p>
+        <h3>Master API Keys</h3>
+        <p class="kui-subtext">Manage API keys for Kuratchi access</p>
       </div>
+      <Button variant="primary" size="sm" onclick={openCreateKeyModal}>
+        <Plus class="kui-icon" />
+        Create API Key
+      </Button>
+    </div>
 
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Key</th>
-              <th>Created</th>
-              <th>Last Used</th>
-              <th class="text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if apiKeysData && apiKeysData.length > 0}
-              {#each apiKeysData as key}
-                <tr>
-                  <td>
-                    <div>
-                      <div class="font-medium">{key.name}</div>
+    <div class="kui-table-scroll">
+      <table class="kui-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Key</th>
+            <th>Created</th>
+            <th>Last Used</th>
+            <th class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#if apiKeysData && apiKeysData.length > 0}
+            {#each apiKeysData as key}
+              <tr>
+                <td>
+                  <div class="kui-stack">
+                    <div class="kui-inline">
+                      <span class="kui-strong">{key.name}</span>
                       {#if key.description}
-                        <div class="text-sm text-base-content/60">{key.description}</div>
+                        <Badge variant="ghost" size="xs">Desc</Badge>
                       {/if}
                     </div>
-                  </td>
-                  <td>
-                    <code class="text-sm bg-base-200 px-2 py-1 rounded">{key.prefix}...</code>
-                  </td>
-                  <td class="text-sm text-base-content/70">
-                    {formatDate(key.created_at)}
-                  </td>
-                  <td class="text-sm text-base-content/70">
-                    {key.last_used_at ? formatDate(key.last_used_at) : 'Never'}
-                  </td>
-                  <td class="text-right">
-                    <div class="flex justify-end gap-2">
-                      <button
-                        class="btn btn-ghost btn-sm btn-square"
-                        onclick={() => openRotateKeyModal(key)}
-                        title="Rotate key"
-                      >
-                        <RotateCw class="h-4 w-4" />
-                      </button>
-                      <button
-                        class="btn btn-ghost btn-sm btn-square text-error"
-                        onclick={() => openDeleteKeyModal(key)}
-                        title="Delete key"
-                      >
-                        <Trash2 class="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            {:else}
-              <tr>
-                <td colspan="5" class="text-center py-8">
-                  <div class="flex flex-col items-center gap-2">
-                    <Key class="h-12 w-12 text-base-content/30" />
-                    <p class="text-base-content/70">No API keys yet</p>
-                    <button class="btn btn-sm btn-primary" onclick={openCreateKeyModal}>
-                      Create your first API key
-                    </button>
+                    {#if key.description}
+                      <p class="kui-subtext">{key.description}</p>
+                    {/if}
+                  </div>
+                </td>
+                <td><span class="kui-code">{key.prefix}...</span></td>
+                <td class="kui-subtext">{formatDate(key.created_at)}</td>
+                <td class="kui-subtext">{key.last_used_at ? formatDate(key.last_used_at) : 'Never'}</td>
+                <td class="text-right">
+                  <div class="kui-inline end">
+                    <Button variant="ghost" size="xs" onclick={() => openRotateKeyModal(key)} aria-label="Rotate key">
+                      <RotateCw class="kui-icon" />
+                    </Button>
+                    <Button variant="ghost" size="xs" onclick={() => openDeleteKeyModal(key)} aria-label="Delete key">
+                      <Trash2 class="kui-icon error" />
+                    </Button>
                   </div>
                 </td>
               </tr>
-            {/if}
-          </tbody>
-        </table>
-      </div>
+            {/each}
+          {:else}
+            <tr>
+              <td colspan="5" class="kui-center">
+                <div class="kui-stack center">
+                  <Key class="kui-empty__icon" />
+                  <p class="kui-subtext">No API keys yet</p>
+                  <Button variant="primary" size="sm" onclick={openCreateKeyModal}>Create your first API key</Button>
+                </div>
+              </td>
+            </tr>
+          {/if}
+        </tbody>
+      </table>
     </div>
-  </div>
+  </Card>
 </div>
 
 <!-- Create API Key Modal -->
 {#if showCreateKeyModal}
-  <Dialog bind:open={showCreateKeyModal} size="md" onClose={resetApiKeyForm} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+  <Dialog bind:open={showCreateKeyModal} size="md" onClose={resetApiKeyForm}>
     {#snippet header()}
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-lg">Create API Key</h3>
-        <button
-          class="btn btn-ghost btn-sm btn-circle"
-          type="button"
-          onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }}
-          aria-label="Close"
-        >
-          <X class="h-4 w-4" />
-        </button>
+      <div class="kui-modal-header">
+        <h3>Create API Key</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
     {/snippet}
     {#snippet children()}
       {#if createApiKey.result?.key}
-        <div class="space-y-4">
-          <div class="alert alert-success">
-            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <div class="kui-stack">
+            <div class="kui-alert success">
             <span>API key created successfully!</span>
           </div>
 
-          <div class="bg-warning/10 border border-warning/20 p-4 rounded-lg">
-            <p class="text-sm font-semibold text-warning mb-2">⚠️ Save this key now!</p>
-            <p class="text-sm text-base-content/70 mb-3">This is the only time you'll see the full key. Store it securely.</p>
+          <div class="kui-callout warning">
+            <p class="kui-strong">Save this key now!</p>
+            <p class="kui-subtext">This is the only time you'll see the full key. Store it securely.</p>
             
-            <div class="flex gap-2">
+            <div class="kui-input-copy">
               <input 
                 type="text" 
                 readonly 
                 value={createApiKey.result.key}
-                class="input input-bordered flex-1 font-mono text-sm"
+                class="kui-input kui-code"
               />
-              <button
-                class="btn btn-square"
-                onclick={() => copyToClipboard(createApiKey.result.key)}
-              >
-                <Copy class="h-4 w-4" />
-              </button>
+              <Button variant="ghost" size="sm" onclick={() => copyToClipboard(createApiKey.result.key)}>
+                <Copy class="kui-icon" />
+              </Button>
             </div>
           </div>
 
-          <div class="bg-info/10 border border-info/20 p-4 rounded-lg">
-            <p class="text-sm font-medium mb-2">Next steps:</p>
-            <ul class="text-sm space-y-1">
-              <li>• Copy this key to a secure location</li>
-              <li>• Add it to your environment variables</li>
-              <li>• Never commit it to version control</li>
+          <div class="kui-callout info">
+            <p class="kui-strong">Next steps</p>
+            <ul class="kui-list">
+              <li>Copy this key to a secure location</li>
+              <li>Add it to your environment variables</li>
+              <li>Never commit it to version control</li>
             </ul>
           </div>
 
-          <div class="modal-action">
-            <button type="button" class="btn btn-primary" onclick={async () => { 
+          <div class="kui-modal-actions">
+            <Button type="button" variant="primary" onclick={async () => { 
               showCreateKeyModal = false; 
               resetApiKeyForm();
               await apiKeys.refresh();
             }}>
               I've Saved the Key
-            </button>
+            </Button>
           </div>
         </div>
       {:else}
-        <form {...createApiKey} class="space-y-4">
+        <form {...createApiKey} class="kui-stack">
           <FormField 
             label="Name" 
             issues={createApiKey.fields.name.issues()}
@@ -244,13 +221,13 @@
             />
           </FormField>
 
-          <div class="modal-action">
-            <button type="button" class="btn" onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }}>
+          <div class="kui-modal-actions">
+            <Button type="button" variant="ghost" onclick={() => { showCreateKeyModal = false; resetApiKeyForm(); }}>
               Cancel
-            </button>
-            <button type="submit" class="btn btn-primary">
+            </Button>
+            <Button type="submit" variant="primary">
               Create Key
-            </button>
+            </Button>
           </div>
         </form>
       {/if}
@@ -258,44 +235,178 @@
   </Dialog>
 {/if}
 
+<style>
+  .kui-api-keys {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-panel__header h3 {
+    margin: 0.1rem 0;
+  }
+
+  .kui-strong {
+    font-weight: 700;
+  }
+
+  .kui-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 100%;
+  }
+
+  .kui-table th,
+  .kui-table td {
+    padding: 0.65rem;
+    text-align: left;
+    border-bottom: 1px solid var(--kui-color-border);
+    vertical-align: top;
+  }
+
+  .kui-table thead th {
+    background: var(--kui-color-surface-muted);
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .kui-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9rem;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .kui-inline.end {
+    justify-content: flex-end;
+  }
+
+  .kui-stack {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-center {
+    text-align: center;
+    padding: var(--kui-spacing-md);
+  }
+
+  .kui-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-alert {
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--kui-radius-md);
+    font-weight: 600;
+    background: var(--kui-color-surface-muted);
+    color: var(--kui-color-text);
+  }
+
+  .kui-alert.success {
+    background: rgba(22, 163, 74, 0.1);
+    color: var(--kui-color-success);
+  }
+
+  .kui-callout {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: var(--kui-spacing-sm);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-callout.warning {
+    border-color: color-mix(in srgb, var(--kui-color-warning) 40%, var(--kui-color-border) 60%);
+    background: rgba(245, 158, 11, 0.08);
+  }
+
+  .kui-callout.info {
+    border-color: color-mix(in srgb, var(--kui-color-info) 40%, var(--kui-color-border) 60%);
+    background: rgba(14, 165, 233, 0.08);
+  }
+
+  .kui-callout.error {
+    border-color: color-mix(in srgb, var(--kui-color-error) 40%, var(--kui-color-border) 60%);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .kui-list {
+    padding-left: 1rem;
+    margin: 0.35rem 0 0;
+    color: var(--kui-color-text);
+  }
+
+  .kui-list li + li {
+    margin-top: 0.15rem;
+  }
+
+  .kui-input-copy {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem;
+    align-items: center;
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .text-right {
+    text-align: right;
+  }
+</style>
+
 <!-- Rotate Key Modal -->
 {#if showRotateKeyModal && selectedKey}
-  <Dialog bind:open={showRotateKeyModal} size="sm" onClose={() => selectedKey = null} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+  <Dialog bind:open={showRotateKeyModal} size="sm" onClose={() => selectedKey = null}>
     {#snippet header()}
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-lg">Rotate API Key</h3>
-        <button
-          class="btn btn-ghost btn-sm btn-circle"
-          type="button"
-          onclick={() => { showRotateKeyModal = false; selectedKey = null; }}
-          aria-label="Close"
-        >
-          <X class="h-4 w-4" />
-        </button>
+      <div class="kui-modal-header">
+        <h3>Rotate API Key</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showRotateKeyModal = false; selectedKey = null; }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
     {/snippet}
     {#snippet children()}
-      <form {...rotateApiKey} onsubmit={handleRotateKeySuccess} class="space-y-4">
+      <form {...rotateApiKey} onsubmit={handleRotateKeySuccess} class="kui-stack">
         <input type="hidden" name="id" value={selectedKey.id} />
         
-        <div class="alert alert-warning">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+        <div class="kui-callout warning">
           <span>This will invalidate the old key immediately.</span>
         </div>
 
-        <p class="text-base-content/70">
+        <p class="kui-subtext">
           Rotating <strong>{selectedKey.name}</strong> will generate a new key and invalidate the old one.
         </p>
 
-        <div class="modal-action">
-          <button type="button" class="btn" onclick={() => { showRotateKeyModal = false; selectedKey = null; }}>
+        <div class="kui-modal-actions">
+          <Button type="button" variant="ghost" onclick={() => { showRotateKeyModal = false; selectedKey = null; }}>
             Cancel
-          </button>
-          <button type="submit" class="btn btn-warning">
+          </Button>
+          <Button type="submit" variant="warning">
             Rotate Key
-          </button>
+          </Button>
         </div>
       </form>
     {/snippet}
@@ -304,42 +415,34 @@
 
 <!-- Delete Key Modal -->
 {#if showDeleteKeyModal && selectedKey}
-  <Dialog bind:open={showDeleteKeyModal} size="sm" onClose={() => selectedKey = null} class="rounded-2xl border border-base-200 shadow-xl" backdropClass="bg-black/40 backdrop-blur-sm">
+  <Dialog bind:open={showDeleteKeyModal} size="sm" onClose={() => selectedKey = null}>
     {#snippet header()}
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-lg text-error">Delete API Key</h3>
-        <button
-          class="btn btn-ghost btn-sm btn-circle"
-          type="button"
-          onclick={() => { showDeleteKeyModal = false; selectedKey = null; }}
-          aria-label="Close"
-        >
-          <X class="h-4 w-4" />
-        </button>
+      <div class="kui-modal-header">
+        <h3 class="text-error">Delete API Key</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showDeleteKeyModal = false; selectedKey = null; }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
     {/snippet}
     {#snippet children()}
-      <form {...deleteApiKey} onsubmit={handleDeleteKeySuccess} class="space-y-4">
+      <form {...deleteApiKey} onsubmit={handleDeleteKeySuccess} class="kui-stack">
         <input type="hidden" name="id" value={selectedKey.id} />
         
-        <div class="alert alert-error">
-          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+        <div class="kui-callout error">
           <span>This action cannot be undone.</span>
         </div>
 
-        <p class="text-base-content/70">
+        <p class="kui-subtext">
           Are you sure you want to delete <strong>{selectedKey.name}</strong>?
         </p>
 
-        <div class="modal-action">
-          <button type="button" class="btn" onclick={() => { showDeleteKeyModal = false; selectedKey = null; }}>
+        <div class="kui-modal-actions">
+          <Button type="button" variant="ghost" onclick={() => { showDeleteKeyModal = false; selectedKey = null; }}>
             Cancel
-          </button>
-          <button type="submit" class="btn btn-error">
+          </Button>
+          <Button type="submit" variant="error">
             Delete Key
-          </button>
+          </Button>
         </div>
       </form>
     {/snippet}

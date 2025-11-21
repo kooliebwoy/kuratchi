@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '@kuratchi/ui';
   import { onMount, onDestroy } from 'svelte';
   import { Editor } from '@tiptap/core';
   import { StarterKit } from '@tiptap/starter-kit';
@@ -103,91 +104,116 @@
 <div class="border border-base-200 rounded-lg overflow-hidden bg-base-100">
   <!-- Toolbar -->
   {#if editorState.editor}
-    <div class="bg-base-200/50 border-b border-base-200 p-2 flex flex-wrap gap-1">
-      <button
+    <div class="editor-toolbar">
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('bold') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('bold')}
         onclick={toggleBold}
         title="Bold (Ctrl+B)"
       >
         <Bold class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('italic') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('italic')}
         onclick={toggleItalic}
         title="Italic (Ctrl+I)"
       >
         <Italic class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('code') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('code')}
         onclick={toggleCode}
         title="Code"
       >
         <Code class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <div class="divider divider-horizontal my-0 mx-1 h-6"></div>
+      <span class="editor-toolbar__divider" aria-hidden="true"></span>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('heading', { level: 2 }) ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('heading', { level: 2 })}
         onclick={toggleHeading2}
         title="Heading 2"
       >
         <Heading2 class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('bulletList') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('bulletList')}
         onclick={toggleBulletList}
         title="Bullet List"
       >
         <List class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('orderedList') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('orderedList')}
         onclick={toggleOrderedList}
         title="Ordered List"
       >
         <ListOrdered class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs {isActive('link') ? 'btn-active' : ''}"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
+        data-active={isActive('link')}
         onclick={toggleLink}
         title="Add Link"
       >
         <LinkIcon class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <div class="divider divider-horizontal my-0 mx-1 h-6"></div>
+      <span class="editor-toolbar__divider" aria-hidden="true"></span>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
         onclick={undo}
         title="Undo"
       >
         <Undo2 class="h-4 w-4" />
-      </button>
+      </Button>
 
-      <button
+      <Button
         type="button"
-        class="btn btn-ghost btn-xs"
+        variant="ghost"
+        size="sm"
+        class="editor-toolbar__button"
         onclick={redo}
         title="Redo"
       >
         <Redo2 class="h-4 w-4" />
-      </button>
+      </Button>
     </div>
   {/if}
 
@@ -196,6 +222,32 @@
 </div>
 
 <style>
+  .editor-toolbar {
+    background: rgba(15, 23, 42, 0.05);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .editor-toolbar__button {
+    min-width: auto;
+    padding: 0.25rem 0.45rem;
+  }
+
+  .editor-toolbar__button[data-active='true'] {
+    background-color: rgba(80, 70, 228, 0.12);
+    color: var(--kui-color-primary, #5046e4);
+  }
+
+  .editor-toolbar__divider {
+    width: 1px;
+    height: 1.5rem;
+    background: rgba(15, 23, 42, 0.12);
+    margin: 0 0.4rem;
+  }
+
   :global(.ProseMirror) {
     outline: none;
     min-height: 200px;

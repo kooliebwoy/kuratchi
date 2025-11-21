@@ -1,8 +1,6 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     import { Plus, Check, GripVertical, Pencil, CornerDownRight, Trash2 } from '@lucide/svelte';
-    import Sortable from 'sortablejs';
-    import { onMount, onDestroy } from 'svelte';
     import type { SubmitFunction } from '@sveltejs/kit';
 
     interface Props {
@@ -21,45 +19,12 @@
         onSave
     }: Props = $props();
 
-    let menuList: HTMLElement;
     let formLoading = $state(false);
     let editingItem: any = $state(null) as any | null; // { kind: 'item' | 'sub', id: string, parentId?: string }
     let addingSubmenuTo: any = $state(null) as any | null;
     let showPageSelector = $state(false);
     let activeTab = $state('pages');
-    let sortableInstance: Sortable | null = null;
-
-    onMount(() => {
-        if (menuList) {
-            sortableInstance = new Sortable(menuList, {
-                animation: 150,
-                handle: '.drag-handle',
-                ghostClass: ['opacity-50', 'bg-primary/10'],
-                group: 'menu-items',
-                draggable: '.menu-item',
-                onEnd: (evt) => {
-                    const newIndex = evt.newIndex;
-                    const oldIndex = evt.oldIndex;
-                    if (newIndex == null || oldIndex == null) return;
-                    const item = menuItems[oldIndex];
-                    if (!item) return;
-                    menuItems.splice(oldIndex, 1);
-                    menuItems.splice(newIndex, 0, item);
-                    menuItems = [...menuItems]; // Trigger reactivity
-                }
-            });
-        }
-
-        return () => {
-            sortableInstance?.destroy();
-            sortableInstance = null;
-        };
-    });
-
-    onDestroy(() => {
-        sortableInstance?.destroy();
-        sortableInstance = null;
-    });
+    let draggingMenuItemId = $state<string | null>(null);
 
     const submitHandler: SubmitFunction = () => {
         formLoading = true;
@@ -147,6 +112,62 @@
     function stopEditing() {
         editingItem = null;
     }
+
+    const moveMenuItem = (draggedId: string, targetId: string | null, placeBefore = true) => {
+        const updated = [...menuItems];
+        const draggedIndex = updated.findIndex((item) => item.id === draggedId);
+        if (draggedIndex === -1) return;
+
+        const [draggedItem] = updated.splice(draggedIndex, 1);
+        let insertIndex = targetId ? updated.findIndex((item) => item.id === targetId) : updated.length;
+        if (insertIndex === -1) insertIndex = updated.length;
+        if (!placeBefore && targetId) insertIndex += 1;
+        updated.splice(insertIndex, 0, draggedItem);
+        menuItems = updated;
+    };
+
+    function handleMenuDragStart(event: DragEvent, itemId: string) {
+        draggingMenuItemId = itemId;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', itemId);
+            const itemElement = (event.currentTarget as HTMLElement).closest('.menu-item');
+            if (itemElement) {
+                event.dataTransfer.setDragImage(itemElement, itemElement.clientWidth / 2, itemElement.clientHeight / 2);
+            }
+        }
+    }
+
+    function concludeMenuDrag() {
+        draggingMenuItemId = null;
+    }
+
+    function handleMenuItemDragOver(event: DragEvent) {
+        if (!draggingMenuItemId) return;
+        event.preventDefault();
+    }
+
+    function handleMenuItemDrop(event: DragEvent, targetId: string) {
+        if (!draggingMenuItemId || draggingMenuItemId === targetId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        const placeBefore = event.clientY < rect.top + rect.height / 2;
+        moveMenuItem(draggingMenuItemId, targetId, placeBefore);
+        concludeMenuDrag();
+    }
+
+    function handleMenuListDragOver(event: DragEvent) {
+        if (!draggingMenuItemId) return;
+        event.preventDefault();
+    }
+
+    function handleMenuListDrop(event: DragEvent) {
+        if (!draggingMenuItemId) return;
+        event.preventDefault();
+        moveMenuItem(draggingMenuItemId, null);
+        concludeMenuDrag();
+    }
 </script>
 
 <div class="flex items-center justify-between gap-2 mb-2">
@@ -177,13 +198,24 @@
 
 <!-- Menu Items -->
 <div class="space-y-1">
-    <ul bind:this={menuList} class="space-y-1">
+    <ul class="space-y-1" ondragover={handleMenuListDragOver} ondrop={handleMenuListDrop}>
         {#each menuItems as item, i (item.id || item.slug || item.label || i)}
-            <li class="menu-item rounded-lg border border-base-300 bg-base-100 hover:bg-base-100/80 transition-colors overflow-hidden">
+            <li 
+                class="menu-item rounded-lg border border-base-300 bg-base-100 hover:bg-base-100/80 transition-colors overflow-hidden"
+                class:opacity-60={draggingMenuItemId === item.id}
+                ondragover={handleMenuItemDragOver}
+                ondrop={(event) => handleMenuItemDrop(event, item.id)}
+            >
                 <div class="p-2">
                     <div class="flex items-center justify-between gap-2">
                         <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                            <button type="button" class="drag-handle btn btn-xs btn-ghost btn-square touch-none flex-shrink-0">
+                            <button 
+                                type="button" 
+                                class="drag-handle btn btn-xs btn-ghost btn-square touch-none flex-shrink-0"
+                                draggable="true"
+                                ondragstart={(event) => handleMenuDragStart(event, item.id)}
+                                ondragend={concludeMenuDrag}
+                            >
                                 <GripVertical class="w-3 h-3" />
                             </button>
                             {#if editingItem?.kind === 'item' && editingItem?.id === item.id}

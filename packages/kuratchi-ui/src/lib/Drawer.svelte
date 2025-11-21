@@ -29,25 +29,26 @@
   }
 </script>
 
-<div class="drawer {side === 'right' ? 'drawer-end' : ''} {className}">
-  <input
-    type="checkbox"
-    class="drawer-toggle"
-    bind:checked={open}
-  />
-  
-  <div class="drawer-content {contentClass}">
+<div
+  class={`kui-drawer ${className}`.trim()}
+  data-open={open ? 'true' : 'false'}
+  data-side={side}
+>
+  <div class={`kui-drawer__content ${contentClass}`.trim()}>
     {@render children()}
   </div>
   
-  <div class="drawer-side">
-    <label
-      class="drawer-overlay"
-      onclick={handleClose}
-      aria-label="Close drawer"
-    ></label>
-    <div class="menu min-h-full w-80 bg-base-200 p-4 {drawerClass}">
-      {@render drawer()}
-    </div>
-  </div>
+  <button
+    type="button"
+    class="kui-drawer__scrim"
+    onclick={handleClose}
+    aria-label="Close drawer"
+  ></button>
+  
+  <aside
+    class={`kui-drawer__panel ${drawerClass}`.trim()}
+    aria-hidden={open ? 'false' : 'true'}
+  >
+    {@render drawer()}
+  </aside>
 </div>

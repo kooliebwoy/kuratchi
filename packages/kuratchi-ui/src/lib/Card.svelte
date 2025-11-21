@@ -31,15 +31,15 @@
     actions
   }: Props = $props();
   
-  const cardClasses = $derived(`
-    card
-    ${bordered ? 'card-bordered' : ''}
-    ${compact ? 'card-compact' : ''}
-    ${side ? 'card-side' : ''}
-    ${glass ? 'glass' : ''}
-    ${imageFull ? 'image-full' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const cardClasses = $derived([
+    'kui-card',
+    bordered ? 'kui-card--bordered' : '',
+    compact ? 'kui-card--compact' : '',
+    side ? 'kui-card--side' : '',
+    glass ? 'kui-card--glass' : '',
+    imageFull ? 'kui-card--image' : '',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
 <div class={cardClasses}>
@@ -49,17 +49,17 @@
     </figure>
   {/if}
   
-  <div class="card-body {bodyClass}">
+  <div class={`kui-card__body ${bodyClass}`.trim()}>
     {#if header}
       {@render header()}
     {:else if title}
-      <h2 class="card-title">{title}</h2>
+      <h2 class="kui-card__title">{title}</h2>
     {/if}
     
     {@render children()}
     
     {#if actions}
-      <div class="card-actions justify-end">
+      <div class="kui-card__actions">
         {@render actions()}
       </div>
     {/if}

@@ -23,29 +23,29 @@
     footer
   }: Props = $props();
   
-  const cardClasses = $derived(`
-    card bg-base-100 shadow-sm
-    ${bordered ? 'card-bordered' : ''}
-    ${compact ? 'card-compact' : ''}
-    ${hover ? 'hover:shadow-md transition-shadow' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const cardClasses = $derived([
+    'kui-card kui-info-card',
+    bordered ? 'kui-card--bordered' : '',
+    compact ? 'kui-card--compact' : '',
+    hover ? 'kui-info-card--hoverable' : '',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
-<div class={cardClasses}>
-  <div class="card-body">
+<article class={cardClasses}>
+  <div class="kui-card__body">
     {#if header}
       {@render header()}
     {:else if title}
-      <h3 class="card-title">{title}</h3>
+      <h3 class="kui-card__title">{title}</h3>
     {/if}
     
     {@render children()}
     
     {#if footer}
-      <div class="card-actions justify-end mt-4">
+      <div class="kui-card__actions">
         {@render footer()}
       </div>
     {/if}
   </div>
-</div>
+</article>

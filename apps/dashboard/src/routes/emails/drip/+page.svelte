@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight } from 'lucide-svelte';
+  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight, X } from 'lucide-svelte';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
+  import { Button, Card, Dialog, Badge, Loading, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
   import {
     listSegments,
     listDripCampaigns,
@@ -119,7 +120,6 @@
     }
   }
 
-  // Only call on client side
   if (typeof window !== 'undefined') {
     syncBranchQueue();
   }
@@ -142,13 +142,12 @@
       })
     ];
     saveError = null;
+    currentStep = 0;
+    editingStepIndex = null;
   }
 
   function openCreateModal() {
-    if (!hasVerifiedDomain) {
-      // Don't open modal if no verified domain
-      return;
-    }
+    if (!hasVerifiedDomain) return;
     resetForm();
     showEditor = true;
   }
@@ -211,21 +210,14 @@
     const target = index + direction;
     if (target < 0 || target >= formSteps.length) return;
     const updated = [...formSteps];
-    const temp = updated[index];
-    updated[index] = updated[target];
-    updated[target] = temp;
+    [updated[index], updated[target]] = [updated[target], updated[index]];
     formSteps = updated;
   }
 
   function setScheduleMode(index: number, mode: StepInput['scheduleMode']) {
     formSteps = formSteps.map((step, idx) =>
       idx === index
-        ? {
-            ...step,
-            scheduleMode: mode,
-            runAt: mode === 'absolute' ? step.runAt : '',
-            delayValue: mode === 'relative' ? step.delayValue : step.delayValue
-          }
+        ? { ...step, scheduleMode: mode, runAt: mode === 'absolute' ? step.runAt : '', delayValue: mode === 'relative' ? step.delayValue : step.delayValue }
         : step
     );
   }
@@ -233,9 +225,7 @@
   function toggleBranching(index: number, enabled: boolean) {
     formSteps = formSteps.map((step, idx) => {
       if (idx !== index) return step;
-      if (!enabled) {
-        return { ...step, branching: null };
-      }
+      if (!enabled) return { ...step, branching: null };
       return {
         ...step,
         branching: step.branching ?? {
@@ -291,7 +281,6 @@
       showEditor = false;
       setToast(editingId ? 'Campaign updated' : 'Campaign saved');
     } catch (err) {
-      console.error(err);
       saveError = 'Unable to save campaign. Please try again.';
     } finally {
       saving = false;
@@ -320,7 +309,6 @@
       await dripResource.refresh();
       setToast(`Scheduled ${response.contacts} contacts`);
     } catch (err) {
-      console.error(err);
       alert(err instanceof Error ? err.message : 'Unable to launch campaign');
     } finally {
       launchLoadingId = null;
@@ -332,759 +320,474 @@
   <title>Drip Campaigns - Kuratchi Dashboard</title>
 </svelte:head>
 
-<!-- Navigation Tabs -->
-<div class="border-b border-base-200 bg-base-100">
-  <div class="flex gap-0 px-8">
-    <a href="/emails/drip" class="tab tab-active tab-bordered">
-      <span class="font-medium">Drip Campaigns</span>
-    </a>
-    <a href="/emails/segments" class="tab tab-bordered">
-      <span class="font-medium">Segments</span>
-    </a>
-    <a href="/emails/templates" class="tab tab-bordered">
-      <span class="font-medium">Templates</span>
-    </a>
-    <a href="/emails" class="tab tab-bordered">
-      <span class="font-medium">Email History</span>
-    </a>
-  </div>
-</div>
-
-<section class="space-y-8 p-8">
-  <!-- Domain Verification Alert -->
-  {#if !hasVerifiedDomain}
-    <div class="alert alert-warning shadow-lg border border-warning/20">
-      <AlertTriangle class="h-6 w-6 shrink-0" />
-      <div class="flex-1">
-        <h3 class="font-bold text-lg mb-1">Verified Domain Required</h3>
-        <p class="text-sm mb-3">
-          You need to add and verify a domain before you can create drip campaigns. This ensures your emails are sent from your own domain.
-        </p>
-        <a href="/domains" class="btn btn-warning btn-sm gap-2">
-          <ArrowRight class="h-4 w-4" />
-          Go to Domains
-        </a>
-      </div>
-    </div>
-  {/if}
-
-  <div class="flex flex-wrap items-center justify-between gap-4">
-    <div>
-      <p class="text-xs font-semibold uppercase tracking-wide text-primary/70">Automation</p>
-      <h1 class="text-2xl font-semibold">Drip campaigns</h1>
-      <p class="text-sm text-base-content/70">Build automated sequences sent via Resend audiences.</p>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <button class="btn btn-ghost btn-sm" onclick={syncBranchQueue} disabled={syncingBranches}>
-        {#if syncingBranches}
-          <Loader2 class="h-4 w-4 animate-spin" />
-        {:else}
-          <RefreshCw class="h-4 w-4" />
-        {/if}
-        Sync branches
-      </button>
-      <button 
-        class="btn btn-primary btn-sm" 
-        onclick={openCreateModal}
-        disabled={!hasVerifiedDomain}
-        title={!hasVerifiedDomain ? 'Add and verify a domain first' : 'Create new campaign'}
-      >
-        <Plus class="h-4 w-4" />
-        New campaign
-      </button>
-    </div>
-  </div>
-
+<div class="kui-drip">
   {#if toastMessage}
-    <div class="alert alert-success shadow-sm">
-      <span>{toastMessage}</span>
-    </div>
+    <div class="kui-toast success">{toastMessage}</div>
   {/if}
 
-  <div class="grid gap-8 xl:grid-cols-[3fr,2fr]">
-    <div class="space-y-6">
-      <div class="grid gap-4 md:grid-cols-3">
-        <div class="rounded-2xl border border-base-200 bg-base-100/80 p-4 shadow-sm">
-          <p class="text-sm text-base-content/70">Total campaigns</p>
-          <div class="mt-2 flex items-center gap-3">
-            <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Layers class="h-5 w-5" />
-            </span>
-            <span class="text-3xl font-semibold">{campaigns.length}</span>
-          </div>
-        </div>
-        <div class="rounded-2xl border border-base-200 bg-base-100/80 p-4 shadow-sm">
-          <p class="text-sm text-base-content/70">Active drips</p>
-          <div class="mt-2 flex items-center gap-3">
-            <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-secondary/10 text-secondary">
-              <Clock class="h-5 w-5" />
-            </span>
-            <span class="text-3xl font-semibold">{activeCampaigns.length}</span>
-          </div>
-        </div>
-        <div class="rounded-2xl border border-base-200 bg-base-100/80 p-4 shadow-sm">
-          <p class="text-sm text-base-content/70">Emails scheduled</p>
-          <div class="mt-2 flex items-center gap-3">
-            <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-info/10 text-info">
-              <Mail class="h-5 w-5" />
-            </span>
-            <span class="text-3xl font-semibold">{totalScheduled}</span>
-          </div>
-        </div>
-      </div>
+  <nav class="kui-tabs">
+    <a href="/emails/drip" class="kui-tab is-active">Drip Campaigns</a>
+    <a href="/emails/segments" class="kui-tab">Segments</a>
+    <a href="/emails/templates" class="kui-tab">Templates</a>
+    <a href="/emails" class="kui-tab">Email History</a>
+  </nav>
 
-      <div class="space-y-4">
-        {#if dripResource.loading}
-          <div class="rounded-2xl border border-base-200 bg-base-100 p-10 text-center shadow-sm">
-            <span class="loading loading-spinner loading-lg text-primary"></span>
-          </div>
-        {:else if campaigns.length === 0}
-          <div class="rounded-2xl border border-dashed border-base-300 bg-base-100 p-8 text-center shadow-sm">
-            <div class="w-16 h-16 rounded-2xl bg-linear-to-br from-primary/10 to-secondary/10 flex items-center justify-center mx-auto mb-4">
-              <Mail class="h-8 w-8 text-primary" />
-            </div>
-            <p class="text-lg font-semibold mb-2">No drip campaigns yet</p>
-            <p class="text-sm text-base-content/70 mb-4 max-w-md mx-auto">
-              {#if !hasVerifiedDomain}
-                First, add and verify a domain. Then create automated email sequences to nurture your audience.
-              {:else}
-                Create automated email sequences to nurture your audience and keep leads engaged.
-              {/if}
-            </p>
-            {#if hasVerifiedDomain}
-              <button class="btn btn-primary btn-sm" onclick={openCreateModal}>
-                <Plus class="h-4 w-4" />
-                Create your first campaign
-              </button>
-            {:else}
-              <a href="/domains" class="btn btn-primary btn-sm gap-2">
-                <ArrowRight class="h-4 w-4" />
-                Add Domain First
-              </a>
-            {/if}
-          </div>
+  <header class="kui-drip__header">
+    <div>
+      <p class="kui-eyebrow">Automation</p>
+      <h1>Drip Campaigns</h1>
+      <p class="kui-subtext">Automate multi-step email sequences.</p>
+    </div>
+    <div class="kui-inline end">
+      {!hasVerifiedDomain
+        ? <Badge variant="warning" size="sm">Verify a sending domain first</Badge>
+        : null}
+      <Button variant="ghost" size="sm" onclick={syncBranchQueue} disabled={syncingBranches}>
+        {#if syncingBranches}
+          <Loading size="sm" /> Syncing
         {:else}
-          <div class="space-y-5">
-            {#each campaigns as campaign}
-              <div class="rounded-2xl border border-base-200 bg-base-100/90 p-6 shadow-sm transition hover:border-primary/40">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p class="text-xs uppercase tracking-wide text-base-content/60">{selectedSegmentName(campaign.segmentId)}</p>
-                    <h3 class="text-xl font-semibold">{campaign.name}</h3>
-                    <p class="text-sm text-base-content/70">{campaign.description || 'No description provided.'}</p>
-                  </div>
-                  <div class="flex flex-col items-end gap-1 text-right">
-                    <span class="badge badge-outline capitalize">{campaign.status}</span>
-                    {#if campaign.lastLaunchAt}
-                      <span class="text-xs text-base-content/60">
-                        Last launch {new Date(campaign.lastLaunchAt).toLocaleDateString()}
-                      </span>
-                    {/if}
-                  </div>
-                </div>
+          <RefreshCw class="kui-icon" /> Sync Branch Queue
+        {/if}
+      </Button>
+      <Button variant="primary" size="sm" onclick={() => openCreateModal()} disabled={!hasVerifiedDomain}>
+        <Plus class="kui-icon" /> New Campaign
+      </Button>
+    </div>
+  </header>
 
-                <div class="mt-4 grid gap-3 md:grid-cols-3">
-                  <div class="rounded-xl bg-base-200/50 p-3">
-                    <p class="text-xs text-base-content/60">Steps</p>
-                    <p class="text-xl font-semibold">{campaign.steps.length}</p>
-                  </div>
-                  <div class="rounded-xl bg-base-200/50 p-3">
-                    <p class="text-xs text-base-content/60">Contacts targeted</p>
-                    <p class="text-xl font-semibold">{campaign.metrics?.contactsTargeted ?? 0}</p>
-                  </div>
-                  <div class="rounded-xl bg-base-200/50 p-3">
-                    <p class="text-xs text-base-content/60">Emails scheduled</p>
-                    <p class="text-xl font-semibold">{campaign.metrics?.totalScheduled ?? 0}</p>
-                  </div>
-                </div>
-
-                <div class="mt-6 space-y-3">
-                  <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Journey</p>
-                  <ol class="space-y-3">
-                    {#each campaign.steps as step, index}
-                      <li class="rounded-xl border border-base-200 bg-base-100/70 p-4">
-                        <div class="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p class="text-sm font-semibold">Step {index + 1}: {step.label}</p>
-                            <p class="text-xs text-base-content/60">{step.subject}</p>
-                          </div>
-                          <span class="text-xs font-semibold text-base-content/70">{describeStepSchedule(step)}</span>
-                        </div>
-                        {#if step.branching && (step.branching.successStepId || step.branching.fallbackStepId)}
-                          <p class="mt-2 rounded-lg bg-base-200/60 px-3 py-2 text-xs text-base-content/70">
-                            After {delayFromMinutes(step.branching.evaluateAfterMinutes).value}
-                            {delayFromMinutes(step.branching.evaluateAfterMinutes).unit}, if {step.branching.monitor} →
-                            {campaign.steps.find((s) => s.id === step.branching.successStepId)?.label ?? 'End'}.
-                            Otherwise → {campaign.steps.find((s) => s.id === step.branching.fallbackStepId)?.label ?? 'End'}.
-                          </p>
-                        {/if}
-                      </li>
-                    {/each}
-                  </ol>
-                </div>
-
-                <div class="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-base-200 pt-4">
-                  <button class="btn btn-ghost btn-sm" onclick={() => openEditModal(campaign)}>
-                    <Edit2 class="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button class="btn btn-ghost btn-sm text-error" onclick={() => handleDelete(campaign.id)} disabled={deletingId === campaign.id}>
-                    {#if deletingId === campaign.id}
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                    {:else}
-                      <Trash2 class="h-4 w-4" />
-                    {/if}
-                    Delete
-                  </button>
-                  <button class="btn btn-primary btn-sm" onclick={() => handleLaunch(campaign)} disabled={launchLoadingId === campaign.id}>
-                    {#if launchLoadingId === campaign.id}
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                      Scheduling…
-                    {:else}
-                      <Play class="h-4 w-4" />
-                      Launch
-                    {/if}
-                  </button>
-                </div>
-              </div>
-            {/each}
-          </div>
+  <Card class="kui-panel">
+    {#if campaigns.length === 0}
+      <div class="kui-center">
+        <Layers class="kui-empty__icon" />
+        <p class="kui-subtext">No drip campaigns yet.</p>
+        {#if hasVerifiedDomain}
+          <Button variant="primary" size="sm" onclick={() => openCreateModal()}>Create Campaign</Button>
         {/if}
       </div>
-    </div>
-
-    <!-- Modern Step-Based Editor Modal -->
-    {#if showEditor}
-      <div class="fixed inset-0 z-40 bg-black/50"></div>
-      <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="w-full max-w-4xl max-h-[90vh] bg-base-100 rounded-2xl shadow-2xl flex flex-col">
-          <!-- Header -->
-          <div class="flex items-center justify-between border-b border-base-200 px-6 py-4">
-            <div>
-              <p class="text-xs uppercase tracking-wide text-primary/70">{editingId ? 'Edit campaign' : 'New campaign'}</p>
-              <h3 class="text-2xl font-bold">{formName || 'Untitled campaign'}</h3>
-            </div>
-            <button class="btn btn-ghost btn-circle btn-sm" onclick={() => (showEditor = false)} aria-label="Close builder">✕</button>
-          </div>
-
-          <!-- Steps Navigation -->
-          <div class="border-b border-base-200 px-6 py-4">
-            <ul class="steps steps-horizontal w-full">
-              <li class="step {currentStep >= 0 ? 'step-primary' : ''}" onclick={() => (currentStep = 0)}>
-                <span class="text-sm font-medium cursor-pointer">Details</span>
-              </li>
-              <li class="step {currentStep >= 1 ? 'step-primary' : ''}" onclick={() => (currentStep = 1)}>
-                <span class="text-sm font-medium cursor-pointer">Sequence</span>
-              </li>
-              <li class="step {currentStep >= 2 ? 'step-primary' : ''}" onclick={() => (currentStep = 2)}>
-                <span class="text-sm font-medium cursor-pointer">Review</span>
-              </li>
-            </ul>
-          </div>
-
-          <!-- Content Area -->
-          <div class="flex-1 overflow-y-auto px-6 py-6">
-            {#if currentStep === 0}
-              <!-- Step 1: Campaign Details -->
-              <div class="space-y-6 max-w-2xl">
-                <div>
-                  <h4 class="text-lg font-semibold mb-4">Campaign Details</h4>
-                  <div class="space-y-4">
-                    <div>
-                      <label class="label">
-                        <span class="label-text font-medium">Campaign Name</span>
-                      </label>
-                      <input type="text" class="input input-bordered w-full" bind:value={formName} placeholder="e.g., Welcome Series" />
-                    </div>
-
-                    <div>
-                      <label class="label">
-                        <span class="label-text font-medium">Target Segment</span>
-                      </label>
-                      <select class="select select-bordered w-full" bind:value={formSegmentId}>
-                        {#each segments as segment}
-                          <option value={segment.id}>{segment.name}</option>
-                        {/each}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label class="label">
-                        <span class="label-text font-medium">Description</span>
-                      </label>
-                      <textarea class="textarea textarea-bordered w-full" rows="3" bind:value={formDescription} placeholder="What's this campaign about?"></textarea>
-                    </div>
-
-                    <div>
-                      <label class="label">
-                        <span class="label-text font-medium">Start Date (Optional)</span>
-                      </label>
-                      <input type="datetime-local" class="input input-bordered w-full" bind:value={formStartAt} />
-                    </div>
-                  </div>
+    {:else}
+      <div class="kui-list">
+        {#each campaigns as campaign}
+          <Card class="kui-panel">
+            <div class="kui-campaign">
+              <div>
+                <h3>{campaign.name}</h3>
+                <p class="kui-subtext">{campaign.description || 'No description provided'}</p>
+                <div class="kui-inline">
+                  <Badge variant={campaign.status === 'active' ? 'success' : 'neutral'} size="xs">
+                    {campaign.status}
+                  </Badge>
+                  <span class="kui-subtext">{campaign.steps.length} steps</span>
                 </div>
               </div>
-
-            {:else if currentStep === 1}
-              <!-- Step 2: Email Sequence -->
-              <div class="space-y-6">
-                <div class="flex items-center justify-between">
-                  <h4 class="text-lg font-semibold">Email Sequence</h4>
-                  <button class="btn btn-primary btn-sm" onclick={addStep}>
-                    <Plus class="h-4 w-4" />
-                    Add Email
-                  </button>
-                </div>
-
-                {#if formSteps.length === 0}
-                  <div class="alert alert-info">
-                    <span>Add emails to build your sequence</span>
-                  </div>
-                {:else}
-                  <div class="space-y-4">
-                    {#each formSteps as step, index}
-                      <div class="card bg-base-200/30 border border-base-200">
-                        <div class="card-body p-4">
-                          <div class="flex items-start justify-between gap-4">
-                            <div class="flex-1">
-                              <h5 class="font-semibold text-lg">Email {index + 1}</h5>
-                              <p class="text-sm text-base-content/70 mt-1">{step.subject || 'No subject'}</p>
-                              <p class="text-xs text-base-content/60 mt-2">Send: {describeStepSchedule(step)}</p>
-                            </div>
-                            <div class="flex gap-2">
-                              <button class="btn btn-ghost btn-sm" onclick={() => { editingStepIndex = index; currentStep = 1; }}>
-                                <Edit2 class="h-4 w-4" />
-                              </button>
-                              {#if formSteps.length > 1}
-                                <button class="btn btn-ghost btn-sm text-error" onclick={() => removeStep(index)}>
-                                  <Trash2 class="h-4 w-4" />
-                                </button>
-                              {/if}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-
-                <!-- Step Editor Drawer -->
-                {#if editingStepIndex !== null && formSteps[editingStepIndex]}
-                  {@const step = formSteps[editingStepIndex]}
-                  {@const idx = editingStepIndex}
-                  <div class="divider my-6"></div>
-                  <div class="card bg-primary/5 border border-primary/20">
-                    <div class="card-body space-y-4">
-                      <div class="flex items-center justify-between">
-                        <h5 class="font-semibold">Editing Email {idx + 1}</h5>
-                        <button class="btn btn-ghost btn-sm" onclick={() => (editingStepIndex = null)}>✕</button>
-                      </div>
-
-                      <div>
-                        <label class="label">
-                          <span class="label-text text-sm font-medium">Subject Line</span>
-                        </label>
-                        <input type="text" class="input input-bordered w-full" bind:value={step.subject} placeholder="Email subject" />
-                      </div>
-
-                      <div>
-                        <label class="label">
-                          <span class="label-text text-sm font-medium">Email Content</span>
-                        </label>
-                        <EmailEditor
-                          content={step.html}
-                          onChange={(html) => (step.html = html)}
-                        />
-                      </div>
-
-                      <div class="grid grid-cols-2 gap-4">
-                        <div>
-                          <label class="label">
-                            <span class="label-text text-sm font-medium">Schedule Type</span>
-                          </label>
-                          <select class="select select-bordered w-full select-sm" bind:value={step.scheduleMode}>
-                            <option value="relative">After delay</option>
-                            <option value="absolute">At specific time</option>
-                          </select>
-                        </div>
-
-                        {#if step.scheduleMode === 'relative'}
-                          <div>
-                            <label class="label">
-                              <span class="label-text text-sm font-medium">Delay</span>
-                            </label>
-                            <div class="flex gap-2">
-                              <input type="number" class="input input-bordered input-sm flex-1" bind:value={step.delayValue} min="0" placeholder="0" />
-                              <select class="select select-bordered select-sm w-24" bind:value={step.delayUnit}>
-                                <option value="minutes">min</option>
-                                <option value="hours">hrs</option>
-                                <option value="days">days</option>
-                              </select>
-                            </div>
-                          </div>
-                        {:else}
-                          <div>
-                            <label class="label">
-                              <span class="label-text text-sm font-medium">Send At</span>
-                            </label>
-                            <input type="datetime-local" class="input input-bordered input-sm w-full" bind:value={step.runAt} />
-                          </div>
-                        {/if}
-                      </div>
-
-                      <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" class="checkbox checkbox-sm" checked={step.branching !== null} onchange={(e) => toggleBranching(idx, e.currentTarget.checked)} />
-                        <span class="text-sm font-medium">Add conditional branch</span>
-                      </label>
-
-                      {#if step.branching}
-                        <div class="bg-base-100 rounded-lg p-4 space-y-3">
-                          <div class="grid grid-cols-2 gap-3">
-                            <div>
-                              <label class="label">
-                                <span class="label-text text-xs">If email</span>
-                              </label>
-                              <select class="select select-bordered select-sm w-full" bind:value={step.branching.monitor}>
-                                <option value="opened">Opened</option>
-                                <option value="clicked">Clicked</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label class="label">
-                                <span class="label-text text-xs">Check after</span>
-                              </label>
-                              <div class="flex gap-1">
-                                <input type="number" class="input input-bordered input-sm flex-1" bind:value={step.branching.evaluateValue} min="1" placeholder="1" />
-                                <select class="select select-bordered select-sm w-20" bind:value={step.branching.evaluateUnit}>
-                                  <option value="minutes">min</option>
-                                  <option value="hours">hr</option>
-                                  <option value="days">day</option>
-                                </select>
-                              </div>
-                            </div>
-                          </div>
-                          <div class="grid grid-cols-2 gap-3">
-                            <div>
-                              <label class="label">
-                                <span class="label-text text-xs">Then send</span>
-                              </label>
-                              <select class="select select-bordered select-sm w-full" bind:value={step.branching.successStepId}>
-                                <option value="">End</option>
-                                {#each formSteps as s, i}
-                                  {#if i !== idx}
-                                    <option value={s.id}>Email {i + 1}</option>
-                                  {/if}
-                                {/each}
-                              </select>
-                            </div>
-                            <div>
-                              <label class="label">
-                                <span class="label-text text-xs">Otherwise send</span>
-                              </label>
-                              <select class="select select-bordered select-sm w-full" bind:value={step.branching.fallbackStepId}>
-                                <option value="">End</option>
-                                {#each formSteps as s, i}
-                                  {#if i !== idx}
-                                    <option value={s.id}>Email {i + 1}</option>
-                                  {/if}
-                                {/each}
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      {/if}
-
-                      <button class="btn btn-primary btn-sm w-full" onclick={() => (editingStepIndex = null)}>Done Editing</button>
-                    </div>
-                  </div>
-                {/if}
-              </div>
-
-            {:else if currentStep === 2}
-              <!-- Step 3: Review -->
-              <div class="space-y-6 max-w-2xl">
-                <div>
-                  <h4 class="text-lg font-semibold mb-4">Campaign Summary</h4>
-                  <div class="space-y-3">
-                    <div class="bg-base-200/30 rounded-lg p-4">
-                      <p class="text-xs text-base-content/60">Campaign Name</p>
-                      <p class="font-semibold">{formName || 'Untitled'}</p>
-                    </div>
-                    <div class="bg-base-200/30 rounded-lg p-4">
-                      <p class="text-xs text-base-content/60">Target Segment</p>
-                      <p class="font-semibold">{segments.find(s => s.id === formSegmentId)?.name || 'Unknown'}</p>
-                    </div>
-                    <div class="bg-base-200/30 rounded-lg p-4">
-                      <p class="text-xs text-base-content/60">Total Emails</p>
-                      <p class="font-semibold">{formSteps.length}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {#if saveError}
-                  <div class="alert alert-error">
-                    <span>{saveError}</span>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-          </div>
-
-          <!-- Footer Navigation -->
-          <div class="border-t border-base-200 px-6 py-4 flex items-center justify-between">
-            <button class="btn btn-ghost" onclick={() => (showEditor = false)}>Cancel</button>
-            <div class="flex gap-2">
-              {#if currentStep > 0}
-                <button class="btn btn-ghost" onclick={() => (currentStep = currentStep - 1)}>Back</button>
-              {/if}
-              {#if currentStep < 2}
-                <button class="btn btn-primary" onclick={() => (currentStep = currentStep + 1)}>Next</button>
-              {:else}
-                <button class="btn btn-primary" onclick={handleSave} disabled={saving}>
-                  {#if saving}
-                    <Loader2 class="h-4 w-4 animate-spin" />
+              <div class="kui-inline end">
+                <Button variant="ghost" size="sm" onclick={() => openEditModal(campaign)}>
+                  <Edit2 class="kui-icon" /> Edit
+                </Button>
+                <Button variant="ghost" size="sm" onclick={() => handleDelete(campaign.id)} disabled={deletingId === campaign.id}>
+                  {#if deletingId === campaign.id}
+                    <Loader2 class="kui-icon spinning" />
                   {:else}
-                    Save Campaign
+                    <Trash2 class="kui-icon error" />
                   {/if}
-                </button>
-              {/if}
+                </Button>
+                {#if campaign.status !== 'active'}
+                  <Button variant="primary" size="sm" onclick={() => handleLaunch(campaign)} disabled={launchLoadingId === campaign.id}>
+                    {#if launchLoadingId === campaign.id}
+                      <Loader2 class="kui-icon spinning" /> Launching...
+                    {:else}
+                      <Play class="kui-icon" /> Launch
+                    {/if}
+                  </Button>
+                {/if}
+              </div>
             </div>
-          </div>
-        </div>
+          </Card>
+        {/each}
       </div>
     {/if}
+  </Card>
+</div>
 
-    <div class="space-y-4 xl:sticky xl:top-8">
-      {#if false}
-        <div class="rounded-2xl border border-primary/30 bg-base-100 shadow-xl">
-          <!-- Header -->
-          <div class="flex items-center justify-between border-b border-base-200 px-6 py-4">
-            <div>
-              <p class="text-xs uppercase tracking-wide text-primary/70">{editingId ? 'Edit campaign' : 'New campaign'}</p>
-              <h3 class="text-lg font-semibold">{formName || 'Untitled campaign'}</h3>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick={() => (showEditor = false)} aria-label="Close builder">Close</button>
-          </div>
+{#if showEditor}
+  <div class="kui-overlay">
+    <div class="kui-builder">
+      <div class="kui-builder__header">
+        <div>
+          <p class="kui-eyebrow">{editingId ? 'Edit Campaign' : 'New Campaign'}</p>
+          <h3>{formName || 'Untitled campaign'}</h3>
+          <p class="kui-subtext">Configure audience and schedule, then craft your email steps.</p>
+        </div>
+        <Button variant="ghost" size="sm" onclick={() => (showEditor = false)} aria-label="Close builder">
+          <X class="kui-icon" />
+        </Button>
+      </div>
 
-          <div class="max-h-[75vh] space-y-6 overflow-y-auto px-6 py-6">
-            <!-- Campaign Basics -->
-            <fieldset class="space-y-3">
-              <legend class="text-sm font-semibold text-base-content/70 mb-3">Campaign Details</legend>
-              
-              <label class="input input-bordered flex items-center gap-2">
-                <input type="text" class="grow" bind:value={formName} placeholder="Campaign name" />
-              </label>
+      <div class="kui-builder__body">
+        <div class="kui-builder__sidebar">
+          <div class="kui-stack">
+            <FormField label="Campaign Name">
+              <FormInput field={{ name: 'campaignName', bind: { value: formName } } as any} placeholder="Onboarding sequence" />
+            </FormField>
 
-              <select class="select select-bordered w-full" bind:value={formSegmentId}>
+            <FormField label="Description">
+              <FormTextarea field={{ name: 'campaignDescription', bind: { value: formDescription } } as any} placeholder="What is this sequence about?" rows={2} />
+            </FormField>
+
+            <FormField label="Target Segment">
+              <FormSelect field={{ name: 'segment', bind: { value: formSegmentId } } as any}>
                 {#each segments as segment}
                   <option value={segment.id}>{segment.name}</option>
                 {/each}
-              </select>
+              </FormSelect>
+            </FormField>
 
-              <textarea class="textarea textarea-bordered w-full" rows="2" bind:value={formDescription} placeholder="What's this campaign about?"></textarea>
-
-              <label class="input input-bordered flex items-center gap-2">
-                <input type="datetime-local" class="grow" bind:value={formStartAt} />
-              </label>
-            </fieldset>
-
-            <!-- Steps Timeline -->
-            <div class="space-y-3">
-              <div class="flex items-center justify-between">
-                <h4 class="text-sm font-semibold text-base-content/70">Email Sequence</h4>
-                <button class="btn btn-primary btn-xs" onclick={addStep}>
-                  <Plus class="h-3 w-3" />
-                  Add email
-                </button>
-              </div>
-
-              <div class="space-y-3">
-                {#each formSteps as step, index}
-                  <fieldset class="rounded-lg border border-base-200 bg-base-100/50 p-4 space-y-3">
-                    <!-- Step Header -->
-                    <div class="flex items-center justify-between gap-2">
-                      <legend class="text-sm font-semibold">Email {index + 1}</legend>
-                      <div class="flex gap-1">
-                        {#if index > 0}
-                          <button
-                            type="button"
-                            class="btn btn-ghost btn-xs"
-                            onclick={() => moveStep(index, -1)}
-                            title="Move up"
-                          >
-                            ↑
-                          </button>
-                        {/if}
-                        {#if index < formSteps.length - 1}
-                          <button
-                            type="button"
-                            class="btn btn-ghost btn-xs"
-                            onclick={() => moveStep(index, 1)}
-                            title="Move down"
-                          >
-                            ↓
-                          </button>
-                        {/if}
-                        {#if formSteps.length > 1}
-                          <button
-                            type="button"
-                            class="btn btn-ghost btn-xs text-error"
-                            onclick={() => removeStep(index)}
-                            title="Delete"
-                          >
-                            ✕
-                          </button>
-                        {/if}
-                      </div>
-                    </div>
-
-                    <!-- Subject -->
-                    <label class="input input-bordered flex items-center gap-2">
-                      <input
-                        type="text"
-                        class="grow"
-                        bind:value={step.subject}
-                        placeholder="Email subject"
-                      />
-                    </label>
-
-                    <!-- Content -->
-                    <EmailEditor
-                      content={step.html}
-                      onChange={(html) => (step.html = html)}
-                    />
-
-                    <!-- Schedule -->
-                    <fieldset class="space-y-2 border-t border-base-200 pt-3">
-                      <legend class="text-xs font-semibold text-base-content/70">Schedule</legend>
-                      <select class="select select-bordered w-full select-sm" bind:value={step.scheduleMode}>
-                        <option value="relative">Send after delay</option>
-                        <option value="absolute">Send at specific time</option>
-                      </select>
-
-                      {#if step.scheduleMode === 'relative'}
-                        <div class="grid grid-cols-2 gap-2">
-                          <label class="input input-bordered input-sm flex items-center gap-2">
-                            <input
-                              type="number"
-                              class="grow"
-                              bind:value={step.delayValue}
-                              min="0"
-                              placeholder="0"
-                            />
-                          </label>
-                          <select class="select select-bordered select-sm" bind:value={step.delayUnit}>
-                            <option value="minutes">Minutes</option>
-                            <option value="hours">Hours</option>
-                            <option value="days">Days</option>
-                          </select>
-                        </div>
-                      {:else}
-                        <label class="input input-bordered input-sm flex items-center gap-2">
-                          <input type="datetime-local" class="grow" bind:value={step.runAt} />
-                        </label>
-                      {/if}
-                    </fieldset>
-
-                    <!-- Branching -->
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        class="checkbox checkbox-sm"
-                        checked={step.branching !== null}
-                        onchange={(e) => toggleBranching(index, e.currentTarget.checked)}
-                      />
-                      <span class="text-sm font-medium">Add conditional branch</span>
-                    </label>
-
-                    {#if step.branching}
-                      <fieldset class="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-2">
-                        <legend class="text-xs font-semibold text-base-content/70">Branch Logic</legend>
-                        
-                        <div class="grid grid-cols-2 gap-2">
-                          <div>
-                            <p class="text-xs text-base-content/60 mb-1">If email</p>
-                            <select class="select select-bordered select-sm w-full" bind:value={step.branching.monitor}>
-                              <option value="opened">Opened</option>
-                              <option value="clicked">Clicked</option>
-                            </select>
-                          </div>
-                          <div>
-                            <p class="text-xs text-base-content/60 mb-1">Check after</p>
-                            <div class="flex gap-1">
-                              <label class="input input-bordered input-sm flex-1 flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  class="grow"
-                                  bind:value={step.branching.evaluateValue}
-                                  min="1"
-                                  placeholder="1"
-                                />
-                              </label>
-                              <select class="select select-bordered select-sm w-16" bind:value={step.branching.evaluateUnit}>
-                                <option value="minutes">min</option>
-                                <option value="hours">hr</option>
-                                <option value="days">day</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2">
-                          <div>
-                            <p class="text-xs text-base-content/60 mb-1">Then send</p>
-                            <select class="select select-bordered select-sm w-full" bind:value={step.branching.successStepId}>
-                              <option value="">End</option>
-                              {#each formSteps as s, i}
-                                {#if i !== index}
-                                  <option value={s.id}>Email {i + 1}</option>
-                                {/if}
-                              {/each}
-                            </select>
-                          </div>
-                          <div>
-                            <p class="text-xs text-base-content/60 mb-1">Otherwise send</p>
-                            <select class="select select-bordered select-sm w-full" bind:value={step.branching.fallbackStepId}>
-                              <option value="">End</option>
-                              {#each formSteps as s, i}
-                                {#if i !== index}
-                                  <option value={s.id}>Email {i + 1}</option>
-                                {/if}
-                              {/each}
-                            </select>
-                          </div>
-                        </div>
-                      </fieldset>
-                    {/if}
-                  </fieldset>
-                {/each}
-              </div>
-            </div>
+            <FormField label="Start at (optional)">
+              <FormInput field={{ name: 'startAt', bind: { value: formStartAt } } as any} type="datetime-local" />
+            </FormField>
 
             {#if saveError}
-              <div class="alert alert-error alert-sm">
-                <span>{saveError}</span>
-              </div>
+              <div class="kui-callout error">{saveError}</div>
             {/if}
 
-            <!-- Action Buttons -->
-            <div class="flex gap-2 border-t border-base-200 pt-4">
-              <button class="btn btn-ghost btn-sm flex-1" onclick={() => (showEditor = false)}>Cancel</button>
-              <button
-                class="btn btn-primary btn-sm flex-1"
-                onclick={handleSave}
-                disabled={saving}
-              >
+            <div class="kui-inline end">
+              <Button variant="ghost" onclick={() => { showEditor = false; }}>Cancel</Button>
+              <Button variant="primary" onclick={handleSave} disabled={saving}>
                 {#if saving}
-                  <Loader2 class="h-4 w-4 animate-spin" />
+                  <Loading size="sm" /> Saving...
                 {:else}
-                  Save
+                  Save Campaign
                 {/if}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
-      {/if}
+
+        <div class="kui-builder__steps">
+          <div class="kui-builder__steps-header">
+            <h4>Steps ({formSteps.length})</h4>
+            <Button variant="primary" size="sm" onclick={addStep}>Add Step</Button>
+          </div>
+
+          <div class="kui-steps-list">
+            {#each formSteps as step, index}
+              <Card class="kui-panel">
+                <div class="kui-step">
+                  <div class="kui-step__header">
+                    <div class="kui-inline">
+                      <span class="kui-badge">Step {index + 1}</span>
+                      <FormInput field={{ name: `step-label-${step.id}`, bind: { value: step.label } } as any} placeholder="Email Step" />
+                    </div>
+                    <div class="kui-inline end">
+                      <Button variant="ghost" size="xs" onclick={() => moveStep(index, -1)} disabled={index === 0}>↑</Button>
+                      <Button variant="ghost" size="xs" onclick={() => moveStep(index, 1)} disabled={index === formSteps.length - 1}>↓</Button>
+                      <Button variant="ghost" size="xs" onclick={() => removeStep(index)} disabled={formSteps.length === 1}>
+                        <Trash2 class="kui-icon error" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div class="kui-grid">
+                    <FormField label="Subject">
+                      <FormInput field={{ name: `step-subject-${step.id}`, bind: { value: step.subject } } as any} placeholder="Email subject" />
+                    </FormField>
+                    <FormField label="Preview Text">
+                      <FormInput field={{ name: `step-preview-${step.id}`, bind: { value: step.previewText } } as any} placeholder="Optional preview text" />
+                    </FormField>
+                  </div>
+
+                  <div class="kui-grid">
+                    <FormField label="Schedule">
+                      <div class="kui-inline">
+                        <Button variant={step.scheduleMode === 'relative' ? 'primary' : 'ghost'} size="xs" onclick={() => setScheduleMode(index, 'relative')}>Relative</Button>
+                        <Button variant={step.scheduleMode === 'absolute' ? 'primary' : 'ghost'} size="xs" onclick={() => setScheduleMode(index, 'absolute')}>Absolute</Button>
+                      </div>
+                      {#if step.scheduleMode === 'relative'}
+                        <div class="kui-inline">
+                          <FormInput field={{ name: `delay-${step.id}`, bind: { value: step.delayValue } } as any} type="number" min="0" step="1" class="kui-input--sm" />
+                          <FormSelect field={{ name: `delay-unit-${step.id}`, bind: { value: step.delayUnit } } as any} class="kui-select--sm">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                          </FormSelect>
+                          <ArrowRight class="kui-icon" />
+                          <span class="kui-subtext">{describeStepSchedule(step)}</span>
+                        </div>
+                      {:else}
+                        <FormInput field={{ name: `runat-${step.id}`, bind: { value: step.runAt } } as any} type="datetime-local" />
+                      {/if}
+                    </FormField>
+                    <FormField label="Branching (optional)">
+                      <label class="kui-inline">
+                        <input type="checkbox" checked={!!step.branching} onchange={(e) => toggleBranching(index, (e.target as HTMLInputElement).checked)} />
+                        <span class="kui-subtext">Enable conditional branch</span>
+                      </label>
+                      {#if step.branching}
+                        <div class="kui-grid">
+                          <FormField label="Monitor">
+                            <FormSelect field={{ name: `monitor-${step.id}`, bind: { value: step.branching.monitor } } as any}>
+                              <option value="opened">Opened</option>
+                              <option value="clicked">Clicked</option>
+                            </FormSelect>
+                          </FormField>
+                          <FormField label="Evaluate after">
+                            <div class="kui-inline">
+                              <FormInput field={{ name: `eval-${step.id}`, bind: { value: step.branching.evaluateValue } } as any} type="number" min="1" class="kui-input--sm" />
+                              <FormSelect field={{ name: `eval-unit-${step.id}`, bind: { value: step.branching.evaluateUnit } } as any} class="kui-select--sm">
+                                <option value="minutes">Minutes</option>
+                                <option value="hours">Hours</option>
+                                <option value="days">Days</option>
+                              </FormSelect>
+                            </div>
+                          </FormField>
+                          <FormField label="Success Step ID">
+                            <FormInput field={{ name: `success-${step.id}`, bind: { value: step.branching.successStepId } } as any} placeholder="Step ID" />
+                          </FormField>
+                          <FormField label="Fallback Step ID">
+                            <FormInput field={{ name: `fallback-${step.id}`, bind: { value: step.branching.fallbackStepId } } as any} placeholder="Step ID" />
+                          </FormField>
+                        </div>
+                      {/if}
+                    </FormField>
+                  </div>
+
+                  <FormField label="Email Content">
+                    <EmailEditor content={step.html || ''} onChange={(html) => { step.html = html; formSteps = [...formSteps]; }} />
+                  </FormField>
+                </div>
+              </Card>
+            {/each}
+          </div>
+        </div>
+      </div>
     </div>
+    <div class="kui-overlay__backdrop" onclick={() => (showEditor = false)}></div>
   </div>
-</section>
+{/if}
+
+<style>
+  .kui-drip {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-tabs {
+    display: flex;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--kui-color-border);
+    padding-bottom: 0.25rem;
+  }
+
+  .kui-tab {
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--kui-radius-md);
+    text-decoration: none;
+    color: var(--kui-color-muted);
+    border: 1px solid transparent;
+  }
+
+  .kui-tab.is-active {
+    border-color: var(--kui-color-border);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-drip__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  h1 {
+    margin: 0.1rem 0 0.2rem;
+    font-size: 1.6rem;
+  }
+
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kui-color-muted);
+    font-weight: 700;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .kui-inline.end {
+    justify-content: flex-end;
+  }
+
+  .kui-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-icon.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  .kui-panel .kui-card__body {
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-center {
+    display: grid;
+    place-items: center;
+    gap: 0.35rem;
+    padding: var(--kui-spacing-lg);
+    text-align: center;
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-list {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-campaign {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    align-items: center;
+  }
+
+  .kui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(4px);
+  }
+
+  .kui-builder {
+    position: relative;
+    z-index: 1;
+    width: min(1200px, 100% - 32px);
+    max-height: 90vh;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    box-shadow: var(--kui-shadow-lg);
+    overflow: hidden;
+  }
+
+  .kui-builder__header {
+    padding: var(--kui-spacing-md);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--kui-color-border);
+  }
+
+  .kui-builder__body {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md);
+    overflow: hidden;
+  }
+
+  .kui-builder__sidebar {
+    background: var(--kui-color-surface-muted);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    padding: var(--kui-spacing-sm);
+    overflow-y: auto;
+  }
+
+  .kui-builder__steps {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    padding: var(--kui-spacing-sm);
+    overflow: hidden;
+    display: grid;
+    gap: var(--kui-spacing-sm);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-builder__steps-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--kui-color-border);
+  }
+
+  .kui-steps-list {
+    overflow-y: auto;
+    display: grid;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-sm);
+  }
+
+  .kui-step {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-step__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+    align-items: center;
+  }
+
+  .kui-badge {
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: var(--kui-color-primary-weak);
+    color: var(--kui-color-primary);
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+
+  .kui-grid {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .kui-input--sm {
+    max-width: 90px;
+  }
+
+  .kui-select--sm {
+    max-width: 120px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 900px) {
+    .kui-builder__body {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

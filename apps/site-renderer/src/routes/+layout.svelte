@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { getBlock } from '@kuratchi/editor';
+	import { getBlock, blogStore } from '@kuratchi/editor';
 	
 	let { children, data } = $props();
 	
@@ -16,6 +16,17 @@
 			? siteMetadata.backgroundColor
 			: '#ffffff'
 	);
+
+	const blogData = $derived(() => {
+		const raw = (siteMetadata as any).blog;
+		return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+	});
+
+	$effect(() => {
+		if (blogData) {
+			blogStore.set(blogData as any);
+		}
+	});
 </script>
 
 <svelte:head>

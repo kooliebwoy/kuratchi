@@ -21,11 +21,11 @@
 	}
 </script>
 
-<div class="theme-preview pointer-events-none" aria-hidden="true" style={`--preview-scale: ${scale}`}>
-	<div class="preview-frame bg-base-200 border border-base-300 rounded-lg">
-		<div class="preview-content space-y-2">
+<div class="krt-themePreview" aria-hidden="true" style={`--krt-themePreview-scale: ${scale}`}>
+	<div class="krt-themePreview__frame">
+		<div class="krt-themePreview__content">
 			{#if sequence.length === 0}
-				<div class="text-xs text-base-content/70 text-center py-4">No preview data</div>
+				<div class="krt-themePreview__empty">No preview data</div>
 			{:else}
 				{#each sequence as block, index (keyFor(block, index))}
 					{@const renderable = resolveBlockRender(block)}
@@ -39,31 +39,46 @@
 </div>
 
 <style>
-	.theme-preview {
+	.krt-themePreview {
 		width: 100%;
+		pointer-events: none;
 	}
 
-	.preview-frame {
+	.krt-themePreview__frame {
 		width: 100%;
 		aspect-ratio: 9 / 16;
 		overflow: hidden;
 		padding: 0.75rem;
+		border-radius: var(--krt-radius-xl, 1rem);
+		background: var(--krt-color-surface, #ffffff);
+		border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+		box-shadow: var(--krt-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
 	}
 
-	.preview-content {
-		transform: scale(var(--preview-scale));
+	.krt-themePreview__content {
+		display: flex;
+		flex-direction: column;
+		gap: var(--krt-space-sm, 0.5rem);
+		transform: scale(var(--krt-themePreview-scale, 0.4));
 		transform-origin: top left;
-		width: calc(100% / var(--preview-scale));
+		width: calc(100% / var(--krt-themePreview-scale, 0.4));
 	}
 
-	:global(.theme-preview .absolute.-left-14),
-	:global(.theme-preview .drawer) {
+	.krt-themePreview__empty {
+		font-size: 0.75rem;
+		text-align: center;
+		padding: 1rem 0;
+		color: var(--krt-color-muted, #6b7280);
+	}
+
+	:global(.krt-themePreview .absolute.-left-14),
+	:global(.krt-themePreview .drawer) {
 		display: none !important;
 	}
 
-	:global(.theme-preview .editor-item),
-	:global(.theme-preview .editor-header-item),
-	:global(.theme-preview .editor-footer-item) {
+	:global(.krt-themePreview .editor-item),
+	:global(.krt-themePreview .editor-header-item),
+	:global(.krt-themePreview .editor-footer-item) {
 		pointer-events: none;
 	}
 </style>

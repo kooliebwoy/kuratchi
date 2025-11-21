@@ -21,35 +21,53 @@
     children
   }: Props = $props();
   
-  const positionClasses = {
-    'top': 'dropdown-top',
-    'bottom': 'dropdown-bottom',
-    'left': 'dropdown-left',
-    'right': 'dropdown-right',
-    'top-start': 'dropdown-top dropdown-start',
-    'top-end': 'dropdown-top dropdown-end',
-    'bottom-start': 'dropdown-bottom dropdown-start',
-    'bottom-end': 'dropdown-bottom dropdown-end',
-    'left-start': 'dropdown-left dropdown-start',
-    'left-end': 'dropdown-left dropdown-end',
-    'right-start': 'dropdown-right dropdown-start',
-    'right-end': 'dropdown-right dropdown-end'
-  };
+  let dropdownElement: HTMLDivElement;
   
-  const dropdownClasses = $derived(`
-    dropdown
-    ${positionClasses[position]}
-    ${hover ? 'dropdown-hover' : ''}
-    ${open ? 'dropdown-open' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  function toggleOpen() {
+    if (hover) return;
+    open = !open;
+  }
+  
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleOpen();
+    }
+  }
+  
+  $effect(() => {
+    if (!open) return;
+    const onClick = (event: MouseEvent) => {
+      if (!dropdownElement?.contains(event.target as Node)) {
+        open = false;
+      }
+    };
+    document.addEventListener('pointerdown', onClick);
+    return () => document.removeEventListener('pointerdown', onClick);
+  });
 </script>
 
-<div class={dropdownClasses}>
-  <div tabindex="0" role="button">
+<div
+  bind:this={dropdownElement}
+  class={`kui-dropdown ${className}`.trim()}
+  data-open={open ? 'true' : 'false'}
+  data-position={position}
+  role="presentation"
+  onmouseenter={() => hover && (open = true)}
+  onmouseleave={() => hover && (open = false)}
+>
+  <div
+    tabindex="0"
+    role="button"
+    class="kui-dropdown__trigger"
+    onclick={toggleOpen}
+    onkeydown={handleKeydown}
+    aria-expanded={open}
+    aria-haspopup="true"
+  >
     {@render trigger()}
   </div>
-  <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow {contentClass}">
+  <div tabindex="-1" class={`kui-dropdown__panel ${contentClass}`.trim()} role="menu">
     {@render children()}
-  </ul>
+  </div>
 </div>
