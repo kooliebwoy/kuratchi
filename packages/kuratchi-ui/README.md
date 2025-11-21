@@ -1,6 +1,6 @@
 # @kuratchi/ui
 
-Reusable UI component library for Kuratchi, built with Svelte 5, Tailwind CSS 4, and DaisyUI.
+Reusable UI component library for Kuratchi, built with Svelte 5 and native, modern CSS.
 
 ## Installation
 
@@ -10,35 +10,16 @@ pnpm add @kuratchi/ui
 
 ## Setup
 
-### 1. Add Tailwind CSS 4 plugin to Vite
+### 1. Styles
 
-In your `vite.config.ts`:
-
-```typescript
-import { sveltekit } from '@sveltejs/kit/vite';
-import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  plugins: [tailwindcss(), sveltekit()]
-});
-```
-
-### 2. Import styles
-
-In your app's root layout or CSS file:
+All components ship with encapsulated CSS that is automatically included when you import from `@kuratchi/ui`. The design system exposes CSS custom properties (prefixed with `--kui-`) on `:root`, so you can override colors, radii, and spacing tokens in your own stylesheet if desired.
 
 ```css
-/* src/app.css */
-@import "tailwindcss";
-@plugin "daisyui";
-
-@theme {
-  /* Your custom theme tokens here */
+/* Example: override primary color */
+:root {
+  --kui-color-primary: #2563eb;
 }
 ```
-
-**Note:** Tailwind CSS 4 uses CSS-based configuration. No separate `tailwind.config.ts` file is needed!
 
 ## Components
 
@@ -192,7 +173,7 @@ A styled button with loading state. **Pure presentational component** - you wire
 
 **Props:**
 - `text` (string): Button text (default: "Sign Out")
-- `variant` (string): DaisyUI button variant (primary, secondary, accent, ghost, link, error)
+- `variant` (string): Button variant (primary, secondary, accent, ghost, link, error, neutral)
 - `size` (string): Button size (xs, sm, md, lg)
 - `loading` (boolean): Show loading spinner and disable button
 - `class` (string): Additional CSS classes

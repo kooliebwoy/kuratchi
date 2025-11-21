@@ -44,15 +44,15 @@
     onSort
   }: Props<T> = $props();
   
-  const tableClasses = $derived(`
-    table
-    ${hoverable ? 'table-hover' : ''}
-    ${zebra ? 'table-zebra' : ''}
-    ${pinRows ? 'table-pin-rows' : ''}
-    ${pinCols ? 'table-pin-cols' : ''}
-    ${compact ? 'table-compact' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const tableClasses = $derived([
+    'kui-table',
+    hoverable ? 'kui-table--hover' : '',
+    zebra ? 'kui-table--zebra' : '',
+    compact ? 'kui-table--compact' : '',
+    pinRows ? 'kui-table--pin-rows' : '',
+    pinCols ? 'kui-table--pin-cols' : '',
+    className
+  ].filter(Boolean).join(' '));
   
   function handleSort(key: string) {
     if (!columns.find(c => c.key === key)?.sortable) return;
@@ -76,7 +76,7 @@
   }
 </script>
 
-<div class="overflow-x-auto">
+<div class="kui-table-wrapper">
   <table class={tableClasses}>
     <thead>
       <tr>
@@ -85,16 +85,16 @@
             {#if column.sortable}
               <button
                 type="button"
-                class="flex items-center gap-2 hover:text-primary transition-colors"
+                class="kui-table__sort-button"
                 onclick={() => handleSort(column.key)}
               >
                 {column.label}
                 {#if sortKey === column.key}
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     {#if sortDirection === 'asc'}
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m5 15 7-7 7 7" />
                     {:else}
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19 9-7 7-7-7" />
                     {/if}
                   </svg>
                 {/if}
@@ -109,24 +109,24 @@
     <tbody>
       {#if loading}
         <tr>
-          <td colspan={columns.length} class="text-center py-8">
-            <span class="loading loading-spinner loading-lg"></span>
+          <td colspan={columns.length} class="kui-table__empty">
+            <span class="kui-loader" data-type="spinner" data-size="lg" aria-hidden="true"></span>
           </td>
         </tr>
       {:else if data.length === 0}
         <tr>
-          <td colspan={columns.length} class="text-center py-8">
+          <td colspan={columns.length} class="kui-table__empty">
             {#if emptyState}
               {@render emptyState()}
             {:else}
-              <p class="text-base-content/60">No data available</p>
+              <p>No data available</p>
             {/if}
           </td>
         </tr>
       {:else}
         {#each data as item, index}
           <tr
-            class={`${getRowClass(item)} ${onRowClick ? 'cursor-pointer' : ''}`}
+            class={`${getRowClass(item)} ${onRowClick ? 'kui-table__row--interactive' : ''}`.trim()}
             onclick={() => onRowClick?.(item)}
           >
             {#each columns as column}

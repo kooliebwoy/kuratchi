@@ -13,6 +13,6 @@
 	let { field, class: className = '', children }: Props = $props();
 </script>
 
-<select {...field.as('select')} class="select {className}">
+<select {...field.as('select')} class={`kui-select ${className}`.trim()}>
 	{@render children()}
 </select>

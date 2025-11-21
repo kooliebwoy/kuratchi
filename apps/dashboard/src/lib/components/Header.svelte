@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { Button, Card } from '@kuratchi/ui';
   import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from 'lucide-svelte';
-  import { searchOrganizations, setActiveOrganization, clearOrganization } from '$lib/functions/superadmin.remote';
+  import { searchOrganizations, setActiveOrganization } from '$lib/functions/superadmin.remote';
   import { signOut } from '$lib/functions/auth.remote';
   import { goto, invalidateAll } from '$app/navigation';
   import NotificationDrawer from '$lib/components/NotificationDrawer.svelte';
@@ -18,9 +19,9 @@
   let showSearchModal = $state(false);
   let isSearching = $state(false);
   let showNotificationDrawer = $state(false);
+  let showUserMenu = $state(false);
 
   let debounceTimer: any;
-  let showUserMenu = $state(false);
 
   function onInput(e: Event) {
     term = (e.target as HTMLInputElement).value;
@@ -33,11 +34,8 @@
 
     debounceTimer = setTimeout(() => {
       if (term.trim()) {
-        // Trigger form submission programmatically
         const form = document.getElementById('org-search-form') as HTMLFormElement;
-        if (form) {
-          form.requestSubmit();
-        }
+        form?.requestSubmit();
       }
     }, 300);
   }
@@ -54,12 +52,10 @@
     searchResults = [];
   }
 
-  // Watch for search form state
   $effect(() => {
     isSearching = !!searchOrganizations.pending;
   });
 
-  // Watch for search results from the form
   $effect(() => {
     if (searchOrganizations.result && !searchOrganizations.pending) {
       searchResults = searchOrganizations.result || [];
@@ -67,180 +63,309 @@
   });
 
   function handleSwitch() {
-    showDropdown = false;
     term = '';
-    // Reload to reflect new org context
+    searchResults = [];
+    showSearchModal = false;
     window.location.reload();
   }
 
-  function clearSearch() {
-    term = '';
-    searchResults = [];
-    showDropdown = false;
-  }
-
-  // Handle sign out - redirect after successful logout
   async function handleSignOut(e: Event) {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const result = await signOut.submit(formData);
 
-    // Redirect to signin page after successful logout
     if (result?.success) {
-      // Invalidate all data to clear server-side cache
       await invalidateAll();
-      // Navigate to signin
       goto('/auth/signin', { replaceState: true });
     }
   }
 </script>
 
-<header class="flex items-center justify-between border-b border-base-200/60 bg-base-100/60 px-8 py-4 backdrop-blur">
-  <div class="flex items-center gap-3">
-    <Command class="h-5 w-5" />
-    <h2 class="text-lg font-semibold">{workspace}</h2>
+<header class="kui-header">
+  <div class="kui-brand">
+    <Command class="kui-icon" />
+    <h2>{workspace}</h2>
   </div>
 
-  <div class="flex items-center gap-3">
-    <!-- Search Modal Trigger -->
-    <button
-      class="btn btn-ghost text-base-content/70 gap-2"
-      onclick={openSearchModal}
-    >
-      <Search class="h-4 w-4" />
-      <span class="text-xs text-base-content/50">Search...</span>
-    </button>
+  <div class="kui-actions">
+    <Button variant="ghost" size="sm" onclick={openSearchModal}>
+      <Search class="kui-icon" />
+      <span class="kui-subtext">Search…</span>
+    </Button>
 
-    <!-- Notifications Drawer Trigger -->
-    <button
-      class="btn btn-circle btn-ghost text-base-content/70 relative"
+    <Button
+      variant="ghost"
+      size="sm"
+      class="kui-circle"
       onclick={() => showNotificationDrawer = !showNotificationDrawer}
+      aria-label="Notifications"
     >
-      <Bell class="h-5 w-5" />
-    </button>
+      <Bell class="kui-icon" />
+    </Button>
 
-    <!-- User Menu -->
-    <div class="relative">
-      <button
-        class="flex items-center gap-3 rounded-xl border border-base-200/80 bg-base-200/40 px-3 py-2 hover:bg-base-200/60 transition-colors"
+    <div class="kui-user-menu">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="kui-user-trigger"
         onclick={() => showUserMenu = !showUserMenu}
         onblur={() => setTimeout(() => showUserMenu = false, 200)}
       >
-        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary">
-          <UserCircle class="h-6 w-6" />
+        <div class="kui-avatar">
+          <UserCircle class="kui-icon-lg" />
         </div>
-        <div class="text-left">
-          <p class="text-sm font-medium">{user.name}</p>
-          <p class="text-xs text-base-content/50">{user.email}</p>
+        <div class="kui-user-text">
+          <p class="kui-strong">{user.name}</p>
+          <p class="kui-subtext">{user.email}</p>
         </div>
-        <ChevronDown class="h-4 w-4 text-base-content/50" />
-      </button>
+        <ChevronDown class="kui-icon" />
+      </Button>
 
       {#if showUserMenu}
-        <div class="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-base-300 bg-base-100 shadow-xl overflow-hidden">
-          <div class="p-3 border-b border-base-200 bg-base-200/30">
-            <p class="text-sm font-medium truncate">{user.name}</p>
-            <p class="text-xs text-base-content/50 truncate">{user.email}</p>
+        <Card class="kui-user-dropdown">
+          <div class="kui-user-dropdown__head">
+            <p class="kui-strong truncate">{user.name}</p>
+            <p class="kui-subtext truncate">{user.email}</p>
           </div>
-
-          <div class="p-2">
-            <form {...signOut} onsubmit={handleSignOut}>
-              <button
-                type="submit"
-                class="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10 rounded-lg transition-colors"
-                disabled={!!signOut.pending}
-              >
-                {#if signOut.pending}
-                  <span class="loading loading-spinner loading-xs"></span>
-                  <span>Signing out...</span>
-                {:else}
-                  <LogOut class="h-4 w-4" />
-                  <span>Sign Out</span>
-                {/if}
-              </button>
-            </form>
-          </div>
-        </div>
+          <form {...signOut} onsubmit={handleSignOut} class="kui-stack">
+            <Button type="submit" variant="ghost" class="danger" disabled={!!signOut.pending}>
+              {#if signOut.pending}
+                Signing out…
+              {:else}
+                <LogOut class="kui-icon" />
+                Sign out
+              {/if}
+            </Button>
+          </form>
+        </Card>
       {/if}
     </div>
   </div>
 </header>
 
-<!-- Search Modal -->
 {#if showSearchModal}
-  <div class="fixed inset-0 z-50 flex items-start justify-center pt-20">
-    <!-- Backdrop -->
-    <div
-      class="absolute inset-0 bg-black/20 backdrop-blur-sm"
-      onclick={closeSearchModal}
-    ></div>
+  <div class="kui-search-modal">
+    <div class="kui-backdrop" onclick={closeSearchModal}></div>
 
-    <!-- Modal Content -->
-    <div class="relative z-50 w-full max-w-2xl mx-4">
-      <div class="bg-base-100 rounded-2xl shadow-2xl border border-base-200 overflow-hidden">
-        <!-- Search Header -->
-        <div class="flex items-center gap-3 border-b border-base-200 px-6 py-4">
-          <Search class="h-5 w-5 text-base-content/50" />
-          <input
-            type="text"
-            class="flex-1 bg-transparent text-lg outline-none placeholder-base-content/50"
-            placeholder="Search organizations, sites, users..."
-            value={term}
-            oninput={onInput}
-            autofocus
-          />
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm btn-circle"
-            onclick={closeSearchModal}
-          >
-            <X class="h-4 w-4" />
-          </button>
-        </div>
+    <Card class="kui-search-card">
+      <form id="org-search-form" {...searchOrganizations} class="hidden">
+        <input type="hidden" name="query" bind:value={term} />
+      </form>
 
-        <!-- Search Results -->
-        <div class="max-h-96 overflow-y-auto">
-          {#if !term.trim()}
-            <div class="p-6 text-center text-base-content/50">
-              <p>Start typing to search...</p>
-            </div>
-          {:else if isSearching}
-            <div class="p-6 text-center">
-              <span class="loading loading-spinner loading-sm"></span>
-            </div>
-          {:else if searchResults.length > 0}
-            <div class="divide-y divide-base-200">
-              {#each searchResults as result}
-                <button
-                  class="w-full flex items-center gap-3 px-6 py-3 hover:bg-base-200/50 transition-colors text-left"
-                  onclick={() => {
-                    handleSwitch();
-                    closeSearchModal();
-                  }}
-                >
-                  <Building2 class="h-4 w-4 text-primary flex-shrink-0" />
-                  <div class="min-w-0 flex-1">
-                    <div class="font-medium text-base-content truncate">{result.name}</div>
-                    {#if result.slug}
-                      <div class="text-xs text-base-content/50 truncate">{result.slug}</div>
-                    {/if}
-                  </div>
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <div class="p-6 text-center text-base-content/50">
-              <p>No results found</p>
-            </div>
-          {/if}
-        </div>
+      <div class="kui-search-head">
+        <Search class="kui-icon" />
+        <input
+          type="text"
+          class="kui-search-input"
+          placeholder="Search organizations, sites, users..."
+          value={term}
+          oninput={onInput}
+          autofocus
+        />
+        <Button variant="ghost" size="xs" onclick={closeSearchModal} aria-label="Close search">
+          <X class="kui-icon" />
+        </Button>
       </div>
-    </div>
+
+      <div class="kui-search-results">
+        {#if !term.trim()}
+          <div class="kui-subtext">Start typing to search…</div>
+        {:else if isSearching}
+          <div class="kui-subtext">Searching…</div>
+        {:else if searchResults.length > 0}
+          <div class="kui-result-list">
+            {#each searchResults as result}
+              <form class="kui-result-row" {...setActiveOrganization} onsubmit={handleSwitch}>
+                <input type="hidden" name="organizationId" value={result.id} />
+                <div class="kui-inline">
+                  <Building2 class="kui-icon" />
+                  <div>
+                    <div class="kui-strong">{result.name}</div>
+                    <div class="kui-subtext">{result.slug}</div>
+                  </div>
+                </div>
+                <Button type="submit" variant="primary" size="xs">
+                  Switch
+                </Button>
+              </form>
+            {/each}
+          </div>
+        {:else}
+          <div class="kui-subtext">No results found</div>
+        {/if}
+      </div>
+    </Card>
   </div>
 {/if}
 
-<!-- Notifications Drawer -->
-<NotificationDrawer
-  bind:show={showNotificationDrawer}
-  onClose={() => showNotificationDrawer = false}
-/>
+<NotificationDrawer bind:open={showNotificationDrawer} />
+
+<style>
+  .kui-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(8px);
+  }
+
+  .kui-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .kui-brand h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .kui-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .kui-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .kui-icon-lg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .kui-circle {
+    padding: 6px;
+    border-radius: 999px;
+  }
+
+  .kui-user-menu {
+    position: relative;
+  }
+
+  .kui-user-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+  }
+
+  .kui-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #c7d2fe, #a5b4fc);
+    display: grid;
+    place-items: center;
+    color: #1d1b72;
+  }
+
+  .kui-user-text {
+    display: grid;
+    gap: 2px;
+  }
+
+  .kui-strong {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .kui-subtext {
+    margin: 0;
+    color: #6b7280;
+    font-size: 12px;
+  }
+
+  .kui-user-dropdown {
+    position: absolute;
+    right: 0;
+    margin-top: 8px;
+    width: 220px;
+    z-index: 50;
+    padding: 10px;
+  }
+
+  .kui-user-dropdown__head {
+    border-bottom: 1px solid #f1f1f3;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+
+  .kui-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .danger {
+    color: #b91c1c;
+  }
+
+  .kui-search-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: start center;
+    padding-top: 80px;
+  }
+
+  .kui-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    backdrop-filter: blur(6px);
+  }
+
+  .kui-search-card {
+    position: relative;
+    z-index: 60;
+    width: min(680px, 92vw);
+    padding: 0;
+  }
+
+  .kui-search-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #f1f1f3;
+  }
+
+  .kui-search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 15px;
+    background: transparent;
+  }
+
+  .kui-search-results {
+    max-height: 60vh;
+    overflow: auto;
+    padding: 12px 14px;
+  }
+
+  .kui-result-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .kui-result-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+  }
+</style>

@@ -6,8 +6,10 @@
 import { getRequestEvent, query, command } from '$app/server';
 import { error } from '@sveltejs/kit';
 import * as v from 'valibot';
-import { getDatabase } from '$lib/server/db-context';
+import { getDatabase, getAdminDatabase } from '$lib/server/db-context';
 import { syncCustomDomainToKV, removeCustomDomainFromKV } from '$lib/server/kv-sync';
+import { createCustomHostname } from 'kuratchi-sdk/domains';
+import { env } from '$env/dynamic/private';
 
 const ensureSession = () => {
   const event = getRequestEvent();
@@ -242,5 +244,173 @@ export const deleteSiteCustomDomain = guardedCommand(deleteDomainSchema, async (
   } catch (err) {
     console.error('[siteCustomDomains.delete] error:', err);
     return { success: false, error: 'Failed to delete domain' };
+  }
+});
+
+/**
+ * Link an existing domain to a site
+ * Creates Cloudflare custom hostname with HTTP validation and syncs to KV
+ */
+const linkDomainSchema = v.object({
+  domainId: v.string(),
+  siteId: v.string()
+});
+
+export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) => {
+  try {
+    const { event } = ensureSession();
+    const orgDb = await getDatabase(event.locals);
+    const adminDb = await getAdminDatabase(event.locals);
+    
+    if (!orgDb || !adminDb) {
+      return { success: false, error: 'Database not available' };
+    }
+
+    const organizationId = (event.locals.session as any)?.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'Organization not found' };
+    }
+
+    // Get domain from admin DB
+    const domainResult = await adminDb.domains
+      .where({ id: data.domainId, organizationId, deleted_at: { isNullish: true } })
+      .first();
+
+    if (!domainResult.success || !domainResult.data) {
+      return { success: false, error: 'Domain not found' };
+    }
+
+    const domain = domainResult.data;
+
+    // Check if domain is already linked to a site
+    if (domain.siteId) {
+      return { success: false, error: 'Domain is already linked to a site' };
+    }
+
+    // Check if it's an apex domain (no subdomain)
+    const domainParts = domain.name.split('.');
+    if (domainParts.length === 2) {
+      return { 
+        success: false, 
+        error: 'Apex domains are not supported. Please use a subdomain like www.' + domain.name + ' instead. Cloudflare SSL for SaaS requires a subdomain on non-enterprise plans.' 
+      };
+    }
+
+    // Get site from org DB
+    const site = await orgDb.query.sites.findFirst({
+      where: (fields: any, { eq }: any) => eq(fields.id, data.siteId)
+    });
+
+    if (!site) {
+      return { success: false, error: 'Site not found' };
+    }
+
+    // Get database record for KV mapping
+    const dbRecord = await adminDb.databases
+      .where({ id: site.databaseId, deleted_at: { isNullish: true } })
+      .first();
+
+    if (!dbRecord.success || !dbRecord.data) {
+      return { success: false, error: 'Site database not found' };
+    }
+
+    // Create custom hostname in Cloudflare
+    const zoneId = env.CF_SSL_FOR_SAAS_ZONE_ID;
+    const originHost = env.SITE_RENDERER_ORIGIN_HOST;
+
+    if (!zoneId || !originHost) {
+      return { success: false, error: 'Cloudflare SSL for SaaS not configured' };
+    }
+
+    const hostnameResult = await createCustomHostname({
+      zoneId,
+      hostname: domain.name,
+      originHost,
+      ssl: {
+        method: 'http',
+        type: 'dv'
+      },
+      metadata: {
+        organizationId,
+        siteId: data.siteId,
+        domainId: data.domainId
+      }
+    });
+
+    if (!hostnameResult.success || !hostnameResult.hostname) {
+      return { 
+        success: false, 
+        error: hostnameResult.error || 'Failed to create Cloudflare custom hostname' 
+      };
+    }
+
+    const cfHostname = hostnameResult.hostname;
+
+    // Create siteCustomDomain record
+    const customDomainId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const insertResult = await orgDb.insert.siteCustomDomains({
+      id: customDomainId,
+      siteId: data.siteId,
+      domain: domain.name,
+      domainId: data.domainId,
+      verified: false,
+      cnameTarget: originHost,
+      cloudflareStatus: cfHostname.status || 'pending',
+      cloudflareHostnameId: cfHostname.id,
+      sslStatus: cfHostname.ssl?.status || 'pending',
+      created_at: now,
+      updated_at: now
+    });
+
+    if (!insertResult.success) {
+      return { success: false, error: 'Failed to create site custom domain record' };
+    }
+
+    // Update admin domain record with linkage
+    await adminDb.domains
+      .where({ id: data.domainId })
+      .update({
+        siteId: data.siteId,
+        siteCustomDomainId: customDomainId,
+        cloudflareHostnameId: cfHostname.id,
+        cloudflareHostnameStatus: cfHostname.status || 'pending',
+        cloudflareVerification: JSON.stringify(cfHostname.ownership_verification || {}),
+        updated_at: now
+      });
+
+    // If hostname is already active, sync to KV immediately
+    if (cfHostname.status === 'active') {
+      await syncCustomDomainToKV(event.locals, domain.name, {
+        siteId: site.id,
+        orgId: organizationId,
+        databaseId: site.databaseId,
+        dbuuid: dbRecord.data.dbuuid,
+        workerName: dbRecord.data.workerName
+      });
+
+      // Update verified status
+      await orgDb.update.siteCustomDomains(
+        { verified: true },
+        (fields: any, { eq }: any) => eq(fields.id, customDomainId)
+      );
+    }
+
+    return { 
+      success: true,
+      customDomain: insertResult.results,
+      cloudflareHostname: cfHostname,
+      instructions: {
+        cname: {
+          name: domain.name,
+          target: originHost,
+          description: 'Point your domain to this CNAME target. Cloudflare will automatically validate via HTTP.'
+        }
+      }
+    };
+  } catch (err) {
+    console.error('[siteCustomDomains.link] error:', err);
+    return { success: false, error: 'Failed to link domain: ' + (err as Error).message };
   }
 });

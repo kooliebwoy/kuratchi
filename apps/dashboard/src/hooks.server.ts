@@ -5,7 +5,11 @@ import {
   credentialsPlugin,
   activityPlugin,
   rolesPlugin,
-  oauthPlugin
+  oauthPlugin,
+  rateLimitPlugin,
+  turnstilePlugin,
+  guardsPlugin,
+  requireAuth
 } from 'kuratchi-sdk/auth';
 import { adminSchema } from '$lib/schemas/admin';
 import { organizationSchema } from '$lib/schemas/organization';
@@ -18,14 +22,23 @@ import { env } from '$env/dynamic/private';
 export const { handle }: { handle: Handle } = kuratchi({
   auth: {
     plugins: [
+      rateLimitPlugin({
+        defaultWindowMs: 60_000,
+        defaultMaxRequests: 10,
+        includeDefaultRoutes: true
+      }),
+      turnstilePlugin({
+        includeDefaultRoutes: true,
+        disableInDev: true
+      }),
       sessionPlugin(),
       adminPlugin({
         adminSchema,
         organizationSchema,
-        adminDatabase: 'ADMIN_DB'  // Binding name from wrangler.toml (defaults to 'DB' if omitted)
+        adminDatabase: 'ADMIN_DB'
       }),
       organizationPlugin({ organizationSchema }),
-      credentialsPlugin(), // Enable email/password auth
+      credentialsPlugin(),
       oauthPlugin({
         providers: [
           {
@@ -39,30 +52,31 @@ export const { handle }: { handle: Handle } = kuratchi({
             clientSecret: env.GITHUB_CLIENT_SECRET || ''
           }
         ]
-        // SDK default onProfile handler already implements the logic:
-        // 1. If OAuth account exists → sign in
-        // 2. If email exists (from credentials or other OAuth) → link account and sign in
-        // 3. If new email → create user and sign in
       }),
       activityPlugin({ define: activityTypes }),
       rolesPlugin({
-        // Dashboard uses code-only roles (Free Tier approach)
-        // We're developers - we manage our own roles via code
-        // The database/API is for our CUSTOMERS to manage THEIR roles
         define: roles,
         default: 'viewer'
-      })
+      }),
+      guardsPlugin(
+        requireAuth({
+          paths: ['*'],
+          exclude: ['/auth/*', '/api/*'],
+          redirectTo: '/auth/signin'
+        })
+      )
     ]
   },
   email: {
-    region: env.AWS_SES_REGION || 'us-east-1',
+    region: env.AWS_SES_REGION || env.AWS_REGION || 'us-east-2',
     accessKeyId: env.AWS_ACCESS_KEY_ID || '',
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
     from: env.RESEND_FROM_EMAIL || 'noreply@kuratchi.dev',
     fromName: 'Kuratchi',
     trackEmails: true,
-    trackingDb: 'admin',
-    trackingTable: 'emails'
+    trackingDb: 'org',
+    trackingTable: 'email_logs',
+    configurationSetName: 'kuratchi-email-tracking'
   },
   storage: {
     kv: { default: 'KV', KV: 'KV' },
@@ -74,10 +88,13 @@ export const { handle }: { handle: Handle } = kuratchi({
     trackingDb: 'admin'
   },
   notifications: {
-    // Resend for user emails
-    resendApiKey: env.RESEND_API_KEY,
-    resendFrom: env.RESEND_FROM_EMAIL,
-    resendFromName: 'Kuratchi',
+    // Amazon SES for user emails
+    sesRegion: env.AWS_SES_REGION || env.AWS_REGION || 'us-east-1',
+    sesAccessKeyId: env.AWS_ACCESS_KEY_ID || '',
+    sesSecretAccessKey: env.AWS_SECRET_ACCESS_KEY || '',
+    sesFrom: env.SES_FROM_EMAIL || env.RESEND_FROM_EMAIL || 'noreply@kuratchi.dev',
+    sesFromName: 'Kuratchi',
+    sesConfigurationSetName: env.SES_CONFIGURATION_SET,
 
     // Cloudflare Email for system emails
     cloudflareEmail: {

@@ -49,39 +49,33 @@
 {#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
-        <div class="space-y-6">
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Content</legend>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text">Heading</span>
-                    </div>
-                    <input type="text" class="input input-bordered w-full" bind:value={heading} />
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text">Body Text</span>
-                    </div>
-                    <textarea class="textarea textarea-bordered w-full" rows="4" bind:value={body}></textarea>
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text">Button Text</span>
-                    </div>
-                    <input type="text" class="input input-bordered w-full" bind:value={button} />
-                </label>
-                <label class="form-control w-full">
-                    <div class="label">
-                        <span class="label-text">Link URL</span>
-                    </div>
-                    <input type="url" class="input input-bordered w-full" bind:value={link} />
-                </label>
-            </fieldset>
+        <div class="krt-cardDrawer">
+            <section class="krt-cardDrawer__section">
+                <h3>Content</h3>
+                <div class="krt-cardDrawer__fields">
+                    <label class="krt-cardDrawer__field">
+                        <span>Heading</span>
+                        <input type="text" bind:value={heading} />
+                    </label>
+                    <label class="krt-cardDrawer__field">
+                        <span>Body text</span>
+                        <textarea rows="4" bind:value={body}></textarea>
+                    </label>
+                    <label class="krt-cardDrawer__field">
+                        <span>Button text</span>
+                        <input type="text" bind:value={button} />
+                    </label>
+                    <label class="krt-cardDrawer__field">
+                        <span>Link URL</span>
+                        <input type="url" bind:value={link} />
+                    </label>
+                </div>
+            </section>
 
-            <fieldset class="fieldset">
-                <legend class="fieldset-legend">Image</legend>
+            <section class="krt-cardDrawer__section">
+                <h3>Image</h3>
                 <ImagePicker bind:selectedImage={image} mode="single" />
-            </fieldset>
+            </section>
         </div>
     {/snippet}
 
@@ -90,39 +84,193 @@
     {/snippet}
 
     {#snippet children()}
-        <div class="card lg:card-side">
-            <figure>
+        <section class="krt-card krt-card--horizontal">
+            <figure class="krt-card__media">
                 <img src={imageUrl} alt={image.alt} title={image.title} />
             </figure>
-            <div class="card-body gap-8">
-                <h2 class="card-title">{heading}</h2>
-                <p>{body}</p>
-                
-                <div class="card-actions justify-start">
-                    <a href={link} class="btn btn-primary rounded-xl">
+            <div class="krt-card__body">
+                <h2 class="krt-card__title">{heading}</h2>
+                <p class="krt-card__copy">{body}</p>
+                <div class="krt-card__actions">
+                    <a href={link} class="krt-card__cta">
                         {button}
-                        <ArrowRight class="w-3.5 h-3.5 ms-2 text-neutral" />
+                        <ArrowRight aria-hidden="true" />
                     </a>
                 </div>
             </div>
-        </div>
+        </section>
     {/snippet}
 </LayoutBlock>
 {:else}
-    <section id={id} data-type={type} class="card lg:card-side">
-        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
-        <figure>
+    <section id={id} data-type={type} class="krt-card krt-card--horizontal">
+        <div class="krt-card__metadata">{JSON.stringify(content)}</div>
+        <figure class="krt-card__media">
             <img src={imageUrl} alt={image?.alt ?? ''} title={image?.title ?? ''} />
         </figure>
-        <div class="card-body gap-8">
-            <h2 class="card-title">{heading}</h2>
-            <p>{body}</p>
-            <div class="card-actions justify-start">
-                <a href={link} class="btn btn-primary rounded-xl">
+        <div class="krt-card__body">
+            <h2 class="krt-card__title">{heading}</h2>
+            <p class="krt-card__copy">{body}</p>
+            <div class="krt-card__actions">
+                <a href={link} class="krt-card__cta">
                     {button}
-                    <ArrowRight class="w-3.5 h-3.5 ms-2 text-neutral" />
+                    <ArrowRight aria-hidden="true" />
                 </a>
             </div>
         </div>
     </section>
 {/if}
+
+<style>
+    .krt-card {
+        display: flex;
+        flex-direction: column;
+        background: var(--krt-color-surface, #ffffff);
+        color: var(--krt-color-text, #111827);
+        border-radius: var(--krt-radius-xl, 1rem);
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        gap: var(--krt-space-lg, 1rem);
+    }
+
+    .krt-card--horizontal {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 56rem) {
+        .krt-card--horizontal {
+            grid-template-columns: 1.05fr 1fr;
+        }
+    }
+
+    .krt-card__metadata {
+        display: none;
+    }
+
+    .krt-card__media {
+        position: relative;
+        isolation: isolate;
+        display: block;
+        overflow: hidden;
+        background: rgba(15, 23, 42, 0.06);
+    }
+
+    .krt-card__media img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .krt-card__body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+        padding: var(--krt-space-2xl, 2rem);
+    }
+
+    .krt-card__title {
+        margin: 0;
+        font-size: clamp(1.5rem, 2vw + 1rem, 2.1rem);
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .krt-card__copy {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.7;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-card__actions {
+        margin-top: auto;
+    }
+
+    .krt-card__cta {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+        padding: 0.65rem 1.4rem;
+        border-radius: var(--krt-radius-pill, 999px);
+        border: none;
+        background: var(--krt-color-primary, #111827);
+        color: #f8fafc;
+        font-weight: 600;
+        text-decoration: none;
+        transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    }
+
+    .krt-card__cta:hover {
+        transform: translateY(-2px);
+        background: color-mix(in srgb, var(--krt-color-primary, #111827) 85%, white 15%);
+        box-shadow: 0 18px 30px rgba(17, 24, 39, 0.2);
+    }
+
+    .krt-card__cta:focus-visible {
+        outline: 2px solid var(--krt-color-accent, #4f46e5);
+        outline-offset: 2px;
+    }
+
+    .krt-card__cta :global(svg) {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .krt-cardDrawer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xl, 1.25rem);
+    }
+
+    .krt-cardDrawer__section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-cardDrawer__section h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-cardDrawer__fields {
+        display: grid;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-cardDrawer__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xs, 0.25rem);
+        padding: var(--krt-space-sm, 0.5rem) var(--krt-space-md, 0.75rem);
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-surface, #ffffff);
+    }
+
+    .krt-cardDrawer__field span {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-cardDrawer__field input,
+    .krt-cardDrawer__field textarea {
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        padding: 0.5rem 0.65rem;
+        font-size: 0.95rem;
+        background: #f8fafc;
+        font-family: inherit;
+    }
+
+    .krt-cardDrawer__field textarea {
+        resize: vertical;
+        min-height: 6rem;
+    }
+</style>

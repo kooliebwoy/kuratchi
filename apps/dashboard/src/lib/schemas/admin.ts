@@ -3,7 +3,7 @@ import { notificationSchemas } from 'kuratchi-sdk/notifications';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 8,
+  version: 10,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -82,6 +82,10 @@ export const adminSchema: SchemaDsl = {
       sesTenantId: 'text',
       emailDnsRecords: 'json',
       siteId: 'text',
+      siteCustomDomainId: 'text',
+      cloudflareHostnameId: 'text',
+      cloudflareHostnameStatus: 'text',
+      cloudflareVerification: 'json',
       '...timestamps': true,
     },
     activity: {
@@ -186,6 +190,12 @@ export const adminSchema: SchemaDsl = {
       userId: 'text',
       organizationId: 'text',
       metadata: 'json',
+      '...timestamps': true,
+    },
+    email_message_lookup: {
+      id: 'text primary key not null',
+      sesMessageId: 'text unique not null',
+      organizationId: 'text not null',
       '...timestamps': true,
     },
     stripeCustomers: {

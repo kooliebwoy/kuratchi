@@ -13,40 +13,27 @@
     class: className = ''
   }: Props = $props();
   
-  const typeClasses = {
-    spinner: 'loading-spinner',
-    dots: 'loading-dots',
-    ring: 'loading-ring',
-    ball: 'loading-ball',
-    bars: 'loading-bars',
-    infinity: 'loading-infinity'
-  };
-  
-  const sizeClasses = {
-    xs: 'loading-xs',
-    sm: 'loading-sm',
-    md: 'loading-md',
-    lg: 'loading-lg'
-  };
-  
-  const variantClasses = variant ? {
-    primary: 'text-primary',
-    secondary: 'text-secondary',
-    accent: 'text-accent',
-    neutral: 'text-neutral',
-    info: 'text-info',
-    success: 'text-success',
-    warning: 'text-warning',
-    error: 'text-error'
-  }[variant] : '';
-  
-  const loadingClasses = $derived(`
-    loading
-    ${typeClasses[type]}
-    ${sizeClasses[size]}
-    ${variantClasses}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const loadingClasses = $derived([
+    'kui-loader',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
-<span class={loadingClasses}></span>
+<span
+  class={loadingClasses}
+  data-type={type}
+  data-size={size}
+  data-variant={variant || 'primary'}
+  aria-live="polite"
+  aria-busy="true"
+>
+  {#if type === 'dots'}
+    <span></span>
+    <span></span>
+    <span></span>
+  {:else if type === 'bars'}
+    <span></span>
+    <span></span>
+    <span></span>
+  {/if}
+</span>

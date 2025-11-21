@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button, Card, Dialog, Loading } from '@kuratchi/ui';
   import { Clock, Users, Activity, Trash2, X, AlertCircle, MonitorSmartphone, MapPin, Search } from 'lucide-svelte';
   import {
     getSessions,
@@ -8,20 +9,16 @@
     cleanupExpiredSessions
   } from '$lib/functions/sessions.remote';
 
-  // Data sources
   const sessions = getSessions();
   const stats = getSessionStats();
 
-  // Derived lists
   const sessionsList = $derived(sessions.current ? (Array.isArray(sessions.current) ? sessions.current : []) : []);
   const statsData = $derived(stats.current || { totalSessions: 0, activeSessions: 0, activeUsers: 0, sessionsLast24h: 0, expiredSessions: 0 });
 
-  // Filter state
   let searchQuery = $state('');
   let filterStatus = $state<'all' | 'active' | 'expired'>('active');
   let selectedUser = $state('');
 
-  // Get unique users from sessions
   const uniqueUsers = $derived.by(() => {
     const usersMap: Record<string, any> = {};
     sessionsList.forEach((s: any) => {
@@ -32,11 +29,9 @@
     return Object.values(usersMap);
   });
 
-  // Filtered sessions
   const filteredSessions = $derived.by(() => {
     let filtered = sessionsList;
 
-    // Search filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((s: any) =>
@@ -46,12 +41,10 @@
       );
     }
 
-    // User filter
     if (selectedUser) {
       filtered = filtered.filter((s: any) => s.userId === selectedUser);
     }
 
-    // Status filter
     if (filterStatus === 'active') {
       filtered = filtered.filter((s: any) => !s.isExpired);
     } else if (filterStatus === 'expired') {
@@ -61,7 +54,6 @@
     return filtered;
   });
 
-  // Modal state
   let showRevokeConfirm = $state(false);
   let showRevokeAllConfirm = $state(false);
   let revokingSession = $state<any>(null);
@@ -97,8 +89,7 @@
 
   function parseUserAgent(ua: string) {
     if (!ua || ua === 'Unknown') return { browser: 'Unknown', os: 'Unknown' };
-    
-    // Simple user agent parsing
+
     let browser = 'Unknown';
     let os = 'Unknown';
 
@@ -126,221 +117,178 @@
   <title>Sessions Management - Kuratchi Dashboard</title>
 </svelte:head>
 
-<div class="p-8">
-  <!-- Header -->
-  <div class="mb-8 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-        <Activity class="h-6 w-6 text-primary" />
+<div class="kui-page">
+  <header class="kui-page__header">
+    <div class="kui-inline">
+      <div class="kui-icon-box accent">
+        <Activity />
       </div>
       <div>
-        <h1 class="text-2xl font-bold">Sessions Management</h1>
-        <p class="text-sm text-base-content/70">Monitor and manage active user sessions</p>
+        <p class="kui-eyebrow">Security</p>
+        <h1>Sessions</h1>
+        <p class="kui-subtext">Monitor active user sessions and revoke access quickly.</p>
       </div>
     </div>
-    <button class="btn btn-outline btn-error" onclick={handleCleanup}>
-      <Trash2 class="h-4 w-4" />
-      Cleanup Expired
-    </button>
+    <Button variant="outline" class="danger-button" onclick={handleCleanup}>
+      <Trash2 class="kui-icon" />
+      Cleanup expired
+    </Button>
+  </header>
+
+  <div class="kui-stat-grid">
+    <Card class="kui-stat">
+      <div>
+        <p class="kui-eyebrow">Active sessions</p>
+        <p class="kui-stat__number">{statsData.activeSessions}</p>
+      </div>
+      <div class="kui-stat__icon success">
+        <Activity class="kui-icon" />
+      </div>
+    </Card>
+    <Card class="kui-stat">
+      <div>
+        <p class="kui-eyebrow">Active users</p>
+        <p class="kui-stat__number">{statsData.activeUsers}</p>
+      </div>
+      <div class="kui-stat__icon primary">
+        <Users class="kui-icon" />
+      </div>
+    </Card>
+    <Card class="kui-stat">
+      <div>
+        <p class="kui-eyebrow">Last 24 hours</p>
+        <p class="kui-stat__number">{statsData.sessionsLast24h}</p>
+      </div>
+      <div class="kui-stat__icon info">
+        <Clock class="kui-icon" />
+      </div>
+    </Card>
+    <Card class="kui-stat">
+      <div>
+        <p class="kui-eyebrow">Expired</p>
+        <p class="kui-stat__number">{statsData.expiredSessions}</p>
+      </div>
+      <div class="kui-stat__icon danger">
+        <AlertCircle class="kui-icon" />
+      </div>
+    </Card>
   </div>
 
-  <!-- Stats Cards -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Active Sessions</p>
-            <p class="text-3xl font-bold text-success">{statsData.activeSessions}</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-success/10 flex items-center justify-center">
-            <Activity class="h-6 w-6 text-success" />
-          </div>
-        </div>
-      </div>
-    </div>
+  <div class="kui-filters">
+    <label class="kui-input-with-icon">
+      <Search class="kui-icon" />
+      <input
+        type="text"
+        placeholder="Search sessions, users, IP…"
+        class="kui-input"
+        bind:value={searchQuery}
+      />
+    </label>
 
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Active Users</p>
-            <p class="text-3xl font-bold text-primary">{statsData.activeUsers}</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Users class="h-6 w-6 text-primary" />
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Last 24 Hours</p>
-            <p class="text-3xl font-bold text-info">{statsData.sessionsLast24h}</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-info/10 flex items-center justify-center">
-            <Clock class="h-6 w-6 text-info" />
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Expired</p>
-            <p class="text-3xl font-bold text-error">{statsData.expiredSessions}</p>
-          </div>
-          <div class="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center">
-            <AlertCircle class="h-6 w-6 text-error" />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Filters -->
-  <div class="mb-6 flex flex-wrap gap-4">
-    <div class="form-control">
-      <div class="input-group">
-        <span class="bg-base-200">
-          <Search class="h-4 w-4" />
-        </span>
-        <input
-          type="text"
-          placeholder="Search sessions..."
-          class="input input-bordered input-sm"
-          bind:value={searchQuery}
-        />
-      </div>
-    </div>
-
-    <select class="select select-bordered select-sm" bind:value={selectedUser}>
-      <option value="">All Users</option>
+    <select class="kui-select" bind:value={selectedUser}>
+      <option value="">All users</option>
       {#each uniqueUsers as user}
         <option value={user.id}>{user.name} ({user.email})</option>
       {/each}
     </select>
 
-    <select class="select select-bordered select-sm" bind:value={filterStatus}>
-      <option value="all">All Status</option>
-      <option value="active">Active Only</option>
-      <option value="expired">Expired Only</option>
+    <select class="kui-select" bind:value={filterStatus}>
+      <option value="all">All status</option>
+      <option value="active">Active only</option>
+      <option value="expired">Expired only</option>
     </select>
 
     {#if selectedUser}
-      <button
-        class="btn btn-outline btn-error btn-sm"
-        onclick={() => openRevokeAllConfirm(selectedUser)}
-      >
-        <Trash2 class="h-4 w-4" />
-        Revoke All for User
-      </button>
+      <Button variant="outline" class="danger-button" size="sm" onclick={() => openRevokeAllConfirm(selectedUser)}>
+        <Trash2 class="kui-icon" />
+        Revoke all for user
+      </Button>
     {/if}
   </div>
 
-  <!-- Sessions Table -->
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <div class="overflow-x-auto">
-        <table class="table">
+  <Card class="kui-panel">
+    {#if sessions.loading}
+      <div class="kui-center"><Loading /></div>
+    {:else}
+      <div class="kui-table-scroll">
+        <table class="kui-table">
           <thead>
             <tr>
               <th>User</th>
               <th>Device</th>
               <th>Location</th>
               <th>Created</th>
-              <th>Last Active</th>
+              <th>Last active</th>
               <th>Expires</th>
               <th>Status</th>
               <th class="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {#if sessions.loading}
-              <tr>
-                <td colspan="8" class="text-center py-8">
-                  <span class="loading loading-spinner loading-md"></span>
-                </td>
-              </tr>
-            {:else if filteredSessions.length > 0}
+            {#if filteredSessions.length > 0}
               {#each filteredSessions as session}
                 {@const deviceInfo = parseUserAgent(session.userAgent)}
-                <tr class="hover {session.isExpired ? 'opacity-50' : ''}">
+                <tr class:is-muted={session.isExpired}>
                   <td>
-                    <div class="flex items-center gap-3">
-                      <div class="avatar placeholder">
-                        <div class="bg-primary/10 text-primary rounded-full w-10">
-                          <span class="text-sm font-semibold">
-                            {session.userName?.charAt(0)?.toUpperCase() || 'U'}
-                          </span>
-                        </div>
-                      </div>
+                    <div class="kui-inline">
+                      <div class="kui-avatar">{session.userName?.charAt(0)?.toUpperCase() || 'U'}</div>
                       <div>
-                        <div class="font-medium">{session.userName}</div>
-                        <div class="text-xs text-base-content/60">{session.userEmail}</div>
+                        <div class="kui-strong">{session.userName}</div>
+                        <div class="kui-subtext">{session.userEmail}</div>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <div class="flex items-center gap-2">
-                      <MonitorSmartphone class="h-4 w-4 text-base-content/60" />
+                    <div class="kui-inline">
+                      <MonitorSmartphone class="kui-icon" />
                       <div>
-                        <div class="text-sm">{deviceInfo.browser}</div>
-                        <div class="text-xs text-base-content/60">{deviceInfo.os}</div>
+                        <div>{deviceInfo.browser}</div>
+                        <div class="kui-subtext">{deviceInfo.os}</div>
                       </div>
                     </div>
                   </td>
-                  <td>
-                    <div class="flex items-center gap-2">
-                      <MapPin class="h-4 w-4 text-base-content/60" />
-                      <span class="text-sm">{session.ipAddress}</span>
-                    </div>
+                  <td class="kui-inline">
+                    <MapPin class="kui-icon" />
+                    <span>{session.ipAddress}</span>
                   </td>
                   <td>
-                    <div class="text-sm">{getTimeAgo(session.createdAt)}</div>
-                    <div class="text-xs text-base-content/60">{formatDate(session.createdAt)}</div>
+                    <div>{getTimeAgo(session.createdAt)}</div>
+                    <div class="kui-subtext">{formatDate(session.createdAt)}</div>
                   </td>
-                  <td>
-                    <div class="text-sm">{getTimeAgo(session.lastAccessedAt)}</div>
-                  </td>
-                  <td>
-                    <div class="text-sm">{formatDate(session.expiresAt)}</div>
-                  </td>
+                  <td>{getTimeAgo(session.lastAccessedAt)}</td>
+                  <td>{formatDate(session.expiresAt)}</td>
                   <td>
                     {#if session.isExpired}
-                      <span class="badge badge-error badge-sm">Expired</span>
+                      <span class="kui-pill danger">Expired</span>
                     {:else if session.isCurrent}
-                      <span class="badge badge-success badge-sm">Current</span>
+                      <span class="kui-pill info">Current</span>
                     {:else}
-                      <span class="badge badge-success badge-sm">Active</span>
+                      <span class="kui-pill success">Active</span>
                     {/if}
                   </td>
                   <td class="text-right">
                     {#if !session.isExpired}
-                      <button
-                        class="btn btn-ghost btn-sm btn-square text-error"
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        class="danger-button"
                         onclick={() => openRevokeConfirm(session)}
-                        title="Revoke session"
+                        aria-label="Revoke session"
                       >
-                        <Trash2 class="h-4 w-4" />
-                      </button>
+                        <Trash2 class="kui-icon" />
+                      </Button>
                     {/if}
                   </td>
                 </tr>
               {/each}
             {:else}
               <tr>
-                <td colspan="8" class="text-center py-8">
-                  <div class="flex flex-col items-center gap-2">
-                    <Activity class="h-12 w-12 text-base-content/30" />
-                    <p class="text-base-content/70">No sessions found</p>
+                <td colspan="8">
+                  <div class="kui-empty">
+                    <Activity class="kui-empty__icon" />
+                    <p>No sessions found</p>
                     {#if searchQuery || selectedUser || filterStatus !== 'all'}
-                      <p class="text-sm text-base-content/50">Try adjusting your filters</p>
+                      <p class="kui-subtext">Try adjusting your filters.</p>
                     {/if}
                   </div>
                 </td>
@@ -349,85 +297,360 @@
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
+    {/if}
+  </Card>
 </div>
 
-<!-- Revoke Session Confirmation Modal -->
-{#if showRevokeConfirm && revokingSession}
-  <div class="modal modal-open">
-    <div class="modal-box">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-bold text-lg text-error">Revoke Session</h3>
-        <button class="btn btn-ghost btn-sm btn-circle" onclick={() => { showRevokeConfirm = false; revokingSession = null; }}>
-          <X class="h-4 w-4" />
-        </button>
+<Dialog
+  bind:open={showRevokeConfirm}
+  size="sm"
+  onClose={() => { showRevokeConfirm = false; revokingSession = null; }}
+>
+  {#if revokingSession}
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <div>
+          <p class="kui-eyebrow danger">Session</p>
+          <h3>Revoke session</h3>
+        </div>
+        <Button variant="ghost" size="xs" onclick={() => { showRevokeConfirm = false; revokingSession = null; }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
+    {/snippet}
 
-      <div class="space-y-4">
-        <p class="text-base-content/70">
-          Are you sure you want to revoke the session for <strong>{revokingSession.userName}</strong>?
-        </p>
-        <div class="bg-base-200 p-3 rounded-lg text-sm space-y-1">
-          <div><strong>Email:</strong> {revokingSession.userEmail}</div>
-          <div><strong>IP:</strong> {revokingSession.ipAddress}</div>
-          <div><strong>Created:</strong> {formatDate(revokingSession.createdAt)}</div>
-        </div>
-        <p class="text-sm text-warning">The user will be logged out immediately.</p>
+    <div class="kui-stack">
+      <p class="kui-subtext">Revoke access for <strong>{revokingSession.userName}</strong> immediately.</p>
+      <div class="kui-info-box">
+        <div><strong>Email:</strong> {revokingSession.userEmail}</div>
+        <div><strong>IP:</strong> {revokingSession.ipAddress}</div>
+        <div><strong>Created:</strong> {formatDate(revokingSession.createdAt)}</div>
+      </div>
+      <p class="kui-subtext warning">The user will be logged out right away.</p>
 
-        <div class="flex gap-2 justify-end">
-          <button type="button" class="btn btn-outline" onclick={() => { showRevokeConfirm = false; revokingSession = null; }}>
-            Cancel
-          </button>
-          <form {...revokeSession} onsubmit={() => { showRevokeConfirm = false; revokingSession = null; }}>
-            <input type="hidden" name="sessionToken" value={revokingSession.sessionToken} />
-            <button type="submit" class="btn btn-error">Revoke Session</button>
-          </form>
-        </div>
+      <div class="kui-modal-actions">
+        <Button variant="ghost" type="button" onclick={() => { showRevokeConfirm = false; revokingSession = null; }}>
+          Cancel
+        </Button>
+        <form {...revokeSession} onsubmit={() => { showRevokeConfirm = false; revokingSession = null; }}>
+          <input type="hidden" name="sessionToken" value={revokingSession.sessionToken} />
+          <Button type="submit" variant="primary" class="danger-button">Revoke session</Button>
+        </form>
       </div>
     </div>
-    <button type="button" class="modal-backdrop" onclick={() => { showRevokeConfirm = false; revokingSession = null; }} aria-label="Close modal"></button>
-  </div>
-{/if}
+  {/if}
+</Dialog>
 
-<!-- Revoke All User Sessions Confirmation Modal -->
-{#if showRevokeAllConfirm && revokingUserId}
-  <div class="modal modal-open">
-    <div class="modal-box">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-bold text-lg text-error">Revoke All Sessions</h3>
-        <button class="btn btn-ghost btn-sm btn-circle" onclick={() => { showRevokeAllConfirm = false; revokingUserId = null; }}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
-
-      {#if revokingUserId}
-        {@const user = uniqueUsers.find((u: any) => u.id === revokingUserId)}
-        <div class="space-y-4">
-          <p class="text-base-content/70">
-            Are you sure you want to revoke <strong>ALL</strong> sessions for <strong>{user?.name}</strong>?
-          </p>
-          <div class="bg-base-200 p-3 rounded-lg text-sm space-y-1">
-            <div><strong>Email:</strong> {user?.email}</div>
-            <div><strong>Active Sessions:</strong> {sessionsList.filter((s: any) => s.userId === revokingUserId && !s.isExpired).length}</div>
-          </div>
-          <p class="text-sm text-error">This will log the user out from all devices.</p>
-
-          <div class="flex gap-2 justify-end">
-            <button type="button" class="btn btn-outline" onclick={() => { showRevokeAllConfirm = false; revokingUserId = null; }}>
-              Cancel
-            </button>
-            <form {...revokeAllUserSessions} onsubmit={() => { showRevokeAllConfirm = false; revokingUserId = null; }}>
-              <input type="hidden" name="userId" value={revokingUserId} />
-              <button type="submit" class="btn btn-error">Revoke All Sessions</button>
-            </form>
-          </div>
+<Dialog
+  bind:open={showRevokeAllConfirm}
+  size="sm"
+  onClose={() => { showRevokeAllConfirm = false; revokingUserId = null; }}
+>
+  {#if revokingUserId}
+    {@const user = uniqueUsers.find((u: any) => u.id === revokingUserId)}
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <div>
+          <p class="kui-eyebrow danger">Security</p>
+          <h3>Revoke all sessions</h3>
         </div>
-      {/if}
-    </div>
-    <button type="button" class="modal-backdrop" onclick={() => { showRevokeAllConfirm = false; revokingUserId = null; }} aria-label="Close modal"></button>
-  </div>
-{/if}
+        <Button variant="ghost" size="xs" onclick={() => { showRevokeAllConfirm = false; revokingUserId = null; }} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
+      </div>
+    {/snippet}
 
-<!-- Hidden cleanup form -->
+    <div class="kui-stack">
+      <p class="kui-subtext">
+        Remove every active session for <strong>{user?.name}</strong>.
+      </p>
+      <div class="kui-info-box">
+        <div><strong>Email:</strong> {user?.email}</div>
+        <div><strong>Active sessions:</strong> {sessionsList.filter((s: any) => s.userId === revokingUserId && !s.isExpired).length}</div>
+      </div>
+      <p class="kui-subtext warning">This logs the user out on all devices.</p>
+
+      <div class="kui-modal-actions">
+        <Button variant="ghost" type="button" onclick={() => { showRevokeAllConfirm = false; revokingUserId = null; }}>
+          Cancel
+        </Button>
+        <form {...revokeAllUserSessions} onsubmit={() => { showRevokeAllConfirm = false; revokingUserId = null; }}>
+          <input type="hidden" name="userId" value={revokingUserId} />
+          <Button type="submit" variant="primary" class="danger-button">Revoke all sessions</Button>
+        </form>
+      </div>
+    </div>
+  {/if}
+</Dialog>
+
 <form {...cleanupExpiredSessions} id="cleanup-form" style="display: none;"></form>
+
+<style>
+  .kui-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .kui-page__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .kui-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .kui-icon-box {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+
+  .kui-icon-box.accent {
+    background: linear-gradient(135deg, #c7d2fe, #a5b4fc);
+    color: #1d1b72;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 26px;
+  }
+
+  .kui-eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--kui-muted, #6b7280);
+    margin: 0 0 6px;
+  }
+
+  .kui-subtext {
+    color: var(--kui-muted, #6b7280);
+    margin: 0;
+  }
+
+  .kui-stat-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .kui-stat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+  }
+
+  .kui-stat__number {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .kui-stat__icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: #f4f4f5;
+    color: #18181b;
+  }
+
+  .kui-stat__icon.success {
+    background: #ecfdf3;
+    color: #15803d;
+  }
+
+  .kui-stat__icon.primary {
+    background: #eef2ff;
+    color: #4338ca;
+  }
+
+  .kui-stat__icon.info {
+    background: #e0f2fe;
+    color: #0284c7;
+  }
+
+  .kui-stat__icon.danger {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+
+  .kui-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .kui-input-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    background: white;
+    min-width: 240px;
+  }
+
+  .kui-input {
+    border: none;
+    outline: none;
+    width: 100%;
+    font-size: 14px;
+    background: transparent;
+  }
+
+  .kui-select {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid #e4e4e7;
+    background: white;
+    min-width: 170px;
+  }
+
+  .kui-panel {
+    padding: 16px;
+  }
+
+  .kui-table-scroll {
+    overflow: auto;
+  }
+
+  .kui-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .kui-table th,
+  .kui-table td {
+    padding: 12px;
+    border-bottom: 1px solid #f1f1f3;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .kui-table th {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+  }
+
+  .kui-table tr.is-muted {
+    opacity: 0.6;
+  }
+
+  .kui-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: #eef2ff;
+    color: #4338ca;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+  }
+
+  .kui-strong {
+    font-weight: 600;
+  }
+
+  .kui-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f4f4f5;
+    color: #3f3f46;
+  }
+
+  .kui-pill.success {
+    background: #ecfdf3;
+    color: #15803d;
+  }
+
+  .kui-pill.info {
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  .kui-pill.danger {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
+
+  .text-right {
+    text-align: right;
+  }
+
+  .kui-empty {
+    padding: 32px 12px;
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+  }
+
+  .kui-empty__icon {
+    width: 40px;
+    height: 40px;
+    color: #d4d4d8;
+  }
+
+  .danger-button {
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+
+  .danger-button:hover {
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .kui-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .kui-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kui-info-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .kui-subtext.warning {
+    color: #b91c1c;
+  }
+
+  .kui-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+</style>

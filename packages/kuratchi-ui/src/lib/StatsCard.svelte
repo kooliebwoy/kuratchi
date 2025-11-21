@@ -28,65 +28,65 @@
   }: Props = $props();
   
   const variantClasses = {
-    primary: 'text-primary bg-primary/10',
-    secondary: 'text-secondary bg-secondary/10',
-    accent: 'text-accent bg-accent/10',
-    info: 'text-info bg-info/10',
-    success: 'text-success bg-success/10',
-    warning: 'text-warning bg-warning/10',
-    error: 'text-error bg-error/10'
+    primary: 'kui-stats-card__icon--primary',
+    secondary: 'kui-stats-card__icon--secondary',
+    accent: 'kui-stats-card__icon--accent',
+    info: 'kui-stats-card__icon--info',
+    success: 'kui-stats-card__icon--success',
+    warning: 'kui-stats-card__icon--warning',
+    error: 'kui-stats-card__icon--error'
   };
   
-  const trendColors = {
-    up: 'text-success',
-    down: 'text-error',
-    neutral: 'text-base-content/60'
+  const trendClasses = {
+    up: 'kui-stats-card__trend--up',
+    down: 'kui-stats-card__trend--down',
+    neutral: 'kui-stats-card__trend--neutral'
   };
 </script>
 
-<div class="card bg-base-100 shadow-sm {className}">
-  <div class="card-body p-6">
+<article class={`kui-card kui-stats-card ${className}`.trim()}>
+  <div class="kui-card__body">
     {#if loading}
-      <div class="flex justify-center items-center h-24">
-        <span class="loading loading-spinner loading-lg"></span>
+      <div class="kui-stats-card__loading">
+        <span class="kui-loader" data-type="spinner" data-size="lg" aria-hidden="true"></span>
       </div>
     {:else}
-      <div class="flex items-center justify-between">
-        <div class="flex-1">
-          <p class="text-xs text-base-content/60 uppercase font-semibold mb-1">{title}</p>
-          <p class="text-3xl font-bold">{value}</p>
+      <div class="kui-stats-card__layout">
+        <div class="kui-stats-card__content">
+          <p class="kui-stats-card__label">{title}</p>
+          <p class="kui-stats-card__value">{value}</p>
           
           {#if description}
-            <p class="text-sm text-base-content/60 mt-1">{description}</p>
+            <p class="kui-stats-card__description">{description}</p>
           {/if}
           
           {#if change !== undefined && trend}
-            <div class="flex items-center gap-1 mt-2">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 {trendColors[trend]}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="kui-stats-card__trend {trendClasses[trend]}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 {#if trend === 'up'}
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8-8 8-4-4-6 6" />
                 {:else if trend === 'down'}
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 17h8m0 0V9m0 8-8-8-4 4-6-6" />
                 {:else}
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" />
                 {/if}
               </svg>
-              <span class="text-sm font-medium {trendColors[trend]}">
+              <span class="kui-stats-card__trend-value">
                 {change > 0 ? '+' : ''}{change}%
               </span>
               {#if changeLabel}
-                <span class="text-sm text-base-content/60">{changeLabel}</span>
+                <span class="kui-stats-card__trend-label">{changeLabel}</span>
               {/if}
             </div>
           {/if}
         </div>
         
         {#if icon}
-          <div class="w-12 h-12 rounded-lg {variantClasses[variant]} flex items-center justify-center flex-shrink-0">
+          <div class={`kui-stats-card__icon ${variantClasses[variant]}`.trim()} aria-hidden="true">
             {@render icon()}
           </div>
         {/if}
       </div>
     {/if}
   </div>
-</div>
+</article>

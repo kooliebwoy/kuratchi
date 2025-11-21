@@ -15,13 +15,13 @@
 	let { label, issues = [], hint, children }: Props = $props();
 </script>
 
-<fieldset class="fieldset">
-	<legend class="fieldset-legend">{label}</legend>
+<fieldset class="kui-fieldset">
+	<legend class="kui-fieldset__legend">{label}</legend>
 	{@render children()}
 	{#if hint}
-		<p class="label-text-alt text-base-content/60 mt-1">{hint}</p>
+		<p class="kui-helper-text kui-fieldset__hint">{hint}</p>
 	{/if}
 	{#each issues as issue}
-		<p class="label text-error text-sm mt-1">{issue.message}</p>
+		<p class="kui-error-text kui-fieldset__error">{issue.message}</p>
 	{/each}
 </fieldset>

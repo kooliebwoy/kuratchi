@@ -1,21 +1,42 @@
 <script lang="ts">
   import type { ComponentType } from 'svelte';
+  import { Button } from '@kuratchi/ui';
 
   type QuickAction = {
     icon: ComponentType;
     label: string;
-    variant: string;
-    emphasis: string;
+    variant?: 'primary' | 'outline' | 'ghost';
+    emphasis?: 'solid' | 'subtle';
+    href?: string;
+    onclick?: () => void;
   };
 
   export let actions: QuickAction[] = [];
 </script>
 
-<div class="flex gap-2">
+<div class="kui-quick-actions">
   {#each actions as action}
-    <button class={`btn btn-sm ${action.variant} ${action.emphasis}`}>
-      <svelte:component this={action.icon} class="h-4 w-4" />
+    <Button
+      variant={action.variant || 'outline'}
+      size="xs"
+      href={action.href}
+      onclick={action.onclick}
+    >
+      <svelte:component this={action.icon} class="kui-icon" />
       {action.label}
-    </button>
+    </Button>
   {/each}
 </div>
+
+<style>
+  .kui-quick-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .kui-icon {
+    width: 14px;
+    height: 14px;
+  }
+</style>

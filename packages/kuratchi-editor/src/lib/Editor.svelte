@@ -7,7 +7,7 @@
     import { addComponentToEditor } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
-    import { MenuWidget } from "./plugins";
+    import { MenuWidget, BlogManager } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
     import PresetPreview from "./presets/PresetPreview.svelte";
     import { layoutPresets } from "./presets/layouts.js";
@@ -16,6 +16,7 @@
     import { blogStore } from "./stores/blog";
     import ThemePreview from "./themes/ThemePreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
+    import { getAllBlogThemes, getBlogTheme } from "./blog/themes";
     import {
         Box,
         ChevronLeft,
@@ -75,6 +76,7 @@ let {
     let activeSize = $state(initialDeviceSize);
     const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
     const themeOptions = getAllThemes();
+    const blogThemeOptions = getAllBlogThemes();
     let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
     let blogData = $state<BlogData>(blog ?? (siteMetadata as any)?.blog ?? createDefaultBlogData());
     let blogSnapshot = JSON.stringify(blogData);
@@ -138,8 +140,6 @@ let {
         }
     };
 
-    const selectedPost = $derived(() => blogData.posts.find((post) => post.id === selectedPostId) ?? null);
-
     // Handle changes from EditorCanvas
     const handleContentChange = (content: Array<Record<string, unknown>>) => {
         localPageData.content = content;
@@ -200,6 +200,22 @@ let {
             await onSiteMetadataUpdate(siteMetadata);
         }
         navState = ensureNavigation();
+    };
+
+    const applyBlogTheme = async (themeId: string) => {
+        if (!editor) return;
+        const theme = getBlogTheme(themeId);
+        const blocks = theme.createIndexBlocks();
+        blocks.forEach((snapshot) => {
+            const definition = getBlock(snapshot.type);
+            if (!definition) return;
+            const props = { ...snapshot };
+            addComponentToEditor(editor, definition.component, props);
+        });
+        await updateBlog((blog) => {
+            blog.settings = { ...blog.settings, ...theme.defaultSettings, themeId: theme.id };
+            return blog;
+        });
     };
 
     const adjustBrowserSize = (size: 'phone' | 'tablet' | 'desktop') => {
@@ -514,7 +530,7 @@ let {
         });
     };
 
-    const updateBlogSetting = async (field: keyof BlogSettings, value: string | boolean | null) => {
+    const updateBlogSetting = async (field: keyof BlogSettings, value: string | number | boolean | null) => {
         await updateBlog((blog) => {
             (blog.settings as any)[field] = value;
             return blog;
@@ -541,71 +557,71 @@ let {
     />
 {:else}
     <!-- Full editor UI -->
-    <div class="flex h-screen bg-base-100">
+    <div class="krt-editor">
         <!-- Left Icon Bar -->
-        <div class="w-16 bg-base-200 border-r border-base-300 flex flex-col items-center py-4 gap-2 shadow-lg">
+        <div class="krt-editor__rail">
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'blocks' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'blocks' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('blocks')}
                 title="Blocks"
             >
-                <Box class="w-5 h-5" />
+                <Box />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'layouts' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'layouts' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('layouts')}
                 title="Layouts"
             >
-                <LayoutGrid class="w-5 h-5" />
+                <LayoutGrid />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'site' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'site' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('site')}
                 title="Site"
             >
-                <PanelTop class="w-5 h-5" />
+                <PanelTop />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'themes' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'themes' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('themes')}
                 title="Themes"
             >
-                <Palette class="w-5 h-5" />
+                <Palette />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'blog' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'blog' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('blog')}
                 title="Blog"
             >
-                <BookOpen class="w-5 h-5" />
+                <BookOpen />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'navigation' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'navigation' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('navigation')}
                 title="Navigation"
             >
-                <Navigation class="w-5 h-5" />
+                <Navigation />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'settings' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'settings' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('settings')}
                 title="Settings"
             >
-                <Settings class="w-5 h-5" />
+                <Settings />
             </button>
             <button 
-                class="p-3 rounded-lg transition-all {activeTab === 'pages' ? 'bg-primary text-primary-content' : 'text-base-content/60 hover:bg-base-300'}"
+                class={`krt-editor__railButton ${activeTab === 'pages' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('pages')}
                 title="Pages"
             >
-                <FileText class="w-5 h-5" />
+                <FileText />
             </button>
         </div>
 
         <!-- Collapsible Sidebar -->
-        <div class="{sidebarOpen ? 'w-[24rem]' : 'w-0'} transition-all duration-300 bg-base-200 border-r border-base-300 flex flex-col overflow-hidden shadow-lg">
-            <div class="flex items-center justify-between p-3 border-b border-base-300 flex-shrink-0">
-                <h2 class="text-sm font-medium text-base-content">
+        <div class="krt-editor__sidebar" data-open={sidebarOpen}>
+            <div class="krt-editor__sidebarHeader">
+                <h2>
                     {activeTab === 'blocks' ? 'Blocks' : 
                      activeTab === 'layouts' ? 'Layouts' : 
                      activeTab === 'site' ? 'Site' : 
@@ -616,62 +632,62 @@ let {
                      activeTab === 'pages' ? 'Pages' : 'Page Builder'}
                 </h2>
                 <button 
-                    class="p-1 hover:bg-base-300 rounded transition-colors"
+                    class="krt-editor__sidebarClose"
                     onclick={() => sidebarOpen = false}
                 >
-                    <ChevronLeft class="w-4 h-4" />
+                    <ChevronLeft />
                 </button>
             </div>
 
-            <div class="flex-1 overflow-y-auto">
+            <div class="krt-editor__sidebarBody" data-open={sidebarOpen}>
                 {#if activeTab === 'blocks'}
                         {#if editor}
-                            <div class="flex flex-col gap-1 p-2">
+                            <div class="krt-editor__paletteList">
                                 {#each paletteBlocks as block}
                                     <button
-                                        class="flex items-center gap-2 px-2 py-1 rounded hover:bg-base-300 transition"
+                                        class="krt-editor__sidebarItem"
                                         onclick={() => addComponentToEditor(editor, block.component)}
                                     >
-                                        <block.icon class="text-base text-base-content/70" />
-                                        <span class="text-sm">{block.name}</span>
+                                        <block.icon />
+                                        <span>{block.name}</span>
                                     </button>
                                 {/each}
                             </div>
                         {:else}
-                            <div class="p-4 text-center text-base-content/60 text-sm">Editor loading...</div>
+                            <div class="krt-editor__loadingMessage">Editor loading...</div>
                         {/if}
                     {:else if activeTab === 'layouts'}
                         {#if editor}
-                            <div class="flex flex-col gap-3 p-3">
+                            <div class="krt-editor__sidebarList">
                                 {#each layoutPresets as preset}
                                     <button
-                                        class="flex flex-col gap-2 bg-base-100 rounded-lg shadow hover:ring-2 hover:ring-primary transition text-left p-2"
+                                        class="krt-editor__presetButton"
                                         onclick={() => insertLayoutPreset(preset.id)}
                                     >
                                         <PresetPreview {preset} />
-                                        <div class="text-xs font-medium">{preset.name}</div>
+                                        <div>{preset.name}</div>
                                     </button>
                                 {/each}
                             </div>
                         {:else}
-                            <div class="p-4 text-center text-base-content/60 text-sm">Editor loading...</div>
+                            <div class="krt-editor__loadingMessage">Editor loading...</div>
                         {/if}
                     {:else if activeTab === 'site'}
-                        <div class="p-3 space-y-4">
+                        <div class="krt-editor__sidebarSection">
                             <!-- Header Selection -->
                             <div>
-                                <div class="flex items-center gap-2 px-2 py-1 mb-2">
-                                    <PanelTop class="w-4 h-4 text-base-content/60" />
-                                    <span class="text-xs font-medium text-base-content/60 uppercase tracking-wide">Header</span>
+                                <div class="krt-editor__sectionLabel">
+                                    <PanelTop />
+                                    <span>Header</span>
                                 </div>
-                                <div class="space-y-2">
+                                <div class="krt-editor__presetStack">
                                     {#each headerPresets as preset}
                                         <button
-                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteHeader?.presetId === preset.id ? 'ring-2 ring-primary' : 'hover:ring-primary/50'} text-left p-2"
+                                            class={`krt-editor__presetButton ${siteHeader?.presetId === preset.id ? 'is-active' : ''}`}
                                             onclick={() => applyHeaderPreset(preset.id)}
                                         >
                                             <PresetPreview {preset} />
-                                            <div class="text-xs text-center py-1">{preset.name}</div>
+                                            <div>{preset.name}</div>
                                         </button>
                                     {/each}
                                 </div>
@@ -679,372 +695,83 @@ let {
 
                             <!-- Footer Selection -->
                             <div>
-                                <div class="flex items-center gap-2 px-2 py-1 mb-2">
-                                    <PanelBottom class="w-4 h-4 text-base-content/60" />
-                                    <span class="text-xs font-medium text-base-content/60 uppercase tracking-wide">Footer</span>
+                                <div class="krt-editor__sectionLabel">
+                                    <PanelBottom />
+                                    <span>Footer</span>
                                 </div>
-                                <div class="space-y-2">
+                                <div class="krt-editor__presetStack">
                                     {#each footerPresets as preset}
                                         <button
-                                            class="w-full bg-base-100 rounded shadow hover:ring-2 transition {siteFooter?.presetId === preset.id ? 'ring-2 ring-primary' : 'hover:ring-primary/50'} text-left p-2"
+                                            class={`krt-editor__presetButton ${siteFooter?.presetId === preset.id ? 'is-active' : ''}`}
                                             onclick={() => applyFooterPreset(preset.id)}
                                         >
                                             <PresetPreview {preset} />
-                                            <div class="text-xs text-center py-1">{preset.name}</div>
+                                            <div>{preset.name}</div>
                                         </button>
                                     {/each}
                                 </div>
                             </div>
                         </div>
                     {:else if activeTab === 'themes'}
-                        <div class="p-3 space-y-3">
+                        <div class="krt-editor__sidebarSection">
                             {#each themeOptions as theme}
                                 <button
-                                    class="w-full bg-base-100 rounded-lg shadow hover:ring-2 transition text-left p-3 flex flex-col gap-2 {selectedThemeId === theme.metadata.id ? 'ring-2 ring-primary' : 'hover:ring-primary/60'}"
+                                    class={`krt-editor__themeButton ${selectedThemeId === theme.metadata.id ? 'is-active' : ''}`}
                                     onclick={() => applyTheme(theme.metadata.id)}
                                 >
                                     <ThemePreview theme={theme} scale={0.35} />
-                                    <div class="space-y-0.5">
-                                        <div class="text-sm font-semibold text-base-content">{theme.metadata.name}</div>
-                                        <p class="text-xs text-base-content/70">{theme.metadata.description}</p>
+                                    <div class="krt-editor__themeDetails">
+                                        <div>{theme.metadata.name}</div>
+                                        <p>{theme.metadata.description}</p>
                                     </div>
                                 </button>
                             {/each}
                         </div>
                     {:else if activeTab === 'blog'}
-                        <div class="p-3 space-y-4">
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <div>
-                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Blog Settings</p>
-                                        <p class="text-xs text-base-content/60">Manage blog appearance and navigation</p>
-                                    </div>
-                                    <div class="flex gap-1">
-                                        <button class="btn btn-ghost btn-xs" onclick={() => addCustomNavItem('header', 'Blog', 'blog')}>
-                                            + Header
-                                        </button>
-                                        <button class="btn btn-ghost btn-xs" onclick={() => addCustomNavItem('footer', 'Blog', 'blog')}>
-                                            + Footer
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="p-3 space-y-3">
-                                    <label class="form-control">
-                                        <span class="label-text text-xs">Layout Style</span>
-                                        <select
-                                            class="select select-sm select-bordered"
-                                            value={blogData.settings.layout ?? 'classic'}
-                                            onchange={(e) => updateBlogSetting('layout', (e.currentTarget as HTMLSelectElement).value as BlogSettings['layout'])}
-                                        >
-                                            <option value="classic">Classic</option>
-                                            <option value="grid">Grid</option>
-                                            <option value="minimal">Minimal</option>
-                                        </select>
-                                    </label>
-                                    <label class="form-control">
-                                        <span class="label-text text-xs">Hero Style</span>
-                                        <select
-                                            class="select select-sm select-bordered"
-                                            value={blogData.settings.heroStyle ?? 'cover'}
-                                            onchange={(e) => updateBlogSetting('heroStyle', (e.currentTarget as HTMLSelectElement).value as BlogSettings['heroStyle'])}
-                                        >
-                                            <option value="cover">Cover</option>
-                                            <option value="split">Split</option>
-                                        </select>
-                                    </label>
-                                    <label class="label cursor-pointer justify-start gap-2 text-sm">
-                                        <input
-                                            type="checkbox"
-                                            class="checkbox checkbox-sm"
-                                            checked={blogData.settings.showAuthor ?? true}
-                                            onchange={(e) => updateBlogSetting('showAuthor', (e.currentTarget as HTMLInputElement).checked)}
-                                        />
-                                        <span class="label-text">Display author information</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Categories</span>
-                                    <button class="btn btn-primary btn-xs" onclick={addCategory}>Add</button>
-                                </div>
-                                <div class="p-3 space-y-2 max-h-48 overflow-y-auto">
-                                    {#if blogData.categories.length > 0}
-                                        {#each blogData.categories as category, index (category.id)}
-                                            <div class="bg-base-100 border border-base-300 rounded-lg p-2 space-y-1">
-                                                <input
-                                                    type="text"
-                                                    class="input input-xs input-bordered w-full"
-                                                    value={category.name}
-                                                    oninput={(e) => updateCategoryField(index, 'name', (e.currentTarget as HTMLInputElement).value)}
-                                                    placeholder="Category name"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    class="input input-xs input-bordered w-full"
-                                                    value={category.slug}
-                                                    oninput={(e) => updateCategoryField(index, 'slug', (e.currentTarget as HTMLInputElement).value)}
-                                                    placeholder="Slug"
-                                                />
-                                                <button class="btn btn-ghost btn-xs text-error" onclick={() => removeCategory(index)}>Remove</button>
-                                            </div>
-                                        {/each}
-                                    {:else}
-                                        <p class="text-xs text-base-content/60 text-center py-4">No categories yet.</p>
-                                    {/if}
-                                </div>
-                            </div>
-
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Tags</span>
-                                    <button class="btn btn-primary btn-xs" onclick={addTag}>Add</button>
-                                </div>
-                                <div class="p-3 space-y-2 max-h-40 overflow-y-auto">
-                                    {#if blogData.tags.length > 0}
-                                        {#each blogData.tags as tag, index (tag.id)}
-                                            <div class="bg-base-100 border border-base-300 rounded-lg p-2 space-y-1">
-                                                <input
-                                                    type="text"
-                                                    class="input input-xs input-bordered w-full"
-                                                    value={tag.name}
-                                                    oninput={(e) => updateTagField(index, 'name', (e.currentTarget as HTMLInputElement).value)}
-                                                    placeholder="Tag name"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    class="input input-xs input-bordered w-full"
-                                                    value={tag.slug}
-                                                    oninput={(e) => updateTagField(index, 'slug', (e.currentTarget as HTMLInputElement).value)}
-                                                    placeholder="Slug"
-                                                />
-                                                <button class="btn btn-ghost btn-xs text-error" onclick={() => removeTag(index)}>Remove</button>
-                                            </div>
-                                        {/each}
-                                    {:else}
-                                        <p class="text-xs text-base-content/60 text-center py-4">No tags yet.</p>
-                                    {/if}
-                                </div>
-                            </div>
-
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <span class="text-xs font-semibold uppercase tracking-wide text-base-content/80">Posts</span>
-                                    <div class="flex items-center gap-2">
-                                        <select
-                                            class="select select-xs select-bordered"
-                                            bind:value={selectedPageForBlog}
-                                        >
-                                            {#if getPageList().length > 0}
-                                                {#each getPageList() as page}
-                                                    <option value={page.id}>{page.title || 'Untitled'} ({page.slug || 'no slug'})</option>
-                                                {/each}
-                                            {:else}
-                                                <option disabled selected>No pages available</option>
-                                            {/if}
-                                        </select>
-                                        <button class="btn btn-primary btn-xs gap-1" onclick={() => addPostFromPageId(selectedPageForBlog)}>
-                                            <Plus class="w-3 h-3" />
-                                            Link Page
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="p-3 bg-base-200 rounded-b-lg">
-                                    <div class="grid grid-cols-1 md:grid-cols-[180px,1fr] gap-3">
-                                        <div class="space-y-1 max-h-64 overflow-y-auto">
-                                            {#if blogData.posts.length > 0}
-                                                {#each blogData.posts as post (post.id)}
-                                                    <button
-                                                        class="w-full rounded-lg px-2 py-1 text-left transition {selectedPostId === post.id ? 'bg-primary text-primary-content' : 'bg-base-100 hover:bg-base-300'}"
-                                                        onclick={() => selectedPostId = post.id}
-                                                    >
-                                                        <span class="text-sm font-semibold truncate">{post.title}</span>
-                                                        <span class="block text-xs opacity-70 truncate">/{post.slug}</span>
-                                                    </button>
-                                                {/each}
-                                            {:else}
-                                                <p class="text-xs text-base-content/60 text-center py-6">No posts yet. Create one above.</p>
-                                            {/if}
-                                        </div>
-                                        <div class="bg-base-100 rounded-lg p-3 space-y-2">
-                                            {#if selectedPost}
-                                                <div class="space-y-2">
-                                                    <label class="form-control">
-                                                        <span class="label-text text-xs">Linked Page</span>
-                                                        <select
-                                                            class="select select-sm select-bordered"
-                                                            value={selectedPost.pageId}
-                                                            onchange={(e) => {
-                                                                const pageId = (e.currentTarget as HTMLSelectElement).value;
-                                                                const page = getPageList().find((entry) => entry.id === pageId);
-                                                                if (!page) return;
-                                                                updatePost(selectedPost.id, (post) => {
-                                                                    post.pageId = page.id;
-                                                                    post.title = page.title ?? post.title;
-                                                                    post.slug = page.slug ?? slugify(post.title);
-                                                                });
-                                                            }}
-                                                        >
-                                                            {#each getPageList() as page}
-                                                                <option value={page.id}>{page.title || 'Untitled'} ({page.slug || 'no slug'})</option>
-                                                            {/each}
-                                                        </select>
-                                                    </label>
-                                                    <div>
-                                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Title</p>
-                                                        <p class="text-sm">{selectedPost.title}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Slug</p>
-                                                        <p class="text-sm text-base-content/70">/{selectedPost.slug}</p>
-                                                    </div>
-                                                    <button
-                                                        class="btn btn-outline btn-xs"
-                                                        onclick={() => {
-                                                            const page = getPageList().find((entry) => entry.id === selectedPost.pageId);
-                                                            if (!page) return;
-                                                            updatePost(selectedPost.id, (post) => {
-                                                                post.title = page.title ?? post.title;
-                                                                post.slug = page.slug ?? slugify(post.title);
-                                                            });
-                                                        }}
-                                                    >
-                                                        Sync title & slug from page
-                                                    </button>
-                                                    <label class="form-control">
-                                                        <span class="label-text text-xs">Excerpt</span>
-                                                        <textarea
-                                                            class="textarea textarea-sm textarea-bordered"
-                                                            rows="3"
-                                                            value={selectedPost.excerpt}
-                                                            oninput={(e) => updatePost(selectedPost.id, (post) => post.excerpt = (e.currentTarget as HTMLTextAreaElement).value)}
-                                                        ></textarea>
-                                                    </label>
-                                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                        <label class="form-control">
-                                                            <span class="label-text text-xs">Cover Image URL</span>
-                                                            <input
-                                                                type="text"
-                                                                class="input input-sm input-bordered"
-                                                                value={selectedPost.coverImage?.url ?? ''}
-                                                                oninput={(e) => updatePost(selectedPost.id, (post) => {
-                                                                    post.coverImage = { ...(post.coverImage ?? {}), url: (e.currentTarget as HTMLInputElement).value };
-                                                                })}
-                                                            />
-                                                        </label>
-                                                        <label class="form-control">
-                                                            <span class="label-text text-xs">Image Alt Text</span>
-                                                            <input
-                                                                type="text"
-                                                                class="input input-sm input-bordered"
-                                                                value={selectedPost.coverImage?.alt ?? ''}
-                                                                oninput={(e) => updatePost(selectedPost.id, (post) => {
-                                                                    post.coverImage = { ...(post.coverImage ?? {}), alt: (e.currentTarget as HTMLInputElement).value };
-                                                                })}
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                        <label class="form-control">
-                                                            <span class="label-text text-xs">Author</span>
-                                                            <input
-                                                                type="text"
-                                                                class="input input-sm input-bordered"
-                                                                value={selectedPost.author ?? ''}
-                                                                oninput={(e) => updatePost(selectedPost.id, (post) => post.author = (e.currentTarget as HTMLInputElement).value)}
-                                                            />
-                                                        </label>
-                                                        <label class="form-control">
-                                                            <span class="label-text text-xs">Publish Date</span>
-                                                            <input
-                                                                type="date"
-                                                                class="input input-sm input-bordered"
-                                                                value={selectedPost.publishedOn ?? toDateInputValue()}
-                                                                onchange={(e) => updatePost(selectedPost.id, (post) => post.publishedOn = (e.currentTarget as HTMLInputElement).value)}
-                                                            />
-                                                        </label>
-                                                    </div>
-                                                    <div class="space-y-1">
-                                                        <span class="text-xs font-semibold uppercase tracking-wide">Categories</span>
-                                                        <div class="flex flex-wrap gap-1">
-                                                            {#each blogData.categories as category}
-                                                                <label class="badge badge-lg gap-1 cursor-pointer {selectedPost?.categories?.includes(category.slug) ? 'badge-primary' : 'badge-outline'}">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        class="hidden"
-                                                                        checked={selectedPost?.categories?.includes(category.slug) ?? false}
-                                                                        onchange={() => selectedPost && togglePostCategory(selectedPost.id, category.slug)}
-                                                                    />
-                                                                    {category.name}
-                                                                </label>
-                                                            {/each}
-                                                            {#if blogData.categories.length === 0}
-                                                                <span class="text-xs text-base-content/60">No categories defined.</span>
-                                                            {/if}
-                                                        </div>
-                                                    </div>
-                                                    <div class="space-y-1">
-                                                        <span class="text-xs font-semibold uppercase tracking-wide">Tags</span>
-                                                        <div class="flex flex-wrap gap-1">
-                                                            {#each blogData.tags as tag}
-                                                                <label class="badge badge-sm gap-1 cursor-pointer {selectedPost?.tags?.includes(tag.slug) ? 'badge-secondary' : 'badge-outline'}">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        class="hidden"
-                                                                        checked={selectedPost?.tags?.includes(tag.slug) ?? false}
-                                                                        onchange={() => selectedPost && togglePostTag(selectedPost.id, tag.slug)}
-                                                                    />
-                                                                    {tag.name}
-                                                                </label>
-                                                            {/each}
-                                                            {#if blogData.tags.length === 0}
-                                                                <span class="text-xs text-base-content/60">No tags defined.</span>
-                                                            {/if}
-                                                        </div>
-                                                    </div>
-                                                    <div class="flex items-center justify-between">
-                                                        <button class="btn btn-error btn-sm" onclick={() => removePost(selectedPost.id)}>
-                                                            Delete Post
-                                                        </button>
-                                                        <button
-                                                            class={`btn btn-sm ${blogData.settings.featuredPostId === selectedPost.id ? 'btn-primary text-primary-content' : 'btn-outline'}`}
-                                                            onclick={() => setFeaturedPost(selectedPost.id)}
-                                                        >
-                                                            {blogData.settings.featuredPostId === selectedPost.id ? 'Featured' : 'Set as Featured'}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            {:else}
-                                                <div class="text-sm text-base-content/60 text-center py-6">
-                                                    Select a post to edit its details.
-                                                </div>
-                                            {/if}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <BlogManager
+                            blogData={blogData}
+                            selectedPageForBlog={selectedPageForBlog}
+                            selectedPostId={selectedPostId}
+                            addCustomNavItem={addCustomNavItem}
+                            addCategory={addCategory}
+                            updateCategoryField={updateCategoryField}
+                            removeCategory={removeCategory}
+                            addTag={addTag}
+                            updateTagField={updateTagField}
+                            removeTag={removeTag}
+                            addPostFromPageId={addPostFromPageId}
+                            updatePost={updatePost}
+                            removePost={removePost}
+                            togglePostCategory={togglePostCategory}
+                            togglePostTag={togglePostTag}
+                            setFeaturedPost={setFeaturedPost}
+                            updateBlogSetting={updateBlogSetting}
+                            slugify={slugify}
+                            toDateInputValue={toDateInputValue}
+                            getPageList={getPageList}
+                            blogThemes={blogThemeOptions}
+                            onApplyTheme={applyBlogTheme}
+                        />
                     {:else if activeTab === 'navigation'}
-                        <div class="p-3 space-y-4">
+                        <div class="krt-editor__sidebarSection">
                             <!-- Header Menu Section -->
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <div class="flex items-center gap-2">
-                                        <PanelTop class="w-4 h-4 text-primary" />
-                                        <span class="text-sm font-semibold text-base-content">Header</span>
+                            <div class="krt-editor__navCard">
+                                <div class="krt-editor__navCardHeader">
+                                    <div class="krt-editor__navCardTitle">
+                                        <PanelTop />
+                                        <span>Header</span>
                                     </div>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" class="toggle toggle-xs" checked={navState.header.visible} onchange={(e) => toggleHeaderVisible((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span class="text-xs text-base-content/70">Show</span>
+                                    <label>
+                                        <input type="checkbox" checked={navState.header.visible} onchange={(e) => toggleHeaderVisible((e.currentTarget as HTMLInputElement).checked)} />
+                                        <span>Show</span>
                                     </label>
                                 </div>
-                                <div class="px-3 py-2 space-y-2">
-                                    <label class="flex items-center gap-2 cursor-pointer text-xs">
-                                        <input type="checkbox" class="checkbox checkbox-xs" checked={navState.header.useMobileMenuOnDesktop} onchange={(e) => toggleHeaderMobileOnDesktop((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span class="text-base-content/70">Mobile menu on desktop</span>
+                                <div class="krt-editor__navCardBody">
+                                    <label>
+                                        <input type="checkbox" checked={navState.header.useMobileMenuOnDesktop} onchange={(e) => toggleHeaderMobileOnDesktop((e.currentTarget as HTMLInputElement).checked)} />
+                                        <span>Mobile menu on desktop</span>
                                     </label>
-                                    <div class="pt-1">
+                                    <div>
                                         <MenuWidget 
                                             menuItems={navState.header.items}
                                             pages={pages || []}
@@ -1057,18 +784,18 @@ let {
                             </div>
 
                             <!-- Footer Menu Section -->
-                            <div class="rounded-lg border border-base-300 bg-base-100 overflow-hidden">
-                                <div class="flex items-center justify-between px-3 py-2 bg-base-200 border-b border-base-300">
-                                    <div class="flex items-center gap-2">
-                                        <PanelBottom class="w-4 h-4 text-secondary" />
-                                        <span class="text-sm font-semibold text-base-content">Footer</span>
+                            <div class="krt-editor__navCard">
+                                <div class="krt-editor__navCardHeader">
+                                    <div class="krt-editor__navCardTitle">
+                                        <PanelBottom />
+                                        <span>Footer</span>
                                     </div>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" class="toggle toggle-xs" checked={navState.footer.visible} onchange={(e) => toggleFooterVisible((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span class="text-xs text-base-content/70">Show</span>
+                                    <label>
+                                        <input type="checkbox" checked={navState.footer.visible} onchange={(e) => toggleFooterVisible((e.currentTarget as HTMLInputElement).checked)} />
+                                        <span>Show</span>
                                     </label>
                                 </div>
-                                <div class="px-3 py-2">
+                                <div class="krt-editor__navCardBody">
                                     <MenuWidget 
                                         menuItems={navState.footer.items}
                                         pages={pages || []}
@@ -1080,37 +807,31 @@ let {
                             </div>
                         </div>
                     {:else if activeTab === 'settings'}
-                        <div class="p-3 space-y-4">
+                        <div class="krt-editor__settingsPanel">
                             <div>
-                                <h3 class="text-sm font-semibold text-base-content mb-3">Page Information</h3>
-                                <label class="form-control w-full">
-                                    <div class="label">
-                                        <span class="label-text text-xs">Page Title</span>
-                                    </div>
+                                <h3>Page Information</h3>
+                                <label>
+                                    <span>Page Title</span>
                                     <input 
                                         type="text" 
                                         placeholder="Page title here.." 
-                                        class="input input-sm input-bordered w-full" 
                                         bind:value={localPageData.title}
                                         onchange={() => handleTitleEdit(localPageData.title)}
                                     />
                                 </label>
                             </div>
 
-                            <div class="divider my-2"></div>
+                            <div class="krt-editor__divider"></div>
 
                             <div>
-                                <h3 class="text-sm font-semibold text-base-content mb-3">SEO Settings</h3>
-                                <div class="space-y-3">
-                                    <label class="form-control w-full">
-                                        <div class="label">
-                                            <span class="label-text text-xs">Meta Title</span>
-                                        </div>
+                                <h3>SEO Settings</h3>
+                                <div class="krt-editor__formStack">
+                                    <label>
+                                        <span>Meta Title</span>
                                         <input 
                                             type="text" 
                                             bind:value={localPageData.seoTitle}
                                             placeholder="Meta title here.." 
-                                            class="input input-sm input-bordered w-full" 
                                             onchange={() => handleSEOEdit({
                                                 seoTitle: localPageData.seoTitle,
                                                 seoDescription: localPageData.seoDescription,
@@ -1119,12 +840,9 @@ let {
                                         />
                                     </label>
 
-                                    <label class="form-control w-full">
-                                        <div class="label">
-                                            <span class="label-text text-xs">Meta Description</span>
-                                        </div>
+                                    <label>
+                                        <span>Meta Description</span>
                                         <textarea 
-                                            class="textarea textarea-sm textarea-bordered" 
                                             bind:value={localPageData.seoDescription}
                                             placeholder="Meta Description here..."
                                             rows="3"
@@ -1136,15 +854,12 @@ let {
                                         ></textarea>
                                     </label>
 
-                                    <label class="form-control w-full">
-                                        <div class="label">
-                                            <span class="label-text text-xs">Page Slug</span>
-                                        </div>
+                                    <label>
+                                        <span>Page Slug</span>
                                         <input 
                                             type="text" 
                                             bind:value={localPageData.slug}
                                             placeholder="page-slug-here" 
-                                            class="input input-sm input-bordered w-full" 
                                             onchange={() => handleSEOEdit({
                                                 seoTitle: localPageData.seoTitle,
                                                 seoDescription: localPageData.seoDescription,
@@ -1156,51 +871,49 @@ let {
                             </div>
                         </div>
                     {:else if activeTab === 'pages'}
-                        <div class="p-3 space-y-3">
-                            <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-sm font-semibold text-base-content">Pages</h3>
+                        <div class="krt-editor__sidebarSection">
+                            <div class="krt-editor__sidebarSectionHeader">
+                                <h3>Pages</h3>
                                 <button
-                                    class="btn btn-primary btn-xs gap-1"
+                                    class="krt-editor__ghostButton"
                                     onclick={onCreatePage}
                                     title="Create a new page"
                                 >
-                                    <Plus class="w-3 h-3" />
-                                    <span class="hidden sm:inline">New</span>
+                                    <Plus />
+                                    <span>New</span>
                                 </button>
                             </div>
                             
                             {#if pages && pages.length > 0}
-                                <div class="space-y-1">
+                                <div class="krt-editor__pageList">
                                     {#each pages as page (page.id)}
-                                        <div class="px-3 py-2 rounded-lg transition-all {currentPageId === page.id 
-                                                ? 'bg-primary text-primary-content shadow-md' 
-                                                : 'bg-base-200 text-base-content hover:bg-base-300'}">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <button class="flex-1 text-left" onclick={() => onPageSwitch?.(page.id)} title={page.title}>
-                                                    <div class="flex items-center justify-between">
-                                                        <span class="font-medium text-sm truncate">{page.title}</span>
+                                        <div class={`krt-editor__pageListItem ${currentPageId === page.id ? 'is-active' : ''}`}>
+                                            <div class="krt-editor__pageListItemInner">
+                                                <button onclick={() => onPageSwitch?.(page.id)} title={page.title}>
+                                                    <div>
+                                                        <span>{page.title}</span>
                                                         {#if page.isSpecialPage}
-                                                            <span class="text-xs opacity-75">🏠</span>
+                                                            <span>🏠</span>
                                                         {/if}
                                                     </div>
-                                                    <span class="text-xs opacity-75 truncate">/{page.slug}</span>
+                                                    <span>/{page.slug}</span>
                                                 </button>
-                                                <div class="flex gap-1">
-                                                    <button class="btn btn-ghost btn-xs" title="Add to Header" onclick={() => addPageToMenu('header', page)}>+ Header</button>
-                                                    <button class="btn btn-ghost btn-xs" title="Add to Footer" onclick={() => addPageToMenu('footer', page)}>+ Footer</button>
+                                                <div>
+                                                    <button onclick={() => addPageToMenu('header', page)}>+ Header</button>
+                                                    <button onclick={() => addPageToMenu('footer', page)}>+ Footer</button>
                                                 </div>
                                             </div>
                                         </div>
                                     {/each}
                                 </div>
                             {:else}
-                                <div class="text-center py-6 text-base-content/60">
-                                    <p class="text-sm mb-3">No pages yet</p>
+                                <div class="krt-editor__emptyState">
+                                    <p>No pages yet</p>
                                     <button
-                                        class="btn btn-primary btn-sm gap-2"
+                                        class="krt-editor__primaryButton"
                                         onclick={onCreatePage}
                                     >
-                                        <Plus class="w-4 h-4" />
+                                        <Plus />
                                         Create First Page
                                     </button>
                                 </div>
@@ -1211,57 +924,57 @@ let {
         </div>
 
         <!-- Main Content Area with Canvas and Right Sidebar -->
-        <div class="flex-1 flex flex-col min-w-0">
+        <div class="krt-editor__workspace">
             <!-- Header Toolbar -->
-            <div class="border-b border-base-300 bg-base-100 flex justify-between items-center px-6 py-3 shadow-sm">
+            <div class="krt-editor__toolbar">
                 <!-- Left: Page Info -->
-                <div class="flex gap-4 items-center min-w-0">
-                    <div class="flex flex-col gap-0.5">
-                        <span class="text-sm font-semibold text-base-content truncate">{localPageData.title}</span>
-                        <span class="text-xs text-base-content/60">{localPageData.domain}</span>
+                <div class="krt-editor__toolbarSection krt-editor__toolbarSection--title">
+                    <div>
+                        <span>{localPageData.title}</span>
+                        <span>{localPageData.domain}</span>
                     </div>
                 </div>
 
                 <!-- Center: Device Size Toggle -->
-                <div class="flex gap-2 bg-base-200 rounded-lg p-1.5 border border-base-300">
+                <div class="krt-editor__deviceToggle">
                     <button 
-                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='phone' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
+                        class={`krt-editor__deviceToggleButton ${activeSize==='phone' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('phone')}
                         title="Mobile (390px)"
                     >
-                        <Smartphone class="w-4 h-4" />
+                        <Smartphone />
                     </button>
                     <button 
-                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='tablet' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
+                        class={`krt-editor__deviceToggleButton ${activeSize==='tablet' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('tablet')}
                         title="Tablet (768px)"
                     >
-                        <Tablet class="w-4 h-4" />
+                        <Tablet />
                     </button>
                     <button 
-                        class="px-3 py-1.5 rounded-md text-sm font-medium transition-all {activeSize==='desktop' ? 'bg-primary text-primary-content shadow-md' : 'text-base-content/60 hover:text-base-content hover:bg-base-300'}"
+                        class={`krt-editor__deviceToggleButton ${activeSize==='desktop' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('desktop')}
                         title="Desktop (1440px)"
                     >
-                        <Monitor class="w-4 h-4" />
+                        <Monitor />
                     </button>
                 </div>
 
                 <!-- Right: Action Buttons -->
-                <div class="flex gap-2">
-                    <div class="flex items-center gap-2 text-xs text-base-content/60">
-                        <div class="w-2 h-2 bg-success rounded-full animate-pulse"></div>
+                <div class="krt-editor__toolbarSection krt-editor__toolbarSection--status">
+                    <div>
+                        <div></div>
                         <span>Auto-saving</span>
                     </div>
                 </div>
             </div>
 
             <!-- Canvas and Right Sidebar Container -->
-            <div class="flex-1 flex min-w-0 min-h-0">
+            <div class="krt-editor__mainPanel">
                 <!-- Canvas -->
-                <div class="flex-1 bg-slate-100 overflow-auto min-h-0">
+                <div class="krt-editor__canvasShell">
                     <div
-                        class="mx-auto w-full"
+                        class="krt-editor__canvasFrame"
                         style:max-width={activeSize === 'phone' ? '390px' : activeSize === 'tablet' ? '768px' : '1440px'}
                         bind:this={browserMockup}
                     >
@@ -1286,27 +999,27 @@ let {
                 </div>
 
                 <!-- Right Sidebar -->
-                <div class="{$rightPanel.open ? 'w-80' : 'w-0'} transition-all duration-300 bg-base-200 border-l border-base-300 flex flex-col overflow-hidden shrink-0 shadow-lg">
+                <div class="krt-editor__inspector" data-open={$rightPanel.open}>
                     {#if $rightPanel.open}
-                        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-100 flex-shrink-0">
-                            <div class="flex items-center gap-2">
-                                <div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                                <h2 class="text-sm font-semibold text-base-content">{$rightPanel.title}</h2>
+                        <div class="krt-editor__inspectorHeader">
+                            <div>
+                                <div></div>
+                                <h2>{$rightPanel.title}</h2>
                             </div>
                             <button 
-                                class="p-1.5 hover:bg-base-300 rounded-lg transition-colors group text-base-content/60 hover:text-base-content"
+                                class="krt-editor__inspectorClose"
                                 onclick={closeRightPanel}
                             >
-                                <ChevronRight class="w-4 h-4" />
+                                <ChevronRight />
                             </button>
                         </div>
-                        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                        <div class="krt-editor__inspectorBody">
                             {#if $rightPanel.content}
                                 {@render $rightPanel.content()}
                             {/if}
                         </div>
-                        <div class="p-3 border-t border-base-300 bg-base-100 flex-shrink-0">
-                            <div class="text-xs text-base-content/60 text-center">Auto-saving...</div>
+                        <div class="krt-editor__inspectorFooter">
+                            <div>Auto-saving...</div>
                         </div>
                     {/if}
                 </div>
@@ -1315,3 +1028,538 @@ let {
     </div>
 
 {/if}
+
+<style>
+    .krt-editor {
+        --krt-editor-rail-width: 4.25rem;
+        --krt-editor-sidebar-width: 24rem;
+        --krt-editor-inspector-width: 20rem;
+        display: flex;
+        min-height: 100vh;
+        background: var(--krt-color-bg);
+        color: var(--krt-color-text);
+    }
+
+    .krt-editor__rail {
+        width: var(--krt-editor-rail-width);
+        background: #f1f3f7;
+        border-right: 1px solid var(--krt-color-border-subtle);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem 0.5rem;
+        box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.05);
+    }
+
+    .krt-editor__railButton {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: var(--krt-radius-md);
+        border: none;
+        background: transparent;
+        color: rgba(17, 24, 39, 0.65);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .krt-editor__railButton:is(:hover, :focus-visible) {
+        background: rgba(15, 23, 42, 0.08);
+        color: var(--krt-color-text);
+    }
+
+    .krt-editor__railButton.is-active {
+        background: var(--krt-color-primary);
+        color: #fff;
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+    }
+
+    .krt-editor__railButton :global(svg) {
+        width: 20px;
+        height: 20px;
+    }
+
+    .krt-editor__sidebar {
+        width: 0;
+        background: #f8f9fb;
+        border-right: 1px solid var(--krt-color-border-subtle);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: width 220ms ease;
+    }
+
+    .krt-editor__sidebar[data-open="true"] {
+        width: var(--krt-editor-sidebar-width);
+    }
+
+    .krt-editor__sidebarHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle);
+        background: #fff;
+        flex-shrink: 0;
+    }
+
+    .krt-editor__sidebarHeader h2 {
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .krt-editor__sidebarClose {
+        border: none;
+        border-radius: var(--krt-radius-sm);
+        background: transparent;
+        color: rgba(17, 24, 39, 0.6);
+        padding: 0.25rem;
+        cursor: pointer;
+    }
+
+    .krt-editor__sidebarClose:is(:hover, :focus-visible) {
+        background: rgba(15, 23, 42, 0.08);
+        color: var(--krt-color-text);
+    }
+
+    .krt-editor__sidebarBody {
+        flex: 1;
+        overflow-y: auto;
+        opacity: 0;
+        transition: opacity 200ms ease;
+    }
+
+    .krt-editor__sidebarBody[data-open="true"] {
+        opacity: 1;
+    }
+
+    .krt-editor__sidebarItem {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        border: none;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        color: var(--krt-color-text);
+        border-radius: var(--krt-radius-md);
+        cursor: pointer;
+        transition: background 160ms ease;
+    }
+
+    .krt-editor__sidebarItem:is(:hover, :focus-visible) {
+        background: rgba(15, 23, 42, 0.08);
+    }
+
+    .krt-editor__sidebarItem :global(svg) {
+        width: 18px;
+        height: 18px;
+        color: rgba(17, 24, 39, 0.5);
+    }
+
+    .krt-editor__paletteList {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        padding: 0.5rem;
+    }
+
+    .krt-editor__loadingMessage {
+        padding: 1rem;
+        text-align: center;
+        font-size: 0.85rem;
+        color: rgba(17, 24, 39, 0.55);
+    }
+
+    .krt-editor__sidebarList,
+    .krt-editor__sidebarSection {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-editor__presetStack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__sectionLabel {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(17, 24, 39, 0.55);
+    }
+
+    .krt-editor__sectionLabel :global(svg) {
+        width: 16px;
+        height: 16px;
+        color: var(--krt-color-primary);
+    }
+
+    .krt-editor__presetButton,
+    .krt-editor__themeButton {
+        border: none;
+        border-radius: var(--krt-radius-md);
+        background: #fff;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        padding: 0.75rem;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, border 160ms ease;
+    }
+
+    .krt-editor__presetButton.is-active,
+    .krt-editor__themeButton.is-active {
+        border: 1px solid var(--krt-color-primary);
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+    }
+
+    .krt-editor__themeDetails {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        font-size: 0.85rem;
+    }
+
+    .krt-editor__themeButton p {
+        margin: 0;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.6);
+    }
+
+    .krt-editor__settingsPanel {
+        padding: 0.75rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .krt-editor__navCard {
+        border: 1px solid var(--krt-color-border-subtle);
+        border-radius: var(--krt-radius-md);
+        background: #fff;
+    }
+
+    .krt-editor__navCardHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle);
+        background: #f4f6fb;
+    }
+
+    .krt-editor__navCardTitle {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-weight: 600;
+    }
+
+    .krt-editor__navCardHeader label {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.65);
+    }
+
+    .krt-editor__navCardBody {
+        padding: 0.75rem 1rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__navCardBody label {
+        display: flex;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.7);
+    }
+
+    .krt-editor__divider {
+        height: 1px;
+        background: var(--krt-color-border-subtle);
+        margin: 0.75rem 0;
+    }
+
+    .krt-editor__formStack label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.7);
+    }
+
+    .krt-editor__formStack input,
+    .krt-editor__formStack textarea,
+    .krt-editor__sidebarSection input[type="text"] {
+        border-radius: var(--krt-radius-sm);
+        border: 1px solid var(--krt-color-border-subtle);
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
+    }
+
+    .krt-editor__sidebarSectionHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__ghostButton {
+        border: 1px solid var(--krt-color-border-subtle);
+        background: transparent;
+        border-radius: var(--krt-radius-sm);
+        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+    }
+
+    .krt-editor__ghostButton :global(svg) {
+        width: 14px;
+        height: 14px;
+    }
+
+    .krt-editor__pageList {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__pageListItem {
+        background: #f2f4f8;
+        border-radius: var(--krt-radius-md);
+        padding: 0.6rem;
+        transition: background 160ms ease, color 160ms ease;
+    }
+
+    .krt-editor__pageListItem.is-active {
+        background: var(--krt-color-primary);
+        color: #fff;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+    }
+
+    .krt-editor__pageListItemInner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__pageListItemInner button {
+        border: none;
+        background: transparent;
+        text-align: left;
+        flex: 1;
+        cursor: pointer;
+    }
+
+    .krt-editor__pageListItemInner button span:last-child {
+        display: block;
+        font-size: 0.75rem;
+        opacity: 0.7;
+    }
+
+    .krt-editor__pageListItemInner > div:last-child {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .krt-editor__pageListItemInner > div:last-child button {
+        border: 1px dashed rgba(255, 255, 255, 0.4);
+        border-radius: var(--krt-radius-pill);
+        padding: 0.2rem 0.6rem;
+        font-size: 0.7rem;
+        color: inherit;
+    }
+
+    .krt-editor__emptyState {
+        text-align: center;
+        padding: 2.5rem 1rem;
+        color: rgba(17, 24, 39, 0.6);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-editor__primaryButton {
+        border: none;
+        border-radius: var(--krt-radius-pill);
+        background: var(--krt-color-primary);
+        color: #fff;
+        padding: 0.5rem 1rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        cursor: pointer;
+    }
+
+    .krt-editor__workspace {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .krt-editor__toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.85rem 1.5rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle);
+        background: #fff;
+        flex-shrink: 0;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    .krt-editor__toolbarSection {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__toolbarSection--title span:first-child {
+        font-weight: 600;
+        display: block;
+    }
+
+    .krt-editor__toolbarSection--title span:last-child {
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.6);
+    }
+
+    .krt-editor__deviceToggle {
+        display: inline-flex;
+        background: #f2f4f8;
+        border-radius: var(--krt-radius-pill);
+        padding: 0.25rem;
+        border: 1px solid var(--krt-color-border-subtle);
+        gap: 0.25rem;
+    }
+
+    .krt-editor__deviceToggleButton {
+        border: none;
+        background: transparent;
+        border-radius: var(--krt-radius-pill);
+        width: 2.5rem;
+        height: 2rem;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        color: rgba(17, 24, 39, 0.6);
+    }
+
+    .krt-editor__deviceToggleButton.is-active {
+        background: var(--krt-color-primary);
+        color: #fff;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+    }
+
+    .krt-editor__mainPanel {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+    }
+
+    .krt-editor__canvasShell {
+        flex: 1;
+        background: #eef1f6;
+        overflow: auto;
+        padding: 1.5rem;
+    }
+
+    .krt-editor__canvasFrame {
+        margin: 0 auto;
+        width: 100%;
+        transition: max-width 200ms ease;
+    }
+
+    .krt-editor__inspector {
+        width: 0;
+        background: #f8f9fb;
+        border-left: 1px solid var(--krt-color-border-subtle);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: width 220ms ease;
+        box-shadow: inset 1px 0 0 rgba(15, 23, 42, 0.05);
+    }
+
+    .krt-editor__inspector[data-open="true"] {
+        width: var(--krt-editor-inspector-width);
+    }
+
+    .krt-editor__inspectorHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle);
+        background: #fff;
+        flex-shrink: 0;
+        gap: 0.75rem;
+    }
+
+    .krt-editor__inspectorHeader > div {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .krt-editor__inspectorHeader > div div {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 999px;
+        background: #10b981;
+        animation: pulse 1.5s ease infinite;
+    }
+
+    .krt-editor__inspectorClose {
+        border: none;
+        background: transparent;
+        border-radius: var(--krt-radius-sm);
+        padding: 0.35rem;
+        cursor: pointer;
+        color: rgba(17, 24, 39, 0.6);
+    }
+
+    .krt-editor__inspectorBody {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .krt-editor__inspectorFooter {
+        padding: 0.75rem;
+        border-top: 1px solid var(--krt-color-border-subtle);
+        background: #fff;
+        text-align: center;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.6);
+    }
+
+    @keyframes pulse {
+        0% { opacity: 0.4; }
+        50% { opacity: 1; }
+        100% { opacity: 0.4; }
+    }
+</style>

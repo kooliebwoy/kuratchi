@@ -1,13 +1,15 @@
-<script>
+<script lang="ts">
   import { LoginForm, SignupForm, LogoutButton, Dialog } from '$lib';
   
   let loading = $state(false);
   let error = $state('');
   let dialogOpen = $state(false);
   
-  function handleCredentialsSubmit(e) {
+  function handleCredentialsSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const formData = new FormData(e.target);
+    const form = e.currentTarget as HTMLFormElement | null;
+    if (!form) return;
+    const formData = new FormData(form);
     console.log('Credentials:', {
       email: formData.get('email'),
       password: formData.get('password')
@@ -15,14 +17,16 @@
     alert('Check console for form data');
   }
   
-  function handleMagicLinkSubmit(e) {
+  function handleMagicLinkSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const formData = new FormData(e.target);
+    const form = e.currentTarget as HTMLFormElement | null;
+    if (!form) return;
+    const formData = new FormData(form);
     console.log('Magic link:', { email: formData.get('email') });
     alert('Check console for email');
   }
   
-  function handleOAuthClick(provider) {
+  function handleOAuthClick(provider: string) {
     console.log('OAuth provider:', provider);
     alert(`OAuth: ${provider}`);
   }
@@ -32,9 +36,11 @@
     alert('Logout clicked - wire your logic here!');
   }
   
-  function handleDialogSubmit(e) {
+  function handleDialogSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const formData = new FormData(e.target);
+    const form = e.currentTarget as HTMLFormElement | null;
+    if (!form) return;
+    const formData = new FormData(form);
     console.log('Dialog form:', {
       name: formData.get('name'),
       description: formData.get('description')
@@ -43,21 +49,21 @@
   }
 </script>
 
-<div class="min-h-screen bg-base-200 p-8">
-  <div class="container mx-auto">
-    <div class="mb-8">
-      <h1 class="text-4xl font-bold">Kuratchi UI Components</h1>
-      <p class="text-base-content/70 mt-2">Pure presentational components - you wire the logic!</p>
+<div class="kui-page">
+  <div class="kui-container">
+    <div class="kui-page__hero">
+      <h1 class="kui-hero-title">Kuratchi UI Components</h1>
+      <p class="kui-hero-subtitle">Pure presentational components - you wire the logic.</p>
     </div>
     
-    <div class="grid gap-8">
-      <section class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Login Form Component</h2>
-          <p class="text-sm text-base-content/70 mb-4">
+    <div class="kui-stack">
+      <section class="kui-section">
+        <div class="kui-section__body">
+          <h2 class="kui-card__title">Login Form Component</h2>
+          <p class="kui-helper-text">
             Multi-mode auth form with tabs. Check browser console when submitting.
           </p>
-          <div class="flex justify-center p-8">
+          <div class="kui-demo-center">
             <LoginForm
               showCredentials={true}
               showMagicLink={true}
@@ -72,13 +78,13 @@
         </div>
       </section>
       
-      <section class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Signup Form Component</h2>
-          <p class="text-sm text-base-content/70 mb-4">
+      <section class="kui-section">
+        <div class="kui-section__body">
+          <h2 class="kui-card__title">Signup Form Component</h2>
+          <p class="kui-helper-text">
             Registration form with password confirmation. Check browser console when submitting.
           </p>
-          <div class="flex justify-center p-8">
+          <div class="kui-demo-center">
             <SignupForm
               showOAuth={true}
               {loading}
@@ -90,13 +96,13 @@
         </div>
       </section>
       
-      <section class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Logout Button Component</h2>
-          <p class="text-sm text-base-content/70 mb-4">
+      <section class="kui-section">
+        <div class="kui-section__body">
+          <h2 class="kui-card__title">Logout Button Component</h2>
+          <p class="kui-helper-text">
             Styled button with variants and sizes. Wire your logout logic.
           </p>
-          <div class="flex gap-4 flex-wrap">
+          <div class="kui-demo-button-row">
             <LogoutButton onclick={handleLogout} />
             <LogoutButton variant="primary" onclick={handleLogout} />
             <LogoutButton variant="error" text="Log Out" onclick={handleLogout} />
@@ -107,64 +113,60 @@
         </div>
       </section>
       
-      <section class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title">Dialog Component (with Snippets)</h2>
-          <p class="text-sm text-base-content/70 mb-4">
+      <section class="kui-section">
+        <div class="kui-section__body">
+          <h2 class="kui-card__title">Dialog Component (with Snippets)</h2>
+          <p class="kui-helper-text">
             Flexible modal using Svelte 5 snippets. Check console when submitting.
           </p>
           
-          <div class="space-y-4">
+          <div class="kui-stack">
             <!-- Example 1: Using trigger snippet -->
             <Dialog bind:open={dialogOpen} size="md">
-              {#snippet trigger(open)}
-                <button class="btn btn-primary" onclick={open}>
+              {#snippet trigger(open: () => void)}
+                <button class="kui-button kui-button--primary" onclick={open}>
                   Open Dialog with Snippets
                 </button>
               {/snippet}
               
               {#snippet header()}
-                <h3 class="text-lg font-bold">Create New Item</h3>
-                <p class="text-sm text-base-content/70">Fill out the form below</p>
+                <h3 class="kui-card__title">Create New Item</h3>
+                <p class="kui-helper-text">Fill out the form below</p>
               {/snippet}
               
               <form onsubmit={handleDialogSubmit}>
-                <div class="form-control mb-4">
-                  <label class="label" for="dialog-name">
-                    <span class="label-text">Name</span>
-                  </label>
+                <div class="kui-form-control">
+                  <label class="kui-label" for="dialog-name">Name</label>
                   <input
                     id="dialog-name"
                     name="name"
                     type="text"
-                    class="input input-bordered"
+                    class="kui-input"
                     placeholder="Enter name..."
                     required
                   />
                 </div>
                 
-                <div class="form-control">
-                  <label class="label" for="dialog-desc">
-                    <span class="label-text">Description</span>
-                  </label>
+                <div class="kui-form-control">
+                  <label class="kui-label" for="dialog-desc">Description</label>
                   <textarea
                     id="dialog-desc"
                     name="description"
-                    class="textarea textarea-bordered"
+                    class="kui-textarea"
                     placeholder="Enter description..."
                     required
                   ></textarea>
                 </div>
                 
-                {#snippet actions(close)}
-                  <button type="button" class="btn" onclick={close}>Cancel</button>
-                  <button type="submit" class="btn btn-primary">Create</button>
+                {#snippet actions(close: () => void)}
+                  <button type="button" class="kui-button kui-button--ghost" onclick={close}>Cancel</button>
+                  <button type="submit" class="kui-button kui-button--primary">Create</button>
                 {/snippet}
               </form>
             </Dialog>
             
             <!-- Example 2: Manual open/close -->
-            <button class="btn btn-secondary" onclick={() => dialogOpen = true}>
+            <button class="kui-button kui-button--secondary" onclick={() => dialogOpen = true}>
               Open via State Binding
             </button>
           </div>

@@ -14,7 +14,7 @@
 
 <textarea 
 	{...field.as('text')} 
-	class="textarea {className}"
+	class={`kui-textarea ${className}`.trim()}
 	{placeholder}
 	{rows}
 ></textarea>

@@ -2,8 +2,7 @@
     import { onDestroy, onMount, tick } from "svelte";
     import { blocks, getBlock } from "./registry/blocks.svelte";
     import type { BlockDefinition } from "./registry/blocks.svelte";
-    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
-    import Sortable from "sortablejs";
+import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
     import { layoutPresets } from "./presets/layouts.js";
@@ -60,6 +59,28 @@
             block.name.toLowerCase().includes(blockSearchTerm.toLowerCase())
         )
     );
+
+    const getDragAfterElement = (container: HTMLElement, clientY: number) => {
+        const draggableElements = Array.from(
+            container.querySelectorAll<HTMLElement>('.editor-block:not(.dragging)')
+        );
+
+        const result = draggableElements.reduce(
+            (closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = clientY - box.top - box.height / 2;
+
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset, element: child };
+                }
+
+                return closest;
+            },
+            { offset: Number.NEGATIVE_INFINITY, element: null as HTMLElement | null }
+        );
+
+        return result.element;
+    };
 
     const updateEditorData = async () => {
         const blocks = await saveEditorBlocks(editor);
@@ -141,22 +162,99 @@
     let headerUpdateTimeout: number;
     let footerUpdateTimeout: number;
 
-    let sortableInstance: Sortable | null = null;
+    let cleanupEditorDragAndDrop: (() => void) | null = null;
+    let dropIndicator: HTMLDivElement | null = null;
 
-    onMount(() => {
-        imageConfig.set(editorImageConfig);
+    const initEditorDragAndDrop = async () => {
+        cleanupEditorDragAndDrop?.();
+        dropIndicator?.remove();
+        dropIndicator = null;
+        if (!editable) return;
+        await tick();
 
-        const initSortable = async () => {
-            await tick();
-            if (editor instanceof HTMLElement) {
-                sortableInstance = new Sortable(editor, {
-                    handle: '.handle',
-                    animation: 150
-                });
+        if (!(editor instanceof HTMLElement)) {
+            cleanupEditorDragAndDrop = null;
+            return;
+        }
+
+        let draggedElement: HTMLElement | null = null;
+        dropIndicator = document.createElement('div');
+        dropIndicator.className = 'editor-drop-indicator';
+        dropIndicator.setAttribute('aria-hidden', 'true');
+
+        const resetDragging = () => {
+            draggedElement?.classList.remove('dragging');
+            draggedElement = null;
+            dropIndicator?.remove();
+            editor.classList.remove('is-reordering');
+        };
+
+        const handleDragStart = (event: DragEvent) => {
+            const target = event.target as HTMLElement | null;
+            const handle = target?.closest('.drag-handle, .handle');
+            if (!handle) return;
+            const block = handle.closest<HTMLElement>('.editor-block');
+            if (!block) return;
+
+            draggedElement = block;
+            block.classList.add('dragging');
+            editor.classList.add('is-reordering');
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                const dragOffsetX = block.clientWidth / 2;
+                const dragOffsetY = Math.min(event.offsetY ?? block.clientHeight / 2, block.clientHeight / 2);
+                event.dataTransfer.setDragImage(block, dragOffsetX, dragOffsetY);
+                event.dataTransfer.setData('text/plain', block.id ?? 'block');
             }
         };
 
-        initSortable();
+        const handleDragOver = (event: DragEvent) => {
+            if (!draggedElement || !(editor instanceof HTMLElement)) return;
+            event.preventDefault();
+            const afterElement = getDragAfterElement(editor, event.clientY);
+            if (!afterElement) {
+                if (dropIndicator) {
+                    editor.appendChild(dropIndicator);
+                }
+                editor.appendChild(draggedElement);
+                return;
+            }
+
+            if (dropIndicator) {
+                editor.insertBefore(dropIndicator, afterElement);
+            }
+            if (afterElement !== draggedElement) {
+                editor.insertBefore(draggedElement, afterElement);
+            }
+        };
+
+        const handleDrop = (event: DragEvent) => {
+            if (!draggedElement) return;
+            event.preventDefault();
+            resetDragging();
+            clearTimeout(contentUpdateTimeout);
+            contentUpdateTimeout = setTimeout(updateEditorData, 300);
+        };
+
+        const handleDragEnd = () => resetDragging();
+
+        editor.addEventListener('dragstart', handleDragStart);
+        editor.addEventListener('dragover', handleDragOver);
+        editor.addEventListener('drop', handleDrop);
+        editor.addEventListener('dragend', handleDragEnd);
+
+        cleanupEditorDragAndDrop = () => {
+            editor.removeEventListener('dragstart', handleDragStart);
+            editor.removeEventListener('dragover', handleDragOver);
+            editor.removeEventListener('drop', handleDrop);
+            editor.removeEventListener('dragend', handleDragEnd);
+            dropIndicator?.remove();
+        };
+    };
+
+    onMount(() => {
+        imageConfig.set(editorImageConfig);
+        initEditorDragAndDrop();
 
         const observer = new MutationObserver(() => {
             clearTimeout(contentUpdateTimeout);
@@ -172,7 +270,7 @@
         }
 
         if (headerElement) {
-            const headerObserver = new MutationObserver((mutations) => {
+            const headerObserver = new MutationObserver(() => {
                 clearTimeout(headerUpdateTimeout);
                 headerUpdateTimeout = setTimeout(updateHeaderData, 1500);
             });
@@ -186,7 +284,7 @@
         }
         
         if (footerElement) {
-            const footerObserver = new MutationObserver((mutations) => {
+            const footerObserver = new MutationObserver(() => {
                 clearTimeout(footerUpdateTimeout);
                 footerUpdateTimeout = setTimeout(updateFooterData, 1500);
             });
@@ -200,8 +298,7 @@
         }
         
         return () => {
-            sortableInstance?.destroy();
-            sortableInstance = null;
+            cleanupEditorDragAndDrop?.();
             clearTimeout(contentUpdateTimeout);
             clearTimeout(headerUpdateTimeout);
             clearTimeout(footerUpdateTimeout);
@@ -209,8 +306,7 @@
     });
 
     onDestroy(() => {
-        sortableInstance?.destroy();
-        sortableInstance = null;
+        cleanupEditorDragAndDrop?.();
     });
 
     let layoutModal: HTMLDialogElement;
@@ -257,7 +353,7 @@
                 {#each editorBlocks as block, index (blockKey(block, index))}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
-                        <div class="relative">
+                        <div class="relative editor-block">
                             <editorBlock.component {...block} />
                         </div>
                     {/if}
@@ -363,3 +459,20 @@
         </div>
     {/if}
 </div>
+
+<style>
+    :global(.editor-block.dragging) {
+        opacity: 0.45;
+        transition: opacity 150ms ease;
+    }
+
+    :global(.editor-drop-indicator) {
+        height: 4px;
+        border-radius: 9999px;
+        background: color-mix(in srgb, var(--fallback-p, #6366f1) 70%, transparent);
+        margin: 0.75rem 0;
+        pointer-events: none;
+        box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
+        transition: transform 120ms ease;
+    }
+</style>

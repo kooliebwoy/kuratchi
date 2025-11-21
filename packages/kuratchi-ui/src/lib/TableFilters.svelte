@@ -41,14 +41,14 @@
   const hasActiveFilters = $derived(Object.keys(values).some(key => values[key] !== undefined && values[key] !== ''));
 </script>
 
-<div class="flex flex-wrap items-center gap-3 {className}">
+<div class={`kui-table-filters ${className}`.trim()}>
   {#if children}
     {@render children()}
   {:else if filters.length > 0}
     {#each filters as filter}
       {#if filter.type === 'select'}
         <select
-          class="select select-bordered select-sm"
+          class="kui-select kui-select--sm"
           value={values[filter.key] || ''}
           onchange={(e) => handleFilterChange(filter.key, (e.target as HTMLSelectElement).value)}
         >
@@ -60,31 +60,29 @@
           {/if}
         </select>
       {:else if filter.type === 'range'}
-        <div class="form-control">
-          <label class="label" for="filter-{filter.key}">
-            <span class="label-text text-xs">{filter.label}</span>
-          </label>
+        <label class="kui-form-control" for="filter-{filter.key}">
+          <span class="kui-label">{filter.label}</span>
           <input
             id="filter-{filter.key}"
             type="range"
             min={filter.min || 0}
             max={filter.max || 100}
             value={values[filter.key] || filter.min || 0}
-            class="range range-sm"
+            class="kui-range"
             oninput={(e) => handleFilterChange(filter.key, (e.target as HTMLInputElement).value)}
           />
-        </div>
+        </label>
       {/if}
     {/each}
     
     {#if hasActiveFilters}
       <button
         type="button"
-        class="btn btn-ghost btn-sm"
+        class="kui-button kui-button--ghost kui-button--size-sm"
         onclick={handleClearFilters}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
         </svg>
         Clear Filters
       </button>

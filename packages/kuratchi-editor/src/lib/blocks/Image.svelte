@@ -125,51 +125,159 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
+    <div class="editor-item group relative krt-image-block" bind:this={component}>
         {#if mounted}
             <SideActions {component} />
         {/if}
 
-        <div data-type={type} id={id} class="w-full min-w-full">
+        <div data-type={type} id={id} class="krt-image-body">
             <!-- JSON Data for this component -->
             <div class="hidden" id="metadata-{id}">
                 {JSON.stringify(content)}
             </div>
 
             {#if !uploadedImage?.id}
-                <div class="flex items-center justify-center mt-1">
-                    <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600">
-                        <div class="flex flex-col items-center justify-center pt-8 pb-6">
-                            <Upload class="w-10 h-10 text-gray-500" />
-                            <p class="mb-1 text-sm text-gray-500 dark:text-gray-400"><span class="font-semibold">Click to upload</span></p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">PNG or JPG (MAX. 10MB)</p>
+                <div class="krt-image-dropzone">
+                    <label for="dropzone-file" class="krt-image-dropzone-label">
+                        <div class="krt-image-dropzone-inner">
+                            <Upload class="krt-image-dropzone-icon" />
+                            <p class="krt-image-dropzone-title"><span>Click to upload</span></p>
+                            <p class="krt-image-dropzone-subtitle">PNG or JPG (MAX. 10MB)</p>
                         </div>
-                        <input id="dropzone-file" type="file" name="image" class="hidden" bind:this={profilePhotoFile} onchange={() => processUpload()} />
+                        <input
+                            id="dropzone-file"
+                            type="file"
+                            name="image"
+                            class="krt-image-input"
+                            bind:this={profilePhotoFile}
+                            onchange={() => processUpload()}
+                        />
                     </label>
                 </div>
                 {#if photoError}
-                    <span class="text-red-500 mt-1">{photoMessage}</span>
+                    <span class="krt-image-error">{photoMessage}</span>
                 {/if}
             {/if}
         
-            <div class="flex w-full place-items-center justify-center mt-5">
-                <div class="avatar">
-                    {#if !photoError && uploadedImage?.id}
-                        <img src={'/api/bucket/' + uploadedImage?.key} alt={uploadedImage?.alt ?? 'Uploaded image'} />
-                    {/if}
-                </div>
+            <div class="krt-image-preview-wrapper">
+                {#if !photoError && uploadedImage?.id}
+                    <img class="krt-image-preview" src={'/api/bucket/' + uploadedImage?.key} alt={uploadedImage?.alt ?? 'Uploaded image'} />
+                {/if}
             </div>
         </div>
     </div>
 {:else}
     {#if uploadedImage?.id || uploadedImage?.src || uploadedImage?.url}
-        <figure data-type={type} id={id} class="w-full min-w-full flex justify-center">
+        <figure data-type={type} id={id} class="krt-image-figure">
             <img
                 src={uploadedImage?.key ? '/api/bucket/' + uploadedImage.key : uploadedImage?.src ?? uploadedImage?.url ?? ''}
                 alt={uploadedImage?.alt ?? 'Image'}
-                class="max-w-full h-auto"
+                class="krt-image-figure-img"
             />
         </figure>
     {/if}
 {/if}
+
+<style>
+    .krt-image-block {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-image-body {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-image-dropzone {
+        margin-top: 0.25rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .krt-image-dropzone-label {
+        width: 100%;
+        max-width: 30rem;
+        height: 8rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px dashed var(--krt-color-border-subtle, #e5e7eb);
+        background-color: #f9fafb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: border-color 150ms ease, background-color 150ms ease;
+    }
+
+    .krt-image-dropzone-label:hover {
+        border-color: var(--krt-color-accent, #4f46e5);
+        background-color: #eff6ff;
+    }
+
+    .krt-image-dropzone-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .krt-image-dropzone-icon {
+        width: 2.25rem;
+        height: 2.25rem;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-image-dropzone-title {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--krt-color-muted, #6b7280);
+        font-weight: 500;
+    }
+
+    .krt-image-dropzone-subtitle {
+        margin: 0;
+        font-size: 0.75rem;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-image-input {
+        display: none;
+    }
+
+    .krt-image-error {
+        display: block;
+        margin-top: 0.4rem;
+        font-size: 0.8rem;
+        color: #b91c1c;
+    }
+
+    .krt-image-preview-wrapper {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 1.25rem;
+    }
+
+    .krt-image-preview {
+        max-width: 100%;
+        height: auto;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        box-shadow: var(--krt-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+    }
+
+    .krt-image-figure {
+        width: 100%;
+        min-width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+
+    .krt-image-figure-img {
+        max-width: 100%;
+        height: auto;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        box-shadow: var(--krt-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+    }
+</style>
 

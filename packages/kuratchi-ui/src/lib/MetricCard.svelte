@@ -16,34 +16,23 @@
   }: Props = $props();
   
   const variantClasses = {
-    default: 'border-base-200',
-    primary: 'border-primary border-l-4',
-    secondary: 'border-secondary border-l-4',
-    accent: 'border-accent border-l-4',
-    info: 'border-info border-l-4',
-    success: 'border-success border-l-4',
-    warning: 'border-warning border-l-4',
-    error: 'border-error border-l-4'
-  };
-  
-  const valueColors = {
-    default: 'text-base-content',
-    primary: 'text-primary',
-    secondary: 'text-secondary',
-    accent: 'text-accent',
-    info: 'text-info',
-    success: 'text-success',
-    warning: 'text-warning',
-    error: 'text-error'
+    default: 'kui-metric-card--default',
+    primary: 'kui-metric-card--primary',
+    secondary: 'kui-metric-card--secondary',
+    accent: 'kui-metric-card--accent',
+    info: 'kui-metric-card--info',
+    success: 'kui-metric-card--success',
+    warning: 'kui-metric-card--warning',
+    error: 'kui-metric-card--error'
   };
 </script>
 
-<div class="card bg-base-100 border {variantClasses[variant]} shadow-sm {className}">
-  <div class="card-body p-4">
-    <p class="text-sm text-base-content/60">{label}</p>
-    <p class="text-2xl font-bold {valueColors[variant]}">{value}</p>
+<article class={`kui-card kui-metric-card ${variantClasses[variant]} ${className}`.trim()}>
+  <div class="kui-card__body">
+    <p class="kui-metric-card__label">{label}</p>
+    <p class="kui-metric-card__value">{value}</p>
     {#if subvalue}
-      <p class="text-xs text-base-content/50 mt-1">{subvalue}</p>
+      <p class="kui-metric-card__subvalue">{subvalue}</p>
     {/if}
   </div>
-</div>
+</article>

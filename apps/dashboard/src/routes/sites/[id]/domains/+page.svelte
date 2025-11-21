@@ -3,13 +3,14 @@
   import { getEmailDomains } from '$lib/functions/emailDomains.remote';
   import { 
     getSiteCustomDomains, 
-    deleteSiteCustomDomain 
+    deleteSiteCustomDomain,
+    linkDomainToSite
   } from '$lib/functions/siteCustomDomains.remote';
-  import { Globe, Link, Unlink, AlertCircle, CheckCircle, ExternalLink, Plus } from 'lucide-svelte';
+  import { Globe, Link, Unlink, AlertCircle, ExternalLink, Plus, Loader2, X } from 'lucide-svelte';
+  import { Button, Card, Dialog, Badge, Loading } from '@kuratchi/ui';
 
   const siteId = $page.params.id;
   
-  // Load all available domains and attached domains
   const allDomainsResource = getEmailDomains();
   const attachedDomainsResource = getSiteCustomDomains();
   
@@ -22,38 +23,52 @@
     }
   });
 
-  // State
   let showAttachModal = $state(false);
   let selectedDomainToAttach = $state<any>(null);
   let isAttaching = $state(false);
 
-  // Get available domains (not already attached)
   const availableDomains = $derived(
-    allDomains.filter(d => 
-      !attachedDomains.some(ad => ad.domain === d.name || ad.domainId === d.id)
-    )
+    allDomains.filter(d => {
+      const isAttached = attachedDomains.some(ad => ad.domain === d.name || ad.domainId === d.id);
+      if (isAttached) return false;
+      const parts = d.name.split('.');
+      return parts.length > 2;
+    })
   );
 
   async function handleAttachDomain(domain: any) {
-    // This would call an attach API
-    console.log('Attach domain:', domain);
-    // TODO: Implement attach logic
-    showAttachModal = false;
+    if (isAttaching) return;
+    isAttaching = true;
+    try {
+      const result = await linkDomainToSite({ 
+        domainId: domain.id, 
+        siteId 
+      });
+      if (result.success) {
+        showAttachModal = false;
+        selectedDomainToAttach = null;
+        attachedDomainsResource.refresh();
+        allDomainsResource.refresh();
+      } else {
+        alert(result.error || 'Failed to attach domain');
+      }
+    } catch (err) {
+      alert('Failed to attach domain');
+    } finally {
+      isAttaching = false;
+    }
   }
 
   async function handleDetachDomain(attachedDomain: any) {
     if (!confirm(`Detach ${attachedDomain.domain} from this site?`)) return;
-    
     try {
       const result = await deleteSiteCustomDomain({ domainId: attachedDomain.id });
-      
       if (result.success) {
         attachedDomainsResource.refresh();
       } else {
         alert(result.error || 'Failed to detach domain');
       }
     } catch (err) {
-      console.error('Error detaching domain:', err);
       alert('Failed to detach domain');
     }
   }
@@ -63,210 +78,196 @@
   <title>Domains - Site Settings</title>
 </svelte:head>
 
-<div class="space-y-6">
-  <!-- Header -->
-  <div class="flex items-center justify-between">
+<div class="kui-site-domains">
+  <header class="kui-site-domains__header">
     <div>
-      <h2 class="text-2xl font-bold">Site Domains</h2>
-      <p class="text-sm text-base-content/70 mt-1">
-        Attach domains to this site for custom URLs
-      </p>
+      <p class="kui-eyebrow">Sites</p>
+      <h1>Site Domains</h1>
+      <p class="kui-subtext">Attach domains to this site for custom URLs</p>
     </div>
-    <div class="flex gap-2">
-      <a href="/domains" class="btn btn-ghost btn-sm gap-2">
-        <ExternalLink class="h-4 w-4" />
-        Manage Domains
-      </a>
+    <div class="kui-inline end">
+      <Button variant="ghost" size="sm" href="/domains">
+        <ExternalLink class="kui-icon" /> Manage Domains
+      </Button>
       {#if availableDomains.length > 0}
-        <button class="btn btn-primary btn-sm gap-2" onclick={() => showAttachModal = true}>
-          <Link class="h-4 w-4" />
-          Attach Domain
-        </button>
+        <Button variant="primary" size="sm" onclick={() => showAttachModal = true}>
+          <Link class="kui-icon" /> Attach Domain
+        </Button>
       {/if}
     </div>
-  </div>
+  </header>
 
-  <!-- Info Alert -->
   {#if allDomains.length === 0}
-    <div class="alert alert-info">
-      <AlertCircle class="h-5 w-5" />
-      <div class="flex-1">
-        <p class="font-semibold">No domains available</p>
-        <p class="text-sm">Add and verify domains in the Domains page first, then attach them to this site.</p>
-      </div>
-      <a href="/domains" class="btn btn-sm btn-primary">
-        <Plus class="h-4 w-4" />
-        Add Domain
-      </a>
-    </div>
-  {/if}
-
-  <!-- Attached Domains -->
-  <div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body">
-      <h3 class="card-title text-lg mb-4">Attached Domains</h3>
-      
-      {#if attachedDomainsResource.loading}
-        <div class="flex justify-center py-12">
-          <span class="loading loading-spinner loading-lg text-primary"></span>
-        </div>
-      {:else if attachedDomains.length > 0}
-        <div class="space-y-3">
-          {#each attachedDomains as domain}
-            <div class="flex items-center justify-between p-4 bg-base-200/50 rounded-lg border border-base-300">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Globe class="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <div class="font-semibold">{domain.domain}</div>
-                  <div class="text-xs text-base-content/60">
-                    {#if domain.verified}
-                      <span class="flex items-center gap-1 text-success">
-                        <CheckCircle class="h-3 w-3" />
-                        Verified & Active
-                      </span>
-                    {:else}
-                      <span class="flex items-center gap-1 text-warning">
-                        <AlertCircle class="h-3 w-3" />
-                        Pending DNS configuration
-                      </span>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-              
-              <button 
-                class="btn btn-ghost btn-sm text-error gap-2"
-                onclick={() => handleDetachDomain(domain)}
-              >
-                <Unlink class="h-4 w-4" />
-                Detach
-              </button>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <div class="text-center py-12">
-          <div class="w-16 h-16 rounded-2xl bg-base-200 flex items-center justify-center mx-auto mb-4">
-            <Globe class="h-8 w-8 text-base-content/40" />
+    <Card class="kui-panel center">
+      <AlertCircle class="kui-empty__icon" />
+      <p class="kui-strong">No domains available</p>
+      <p class="kui-subtext">Add a domain in the Domains page before attaching.</p>
+    </Card>
+  {:else}
+    <Card class="kui-panel">
+      <div class="kui-list">
+        {#if attachedDomainsResource.loading}
+          <div class="kui-center"><Loading /></div>
+        {:else if attachedDomains.length === 0}
+          <div class="kui-center">
+            <Globe class="kui-empty__icon" />
+            <p class="kui-subtext">No domains attached to this site yet.</p>
           </div>
-          <p class="font-semibold mb-2">No domains attached</p>
-          <p class="text-sm text-base-content/60 mb-4">
-            Attach a domain from your domains list to use custom URLs for this site.
-          </p>
-          {#if availableDomains.length > 0}
-            <button class="btn btn-primary btn-sm" onclick={() => showAttachModal = true}>
-              <Link class="h-4 w-4" />
-              Attach Domain
-            </button>
-          {:else}
-            <a href="/domains" class="btn btn-primary btn-sm">
-              <Plus class="h-4 w-4" />
-              Add Domain First
-            </a>
-          {/if}
-        </div>
-      {/if}
-    </div>
-  </div>
-
-  <!-- Available Domains (for reference) -->
-  {#if availableDomains.length > 0 && !showAttachModal}
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="card-title text-lg">Available Domains</h3>
-          <span class="badge badge-ghost">{availableDomains.length} available</span>
-        </div>
-        
-        <div class="grid md:grid-cols-2 gap-3">
-          {#each availableDomains.slice(0, 4) as domain}
-            <div class="flex items-center justify-between p-3 bg-base-200/30 rounded-lg border border-base-200">
-              <div class="flex items-center gap-2">
-                <Globe class="h-4 w-4 text-base-content/60" />
-                <span class="text-sm font-medium">{domain.name}</span>
-                {#if domain.emailVerified}
-                  <CheckCircle class="h-3 w-3 text-success" />
-                {/if}
+        {:else}
+          {#each attachedDomains as domain}
+            <Card class="kui-panel">
+              <div class="kui-domain">
+                <div>
+                  <h3>{domain.domain}</h3>
+                  <p class="kui-subtext">{domain.status || 'Unknown status'}</p>
+                </div>
+                <div class="kui-inline end">
+                  <Badge variant="ghost" size="xs">{domain.type || 'Custom'}</Badge>
+                  <Button variant="ghost" size="sm" onclick={() => handleDetachDomain(domain)}>
+                    <Unlink class="kui-icon error" /> Detach
+                  </Button>
+                </div>
               </div>
-              <button 
-                class="btn btn-ghost btn-xs"
-                onclick={() => { selectedDomainToAttach = domain; showAttachModal = true; }}
-              >
-                Attach
-              </button>
-            </div>
+            </Card>
           {/each}
-        </div>
-        
-        {#if availableDomains.length > 4}
-          <button class="btn btn-ghost btn-sm mt-2" onclick={() => showAttachModal = true}>
-            View all {availableDomains.length} domains
-          </button>
         {/if}
       </div>
-    </div>
+    </Card>
   {/if}
 </div>
 
-<!-- Attach Domain Modal -->
 {#if showAttachModal}
-  <div class="modal modal-open">
-    <div class="modal-box max-w-2xl">
-      <h3 class="font-bold text-xl mb-4">Attach Domain to Site</h3>
-      
-      {#if availableDomains.length > 0}
-        <div class="space-y-3 max-h-96 overflow-y-auto">
-          {#each availableDomains as domain}
-            <button 
-              class="w-full flex items-center justify-between p-4 bg-base-200/50 hover:bg-base-200 rounded-lg border border-base-300 hover:border-primary transition-all text-left"
-              onclick={() => handleAttachDomain(domain)}
-            >
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Globe class="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <div class="font-semibold">{domain.name}</div>
-                  <div class="text-xs text-base-content/60 flex items-center gap-2">
-                    {#if domain.emailVerified}
-                      <span class="flex items-center gap-1 text-success">
-                        <CheckCircle class="h-3 w-3" />
-                        Verified
-                      </span>
-                    {/if}
-                    {#if domain.emailEnabled}
-                      <span class="badge badge-xs badge-primary">Email</span>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-              <Link class="h-5 w-5 text-base-content/40" />
-            </button>
-          {/each}
-        </div>
-      {:else}
-        <div class="text-center py-8">
-          <p class="text-base-content/70 mb-4">No available domains to attach.</p>
-          <a href="/domains" class="btn btn-primary btn-sm">
-            <Plus class="h-4 w-4" />
-            Add New Domain
-          </a>
-        </div>
-      {/if}
-
-      <div class="modal-action">
-        <button class="btn" onclick={() => { showAttachModal = false; selectedDomainToAttach = null; }}>
-          Close
-        </button>
+  <Dialog bind:open={showAttachModal} size="md" onClose={() => { showAttachModal = false; selectedDomainToAttach = null; }}>
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <h3>Attach Domain</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showAttachModal = false; selectedDomainToAttach = null; }}>
+          <X class="kui-icon" />
+        </Button>
       </div>
-    </div>
-    <button 
-      type="button" 
-      class="modal-backdrop" 
-      onclick={() => { showAttachModal = false; selectedDomainToAttach = null; }}
-      aria-label="Close modal"
-    ></button>
-  </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="kui-stack">
+        {#if availableDomains.length === 0}
+          <p class="kui-subtext">No available subdomains to attach.</p>
+        {:else}
+          <div class="kui-list">
+            {#each availableDomains as domain}
+              <Card class="kui-panel">
+                <div class="kui-domain">
+                  <div>
+                    <h4>{domain.name}</h4>
+                    <p class="kui-subtext">Verified: {domain.emailVerified ? 'Yes' : 'No'}</p>
+                  </div>
+                  <Button variant="primary" size="sm" onclick={() => handleAttachDomain(domain)} disabled={isAttaching && selectedDomainToAttach?.id === domain.id}>
+                    {#if isAttaching && selectedDomainToAttach?.id === domain.id}
+                      <Loader2 class="kui-icon spinning" /> Attaching...
+                    {:else}
+                      Attach
+                    {/if}
+                  </Button>
+                </div>
+              </Card>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/snippet}
+  </Dialog>
 {/if}
+
+<style>
+  .kui-site-domains {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-site-domains__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  h1 {
+    margin: 0.1rem 0 0.2rem;
+    font-size: 1.6rem;
+  }
+
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kui-color-muted);
+    font-weight: 700;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .kui-inline.end {
+    justify-content: flex-end;
+  }
+
+  .kui-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-icon.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  .kui-panel .kui-card__body {
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-list {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-domain {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    align-items: center;
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-stack {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .center {
+    text-align: center;
+    padding: var(--kui-spacing-md);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>

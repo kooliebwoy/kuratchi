@@ -87,6 +87,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@aws-sdk/client-sesv2':
+        specifier: ^3.932.0
+        version: 3.932.0
       '@kuratchi/editor':
         specifier: workspace:*
         version: link:../../packages/kuratchi-editor
@@ -145,12 +148,6 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^6.2.1
         version: 6.2.1(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
-      '@tailwindcss/vite':
-        specifier: ^4.0.0-alpha.15
-        version: 4.1.14(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
-      daisyui:
-        specifier: ^5.4.2
-        version: 5.4.2
       eslint:
         specifier: ^9.18.0
         version: 9.37.0(jiti@2.6.1)
@@ -160,9 +157,6 @@ importers:
       svelte-check:
         specifier: ^4.0.0
         version: 4.3.2(picomatch@4.0.3)(svelte@5.39.9)(typescript@5.9.3)
-      tailwindcss:
-        specifier: ^4.1.16
-        version: 4.1.16
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
@@ -345,18 +339,6 @@ importers:
       '@lucide/svelte':
         specifier: ^0.552.0
         version: 0.552.0(svelte@5.39.9)
-      '@tailwindcss/vite':
-        specifier: ^4.1.16
-        version: 4.1.16(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
-      daisyui:
-        specifier: ^5.3.11
-        version: 5.3.11
-      sortablejs:
-        specifier: ^1.15.6
-        version: 1.15.6
-      tailwindcss:
-        specifier: ^4.1.16
-        version: 4.1.16
     devDependencies:
       '@kuratchi/config-eslint':
         specifier: workspace:*
@@ -379,9 +361,6 @@ importers:
       '@types/node':
         specifier: ^24.3.0
         version: 24.7.0
-      '@types/sortablejs':
-        specifier: ^1.15.4
-        version: 1.15.9
       eslint:
         specifier: ^9.18.0
         version: 9.37.0(jiti@2.6.1)
@@ -485,12 +464,6 @@ importers:
       '@sveltejs/vite-plugin-svelte':
         specifier: ^6.2.1
         version: 6.2.1(svelte@5.39.9)(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
-      '@tailwindcss/vite':
-        specifier: ^4.0.0
-        version: 4.1.14(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6))
-      daisyui:
-        specifier: ^5.1.28
-        version: 5.1.28
       eslint:
         specifier: ^9.18.0
         version: 9.37.0(jiti@2.6.1)
@@ -500,9 +473,6 @@ importers:
       svelte-check:
         specifier: ^4.0.0
         version: 4.3.2(picomatch@4.0.3)(svelte@5.39.9)(typescript@5.9.3)
-      tailwindcss:
-        specifier: ^4.0.0
-        version: 4.1.14
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
@@ -1984,9 +1954,6 @@ packages:
 
   '@types/node@24.7.0':
     resolution: {integrity: sha512-IbKooQVqUBrlzWTi79E8Fw78l8k1RNtlDDNWsFZs7XonuQSJ8oNYfEeclhprUldXISRMLzBpILuKgPlIxm+/Yw==}
-
-  '@types/sortablejs@1.15.9':
-    resolution: {integrity: sha512-7HP+rZGE2p886PKV9c9OJzLBI6BBJu1O7lJGYnPyG3fS4/duUCcngkNCjsLwIMV+WMqANe3tt4irrXHSIe68OQ==}
 
   '@typescript-eslint/eslint-plugin@8.45.0':
     resolution: {integrity: sha512-HC3y9CVuevvWCl/oyZuI47dOeDF9ztdMEfMH8/DW/Mhwa9cCLnK1oD7JoTVGW/u7kFzNZUKUoyJEqkaJh5y3Wg==}
@@ -5418,8 +5385,6 @@ snapshots:
   '@types/node@24.7.0':
     dependencies:
       undici-types: 7.14.0
-
-  '@types/sortablejs@1.15.9': {}
 
   '@typescript-eslint/eslint-plugin@8.45.0(@typescript-eslint/parser@8.45.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)':
     dependencies:

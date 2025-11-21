@@ -33,6 +33,9 @@ export interface EmailPluginOptions {
 	
 	/** Optional SES configuration set name */
 	configurationSetName?: string;
+	
+	/** Path for SNS webhook events (default: '/.well-known/kuratchi/email-events') */
+	eventsPath?: string;
 }
 
 export interface SendEmailOptions {
@@ -62,8 +65,8 @@ export interface SendEmailOptions {
 
 export interface EmailRecord {
 	id: string;
-	to: string;
-	from: string;
+	recipient: string;
+	sender: string;
 	subject: string;
 	emailType?: string;
 	status: 'sent' | 'failed' | 'pending';
@@ -212,37 +215,89 @@ async function trackEmail(
 	if (!pluginOptions) return;
 
 	try {
+		// Get organizationId from session if using org DB and not explicitly provided
+		const organizationId = pluginOptions.trackingDb === 'org'
+			? (options.organizationId || (event.locals.session as any)?.organizationId)
+			: options.organizationId;
+
+		console.log('[Email] trackEmail - trackingDb:', pluginOptions.trackingDb, 'organizationId:', organizationId);
+
 		const db = pluginOptions.trackingDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(options.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
-		if (!db) return;
+		if (!db) {
+			console.error('[Email] No database available for tracking - db is null/undefined');
+			console.error('[Email] event.locals.kuratchi exists:', !!event.locals.kuratchi);
+			console.error('[Email] orgDatabaseClient exists:', !!event.locals.kuratchi?.orgDatabaseClient);
+			return;
+		}
+
+		console.log('[Email] Database client obtained successfully');
 
 		const tableName = pluginOptions.trackingTable || 'emails';
 		const table = db[tableName as keyof typeof db] as any;
 		
 		if (!table) {
-			console.warn(`[Email] Tracking table "${tableName}" not found`);
+			console.error(`[Email] Tracking table "${tableName}" not found in database`);
+			console.error('[Email] Available tables:', Object.keys(db));
 			return;
 		}
 
+		console.log('[Email] Table found:', tableName);
+
 		const emailRecord = {
 			id: crypto.randomUUID(),
-			to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-			from: options.from,
+			recipient: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+			sender: options.from,
 			subject: options.subject,
 			emailType: options.emailType,
 			status: options.status,
 			sesMessageId: options.sesMessageId,
 			error: options.error,
 			userId: options.userId,
-			organizationId: options.organizationId,
 			metadata: options.metadata,
 			sentAt: new Date().toISOString(),
-			createdAt: new Date().toISOString(),
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+			deleted_at: null,
 		};
-
-		await table.insert(emailRecord);
+		
+		console.log('[Email] Attempting to insert email record:', {
+			id: emailRecord.id,
+			recipient: emailRecord.recipient,
+			sesMessageId: emailRecord.sesMessageId,
+			tableName
+		});
+		
+		const insertResult = await table.insert(emailRecord);
+		
+		console.log('[Email] Insert result:', insertResult);
+		
+		if (!insertResult.success) {
+			console.error('[Email] Failed to insert email:', insertResult.error);
+		} else {
+			console.log('[Email] Email tracked successfully with ID:', emailRecord.id);
+		}
+		
+		// If using org DB and we have a sesMessageId, store lookup in admin DB
+		if (pluginOptions.trackingDb === 'org' && options.sesMessageId && organizationId) {
+			try {
+				const adminDb = await event.locals.kuratchi?.getAdminDb?.();
+				if (adminDb?.email_message_lookup) {
+					await (adminDb.email_message_lookup as any).insert({
+						id: crypto.randomUUID(),
+						sesMessageId: options.sesMessageId,
+						organizationId: organizationId,
+						created_at: new Date().toISOString(),
+						updated_at: new Date().toISOString(),
+					});
+					console.log('[Email] Saved message lookup for webhook routing');
+				}
+			} catch (lookupError) {
+				console.error('[Email] Failed to save message lookup:', lookupError);
+			}
+		}
 	} catch (error) {
 		console.error('[Email] Failed to track email:', error);
 	}
@@ -266,23 +321,37 @@ export async function getEmailHistory(
 	}
 
 	try {
+		// Get organizationId from session if using org DB and not explicitly provided
+		const organizationId = pluginOptions.trackingDb === 'org'
+			? (filters?.organizationId || (event.locals.session as any)?.organizationId)
+			: filters?.organizationId;
+
+		console.log('[Email] getEmailHistory - trackingDb:', pluginOptions.trackingDb, 'organizationId:', organizationId);
+
 		const db = pluginOptions.trackingDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(filters?.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
-		if (!db) return [];
+		if (!db) {
+			console.warn('[Email] No database available for history');
+			return [];
+		}
 
-		const tableName = pluginOptions.trackingTable || 'emails';
+		const tableName = pluginOptions.trackingTable || 'email_logs';
 		const table = db[tableName as keyof typeof db] as any;
 		
-		if (!table) return [];
-
-		let query = table.where({ deleted_at: { is: null } });
+		if (!table) {
+			console.warn(`[Email] Table "${tableName}" not found in database`);
+			return [];
+		}
+		
+		let query = table.where({ deleted_at: { isNullish: true } });
 
 		if (filters?.userId) {
 			query = query.where({ userId: filters.userId });
 		}
-		if (filters?.organizationId) {
+		// Don't filter by organizationId when using org DB - it's already scoped
+		if (pluginOptions.trackingDb === 'admin' && filters?.organizationId) {
 			query = query.where({ organizationId: filters.organizationId });
 		}
 		if (filters?.emailType) {
@@ -318,7 +387,15 @@ export async function getEmailById(
 	}
 
 	try {
-		const db = await event.locals.kuratchi?.getAdminDb?.();
+		// Get organizationId from session if using org DB
+		const organizationId = pluginOptions.trackingDb === 'org'
+			? (event.locals.session as any)?.organizationId
+			: undefined;
+
+		const db = pluginOptions.trackingDb === 'org'
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
+			: await event.locals.kuratchi?.getAdminDb?.();
+			
 		if (!db) return null;
 
 		const tableName = pluginOptions.trackingTable || 'emails';

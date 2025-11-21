@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   interface Props {
     text?: string;
     variant?: 'primary' | 'secondary' | 'accent' | 'ghost' | 'link' | 'error';
@@ -18,14 +19,16 @@
   }: Props = $props();
 </script>
 
-<button
+<Button
   type="button"
-  class="btn btn-{variant} btn-{size} {className}"
+  {variant}
+  size={size}
+  class={className}
   {onclick}
   disabled={loading}
 >
   {#if loading}
-    <span class="loading loading-spinner"></span>
+    <span class="kui-button__spinner" aria-hidden="true"></span>
   {/if}
   {text}
-</button>
+</Button>

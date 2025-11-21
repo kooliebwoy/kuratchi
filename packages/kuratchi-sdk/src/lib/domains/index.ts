@@ -30,13 +30,17 @@
 // Re-export all zones functionality
 export * from './zones.js';
 
+// Re-export custom hostnames functionality
+export * from './custom-hostnames.js';
+
 // Export client utilities (for advanced usage)
 export { getCloudflareClient, resetClient } from './client.js';
 
 // Convenience namespace for organized access
 import * as zones from './zones.js';
+import * as customHostnames from './custom-hostnames.js';
 
-export { zones };
+export { zones, customHostnames };
 
 /**
  * Main domains namespace export

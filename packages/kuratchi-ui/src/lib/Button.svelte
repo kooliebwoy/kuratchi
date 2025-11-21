@@ -36,37 +36,18 @@
     ...restProps
   }: Props = $props();
   
-  const variantClasses = {
-    primary: 'btn-primary',
-    secondary: 'btn-secondary',
-    accent: 'btn-accent',
-    ghost: 'btn-ghost',
-    link: 'btn-link',
-    neutral: 'btn-neutral',
-    success: 'btn-success',
-    warning: 'btn-warning',
-    error: 'btn-error'
-  };
-  
-  const sizeClasses = {
-    xs: 'btn-xs',
-    sm: 'btn-sm',
-    md: '',
-    lg: 'btn-lg'
-  };
-  
-  const buttonClasses = $derived(`
-    btn
-    ${variantClasses[variant]}
-    ${sizeClasses[size]}
-    ${outline ? 'btn-outline' : ''}
-    ${wide ? 'btn-wide' : ''}
-    ${block ? 'btn-block' : ''}
-    ${circle ? 'btn-circle' : ''}
-    ${square ? 'btn-square' : ''}
-    ${glass ? 'glass' : ''}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const buttonClasses = $derived([
+    'kui-button',
+    `kui-button--${variant}`,
+    size ? `kui-button--size-${size}` : '',
+    outline ? 'kui-button--outline' : '',
+    wide ? 'kui-button--wide' : '',
+    block ? 'kui-button--block' : '',
+    circle ? 'kui-button--circle' : '',
+    square ? 'kui-button--square' : '',
+    glass ? 'kui-button--glass' : '',
+    className
+  ].filter(Boolean).join(' '));
 </script>
 
 <button
@@ -74,10 +55,11 @@
   class={buttonClasses}
   {disabled}
   {onclick}
+  aria-busy={loading ? 'true' : undefined}
   {...restProps}
 >
   {#if loading}
-    <span class="loading loading-spinner"></span>
+    <span class="kui-button__spinner" aria-hidden="true"></span>
   {/if}
   {@render children()}
 </button>

@@ -370,7 +370,6 @@ export const createSite = guardedForm(
 			}
 
 			// Step 4: Store site info in organization database
-			const db = await getDatabase(locals);
 			const siteResult = await db.sites.insert({
 				id: siteId,
 				name: data.name,

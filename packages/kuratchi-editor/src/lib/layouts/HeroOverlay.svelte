@@ -1,119 +1,133 @@
 <script lang="ts">
-    import { LayoutBlock } from "../shell/index.js";
-  
-  interface Props {
-    id?: string;
-    type?: string;
-    heading?: string;
-    body?: string;
-    button?: any;
-    reverseOrder?: boolean;
-    buttonColor?: string;
-    headingColor?: string;
-    textColor?: string;
-    image?: any;
-    backgroundColor?: string;
-    showBackgroundImage?: boolean;
-    backgroundImage?: string;
-    editable?: boolean;
-  }
+    import { LayoutBlock } from '../shell/index.js';
 
-  let {
-    id = crypto.randomUUID(),
-    type = 'hero-figure',
-    heading = 'Hello There',
-    body = 'Provident cupiditate voluptatem et in. Quaerat fugiat ut assumenda excepturi exercitationem quasi. In deleniti eaque aut repudiandae et a id nisi.',
-    button = {
-          link: '#',
-          label: 'Read more'
-      },
-    reverseOrder = $bindable(false),
-    buttonColor = $bindable('bg-base-200'),
-    headingColor = $bindable('text-content'),
-    textColor = $bindable('text-content'),
-    image = {
-          src: 'https://fakeimg.pl/489x600/?text=World&font=lobster',
-          alt: 'Clutch CMS',
-          title: 'Clutch CMS',
-      },
-    backgroundColor = $bindable('#ffffff'),
-    showBackgroundImage = $bindable(true),
-    backgroundImage = $bindable('https://img.daisyui.com/images/stock/photo-1507358522600-9f71e620c44e.webp'),
-    editable = true
-  }: Props = $props();
-  
-  let content = $derived({
-      backgroundColor: backgroundColor,
-      textColor: textColor,
-      reverseOrder: reverseOrder,
-      showBackgroundImage: showBackgroundImage,
-      backgroundImage: backgroundImage,
-      type: type,
-      image,
-      button,
-      buttonColor,
-      headingColor
-  })
-  </script>
+    interface HeroButton {
+        label?: string;
+        link?: string;
+    }
+
+    interface HeroImage {
+        url?: string;
+        alt?: string;
+        title?: string;
+        key?: string;
+    }
+
+    interface LayoutMetadata {
+        reverseOrder: boolean;
+        backgroundColor: string;
+        headingColor: string;
+        textColor: string;
+        buttonColor: string;
+        showBackgroundImage: boolean;
+        backgroundImage: string;
+    }
+
+    interface Props {
+        id?: string;
+        type?: string;
+        heading?: string;
+        body?: string;
+        button?: HeroButton;
+        metadata?: LayoutMetadata;
+        image?: HeroImage;
+        editable?: boolean;
+    }
+
+    let {
+        id = crypto.randomUUID(),
+        type = 'hero-overlay',
+        heading = $bindable('Hello there'),
+        body = $bindable(
+            'Provident cupiditate voluptatem et in. Quaerat fugiat ut assumenda excepturi exercitationem quasi. In deleniti eaque aut repudiandae et a id nisi.'
+        ),
+        button = $bindable<HeroButton>({
+            link: '#',
+            label: 'Read more'
+        }),
+        metadata: layoutMetadata = $bindable<LayoutMetadata>({
+            reverseOrder: false,
+            backgroundColor: '#05060a',
+            headingColor: '#f8fafc',
+            textColor: '#e2e8f0',
+            buttonColor: '#f97316',
+            showBackgroundImage: true,
+            backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay'
+        }) as LayoutMetadata,
+        image = $bindable<HeroImage>({
+            url: 'https://fakeimg.pl/960x1200/?text=Overlay+Hero',
+            alt: 'Hero overlay image',
+            title: 'Hero overlay image'
+        }),
+        editable = true
+    }: Props = $props();
+
+    const backgroundImageValue = $derived(
+        layoutMetadata.showBackgroundImage && layoutMetadata.backgroundImage
+            ? `url(${layoutMetadata.backgroundImage})`
+            : 'none'
+    );
+
+    const backgroundOpacity = $derived(layoutMetadata.showBackgroundImage ? 1 : 0);
+
+    const layoutStyle = $derived(
+        `--krt-heroOverlay-bg: ${layoutMetadata.backgroundColor}; --krt-heroOverlay-heading: ${layoutMetadata.headingColor}; --krt-heroOverlay-text: ${layoutMetadata.textColor}; --krt-heroOverlay-button: ${layoutMetadata.buttonColor}; --krt-heroOverlay-bgImage: ${backgroundImageValue}; --krt-heroOverlay-bgOpacity: ${backgroundOpacity};`
+    );
+
+    const content = $derived({
+        id,
+        type,
+        heading,
+        body,
+        button,
+        image,
+        metadata: { ...layoutMetadata }
+    });
+</script>
   
 {#if editable}
 <LayoutBlock {id} {type}>
     {#snippet drawerContent()}
-        <div class="card-body">
-            <div class="flex flex-wrap flex-col justify-between">
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Reverse Order</span>
-                        <input type="checkbox" class="checkbox checkbox-accent ml-4" bind:checked={reverseOrder} />
+        <div class="krt-heroOverlayDrawer">
+            <section class="krt-heroOverlayDrawer__section">
+                <h3>Layout</h3>
+                <label class="krt-heroOverlayDrawer__toggle">
+                    <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                    <span>Flip content alignment</span>
+                </label>
+                <label class="krt-heroOverlayDrawer__toggle">
+                    <input type="checkbox" bind:checked={layoutMetadata.showBackgroundImage} />
+                    <span>Show background image</span>
+                </label>
+                {#if layoutMetadata.showBackgroundImage}
+                    <label class="krt-heroOverlayDrawer__field">
+                        <span>Background image URL</span>
+                        <input type="text" bind:value={layoutMetadata.backgroundImage} />
                     </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Component Background Color</span>
-                        <input type="color" class="input-color ml-4" bind:value={backgroundColor} />
-                    </label>
-                </div>
-                
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Text Color</span>
-                        <input type="color" class="input-color ml-4" bind:value={textColor} />
-                    </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Show Background Image</span>
-                        <input type="checkbox" class="checkbox checkbox-accent ml-4" bind:checked={showBackgroundImage} />
-                    </label>
-                </div>
-
-                {#if showBackgroundImage}
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Background Image URL</span>
-                        <input type="text" class="input input-bordered ml-4" bind:value={backgroundImage} />
-                    </label>
-                </div>
                 {/if}
+            </section>
 
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Button Color</span>
-                        <input type="text" class="input input-bordered ml-4" bind:value={buttonColor} />
+            <section class="krt-heroOverlayDrawer__section">
+                <h3>Colors</h3>
+                <div class="krt-heroOverlayDrawer__grid">
+                    <label class="krt-heroOverlayDrawer__field">
+                        <span>Section background</span>
+                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                    </label>
+                    <label class="krt-heroOverlayDrawer__field">
+                        <span>Heading</span>
+                        <input type="color" bind:value={layoutMetadata.headingColor} />
+                    </label>
+                    <label class="krt-heroOverlayDrawer__field">
+                        <span>Body text</span>
+                        <input type="color" bind:value={layoutMetadata.textColor} />
+                    </label>
+                    <label class="krt-heroOverlayDrawer__field">
+                        <span>Button</span>
+                        <input type="color" bind:value={layoutMetadata.buttonColor} />
                     </label>
                 </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer">
-                        <span class="label-text">Heading Color</span>
-                        <input type="text" class="input input-bordered ml-4" bind:value={headingColor} />
-                    </label>
-                </div>
-
-                <div class="divider"></div>
-            </div>
+            </section>
         </div>
     {/snippet}
 
@@ -122,33 +136,214 @@
     {/snippet}
 
     {#snippet children()}
-        <div class="container mx-auto" style:background-color={backgroundColor}>
-            <div class="hero h-96" style:backgroundImage={showBackgroundImage ? `url(${backgroundImage})` : ''}>
-                <div class="hero-overlay bg-opacity-60"></div>
-                <div class="hero-content text-neutral-content text-center">
-                    <div class="max-w-md">
-                        <h1 class="mb-5 text-5xl font-bold" style:color={headingColor}>{heading}</h1>
-                        <p class="mb-5" style:color={textColor}>{body}</p>
-                        <button class="btn {buttonColor}">{button.label}</button>
-                    </div>
+        <section
+            class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
+            style={layoutStyle}
+        >
+            <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
+            <div class="krt-heroOverlay__background" aria-hidden="true"></div>
+            <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
+            <div class="krt-heroOverlay__content">
+                <div class="krt-heroOverlay__copy">
+                    <h1 class="krt-heroOverlay__heading" contenteditable bind:innerHTML={heading}></h1>
+                    <p class="krt-heroOverlay__body" contenteditable bind:innerHTML={body}></p>
+                    <a
+                        class="krt-heroOverlay__cta"
+                        href={button?.link ?? '#'}
+                        aria-label={button?.label ?? 'Edit hero button label'}
+                    >
+                        <span contenteditable bind:innerHTML={button.label}></span>
+                    </a>
                 </div>
             </div>
-        </div>
+        </section>
     {/snippet}
 </LayoutBlock>
 {:else}
-    <section id={id} data-type={type} class="w-full" style:background-color={backgroundColor}>
-        <div class="hero h-96" style:backgroundImage={showBackgroundImage ? `url(${backgroundImage})` : ''}>
-            <div class="hero-overlay bg-opacity-60"></div>
-            <div class="hero-content text-neutral-content text-center">
-                <div class="max-w-md">
-                    <h1 class="mb-5 text-5xl font-bold" style:color={headingColor}>{heading}</h1>
-                    <p class="mb-5" style:color={textColor}>{body}</p>
-                    <a class={`btn ${buttonColor}`} href={button?.link ?? '#'}>
-                        {button?.label ?? 'Read more'}
-                    </a>
-                </div>
+    <section
+        id={id}
+        data-type={type}
+        class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
+        style={layoutStyle}
+    >
+        <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-heroOverlay__background" aria-hidden="true"></div>
+        <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
+        <div class="krt-heroOverlay__content">
+            <div class="krt-heroOverlay__copy">
+                <h1 class="krt-heroOverlay__heading">{heading}</h1>
+                <p class="krt-heroOverlay__body">{body}</p>
+                <a class="krt-heroOverlay__cta" href={button?.link ?? '#'}>
+                    {button?.label ?? 'Read more'}
+                </a>
             </div>
         </div>
     </section>
 {/if}
+
+<style>
+    .krt-heroOverlay {
+        position: relative;
+        overflow: hidden;
+        border-radius: var(--krt-radius-2xl, 1.75rem);
+        min-height: 24rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(2.5rem, 6vw, 5rem);
+        background: var(--krt-heroOverlay-bg, #05060a);
+    }
+
+    .krt-heroOverlay--reverse .krt-heroOverlay__copy {
+        align-items: flex-end;
+        text-align: right;
+    }
+
+    .krt-heroOverlay__metadata {
+        display: none;
+    }
+
+    .krt-heroOverlay__background {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        opacity: var(--krt-heroOverlay-bgOpacity, 0);
+        background-image: var(--krt-heroOverlay-bgImage, none);
+        transition: opacity 200ms ease;
+    }
+
+    .krt-heroOverlay__overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(17, 24, 39, 0.72), rgba(30, 41, 59, 0.55));
+        mix-blend-mode: multiply;
+        pointer-events: none;
+    }
+
+    .krt-heroOverlay__content {
+        position: relative;
+        z-index: 1;
+        width: min(40rem, 100%);
+        display: flex;
+        justify-content: center;
+    }
+
+    .krt-heroOverlay__copy {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-lg, 1rem);
+        text-align: left;
+        align-items: flex-start;
+    }
+
+    .krt-heroOverlay__heading {
+        margin: 0;
+        font-size: clamp(2.5rem, 5vw, 3.75rem);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--krt-heroOverlay-heading, #f8fafc);
+    }
+
+    .krt-heroOverlay__body {
+        margin: 0;
+        font-size: clamp(1rem, 1.2vw + 0.9rem, 1.25rem);
+        line-height: 1.8;
+        color: var(--krt-heroOverlay-text, #e2e8f0);
+    }
+
+    .krt-heroOverlay__cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.85rem 2rem;
+        border-radius: var(--krt-radius-pill, 999px);
+        color: #f8fafc;
+        font-weight: 600;
+        text-decoration: none;
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
+        transition: transform 150ms ease, box-shadow 150ms ease;
+        background: var(--krt-heroOverlay-button, #f97316);
+    }
+
+    .krt-heroOverlay__cta:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 26px 48px rgba(15, 23, 42, 0.25);
+    }
+
+    .krt-heroOverlay__cta:focus-visible {
+        outline: 2px solid var(--krt-color-accent, #4f46e5);
+        outline-offset: 2px;
+    }
+
+    .krt-heroOverlayDrawer {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xl, 1.25rem);
+    }
+
+    .krt-heroOverlayDrawer__section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-heroOverlayDrawer__section h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-heroOverlayDrawer__toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--krt-space-sm, 0.5rem);
+        font-weight: 600;
+        color: var(--krt-color-text, #111827);
+    }
+
+    .krt-heroOverlayDrawer__toggle input[type='checkbox'] {
+        width: 1.1rem;
+        height: 1.1rem;
+        accent-color: var(--krt-color-primary, #111827);
+    }
+
+    .krt-heroOverlayDrawer__grid {
+        display: grid;
+        gap: var(--krt-space-md, 0.75rem);
+    }
+
+    .krt-heroOverlayDrawer__field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-xs, 0.25rem);
+        padding: var(--krt-space-sm, 0.5rem) var(--krt-space-md, 0.75rem);
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-surface, #ffffff);
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--krt-color-muted, #6b7280);
+    }
+
+    .krt-heroOverlayDrawer__field input[type='text'] {
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        padding: 0.45rem 0.6rem;
+        font-size: 0.95rem;
+        background: #f8fafc;
+    }
+
+    .krt-heroOverlayDrawer__field input[type='color'] {
+        width: 2.4rem;
+        height: 2.4rem;
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        padding: 0;
+        cursor: pointer;
+    }
+</style>

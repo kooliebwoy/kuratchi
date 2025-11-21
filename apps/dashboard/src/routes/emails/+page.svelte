@@ -63,56 +63,7 @@
   <title>Email Dashboard - Kuratchi</title>
 </svelte:head>
 
-<div class="p-8 space-y-8">
-  <!-- Header -->
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-3xl font-bold">Email Dashboard</h1>
-      <p class="text-base-content/70 mt-1">Manage your email marketing campaigns.</p>
-    </div>
-    <div class="flex items-center gap-3">
-      {#if verifiedDomains.length > 0}
-        <!-- Domain Context Switcher -->
-        <div class="dropdown dropdown-end">
-          <div tabindex="0" role="button" class="btn btn-ghost gap-2">
-            <Globe class="h-4 w-4" />
-            <span class="hidden sm:inline">{selectedDomain?.name || 'Select Domain'}</span>
-            <ChevronDown class="h-4 w-4" />
-          </div>
-          <ul tabindex="0" class="dropdown-content z-1 menu p-2 shadow-lg bg-base-100 rounded-box w-64 border border-base-200 mt-2">
-            <li class="menu-title">
-              <span>Verified Domains</span>
-            </li>
-            {#each verifiedDomains as domain}
-              <li>
-                <button 
-                  class="flex items-center justify-between {selectedDomain?.id === domain.id ? 'active' : ''}"
-                  onclick={() => selectedDomain = domain}
-                >
-                  <span class="truncate">{domain.name}</span>
-                  {#if selectedDomain?.id === domain.id}
-                    <CheckCircle class="h-4 w-4 text-primary" />
-                  {/if}
-                </button>
-              </li>
-            {/each}
-            <div class="divider my-1"></div>
-            <li>
-              <a href="/domains" class="text-primary">
-                <Globe class="h-4 w-4" />
-                Manage Domains
-              </a>
-            </li>
-          </ul>
-        </div>
-      {/if}
-      <a href="/emails/drip" class="btn btn-primary gap-2">
-        <Zap class="h-4 w-4" />
-        Create Campaign
-      </a>
-    </div>
-  </div>
-
+<div class="space-y-8">
   <!-- Getting Started Section (show if not complete) -->
   {#if !setupComplete}
     <div class="card bg-linear-to-br from-primary/5 via-secondary/5 to-accent/5 border-2 border-primary/20 shadow-lg">

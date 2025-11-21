@@ -32,11 +32,11 @@
   let dialogElement: HTMLDialogElement;
   
   const sizeClasses = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    full: 'max-w-full'
+    sm: 'kui-dialog--sm',
+    md: 'kui-dialog--md',
+    lg: 'kui-dialog--lg',
+    xl: 'kui-dialog--xl',
+    full: 'kui-dialog--full'
   };
   
   function openDialog() {
@@ -67,31 +67,28 @@
 <dialog
   bind:this={dialogElement}
   {id}
-  class="modal"
+  class={`kui-dialog ${sizeClasses[size]} ${className}`.trim()}
+  data-backdrop={backdropClass || undefined}
   onclose={() => {
     open = false;
     onClose?.();
   }}
 >
-  <div class="modal-box {sizeClasses[size]} {className}">
+  <div class="kui-dialog__box">
     {#if header}
       <div class="mb-4">
         {@render header()}
       </div>
     {/if}
     
-    <div class="modal-content">
+    <div class="kui-dialog__content">
       {@render children()}
     </div>
     
     {#if actions}
-      <div class="modal-action">
+      <div class="kui-dialog__actions">
         {@render actions(closeDialog)}
       </div>
     {/if}
   </div>
-  
-  <form method="dialog" class="modal-backdrop {backdropClass}">
-    <button type="button">close</button>
-  </form>
 </dialog>

@@ -1,13 +1,14 @@
 <script lang="ts">
   import { Send, Trash2, Loader2, Plus, Eye, X, ChevronRight, ChevronLeft } from 'lucide-svelte';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
+  import { Button, Card, Badge, Loading } from '@kuratchi/ui';
   import {
     listBroadcasts,
     createBroadcast,
     sendBroadcast,
-    deleteBroadcast,
-    listSegments
-  } from '$lib/functions/newsletter.remote';
+    deleteBroadcast
+  } from '$lib/functions/broadcasts.remote';
+  import { listSegments } from '$lib/functions/newsletter.remote';
 
   const broadcastsResource = listBroadcasts();
   const segmentsResource = listSegments();
@@ -15,7 +16,6 @@
   const broadcasts = $derived(Array.isArray(broadcastsResource.current) ? broadcastsResource.current : []);
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);
 
-  // Create modal state
   let showCreateModal = $state(false);
   let currentStep = $state(0);
   let formName = $state('');
@@ -62,11 +62,8 @@
   }
 
   function canProceedToNextStep(): boolean {
-    if (currentStep === 0) {
-      return formName.trim().length > 0 && formAudienceId.length > 0;
-    } else if (currentStep === 1) {
-      return formSubject.trim().length > 0 && formHtml.trim().length > 0;
-    }
+    if (currentStep === 0) return formName.trim().length > 0 && formAudienceId.length > 0;
+    if (currentStep === 1) return formSubject.trim().length > 0 && formHtml.trim().length > 0;
     return true;
   }
 
@@ -85,7 +82,7 @@
   }
 
   async function handleCreateBroadcast() {
-    if (!formName.trim() || !formSubject.trim() || !formHtml.trim() || !formAudienceId) {
+    if (!canProceedToNextStep()) {
       createError = 'All fields are required';
       return;
     }
@@ -94,23 +91,15 @@
     createError = null;
 
     try {
-      console.log('Creating broadcast with:', {
+      await createBroadcast({
         name: formName.trim(),
         subject: formSubject.trim(),
         html: formHtml.trim(),
         audienceId: formAudienceId
       });
-      const result = await createBroadcast({
-        name: formName.trim(),
-        subject: formSubject.trim(),
-        html: formHtml.trim(),
-        audienceId: formAudienceId
-      });
-      console.log('Broadcast created:', result);
       await broadcastsResource.refresh();
       closeCreateModal();
     } catch (err) {
-      console.error('Broadcast creation error:', err);
       createError = err instanceof Error ? err.message : 'Failed to create broadcast';
     } finally {
       creating = false;
@@ -124,7 +113,6 @@
       await sendBroadcast({ broadcastId: id });
       await broadcastsResource.refresh();
     } catch (err) {
-      console.error(err);
       alert('Failed to send broadcast');
     } finally {
       sendingId = null;
@@ -138,7 +126,6 @@
       await deleteBroadcast({ broadcastId: id });
       await broadcastsResource.refresh();
     } catch (err) {
-      console.error(err);
       alert('Failed to delete broadcast');
     } finally {
       deletingId = null;
@@ -154,16 +141,12 @@
     return segments.find(s => s.id === id)?.name || 'Unknown';
   }
 
-  function getStatusBadge(status: string) {
+  function getStatusVariant(status: string) {
     switch (status) {
-      case 'sent':
-        return { class: 'badge-success', label: 'Sent' };
-      case 'draft':
-        return { class: 'badge-warning', label: 'Draft' };
-      case 'scheduled':
-        return { class: 'badge-info', label: 'Scheduled' };
-      default:
-        return { class: 'badge-neutral', label: status };
+      case 'sent': return { variant: 'success', label: 'Sent' };
+      case 'draft': return { variant: 'warning', label: 'Draft' };
+      case 'scheduled': return { variant: 'info', label: 'Scheduled' };
+      default: return { variant: 'neutral', label: status };
     }
   }
 </script>
@@ -172,319 +155,504 @@
   <title>Broadcasts - Kuratchi Dashboard</title>
 </svelte:head>
 
-<!-- Navigation Tabs -->
-<div class="border-b border-base-200 bg-base-100">
-  <div class="flex gap-0 px-8">
-    <a href="/emails/drip" class="tab tab-bordered">
-      <span class="font-medium">Drip Campaigns</span>
-    </a>
-    <a href="/emails/segments" class="tab tab-bordered">
-      <span class="font-medium">Segments</span>
-    </a>
-    <a href="/emails/templates" class="tab tab-bordered">
-      <span class="font-medium">Templates</span>
-    </a>
-    <a href="/emails/broadcast" class="tab tab-active tab-bordered">
-      <span class="font-medium">Broadcasts</span>
-    </a>
-  </div>
-</div>
+<div class="kui-broadcast">
+  <nav class="kui-tabs">
+    <a href="/emails/drip" class="kui-tab">Drip Campaigns</a>
+    <a href="/emails/segments" class="kui-tab">Segments</a>
+    <a href="/emails/templates" class="kui-tab">Templates</a>
+    <a href="/emails/broadcast" class="kui-tab is-active">Broadcasts</a>
+  </nav>
 
-<section class="space-y-8 p-8">
-  <div class="flex items-center justify-between">
+  <header class="kui-broadcast__header">
     <div>
-      <p class="text-xs font-semibold uppercase tracking-wide text-primary/70">Direct Email</p>
-      <h1 class="text-2xl font-semibold">Broadcasts</h1>
-      <p class="text-sm text-base-content/70">Send emails directly to your audiences.</p>
+      <p class="kui-eyebrow">Direct Email</p>
+      <h1>Broadcasts</h1>
+      <p class="kui-subtext">Send emails directly to your audiences.</p>
     </div>
-    <button class="btn btn-primary" onclick={openCreateModal}>
-      <Plus class="h-4 w-4" />
+    <Button variant="primary" onclick={openCreateModal}>
+      <Plus class="kui-icon" />
       New Broadcast
-    </button>
-  </div>
+    </Button>
+  </header>
 
   {#if broadcasts.length === 0}
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body items-center justify-center py-12">
-        <Send class="h-12 w-12 text-base-content/30" />
-        <p class="text-base-content/70 mt-4">No broadcasts yet</p>
-        <p class="text-sm text-base-content/50">Create your first broadcast to get started</p>
-      </div>
-    </div>
+    <Card class="kui-panel center">
+      <Send class="kui-empty__icon" />
+      <p class="kui-subtext">No broadcasts yet</p>
+      <p class="kui-subtext">Create your first broadcast to get started</p>
+    </Card>
   {:else}
-    <div class="grid grid-cols-1 gap-4">
+    <div class="kui-list">
       {#each broadcasts as broadcast}
-        {@const badge = getStatusBadge(broadcast.status)}
-        <div class="card bg-base-100 shadow-sm border border-base-200">
-          <div class="card-body">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1">
-                <h3 class="card-title text-lg">{broadcast.name}</h3>
-                <p class="text-sm text-base-content/70 mt-1">{broadcast.subject}</p>
-                <div class="flex items-center gap-2 mt-3">
-                  <span class={`badge ${badge.class} badge-sm`}>{badge.label}</span>
-                  <span class="text-xs text-base-content/60">{getSegmentName(broadcast.audienceId)}</span>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  class="btn btn-ghost btn-sm"
-                  onclick={() => openPreviewModal(broadcast)}
-                  title="Preview"
-                >
-                  <Eye class="h-4 w-4" />
-                </button>
-                {#if broadcast.status === 'draft'}
-                  <button
-                    class="btn btn-primary btn-sm"
-                    onclick={() => handleSendBroadcast(broadcast.id)}
-                    disabled={sendingId === broadcast.id}
-                  >
-                    {#if sendingId === broadcast.id}
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                    {:else}
-                      <Send class="h-4 w-4" />
-                    {/if}
-                    Send
-                  </button>
-                {/if}
-                <button
-                  class="btn btn-ghost btn-sm text-error"
-                  onclick={() => handleDeleteBroadcast(broadcast.id)}
-                  disabled={deletingId === broadcast.id}
-                >
-                  {#if deletingId === broadcast.id}
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                  {:else}
-                    <Trash2 class="h-4 w-4" />
-                  {/if}
-                </button>
+        {@const badge = getStatusVariant(broadcast.status)}
+        <Card class="kui-panel">
+          <div class="kui-broadcast__item">
+            <div>
+              <h3>{broadcast.name}</h3>
+              <p class="kui-subtext">{broadcast.subject}</p>
+              <div class="kui-inline">
+                <Badge variant={badge.variant} size="xs">{badge.label}</Badge>
+                <span class="kui-subtext">{getSegmentName(broadcast.audienceId)}</span>
               </div>
             </div>
+            <div class="kui-inline end">
+              <Button variant="ghost" size="sm" onclick={() => openPreviewModal(broadcast)} aria-label="Preview">
+                <Eye class="kui-icon" />
+              </Button>
+              {#if broadcast.status === 'draft'}
+                <Button variant="primary" size="sm" onclick={() => handleSendBroadcast(broadcast.id)} disabled={sendingId === broadcast.id}>
+                  {#if sendingId === broadcast.id}
+                    <Loader2 class="kui-icon spinning" />
+                    Sending...
+                  {:else}
+                    <Send class="kui-icon" />
+                    Send
+                  {/if}
+                </Button>
+              {/if}
+              <Button variant="ghost" size="sm" onclick={() => handleDeleteBroadcast(broadcast.id)} disabled={deletingId === broadcast.id}>
+                {#if deletingId === broadcast.id}
+                  <Loader2 class="kui-icon spinning" />
+                {:else}
+                  <Trash2 class="kui-icon error" />
+                {/if}
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       {/each}
     </div>
   {/if}
-</section>
+</div>
 
-<!-- Create Broadcast Modal - Step Based -->
 {#if showCreateModal}
-  <div class="modal modal-open">
-    <div class="modal-box max-w-3xl max-h-[90vh] flex flex-col">
-      <!-- Header -->
-      <div class="flex items-center justify-between pb-4 border-b border-base-200">
+  <div class="kui-overlay">
+    <div class="kui-modal">
+      <div class="kui-modal__header">
         <div>
-          <h3 class="font-bold text-lg">Create Broadcast</h3>
-          <p class="text-xs text-base-content/60 mt-1">{steps[currentStep].description}</p>
+          <h3>Create Broadcast</h3>
+          <p class="kui-subtext">{steps[currentStep].description}</p>
         </div>
-        <button class="btn btn-ghost btn-sm btn-circle" onclick={closeCreateModal}>
-          <X class="h-4 w-4" />
-        </button>
+        <Button variant="ghost" size="xs" onclick={closeCreateModal} aria-label="Close">
+          <X class="kui-icon" />
+        </Button>
       </div>
 
-      <!-- Steps Indicator -->
-      <div class="py-6 px-4">
-        <div class="flex items-center justify-between">
-          {#each steps as step, idx}
-            <div class="flex flex-col items-center flex-1">
-              <div class={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition ${
-                idx === currentStep 
-                  ? 'bg-primary text-primary-content' 
-                  : idx < currentStep 
-                  ? 'bg-success text-success-content' 
-                  : 'bg-base-200 text-base-content/60'
-              }`}>
-                {idx < currentStep ? '✓' : idx + 1}
-              </div>
-              <p class="text-xs font-medium mt-2 text-center">{step.title}</p>
+      <div class="kui-steps">
+        {#each steps as step, idx}
+          <div class="kui-step">
+            <div class={`kui-step__badge ${idx === currentStep ? 'is-active' : idx < currentStep ? 'is-done' : ''}`}>
+              {idx < currentStep ? '✓' : idx + 1}
             </div>
+            <p>{step.title}</p>
             {#if idx < steps.length - 1}
-              <div class={`h-1 flex-1 mx-2 rounded transition ${
-                idx < currentStep ? 'bg-success' : 'bg-base-200'
-              }`}></div>
+              <div class={`kui-step__bar ${idx < currentStep ? 'is-done' : ''}`}></div>
             {/if}
-          {/each}
-        </div>
+          </div>
+        {/each}
       </div>
 
-      <!-- Step Content -->
-      <div class="flex-1 overflow-y-auto px-4 py-4">
+      <div class="kui-modal__body">
         {#if currentStep === 0}
-          <!-- Step 1: Details -->
-          <div class="space-y-4">
-            <div>
-              <label class="label">
-                <span class="label-text font-medium">Broadcast Name</span>
-              </label>
-              <input
-                type="text"
-                class="input input-bordered w-full"
-                bind:value={formName}
-                placeholder="e.g., Holiday Sale Announcement"
-              />
-              <p class="text-xs text-base-content/60 mt-1">Give your broadcast a descriptive name</p>
-            </div>
+          <div class="kui-stack">
+            <label class="kui-label">
+              Broadcast Name
+              <input class="kui-input" type="text" bind:value={formName} placeholder="e.g., Holiday Sale Announcement" />
+              <span class="kui-subtext">Give your broadcast a descriptive name</span>
+            </label>
 
-            <div>
-              <label class="label">
-                <span class="label-text font-medium">Target Audience</span>
-              </label>
-              <select class="select select-bordered w-full" bind:value={formAudienceId}>
+            <label class="kui-label">
+              Target Audience
+              <select class="kui-select" bind:value={formAudienceId}>
                 {#each segments as segment}
                   <option value={segment.id}>{segment.name} ({segment.subscriberCount ?? 0} contacts)</option>
                 {/each}
               </select>
-              <p class="text-xs text-base-content/60 mt-1">Select the segment to send this broadcast to</p>
-            </div>
+              <span class="kui-subtext">Select the segment to send this broadcast to</span>
+            </label>
           </div>
         {:else if currentStep === 1}
-          <!-- Step 2: Content -->
-          <div class="space-y-4">
-            <div>
-              <label class="label">
-                <span class="label-text font-medium">Subject Line</span>
-              </label>
-              <input
-                type="text"
-                class="input input-bordered w-full"
-                bind:value={formSubject}
-                placeholder="Email subject"
-              />
-              <p class="text-xs text-base-content/60 mt-1">This is what recipients will see in their inbox</p>
-            </div>
+          <div class="kui-stack">
+            <label class="kui-label">
+              Subject Line
+              <input class="kui-input" type="text" bind:value={formSubject} placeholder="Email subject" />
+              <span class="kui-subtext">This is what recipients will see in their inbox</span>
+            </label>
 
-            <div>
-              <label class="label">
-                <span class="label-text font-medium">Email Content</span>
-              </label>
-              <EmailEditor
-                content={formHtml}
-                onChange={(html) => (formHtml = html)}
-              />
-              <p class="text-xs text-base-content/60 mt-2">✨ Use the toolbar to format your email. The content is automatically converted to HTML for Resend.</p>
-            </div>
+            <label class="kui-label">
+              Email Content
+              <EmailEditor content={formHtml} onChange={(html) => (formHtml = html)} />
+              <span class="kui-subtext">Use the builder to format your email.</span>
+            </label>
           </div>
-        {:else if currentStep === 2}
-          <!-- Step 3: Review -->
-          <div class="space-y-4">
-            <div class="bg-base-200/50 rounded-lg p-4 space-y-3">
-              <div>
-                <p class="text-xs text-base-content/60 uppercase font-semibold">Broadcast Name</p>
-                <p class="text-sm font-medium mt-1">{formName}</p>
-              </div>
-              <div class="divider my-2"></div>
-              <div>
-                <p class="text-xs text-base-content/60 uppercase font-semibold">Target Audience</p>
-                <p class="text-sm font-medium mt-1">{getSegmentName(formAudienceId)}</p>
-              </div>
-              <div class="divider my-2"></div>
-              <div>
-                <p class="text-xs text-base-content/60 uppercase font-semibold">Subject Line</p>
-                <p class="text-sm font-medium mt-1">{formSubject}</p>
-              </div>
-              <div class="divider my-2"></div>
-              <div>
-                <p class="text-xs text-base-content/60 uppercase font-semibold">Preview</p>
-                <div class="bg-white rounded border border-base-200 mt-2 p-4 max-h-48 overflow-y-auto">
-                  <iframe
-                    title="Email Preview"
-                    class="w-full"
-                    style="min-height: 200px; height: 100%;"
-                    srcdoc={formHtml}
-                  ></iframe>
-                </div>
+        {:else}
+          <div class="kui-review">
+            <div>
+              <p class="kui-eyebrow">Broadcast Name</p>
+              <p class="kui-strong">{formName}</p>
+            </div>
+            <div>
+              <p class="kui-eyebrow">Target Audience</p>
+              <p class="kui-strong">{getSegmentName(formAudienceId)}</p>
+            </div>
+            <div>
+              <p class="kui-eyebrow">Subject Line</p>
+              <p class="kui-strong">{formSubject}</p>
+            </div>
+            <div>
+              <p class="kui-eyebrow">Preview</p>
+              <div class="kui-preview">
+                <iframe title="Email Preview" srcdoc={formHtml}></iframe>
               </div>
             </div>
           </div>
         {/if}
 
         {#if createError}
-          <div class="alert alert-error alert-sm mt-4">
-            <span>{createError}</span>
-          </div>
+          <div class="kui-callout error">{createError}</div>
         {/if}
       </div>
 
-      <!-- Footer -->
-      <div class="flex items-center justify-between pt-4 border-t border-base-200">
-        <button class="btn btn-ghost" onclick={prevStep} disabled={currentStep === 0}>
-          <ChevronLeft class="h-4 w-4" />
+      <div class="kui-modal__footer">
+        <Button variant="ghost" onclick={prevStep} disabled={currentStep === 0}>
+          <ChevronLeft class="kui-icon" />
           Back
-        </button>
-
-        <div class="flex gap-2">
-          <button class="btn btn-ghost" onclick={closeCreateModal}>Cancel</button>
+        </Button>
+        <div class="kui-inline end">
+          <Button variant="ghost" onclick={closeCreateModal}>Cancel</Button>
           {#if currentStep < steps.length - 1}
-            <button 
-              class="btn btn-primary" 
-              onclick={nextStep}
-              disabled={!canProceedToNextStep()}
-            >
+            <Button variant="primary" onclick={nextStep} disabled={!canProceedToNextStep()}>
               Next
-              <ChevronRight class="h-4 w-4" />
-            </button>
+              <ChevronRight class="kui-icon" />
+            </Button>
           {:else}
-            <button 
-              class="btn btn-primary" 
-              onclick={handleCreateBroadcast}
-              disabled={creating || !canProceedToNextStep()}
-            >
+            <Button variant="primary" onclick={handleCreateBroadcast} disabled={creating || !canProceedToNextStep()}>
               {#if creating}
-                <Loader2 class="h-4 w-4 animate-spin" />
+                <Loading size="sm" />
                 Creating...
               {:else}
                 Create Broadcast
               {/if}
-            </button>
+            </Button>
           {/if}
         </div>
       </div>
     </div>
-    <button class="modal-backdrop" onclick={closeCreateModal} aria-label="Close modal"></button>
+    <div class="kui-overlay__backdrop" onclick={closeCreateModal}></div>
   </div>
 {/if}
 
-<!-- Preview Modal -->
 {#if showPreviewModal && selectedBroadcast}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div class="w-full max-w-4xl max-h-[90vh] bg-base-100 rounded-2xl shadow-2xl flex flex-col">
-      <!-- Header -->
-      <div class="flex items-center justify-between border-b border-base-200 px-6 py-4">
+  <div class="kui-overlay">
+    <div class="kui-preview-modal">
+      <div class="kui-modal__header">
         <div>
-          <h2 class="text-2xl font-bold">{selectedBroadcast.name}</h2>
-          <p class="text-sm text-base-content/60 mt-1">To: {getSegmentName(selectedBroadcast.audienceId)}</p>
+          <h2>{selectedBroadcast.name}</h2>
+          <p class="kui-subtext">To: {getSegmentName(selectedBroadcast.audienceId)}</p>
         </div>
-        <button
-          class="btn btn-ghost btn-circle btn-sm"
-          onclick={() => (showPreviewModal = false)}
-        >
-          ✕
-        </button>
+        <Button variant="ghost" size="xs" onclick={() => (showPreviewModal = false)}>
+          <X class="kui-icon" />
+        </Button>
       </div>
 
-      <!-- Content -->
-      <div class="flex-1 overflow-auto bg-white p-8">
-        <div class="max-w-2xl mx-auto">
-          <div class="mb-6">
-            <p class="text-xs text-base-content/60 uppercase font-semibold">Subject</p>
-            <p class="text-lg font-semibold mt-1">{selectedBroadcast.subject}</p>
+      <div class="kui-preview-body">
+        <div class="kui-review">
+          <div>
+            <p class="kui-eyebrow">Subject</p>
+            <p class="kui-strong">{selectedBroadcast.subject}</p>
           </div>
-          <div class="bg-white rounded-lg border border-base-200 overflow-hidden">
-            <iframe
-              title="Email Preview"
-              class="w-full"
-              style="min-height: 600px; height: 100%;"
-              srcdoc={selectedBroadcast.html}
-            ></iframe>
+          <div class="kui-preview-frame">
+            <iframe title="Email Preview" srcdoc={selectedBroadcast.html}></iframe>
           </div>
         </div>
       </div>
 
-      <!-- Footer -->
-      <div class="border-t border-base-200 px-6 py-4 flex justify-end">
-        <button class="btn btn-ghost" onclick={() => (showPreviewModal = false)}>Close</button>
+      <div class="kui-modal__footer end">
+        <Button variant="ghost" onclick={() => (showPreviewModal = false)}>Close</Button>
       </div>
     </div>
+    <div class="kui-overlay__backdrop" onclick={() => (showPreviewModal = false)}></div>
   </div>
 {/if}
+
+<style>
+  .kui-broadcast {
+    display: grid;
+    gap: var(--kui-spacing-md);
+  }
+
+  .kui-tabs {
+    display: flex;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--kui-color-border);
+    padding-bottom: 0.5rem;
+  }
+
+  .kui-tab {
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--kui-radius-md);
+    text-decoration: none;
+    color: var(--kui-color-muted);
+    border: 1px solid transparent;
+  }
+
+  .kui-tab.is-active {
+    border-color: var(--kui-color-border);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-broadcast__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kui-color-muted);
+    font-weight: 700;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+
+  h1 {
+    margin: 0.1rem 0 0.2rem;
+    font-size: 1.6rem;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-panel.center {
+    display: grid;
+    gap: 0.35rem;
+    justify-items: center;
+    text-align: center;
+    padding: var(--kui-spacing-lg);
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-list {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-broadcast__item {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    align-items: flex-start;
+  }
+
+  .kui-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .kui-inline.end {
+    justify-content: flex-end;
+  }
+
+  .kui-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-icon.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  .kui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(4px);
+  }
+
+  .kui-modal,
+  .kui-preview-modal {
+    position: relative;
+    z-index: 1;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    box-shadow: var(--kui-shadow-lg);
+    width: min(960px, 100% - 32px);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kui-modal__header,
+  .kui-modal__footer {
+    padding: var(--kui-spacing-md);
+    border-bottom: 1px solid var(--kui-color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-modal__footer {
+    border-top: 1px solid var(--kui-color-border);
+    border-bottom: none;
+  }
+
+  .kui-modal__body {
+    padding: var(--kui-spacing-md);
+    overflow-y: auto;
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-steps {
+    display: flex;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-md);
+    border-bottom: 1px solid var(--kui-color-border);
+    flex-wrap: wrap;
+  }
+
+  .kui-step {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .kui-step__badge {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--kui-color-surface-muted);
+    color: var(--kui-color-text);
+    font-weight: 700;
+  }
+
+  .kui-step__badge.is-active {
+    background: var(--kui-color-primary);
+    color: #fff;
+  }
+
+  .kui-step__badge.is-done {
+    background: var(--kui-color-success);
+    color: #fff;
+  }
+
+  .kui-step__bar {
+    width: 2.5rem;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--kui-color-border);
+  }
+
+  .kui-step__bar.is-done {
+    background: var(--kui-color-success);
+  }
+
+  .kui-label {
+    display: grid;
+    gap: 0.25rem;
+    font-weight: 600;
+  }
+
+  .kui-input,
+  .kui-select {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: 0.65rem 0.75rem;
+    font-size: 0.95rem;
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+  }
+
+  .kui-select {
+    appearance: none;
+  }
+
+  .kui-review {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-preview {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    overflow: hidden;
+    background: var(--kui-color-surface);
+    min-height: 200px;
+  }
+
+  .kui-preview iframe {
+    width: 100%;
+    min-height: 260px;
+    border: none;
+  }
+
+  .kui-preview-modal {
+    width: min(960px, 100% - 32px);
+  }
+
+  .kui-preview-body {
+    padding: var(--kui-spacing-md);
+    overflow-y: auto;
+  }
+
+  .kui-preview-frame {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    overflow: hidden;
+    background: var(--kui-color-surface);
+  }
+
+  .kui-preview-frame iframe {
+    width: 100%;
+    min-height: 300px;
+    border: none;
+  }
+
+  .kui-callout {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: var(--kui-spacing-sm);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+  }
+
+  .kui-callout.error {
+    border-color: color-mix(in srgb, var(--kui-color-error) 40%, var(--kui-color-border) 60%);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 720px) {
+    .kui-broadcast__item {
+      flex-direction: column;
+    }
+  }
+</style>

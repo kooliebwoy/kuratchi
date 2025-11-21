@@ -37,155 +37,154 @@
   let mode = $state<'credentials' | 'magic'>('credentials');
 </script>
 
-<div class="card w-full max-w-md bg-base-100 shadow-xl">
-  <div class="card-body">
+<section class="kui-auth-card">
+  <div class="kui-auth-card__header">
     {#if typeof title === 'string'}
-      <h2 class="card-title text-2xl font-bold">{title}</h2>
+      <h2 class="kui-auth-card__title">{title}</h2>
     {:else}
       {@render title()}
     {/if}
     
     {#if subtitle}
       {#if typeof subtitle === 'string'}
-        <p class="text-base-content/70 text-sm">{subtitle}</p>
+        <p class="kui-auth-card__subtitle">{subtitle}</p>
       {:else}
         {@render subtitle()}
       {/if}
     {/if}
-    
-    {#if error}
-      <div class="alert alert-error mt-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>{error}</span>
-      </div>
-    {/if}
-    
-    {#if showOAuth}
-      <div class="space-y-2 mt-4">
-        {#each oauthProviders as provider}
-          <button
-            type="button"
-            class="btn btn-outline w-full"
-            onclick={() => onOAuthClick?.(provider.name)}
-            disabled={loading}
-          >
-            {provider.label}
-          </button>
-        {/each}
-      </div>
-      
-      {#if showCredentials || showMagicLink}
-        <div class="divider">OR</div>
-      {/if}
-    {/if}
-    
-    {#if showCredentials && showMagicLink}
-      <div class="tabs tabs-boxed mb-4">
-        <button
-          type="button"
-          class="tab"
-          class:tab-active={mode === 'credentials'}
-          onclick={() => mode = 'credentials'}
-        >
-          Password
-        </button>
-        <button
-          type="button"
-          class="tab"
-          class:tab-active={mode === 'magic'}
-          onclick={() => mode = 'magic'}
-        >
-          Magic Link
-        </button>
-      </div>
-    {/if}
-    
-    {#if mode === 'credentials' && showCredentials}
-      <form onsubmit={onSubmitCredentials} class="space-y-4">
-        <div class="form-control">
-          <label class="label" for="email">
-            <span class="label-text">Email</span>
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="email@example.com"
-            class="input input-bordered w-full"
-            required
-            disabled={loading}
-          />
-        </div>
-        
-        <div class="form-control">
-          <label class="label" for="password">
-            <span class="label-text">Password</span>
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="••••••••"
-            class="input input-bordered w-full"
-            required
-            disabled={loading}
-          />
-          <div class="label">
-            <a href="/forgot-password" class="label-text-alt link link-hover">Forgot password?</a>
-          </div>
-        </div>
-        
-        <button type="submit" class="btn btn-primary w-full" disabled={loading}>
-          {#if loading}
-            <span class="loading loading-spinner"></span>
-          {/if}
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
-    {/if}
-    
-    {#if mode === 'magic' && showMagicLink}
-      <form onsubmit={onSubmitMagicLink} class="space-y-4">
-        <div class="form-control">
-          <label class="label" for="email-magic">
-            <span class="label-text">Email</span>
-          </label>
-          <input
-            id="email-magic"
-            name="email"
-            type="email"
-            placeholder="email@example.com"
-            class="input input-bordered w-full"
-            required
-            disabled={loading}
-          />
-          <div class="label">
-            <span class="label-text-alt">We'll send you a sign-in link</span>
-          </div>
-        </div>
-        
-        <button type="submit" class="btn btn-primary w-full" disabled={loading}>
-          {#if loading}
-            <span class="loading loading-spinner"></span>
-          {/if}
-          {loading ? 'Sending...' : 'Send Magic Link'}
-        </button>
-      </form>
-    {/if}
-    
-    {#if footer}
-      <div class="mt-4">
-        {@render footer()}
-      </div>
-    {:else}
-      <div class="text-center mt-4">
-        <p class="text-sm text-base-content/70">
-          Don't have an account?
-          <a href="/signup" class="link link-primary">Sign up</a>
-        </p>
-      </div>
-    {/if}
   </div>
-</div>
+  
+  {#if error}
+    <div class="kui-alert kui-alert--error" role="alert">
+      <div class="kui-alert__content">{error}</div>
+    </div>
+  {/if}
+  
+  {#if showOAuth}
+    <div class="kui-stack" style="margin-top: var(--kui-spacing-sm);">
+      {#each oauthProviders as provider}
+        <button
+          type="button"
+          class="kui-button kui-button--neutral kui-button--outline kui-button--block"
+          onclick={() => onOAuthClick?.(provider.name)}
+          disabled={loading}
+        >
+          {provider.label}
+        </button>
+      {/each}
+    </div>
+    
+    {#if showCredentials || showMagicLink}
+      <div class="kui-divider" aria-label="Authentication divider">or</div>
+    {/if}
+  {/if}
+  
+  {#if showCredentials && showMagicLink}
+    <div class="kui-auth-tabs" role="tablist">
+      <button
+        type="button"
+        class={`kui-auth-tabs__item ${mode === 'credentials' ? 'kui-auth-tabs__item--active' : ''}`.trim()}
+        onclick={() => mode = 'credentials'}
+        role="tab"
+        aria-selected={mode === 'credentials'}
+      >
+        Password
+      </button>
+      <button
+        type="button"
+        class={`kui-auth-tabs__item ${mode === 'magic' ? 'kui-auth-tabs__item--active' : ''}`.trim()}
+        onclick={() => mode = 'magic'}
+        role="tab"
+        aria-selected={mode === 'magic'}
+      >
+        Magic Link
+      </button>
+    </div>
+  {/if}
+  
+  {#if mode === 'credentials' && showCredentials}
+    <form onsubmit={onSubmitCredentials} class="kui-stack">
+      <label class="kui-form-control" for="email">
+        <span class="kui-label">Email</span>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          placeholder="email@example.com"
+          class="kui-input"
+          required
+          disabled={loading}
+        />
+      </label>
+      
+      <label class="kui-form-control" for="password">
+        <span class="kui-label">Password</span>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          placeholder="••••••••"
+          class="kui-input"
+          required
+          disabled={loading}
+        />
+        <div class="kui-helper-text">
+          <a href="/forgot-password" class="kui-link">Forgot password?</a>
+        </div>
+      </label>
+      
+      <button
+        type="submit"
+        class="kui-button kui-button--primary kui-button--block"
+        disabled={loading}
+      >
+        {#if loading}
+          <span class="kui-button__spinner" aria-hidden="true"></span>
+        {/if}
+        {loading ? 'Signing in...' : 'Sign In'}
+      </button>
+    </form>
+  {/if}
+  
+  {#if mode === 'magic' && showMagicLink}
+    <form onsubmit={onSubmitMagicLink} class="kui-stack">
+      <label class="kui-form-control" for="email-magic">
+        <span class="kui-label">Email</span>
+        <input
+          id="email-magic"
+          name="email"
+          type="email"
+          placeholder="email@example.com"
+          class="kui-input"
+          required
+          disabled={loading}
+        />
+        <div class="kui-helper-text">We'll send you a sign-in link</div>
+      </label>
+      
+      <button
+        type="submit"
+        class="kui-button kui-button--primary kui-button--block"
+        disabled={loading}
+      >
+        {#if loading}
+          <span class="kui-button__spinner" aria-hidden="true"></span>
+        {/if}
+        {loading ? 'Sending...' : 'Send Magic Link'}
+      </button>
+    </form>
+  {/if}
+  
+  {#if footer}
+    <div class="kui-auth-card__footer">
+      {@render footer()}
+    </div>
+  {:else}
+    <div class="kui-auth-card__footer">
+      <p class="kui-helper-text">
+        Don't have an account?
+        <a href="/signup" class="kui-link">Sign up</a>
+      </p>
+    </div>
+  {/if}
+</section>

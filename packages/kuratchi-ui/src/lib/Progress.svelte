@@ -15,25 +15,23 @@
     indeterminate = false
   }: Props = $props();
   
-  const variantClasses = {
-    primary: 'progress-primary',
-    secondary: 'progress-secondary',
-    accent: 'progress-accent',
-    info: 'progress-info',
-    success: 'progress-success',
-    warning: 'progress-warning',
-    error: 'progress-error'
-  };
-  
-  const progressClasses = $derived(`
-    progress
-    ${variantClasses[variant]}
-    ${className}
-  `.trim().replace(/\s+/g, ' '));
+  const percentage = $derived(() => {
+    const ratio = Math.max(0, Math.min(value / max, 1));
+    return Math.round(ratio * 100);
+  });
 </script>
 
-<progress
-  class={progressClasses}
-  value={indeterminate ? undefined : value}
-  {max}
-></progress>
+<div
+  class={`kui-progress ${className}`.trim()}
+  role="progressbar"
+  aria-valuemin="0"
+  aria-valuemax={max}
+  aria-valuenow={indeterminate ? undefined : value}
+  data-variant={variant}
+  data-indeterminate={indeterminate ? 'true' : 'false'}
+>
+  <span
+    class="kui-progress__value"
+    style={`width: ${indeterminate ? '35%' : `${percentage}%`}`}
+  ></span>
+</div>

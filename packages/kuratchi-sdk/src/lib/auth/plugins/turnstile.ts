@@ -144,11 +144,23 @@ async function resolveSecret(ctx: PluginContext, options: TurnstilePluginOptions
   const fromOptions = await resolve(options.secret ?? null, ctx);
   if (fromOptions) return fromOptions;
 
-  return (
+  const fromEnv = (
     ctx.env?.CLOUDFLARE_TURNSTILE_SECRET ||
     ctx.env?.TURNSTILE_SECRET ||
     null
   );
+
+  try {
+    console.log('[Kuratchi Auth][Turnstile] resolveSecret env snapshot:', {
+      hasEnv: !!ctx.env,
+      CLOUDFLARE_TURNSTILE_SECRET: ctx.env?.CLOUDFLARE_TURNSTILE_SECRET ? '***set***' : undefined,
+      TURNSTILE_SECRET: ctx.env?.TURNSTILE_SECRET ? '***set***' : undefined
+    });
+  } catch {
+    // ignore logging errors
+  }
+
+  return fromEnv;
 }
 
 async function resolveSiteKey(ctx: PluginContext, options: TurnstilePluginOptions): Promise<string | null> {
@@ -313,6 +325,20 @@ export function turnstilePlugin(options: TurnstilePluginOptions = {}): AuthPlugi
 
       localsTurnstile.devDisabled = devDisabled;
       localsTurnstile.enabled = Boolean(secret) && !devDisabled;
+
+      try {
+        console.log('[Kuratchi Auth][Turnstile] onRequest env + resolved values:', {
+          dev,
+          disableInDev,
+          devDisabled,
+          resolvedSiteKey: siteKey ? '***set***' : undefined,
+          hasSecret: !!secret,
+          envHasSiteKey: ctx.env?.CLOUDFLARE_TURNSTILE_SITE_KEY || ctx.env?.TURNSTILE_SITE_KEY ? true : false,
+          envHasSecret: ctx.env?.CLOUDFLARE_TURNSTILE_SECRET || ctx.env?.TURNSTILE_SECRET ? true : false
+        });
+      } catch {
+        // ignore logging errors
+      }
 
       if (!routes.length || devDisabled) {
         return;

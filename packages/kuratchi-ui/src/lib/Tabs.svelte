@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import type { Snippet } from 'svelte';
 
   interface Tab {
@@ -16,8 +15,18 @@
 
   let { tabs, children }: Props = $props();
 
-  // Get current path for active tab detection
-  const currentPath = $derived(page?.url?.pathname || '');
+  let currentPath = $state(typeof window !== 'undefined' ? window.location.pathname : '');
+  
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const updatePath = () => {
+      currentPath = window.location.pathname;
+    };
+    window.addEventListener('popstate', updatePath);
+    return () => {
+      window.removeEventListener('popstate', updatePath);
+    };
+  });
 
   function isActive(tabHref: string): boolean {
     // Exact match for root paths, or prefix match for nested paths
@@ -27,28 +36,27 @@
   }
 </script>
 
-<div class="w-full">
-  <!-- Tabs Navigation -->
-  <div class="tabs tabs-boxed mb-6 w-fit">
+<div class="kui-tabs-container">
+  <div class="kui-tabs" role="tablist">
     {#each tabs as tab}
       {@const Icon = tab.icon}
       <a 
         href={tab.href} 
-        class="tab gap-2 {isActive(tab.href) ? 'tab-active' : ''}"
+        class={`kui-tabs__item ${isActive(tab.href) ? 'kui-tabs__item--active' : ''}`.trim()}
+        aria-current={isActive(tab.href) ? 'page' : undefined}
       >
         {#if Icon}
-          <Icon class="h-4 w-4" />
+          <Icon class="kui-tabs__icon" />
         {/if}
         {tab.label}
         {#if tab.badge !== undefined}
-          <span class="badge badge-sm">{tab.badge}</span>
+          <span class="kui-badge kui-badge--size-sm">{tab.badge}</span>
         {/if}
       </a>
     {/each}
+  </div>
 
-    <!-- Tab Content -->
-    <div class="w-full">
-      {@render children()}
-    </div>
+  <div class="kui-tabs__content">
+    {@render children()}
   </div>
 </div>

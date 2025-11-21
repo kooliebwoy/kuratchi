@@ -1,7 +1,4 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
-  
   interface Props {
     totalItems: number;
     pageSize?: number;
@@ -33,7 +30,9 @@
   
   // Get current page from URL on mount
   $effect(() => {
-    const urlPage = $page.url.searchParams.get(urlParam);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const urlPage = url.searchParams.get(urlParam);
     if (urlPage) {
       const pageNum = parseInt(urlPage, 10);
       if (!isNaN(pageNum) && pageNum > 0 && pageNum <= totalPages) {
@@ -77,16 +76,18 @@
     return pages;
   });
   
+  function updateUrl(pageNum: number) {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set(urlParam, pageNum.toString());
+    window.history.replaceState({}, '', url);
+  }
+  
   function goToPage(pageNum: number) {
     if (pageNum < 1 || pageNum > totalPages || pageNum === currentPage) return;
     
     currentPage = pageNum;
-    
-    // Update URL
-    const url = new URL($page.url);
-    url.searchParams.set(urlParam, pageNum.toString());
-    goto(url.toString(), { replaceState: false, noScroll: true });
-    
+    updateUrl(pageNum);
     onPageChange?.(pageNum);
   }
   
@@ -104,36 +105,36 @@
 </script>
 
 {#if totalPages > 1}
-  <div class="flex flex-col sm:flex-row items-center justify-between gap-4 {className}">
+  <div class={`kui-pagination ${className}`.trim()}>
     {#if showInfo}
-      <div class="text-sm text-base-content/70">
+      <div class="kui-pagination__info">
         Showing <span class="font-medium">{startItem}</span> to <span class="font-medium">{endItem}</span> of{' '}
         <span class="font-medium">{totalItems}</span> results
       </div>
     {/if}
     
-    <div class="join">
+    <div class="kui-pagination__controls" role="group" aria-label="Table pagination">
       <button
         type="button"
-        class="join-item btn btn-sm"
+        class="kui-pagination__button"
         disabled={currentPage === 1}
         onclick={previousPage}
         aria-label="Previous page"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m15 19-7-7 7-7" />
         </svg>
       </button>
       
       {#each pageNumbers as pageNum}
         {#if pageNum === 'ellipsis'}
-          <button type="button" class="join-item btn btn-sm btn-disabled" disabled>
+          <button type="button" class="kui-pagination__button" disabled aria-hidden="true">
             ...
           </button>
         {:else}
           <button
             type="button"
-            class="join-item btn btn-sm {pageNum === currentPage ? 'btn-active' : ''}"
+            class={`kui-pagination__button ${pageNum === currentPage ? 'kui-pagination__button--active' : ''}`.trim()}
             onclick={() => goToPage(pageNum)}
           >
             {pageNum}
@@ -143,13 +144,13 @@
       
       <button
         type="button"
-        class="join-item btn btn-sm"
+        class="kui-pagination__button"
         disabled={currentPage === totalPages}
         onclick={nextPage}
         aria-label="Next page"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7" />
         </svg>
       </button>
     </div>

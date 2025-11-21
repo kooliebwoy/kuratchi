@@ -13,10 +13,10 @@ const heroFigureBlock: BlockSnapshot = {
 	},
 	metadata: {
 		reverseOrder: false,
-		buttonColor: 'bg-base-200',
-		headingColor: 'text-content',
-		textColor: 'text-content',
-		backgroundColor: '#ffffff'
+		buttonColor: '#0f172a',
+		headingColor: '#0f172a',
+		textColor: '#475569',
+		backgroundColor: '#f8fafc'
 	}
 };
 
@@ -30,12 +30,15 @@ const heroOverlayBlock: BlockSnapshot = {
 		alt: 'Clutch CMS',
 		title: 'Clutch CMS'
 	},
-	backgroundColor: '#ffffff',
-	textColor: '#ffffff',
-	buttonColor: 'bg-base-200',
-	headingColor: 'text-content',
-	showBackgroundImage: true,
-	backgroundImage: 'https://img.daisyui.com/images/stock/photo-1507358522600-9f71e620c44e.webp'
+	metadata: {
+		reverseOrder: false,
+		backgroundColor: '#05060a',
+		headingColor: '#f8fafc',
+		textColor: '#e2e8f0',
+		buttonColor: '#f97316',
+		showBackgroundImage: true,
+		backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay'
+	}
 };
 
 const aboutUsHeroBlock: BlockSnapshot = {
@@ -123,10 +126,10 @@ const gridCtasBlock: BlockSnapshot = {
 		}
 	],
 	metadata: {
-		buttonColor: 'bg-base-200',
-		headingColor: 'text-content',
-		textColor: 'text-content',
-		backgroundColor: '#ffffff'
+		buttonColor: '#0f172a',
+		headingColor: '#0f172a',
+		textColor: '#475569',
+		backgroundColor: '#f8fafc'
 	}
 };
 

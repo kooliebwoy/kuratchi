@@ -76,21 +76,21 @@
   }
 </script>
 
-<div class="space-y-4 {className}">
+<div class={`kui-stack kui-data-table ${className}`.trim()}>
   <!-- Search and Filters -->
   {#if searchable || filters}
-    <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+    <div class="kui-data-table__controls">
       {#if searchable}
         <TableSearch
           bind:value={searchQuery}
           placeholder={searchPlaceholder}
           onSearch={handleSearch}
-          class="w-full sm:w-64"
+          class="kui-data-table__search"
         />
       {/if}
       
       {#if filters}
-        <div class="w-full sm:w-auto">
+        <div class="kui-data-table__filters">
           {@render filters()}
         </div>
       {/if}

@@ -65,7 +65,7 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
+    <div class="editor-item group relative krt-paragraph-block" bind:this={component}>
         {#if mounted}
             <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} />
         {/if}
@@ -74,19 +74,45 @@
             <SideActions {component} />
         {/if}
         
-        <div data-type={type} id={id} class="w-full min-w-full">
+        <div data-type={type} id={id} class="krt-paragraph-body">
             <!-- JSON Data for this component -->
             <div class="hidden" id="metadata-{id}">
                 {JSON.stringify(content)}
             </div>
-
-            <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="outline-none"></p>
+            <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable"></p>
         </div>
     </div>
 {:else}
-    <div data-type={type} id={id} class="w-full min-w-full">
-        <svelte:element this={'p'} class="outline-none" style:color={color}>
+    <div data-type={type} id={id} class="krt-paragraph-block krt-paragraph-body">
+        <svelte:element this={'p'} class="krt-paragraph" style:color={color}>
             {@html paragraph}
         </svelte:element>
     </div>
 {/if}
+
+<style>
+    .krt-paragraph-block {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-paragraph-body {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-paragraph {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.7;
+    }
+
+    .krt-paragraph--editable {
+        outline: none;
+    }
+
+    .krt-paragraph--editable:focus-visible {
+        outline: 2px solid var(--krt-color-accent, #4f46e5);
+        outline-offset: 2px;
+    }
+</style>

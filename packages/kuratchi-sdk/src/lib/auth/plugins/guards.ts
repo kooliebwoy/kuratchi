@@ -14,8 +14,14 @@ export interface GuardsPluginOptions {
   guards?: RouteGuard[];
 }
 
-export function guardsPlugin(options: GuardsPluginOptions = {}): AuthPlugin {
-  const guards = options.guards || [];
+type GuardsInput = GuardsPluginOptions | RouteGuard | RouteGuard[];
+
+export function guardsPlugin(input: GuardsInput = {}): AuthPlugin {
+  const guards: RouteGuard[] = Array.isArray(input)
+    ? input
+    : typeof input === 'function'
+      ? [input]
+      : input.guards || [];
   
   return {
     name: 'guards',
@@ -47,21 +53,60 @@ export function guardsPlugin(options: GuardsPluginOptions = {}): AuthPlugin {
 export function requireAuth(options: {
   /** URL pattern to match (supports wildcards) */
   pattern?: string | RegExp;
+  /** Inclusive path patterns (glob or RegExp). If provided, guard applies only to these paths. */
+  paths?: (string | RegExp)[];
+  /** Exclusive path patterns (glob or RegExp). Guard will be skipped for these paths. */
+  exclude?: (string | RegExp)[];
   /** Redirect URL if not authenticated */
   redirectTo?: string;
   /** Custom check function */
   check?: (ctx: SessionContext) => boolean;
 } = {}): RouteGuard {
-  return async ({ event, session }) => {
-    // Check pattern if provided
-    if (options.pattern) {
-      const pathname = new URL(event.request.url).pathname;
-      const matches = typeof options.pattern === 'string'
-        ? matchPattern(pathname, options.pattern)
-        : options.pattern.test(pathname);
-      
-      if (!matches) return; // Pattern doesn't match, skip guard
+  const paths = options.paths || [];
+  const exclude = options.exclude || [];
+
+  const hasPaths = paths.length > 0;
+  const hasExclude = exclude.length > 0;
+
+  const matchesPatternOrRegex = (pathname: string, pattern: string | RegExp): boolean => {
+    if (typeof pattern === 'string') {
+      return matchPattern(pathname, pattern);
     }
+    return pattern.test(pathname);
+  };
+
+  const shouldApplyToPath = (pathname: string): boolean => {
+    // If paths/exclude are provided, they take precedence
+    if (hasPaths || hasExclude) {
+      // Included by paths (or all paths if only exclude is specified)
+      const included = hasPaths
+        ? paths.some((p) => matchesPatternOrRegex(pathname, p))
+        : true;
+
+      if (!included) return false;
+
+      // Excluded paths always skip the guard
+      if (hasExclude && exclude.some((p) => matchesPatternOrRegex(pathname, p))) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // Backwards compatible behavior: use single pattern if provided
+    if (options.pattern) {
+      return matchesPatternOrRegex(pathname, options.pattern);
+    }
+
+    // No paths/pattern configured: apply to all paths
+    return true;
+  };
+
+  return async ({ event, session }) => {
+    const pathname = new URL(event.request.url).pathname;
+
+    // Check if this guard should apply to the current path
+    if (!shouldApplyToPath(pathname)) return;
     
     // Check custom function
     if (options.check) {

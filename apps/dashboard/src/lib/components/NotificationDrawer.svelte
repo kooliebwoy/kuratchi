@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { X, Bell, Check, Trash2, Mail, Database, Shield, CreditCard, User, Package, AlertTriangle, Info } from 'lucide-svelte';
+  import { Badge, Button, Loading } from '@kuratchi/ui';
+  import { X, Bell, Check, Trash2, Database, Shield, CreditCard, User, Package, AlertTriangle, Info } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
 
@@ -43,13 +44,6 @@
   };
 
   // Priority colors
-  const priorityColors: Record<string, string> = {
-    urgent: 'border-l-4 border-l-error bg-error/5',
-    high: 'border-l-4 border-l-warning bg-warning/5',
-    normal: 'border-l-4 border-l-info bg-info/5',
-    low: 'border-l-4 border-l-base-300',
-  };
-
   async function fetchNotifications() {
     isLoading = true;
     error = null;
@@ -174,10 +168,6 @@
     return categoryIcons[category || 'custom'] || Bell;
   }
 
-  function getPriorityClass(priority?: string) {
-    return priorityColors[priority || 'normal'] || '';
-  }
-
   // Fetch notifications when drawer opens or tab changes
   $effect(() => {
     if (show) {
@@ -193,182 +183,454 @@
 </script>
 
 {#if show}
-  <!-- Drawer -->
-  <div class="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-base-100 border-l border-base-200 shadow-2xl flex flex-col">
-    <!-- Header -->
-    <div class="flex items-center justify-between border-b border-base-200 px-6 py-4 bg-base-100/95 backdrop-blur">
-      <div class="flex items-center gap-2">
-        <Bell class="h-5 w-5 text-primary" />
-        <h3 class="font-semibold text-lg">Notifications</h3>
-        {#if unreadCount > 0}
-          <span class="badge badge-primary badge-sm">{unreadCount}</span>
-        {/if}
-      </div>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm btn-circle"
-        onclick={onClose}
-      >
-        <X class="h-4 w-4" />
-      </button>
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex border-b border-base-200 px-4">
-      <button
-        class="flex-1 py-3 text-sm font-medium transition-colors relative {selectedTab === 'all' ? 'text-primary' : 'text-base-content/60'}"
-        onclick={() => selectedTab = 'all'}
-      >
-        All
-        {#if selectedTab === 'all'}
-          <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
-        {/if}
-      </button>
-      <button
-        class="flex-1 py-3 text-sm font-medium transition-colors relative {selectedTab === 'unread' ? 'text-primary' : 'text-base-content/60'}"
-        onclick={() => selectedTab = 'unread'}
-      >
-        Unread
-        {#if unreadCount > 0}
-          <span class="ml-1 text-xs">({unreadCount})</span>
-        {/if}
-        {#if selectedTab === 'unread'}
-          <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
-        {/if}
-      </button>
-    </div>
-
-    <!-- Actions -->
-    {#if notifications.length > 0 && unreadCount > 0}
-      <div class="px-4 py-2 border-b border-base-200 bg-base-200/30">
-        <button
-          class="btn btn-ghost btn-xs gap-1"
-          onclick={markAllAsRead}
-        >
-          <Check class="h-3 w-3" />
-          Mark all as read
+  <div class="kui-notify">
+    <div class="kui-notify__panel">
+      <div class="kui-notify__header">
+        <div class="kui-notify__title">
+          <span class="kui-notify__icon">
+            <Bell />
+          </span>
+          <div>
+            <h3>Notifications</h3>
+            <p class="kui-notify__subtitle">Stay on top of updates</p>
+          </div>
+          {#if unreadCount > 0}
+            <Badge variant="primary" size="sm">{unreadCount}</Badge>
+          {/if}
+        </div>
+        <button class="kui-notify__icon-button" type="button" onclick={onClose} aria-label="Close notifications">
+          <X />
         </button>
       </div>
-    {/if}
 
-    <!-- Content -->
-    <div class="flex-1 overflow-y-auto">
-      {#if isLoading}
-        <div class="flex items-center justify-center h-full">
-          <span class="loading loading-spinner loading-md text-primary"></span>
+      <div class="kui-notify__tabs">
+        <button class:selected={selectedTab === 'all'} onclick={() => selectedTab = 'all'}>All</button>
+        <button class:selected={selectedTab === 'unread'} onclick={() => selectedTab = 'unread'}>
+          Unread {#if unreadCount > 0}<span class="kui-notify__pill">({unreadCount})</span>{/if}
+        </button>
+      </div>
+
+      {#if notifications.length > 0 && unreadCount > 0}
+        <div class="kui-notify__actions">
+          <Button variant="ghost" size="xs" onclick={markAllAsRead}>
+            <Check class="kui-notify__small-icon" />
+            Mark all as read
+          </Button>
         </div>
-      {:else if error}
-        <div class="flex flex-col items-center justify-center h-full p-6 text-center">
-          <AlertTriangle class="h-12 w-12 text-error mb-3" />
-          <p class="text-sm text-error font-medium mb-1">Failed to load notifications</p>
-          <p class="text-xs text-base-content/60 mb-4">{error}</p>
-          <button class="btn btn-sm btn-primary" onclick={fetchNotifications}>
-            Try Again
-          </button>
-        </div>
-      {:else if notifications.length === 0}
-        <div class="flex flex-col items-center justify-center h-full p-6 text-center">
-          <Bell class="h-12 w-12 text-base-content/20 mb-3" />
-          <p class="text-sm text-base-content/60 font-medium mb-1">
-            {selectedTab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
-          </p>
-          <p class="text-xs text-base-content/40">
-            {selectedTab === 'unread' ? 'You\'re all caught up!' : 'We\'ll notify you when something happens'}
-          </p>
-        </div>
-      {:else}
-        <div class="divide-y divide-base-200">
-          {#each notifications as notification (notification.id)}
-            {@const Icon = getCategoryIcon(notification.category)}
-            <div
-              class="relative group hover:bg-base-200/50 transition-colors {getPriorityClass(notification.priority)} {notification.status !== 'read' ? 'bg-primary/5' : ''}"
-            >
-              <button
-                class="w-full p-4 text-left cursor-pointer"
+      {/if}
+
+      <div class="kui-notify__content">
+        {#if isLoading}
+          <div class="kui-notify__center">
+            <Loading />
+          </div>
+        {:else if error}
+          <div class="kui-notify__empty">
+            <AlertTriangle class="kui-notify__empty-icon error" />
+            <p class="kui-notify__empty-title">Failed to load notifications</p>
+            <p class="kui-notify__empty-subtitle">{error}</p>
+            <Button size="sm" variant="primary" onclick={fetchNotifications}>Try Again</Button>
+          </div>
+        {:else if notifications.length === 0}
+          <div class="kui-notify__empty">
+            <Bell class="kui-notify__empty-icon" />
+            <p class="kui-notify__empty-title">
+              {selectedTab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+            </p>
+            <p class="kui-notify__empty-subtitle">
+              {selectedTab === 'unread' ? "You're all caught up!" : 'We will notify you when something happens'}
+            </p>
+          </div>
+        {:else}
+          <div class="kui-notify__list">
+            {#each notifications as notification (notification.id)}
+              {@const Icon = getCategoryIcon(notification.category)}
+              <article
+                class={`kui-notify__item ${notification.status !== 'read' ? 'is-unread' : ''} priority-${notification.priority || 'normal'}`}
                 onclick={() => handleNotificationClick(notification)}
               >
-                <div class="flex gap-3">
-                  <!-- Icon -->
-                  <div class="flex-shrink-0 mt-0.5">
-                    <div class="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Icon class="h-4 w-4 text-primary" />
-                    </div>
-                  </div>
-
-                  <!-- Content -->
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-start justify-between gap-2 mb-1">
-                      <p class="font-medium text-sm text-base-content">
-                        {notification.title}
-                      </p>
-                      {#if notification.status !== 'read'}
-                        <span class="flex-shrink-0 h-2 w-2 rounded-full bg-primary"></span>
-                      {/if}
-                    </div>
-
-                    <p class="text-xs text-base-content/70 line-clamp-2 mb-2">
-                      {notification.message}
-                    </p>
-
-                    <div class="flex items-center justify-between">
-                      <p class="text-xs text-base-content/40">
-                        {formatTimestamp(notification.createdAt)}
-                      </p>
-
-                      {#if notification.actionLabel}
-                        <span class="text-xs text-primary font-medium">
-                          {notification.actionLabel} →
-                        </span>
-                      {/if}
-                    </div>
+                <div class="kui-notify__item-left">
+                  <div class="kui-notify__avatar">
+                    <Icon />
                   </div>
                 </div>
-              </button>
-
-              <!-- Actions (on hover) -->
-              <div class="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                {#if notification.status !== 'read'}
+                <div class="kui-notify__item-body">
+                  <div class="kui-notify__item-row">
+                    <p class="kui-notify__item-title">{notification.title}</p>
+                    {#if notification.status !== 'read'}
+                      <span class="kui-notify__dot" aria-label="Unread"></span>
+                    {/if}
+                  </div>
+                  <p class="kui-notify__item-text">{notification.message}</p>
+                  <div class="kui-notify__item-meta">
+                    <span>{formatTimestamp(notification.createdAt)}</span>
+                    {#if notification.actionLabel}
+                      <span class="kui-notify__link">{notification.actionLabel} →</span>
+                    {/if}
+                  </div>
+                </div>
+                <div class="kui-notify__item-actions">
+                  {#if notification.status !== 'read'}
+                    <button
+                      class="kui-notify__chip"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        markAsRead(notification.id);
+                      }}
+                      title="Mark as read"
+                    >
+                      <Check class="kui-notify__small-icon" />
+                    </button>
+                  {/if}
                   <button
-                    class="btn btn-ghost btn-xs btn-circle"
+                    class="kui-notify__chip is-danger"
                     onclick={(e) => {
                       e.stopPropagation();
-                      markAsRead(notification.id);
+                      deleteNotification(notification.id);
                     }}
-                    title="Mark as read"
+                    title="Delete"
                   >
-                    <Check class="h-3 w-3" />
+                    <Trash2 class="kui-notify__small-icon" />
                   </button>
-                {/if}
-                <button
-                  class="btn btn-ghost btn-xs btn-circle text-error"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    deleteNotification(notification.id);
-                  }}
-                  title="Delete"
-                >
-                  <Trash2 class="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-          {/each}
+                </div>
+              </article>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      {#if notifications.length > 0}
+        <div class="kui-notify__footer">
+          <a class="kui-button kui-button--ghost kui-button--size-sm" href="/notifications" onclick={onClose}>
+            View all notifications
+          </a>
         </div>
       {/if}
     </div>
 
-    <!-- Footer -->
-    {#if notifications.length > 0}
-      <div class="border-t border-base-200 p-4 bg-base-100">
-        <a href="/notifications" class="btn btn-sm btn-ghost w-full" onclick={onClose}>
-          View All Notifications
-        </a>
-      </div>
-    {/if}
+    <div class="kui-notify__backdrop" onclick={onClose}></div>
   </div>
-
-  <!-- Backdrop -->
-  <div
-    class="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
-    onclick={onClose}
-  ></div>
 {/if}
+
+<style>
+  .kui-notify {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    justify-items: end;
+  }
+
+  .kui-notify__panel {
+    background: var(--kui-color-surface);
+    border-left: 1px solid var(--kui-color-border);
+    height: 100vh;
+    width: min(460px, 100%);
+    box-shadow: -12px 0 32px rgba(15, 23, 42, 0.1);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
+  }
+
+  .kui-notify__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--kui-spacing-md) var(--kui-spacing-lg);
+    border-bottom: 1px solid var(--kui-color-border);
+    background: color-mix(in srgb, var(--kui-color-surface) 90%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .kui-notify__title {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-notify__title h3 {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+
+  .kui-notify__subtitle {
+    margin: 0;
+    color: var(--kui-color-muted);
+    font-size: 0.85rem;
+  }
+
+  .kui-notify__icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-primary-weak);
+    color: var(--kui-color-primary);
+    display: grid;
+    place-items: center;
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-notify__icon-button {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--kui-radius-md);
+    border: 1px solid var(--kui-color-border);
+    background: var(--kui-color-surface-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--kui-color-muted);
+    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease;
+  }
+
+  .kui-notify__icon-button:hover {
+    border-color: color-mix(in srgb, var(--kui-color-primary) 35%, var(--kui-color-border) 65%);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-notify__tabs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    border-bottom: 1px solid var(--kui-color-border);
+  }
+
+  .kui-notify__tabs button {
+    padding: 0.9rem var(--kui-spacing-md);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--kui-color-muted);
+    position: relative;
+    transition: color var(--kui-duration-base) ease;
+  }
+
+  .kui-notify__tabs button.selected {
+    color: var(--kui-color-primary);
+  }
+
+  .kui-notify__tabs button.selected::after {
+    content: '';
+    position: absolute;
+    inset-inline: var(--kui-spacing-md);
+    bottom: 0;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--kui-color-primary);
+  }
+
+  .kui-notify__pill {
+    color: var(--kui-color-muted);
+    font-size: 0.85rem;
+    margin-left: 0.3rem;
+  }
+
+  .kui-notify__actions {
+    padding: 0.65rem var(--kui-spacing-lg);
+    border-bottom: 1px solid var(--kui-color-border);
+    background: var(--kui-color-surface-muted);
+  }
+
+  .kui-notify__content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--kui-spacing-md) var(--kui-spacing-lg);
+  }
+
+  .kui-notify__center {
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+  }
+
+  .kui-notify__empty {
+    display: grid;
+    gap: 0.6rem;
+    justify-items: center;
+    text-align: center;
+    padding: var(--kui-spacing-lg) var(--kui-spacing-md);
+  }
+
+  .kui-notify__empty-icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-notify__empty-icon.error {
+    color: var(--kui-color-error);
+  }
+
+  .kui-notify__empty-title {
+    margin: 0;
+    font-weight: 700;
+  }
+
+  .kui-notify__empty-subtitle {
+    margin: 0;
+    color: var(--kui-color-muted);
+    max-width: 360px;
+  }
+
+  .kui-notify__list {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .kui-notify__item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: var(--kui-spacing-sm);
+    padding: 0.85rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-surface-muted);
+    cursor: pointer;
+    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease, transform var(--kui-duration-base) ease;
+    position: relative;
+  }
+
+  .kui-notify__item:hover {
+    border-color: color-mix(in srgb, var(--kui-color-primary) 35%, var(--kui-color-border) 65%);
+    box-shadow: var(--kui-shadow-sm);
+    transform: translateX(2px);
+  }
+
+  .kui-notify__item.is-unread {
+    border-color: color-mix(in srgb, var(--kui-color-primary) 50%, var(--kui-color-border) 50%);
+    background: rgba(88, 76, 217, 0.05);
+  }
+
+  .kui-notify__item-left {
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-notify__avatar {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 50%;
+    background: var(--kui-color-primary-weak);
+    color: var(--kui-color-primary);
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-notify__item-body {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .kui-notify__item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--kui-spacing-xs);
+    justify-content: space-between;
+  }
+
+  .kui-notify__item-title {
+    margin: 0;
+    font-weight: 700;
+  }
+
+  .kui-notify__dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--kui-color-primary);
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  .kui-notify__item-text {
+    margin: 0;
+    color: var(--kui-color-muted);
+    line-height: 1.4;
+  }
+
+  .kui-notify__item-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--kui-color-muted);
+    font-size: 0.9rem;
+  }
+
+  .kui-notify__link {
+    color: var(--kui-color-primary);
+    font-weight: 600;
+  }
+
+  .kui-notify__item-actions {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .kui-notify__chip {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--kui-radius-md);
+    border: 1px solid var(--kui-color-border);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease;
+  }
+
+  .kui-notify__chip:hover {
+    border-color: color-mix(in srgb, var(--kui-color-primary) 35%, var(--kui-color-border) 65%);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-notify__chip.is-danger {
+    color: var(--kui-color-error);
+  }
+
+  .kui-notify__small-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-notify__footer {
+    border-top: 1px solid var(--kui-color-border);
+    padding: var(--kui-spacing-md) var(--kui-spacing-lg);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-notify__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Priority accents */
+  .kui-notify__item.priority-urgent::before,
+  .kui-notify__item.priority-high::before,
+  .kui-notify__item.priority-normal::before,
+  .kui-notify__item.priority-low::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    border-radius: var(--kui-radius-md) 0 0 var(--kui-radius-md);
+  }
+
+  .kui-notify__item.priority-urgent::before { background: var(--kui-color-error); }
+  .kui-notify__item.priority-high::before { background: var(--kui-color-warning); }
+  .kui-notify__item.priority-normal::before { background: var(--kui-color-info); }
+  .kui-notify__item.priority-low::before { background: var(--kui-color-border); }
+
+  @media (max-width: 640px) {
+    .kui-notify__panel {
+      width: 100%;
+    }
+  }
+</style>

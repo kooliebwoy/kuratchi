@@ -79,6 +79,11 @@
 			"svelte": "./src/lib/notifications/index.ts",
 			"default": "./src/lib/notifications/index.ts"
 		},
+		"./newsletter": {
+			"types": "./src/lib/newsletter/index.ts",
+			"svelte": "./src/lib/newsletter/index.ts",
+			"default": "./src/lib/newsletter/index.ts"
+		},
 		"./spaces": {
 			"types": "./src/lib/spaces/index.ts",
 			"svelte": "./src/lib/spaces/index.ts",

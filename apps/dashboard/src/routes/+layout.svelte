@@ -1,7 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import Sidebar from '$lib/components/Sidebar.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import AppShell from '$components/app-shell/AppShell.svelte';
   import type { LayoutData } from './$types';
   import type { Snippet } from 'svelte';
 	import { getOrganizationNameById } from '$lib/functions/organizations.remote';
@@ -20,16 +19,9 @@
 </script>
 
 {#if isAuthenticated && !skipRootLayout}
-  <div class="flex min-h-screen bg-base-100 text-base-content">
-    <Sidebar {isSuperadmin} />
-    <div class="flex flex-1 flex-col">
-      <Header {workspace} {user} {isSuperadmin} />
-      <main class="flex-1 overflow-y-auto px-8 py-8">
-        {@render children()}
-      </main>
-    </div>
-  </div>
-
+  <AppShell {workspace} {user} {isSuperadmin}>
+    {@render children()}
+  </AppShell>
   <HelpWidget />
 {:else}
   {@render children()}
