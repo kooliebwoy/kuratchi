@@ -66,7 +66,7 @@ export const adminSchema: SchemaDsl = {
       notes: 'text',
       stripeCustomerId: 'text',
       stripeSubscriptionId: 'text',
-      sesTenantId: 'text unique',
+      sesTenantId: 'text',
       sesTenantEngagementMetrics: 'json',
       status: 'enum(active,inactive,lead)',
       '...timestamps': true,
