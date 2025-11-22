@@ -1,6 +1,4 @@
-import type { BlockPresetDefinition, BlockSnapshot, SiteRegionState } from './types';
-
-const clone = <T extends BlockSnapshot>(snapshot: T): T => JSON.parse(JSON.stringify(snapshot));
+import type { BlockSnapshot, SiteRegionState } from '../presets/types';
 
 const saigeBlakeFooterDefaults: BlockSnapshot = {
 	type: 'saige-blake-footer',
@@ -64,34 +62,43 @@ const twigAndPearlFooterDefaults: BlockSnapshot = {
 	}
 };
 
-export const footerPresets: BlockPresetDefinition[] = [
+const cloneSnapshot = <T extends BlockSnapshot>(snapshot: T): T =>
+	JSON.parse(JSON.stringify(snapshot));
+
+export interface FooterOption {
+	id: string;
+	name: string;
+	description: string;
+	blockType: string;
+	create: () => BlockSnapshot;
+}
+
+export const footerOptions: FooterOption[] = [
 	{
 		id: 'saige-blake-footer',
 		name: 'Saige & Blake Footer',
 		description: 'Two-row footer with subscription CTA',
-		create: () => [clone(saigeBlakeFooterDefaults)]
+		blockType: saigeBlakeFooterDefaults.type,
+		create: () => cloneSnapshot(saigeBlakeFooterDefaults)
 	},
 	{
 		id: 'twig-and-pearl-footer',
 		name: 'Twig & Pearl Footer',
 		description: 'Column-based footer with stacked menus',
-		create: () => [clone(twigAndPearlFooterDefaults)]
+		blockType: twigAndPearlFooterDefaults.type,
+		create: () => cloneSnapshot(twigAndPearlFooterDefaults)
 	}
 ];
 
-const footerPresetMap = new Map(footerPresets.map((preset) => [preset.id, preset]));
-const footerBlockTypes = new Set(footerPresets.flatMap((preset) => preset.create().map((block) => block.type)));
-
-export const getFooterPreset = (id: string | null | undefined) =>
-	(id ? footerPresetMap.get(id) : undefined) ?? footerPresets[0];
+const footerOptionMap = new Map(footerOptions.map((option) => [option.id, option]));
 
 export const isFooterBlockType = (type: string | null | undefined) =>
-	!!type && footerBlockTypes.has(type);
+	!!type && footerOptions.some((option) => option.blockType === type);
 
 export const createFooterRegion = (presetId: string): SiteRegionState => {
-	const preset = getFooterPreset(presetId);
+	const option = footerOptionMap.get(presetId) ?? footerOptions[0];
 	return {
-		presetId: preset.id,
-		blocks: preset.create()
+		presetId: option.id,
+		blocks: [option.create()]
 	};
 };

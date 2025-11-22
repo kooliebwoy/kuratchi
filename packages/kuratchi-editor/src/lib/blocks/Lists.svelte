@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
     import { tick } from "svelte";
 
     type ListKind = 'ul' | 'ol';
@@ -103,7 +103,7 @@
 
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
-        <SideActions {component}>
+        <BlockActions {component}>
             <small>Change List Type</small>
             <li>
                 <button class="btn btn-sm btn-naked" onclick={() => changeType('ol')}>Ordered List</button>
@@ -111,7 +111,7 @@
             <li>
                 <button class="btn btn-sm btn-naked" onclick={() => changeType('ul')}>Unordered List</button>
             </li>
-        </SideActions>
+        </BlockActions>
 
         <div data-type={type} id={id} class="w-full min-w-full">
             <div class="hidden" id="metadata-{id}">

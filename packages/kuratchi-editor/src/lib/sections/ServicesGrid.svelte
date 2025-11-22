@@ -1,6 +1,8 @@
 <script lang="ts">
     import { Plus, ArrowUp, ArrowDown, Trash2 } from '@lucide/svelte';
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
     type ServicesSpacing = 'small' | 'medium' | 'large';
@@ -157,11 +159,61 @@
         };
         services = next;
     }
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
+        <div class="krt-servicesGrid__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-servicesGrid__container">
+            {#if title || subtitle}
+                <header class="krt-servicesGrid__header">
+                    {#if title}
+                        <h2 class="krt-servicesGrid__title" style:color={textColor} contenteditable bind:innerHTML={title}></h2>
+                    {/if}
+                    {#if subtitle}
+                        <p class="krt-servicesGrid__subtitle" style:color={textColor} contenteditable bind:innerHTML={subtitle}></p>
+                    {/if}
+                </header>
+            {/if}
+
+            <div class="krt-servicesGrid__list">
+                {#each services as service, index (index)}
+                    <article class="krt-servicesGrid__item" style:color={textColor}>
+                        {#if service.icon}
+                            {@const Comp = LucideIconMap[service.icon as LucideIconKey]}
+                            <div class="krt-servicesGrid__icon" aria-hidden="true">
+                                <Comp />
+                            </div>
+                        {/if}
+                        <h3 class="krt-servicesGrid__itemTitle" contenteditable bind:innerHTML={service.title}></h3>
+                        <p class="krt-servicesGrid__itemBody" contenteditable bind:innerHTML={service.description}></p>
+                    </article>
+                {/each}
+            </div>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit services grid settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-servicesGridDrawer">
             <section class="krt-servicesGridDrawer__section">
                 <h3>Intro</h3>
@@ -275,44 +327,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-servicesGrid" style={layoutStyle} data-type={type}>
-            <div class="krt-servicesGrid__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-servicesGrid__container">
-                {#if title || subtitle}
-                    <header class="krt-servicesGrid__header">
-                        {#if title}
-                            <h2 class="krt-servicesGrid__title" style:color={textColor} contenteditable bind:innerHTML={title}></h2>
-                        {/if}
-                        {#if subtitle}
-                            <p class="krt-servicesGrid__subtitle" style:color={textColor} contenteditable bind:innerHTML={subtitle}></p>
-                        {/if}
-                    </header>
-                {/if}
-
-                <div class="krt-servicesGrid__list">
-                    {#each services as service, index (index)}
-                        <article class="krt-servicesGrid__item" style:color={textColor}>
-                            {#if service.icon}
-                                {@const Comp = LucideIconMap[service.icon as LucideIconKey]}
-                                <div class="krt-servicesGrid__icon" aria-hidden="true">
-                                    <Comp />
-                                </div>
-                            {/if}
-                            <h3 class="krt-servicesGrid__itemTitle" contenteditable bind:innerHTML={service.title}></h3>
-                            <p class="krt-servicesGrid__itemBody" contenteditable bind:innerHTML={service.description}></p>
-                        </article>
-                    {/each}
-                </div>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
         <div class="krt-servicesGrid__metadata">{JSON.stringify(content)}</div>

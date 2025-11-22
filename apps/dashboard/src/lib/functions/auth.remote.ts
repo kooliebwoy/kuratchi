@@ -34,7 +34,7 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
 	}
 
 	const { email, password } = result.output;
-	const { locals } = getRequestEvent();
+	const { locals, event } = getRequestEvent();
 
 	try {
 		// Check if credentials auth is available
@@ -52,6 +52,22 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
 		console.log('Auth result:', authResult);
 
 		if (!authResult.success) {
+			// Log failed login attempt
+			if (locals.kuratchi?.activity?.log) {
+				try {
+					await locals.kuratchi.activity.log({
+						action: 'auth.failed_login',
+						status: false,
+						data: {
+							email,
+							reason: authResult.error
+						}
+					});
+				} catch (activityErr) {
+					console.warn('[SignIn] Failed to log activity:', activityErr);
+				}
+			}
+
 			// Map SDK error codes to user-friendly messages
 			const errorMessages: Record<string, string> = {
 				invalid_credentials: 'Invalid email or password',
@@ -69,6 +85,24 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
 		// - Set session in locals.session
 		// - Set session cookie
 		// - Created session in database
+
+		// Log successful login
+		if (locals.kuratchi?.activity?.log) {
+			try {
+				await locals.kuratchi.activity.log({
+					action: 'auth.login',
+					organizationId: locals.session?.organizationId,
+					userId: authResult.user.id,
+					data: {
+						email: authResult.user.email,
+						name: authResult.user.name
+					}
+				});
+			} catch (activityErr) {
+				console.warn('[SignIn] Failed to log activity:', activityErr);
+			}
+		}
+
 		return {
 			success: true,
 			message: 'Signed in successfully',
@@ -101,6 +135,23 @@ export const signOut = form('unchecked', async () => {
 	try {
 		if (!locals.kuratchi?.auth?.credentials?.signOut) {
 			error(500, 'Sign out not configured');
+		}
+
+		// Log logout before signing out (while we still have session)
+		if (locals.kuratchi?.activity?.log && locals.session?.user) {
+			try {
+				await locals.kuratchi.activity.log({
+					action: 'auth.logout',
+					organizationId: locals.session.organizationId,
+					userId: locals.session.user.id,
+					data: {
+						email: locals.session.user.email,
+						name: locals.session.user.name
+					}
+				});
+			} catch (activityErr) {
+				console.warn('[SignOut] Failed to log activity:', activityErr);
+			}
 		}
 
 		const result = await locals.kuratchi.auth.credentials.signOut();
@@ -155,6 +206,22 @@ export const signUp = form('unchecked', async (data: any) => {
 			userName: userName || organizationName,
 			status: 'active'
 		});
+
+		// Log signup activity
+		if (locals.kuratchi?.activity?.log) {
+			try {
+				await locals.kuratchi.activity.log({
+					action: 'auth.signup',
+					organizationId: orgResult.organization.id,
+					data: {
+						organizationName,
+						email
+					}
+				});
+			} catch (activityErr) {
+				console.warn('[SignUp] Failed to log activity:', activityErr);
+			}
+		}
 
 		return {
 			success: true,

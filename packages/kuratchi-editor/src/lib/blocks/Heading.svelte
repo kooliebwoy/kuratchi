@@ -3,7 +3,7 @@
     import EditorToolbar from "../plugins/EditorToolbar.svelte";
     import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
 
     interface Props {
         id?: string;
@@ -76,13 +76,13 @@
         {/if}
         
         {#if mounted}
-            <SideActions {component}>
+            <BlockActions {component}>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h2'}>H2</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h3'}>H3</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h4'}>H4</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h5'}>H5</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h6'}>H6</button></li>
-            </SideActions>
+            </BlockActions>
         {/if}
         
         <div data-type={type} id={id} class="krt-heading-body">

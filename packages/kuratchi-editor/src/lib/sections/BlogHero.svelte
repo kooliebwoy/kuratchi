@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
 
     type Alignment = 'left' | 'center';
 
@@ -42,11 +44,38 @@
         body,
         metadata: { ...layoutMetadata }
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-blogHero" style={layoutStyle}>
+        <div class="krt-blogHero__metadata">{JSON.stringify(content)}</div>
+        <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
+            <h1 class="krt-blogHero__heading" contenteditable bind:innerHTML={heading}></h1>
+            <p class="krt-blogHero__body" contenteditable bind:innerHTML={body}></p>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog hero settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-blogHeroDrawer">
             <section class="krt-blogHeroDrawer__section">
                 <h3>Content</h3>
@@ -82,21 +111,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-blogHero" style={layoutStyle} data-type={type}>
-            <div class="krt-blogHero__metadata">{JSON.stringify(content)}</div>
-            <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
-                <h1 class="krt-blogHero__heading" contenteditable bind:innerHTML={heading}></h1>
-                <p class="krt-blogHero__body" contenteditable bind:innerHTML={body}></p>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogHero" style={layoutStyle}>
         <div class="krt-blogHero__metadata" data-type={type}>{JSON.stringify(content)}</div>

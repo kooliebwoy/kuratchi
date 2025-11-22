@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Mail, List, Send, Zap, Users, FileText, Globe } from 'lucide-svelte';
+  import { Mail, List, Send, Zap, Users, FileText } from 'lucide-svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
 
@@ -10,15 +10,16 @@
 
   let { children }: Props = $props();
 
-  const tabs = $derived([
-    { label: 'Overview', href: '/emails', icon: Mail, active: page.url.pathname === '/emails' },
-    { label: 'Email Log', href: '/emails/log', icon: List, active: page.url.pathname === '/emails/log' },
-    { label: 'Broadcasts', href: '/emails/broadcast', icon: Send, active: page.url.pathname === '/emails/broadcast' },
-    { label: 'Drip Campaigns', href: '/emails/drip', icon: Zap, active: page.url.pathname === '/emails/drip' },
-    { label: 'Segments', href: '/emails/segments', icon: Users, active: page.url.pathname === '/emails/segments' },
-    { label: 'Templates', href: '/emails/templates', icon: FileText, active: page.url.pathname === '/emails/templates' },
-    { label: 'Domains', href: '/domains', icon: Globe, active: page.url.pathname === '/domains' }
-  ]);
+  const activeSelection = $derived(page.url.pathname);
+
+  const tabs = [
+    { label: 'Overview', href: '/emails', icon: Mail },
+    { label: 'Email Log', href: '/emails/log', icon: List },
+    { label: 'Broadcasts', href: '/emails/broadcast', icon: Send },
+    { label: 'Drip Campaigns', href: '/emails/drip', icon: Zap },
+    { label: 'Segments', href: '/emails/segments', icon: Users },
+    { label: 'Templates', href: '/emails/templates', icon: FileText }
+  ];
 </script>
 
 <div class="p-8">
@@ -36,7 +37,7 @@
   </div>
 
   <!-- Tabs Navigation -->
-  <Tabs {tabs}>
+  <Tabs {tabs} {activeSelection}>
     {@render children()}
   </Tabs>
 </div>

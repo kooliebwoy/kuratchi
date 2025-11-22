@@ -1,17 +1,18 @@
 /**
  * Theme Registry
- * Centralized theme definitions with metadata and default templates
+ * 
+ * Architecture: Blocks → Sections → Themes
+ * - Blocks: atomic components (Button, Heading, Image)
+ * - Sections: compositions of blocks (hero-figure, services-grid)
+ * - Themes: header + footer + homepage (composed of sections) + metadata
  */
 
 import type { PageData } from '../types';
 import type { SiteRegionState } from '../presets/types';
-import { createHeaderRegion } from '../presets/headers.js';
-import { createFooterRegion } from '../presets/footers.js';
-import { createLayoutBlocks } from '../presets/layouts.js';
+import { createHeaderRegion } from '../registry/headers.svelte.js';
+import { createFooterRegion } from '../registry/footers.svelte.js';
 import { createDefaultBlogData } from '../types';
-
-const composePage = (...presetIds: string[]) =>
-  presetIds.flatMap((presetId) => createLayoutBlocks(presetId));
+import { createSectionBlocks } from '../registry/sections.svelte.js';
 
 export interface ThemeMetadata {
   id: string;
@@ -46,7 +47,7 @@ const createMinimalTheme = (): ThemeTemplate => ({
     seoTitle: 'Welcome to Your Site',
     seoDescription: 'A beautiful minimal website',
     slug: 'homepage',
-    content: composePage('hero-figure', 'icon-bar', 'services-grid')
+    content: createSectionBlocks('hero-figure', 'icon-bar', 'services-grid')
   },
   siteHeader: createHeaderRegion('saige-blake-header'),
   siteFooter: createFooterRegion('saige-blake-footer'),
@@ -73,7 +74,7 @@ const createModernTheme = (): ThemeTemplate => ({
     seoTitle: 'Modern Design - Your Site',
     seoDescription: 'A contemporary website with modern aesthetics',
     slug: 'homepage',
-    content: composePage('hero-overlay', 'grid-ctas', 'card-with-slider')
+    content: createSectionBlocks('hero-overlay', 'card-with-slider', 'grid-ctas')
   },
   siteHeader: createHeaderRegion('twig-and-pearl-header'),
   siteFooter: createFooterRegion('twig-and-pearl-footer'),
@@ -100,7 +101,7 @@ const createClassicTheme = (): ThemeTemplate => ({
     seoTitle: 'Classic Elegance - Your Site',
     seoDescription: 'A timeless website with elegant design',
     slug: 'homepage',
-    content: composePage('about-us-hero', 'about-us-card', 'grid-ctas')
+    content: createSectionBlocks('about-us-hero', 'about-us-card', 'grid-ctas')
   },
   siteHeader: createHeaderRegion('saige-blake-header'),
   siteFooter: createFooterRegion('twig-and-pearl-footer'),
@@ -127,7 +128,7 @@ const createBoldTheme = (): ThemeTemplate => ({
     seoTitle: 'Make a Statement - Your Site',
     seoDescription: 'A bold and vibrant website that stands out',
     slug: 'homepage',
-    content: composePage('hero-overlay', 'icon-bar', 'services-grid')
+    content: createSectionBlocks('hero-overlay', 'icon-bar', 'services-grid')
   },
   siteHeader: createHeaderRegion('twig-and-pearl-header'),
   siteFooter: createFooterRegion('saige-blake-footer'),
@@ -154,7 +155,7 @@ const createCreativeTheme = (): ThemeTemplate => ({
     seoTitle: 'Creative Expression - Your Site',
     seoDescription: 'An artistic website for creative minds',
     slug: 'homepage',
-    content: composePage('hero-figure', 'card-with-slider', 'grid-ctas')
+    content: createSectionBlocks('hero-overlay', 'card-with-slider', 'grid-ctas')
   },
   siteHeader: createHeaderRegion('twig-and-pearl-header'),
   siteFooter: createFooterRegion('twig-and-pearl-footer'),
@@ -181,7 +182,7 @@ const createProfessionalTheme = (): ThemeTemplate => ({
     seoTitle: 'Professional Solutions - Your Business',
     seoDescription: 'A professional website for your business',
     slug: 'homepage',
-    content: composePage('hero-overlay', 'services-grid', 'about-us-card')
+    content: createSectionBlocks('hero-overlay', 'services-grid', 'about-us-card')
   },
   siteHeader: createHeaderRegion('saige-blake-header'),
   siteFooter: createFooterRegion('saige-blake-footer'),

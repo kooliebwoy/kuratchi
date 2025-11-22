@@ -1,6 +1,12 @@
-import type { BlockPresetDefinition, BlockSnapshot } from './types';
+import type { BlockPresetDefinition, BlockSnapshot } from '../presets/types';
 
-const clone = <T extends BlockSnapshot>(snapshot: T): T => JSON.parse(JSON.stringify(snapshot));
+/**
+ * Section Registry
+ * 
+ * Default configurations for section-level components (hero, about, services, etc.)
+ * Sections are composed of multiple blocks and represent complete page regions.
+ * Themes directly compose sections to create complete sites.
+ */
 
 const heroFigureBlock: BlockSnapshot = {
 	type: 'hero-figure',
@@ -164,63 +170,26 @@ const servicesGridBlock: BlockSnapshot = {
 	}
 };
 
-export const layoutPresets: BlockPresetDefinition[] = [
-	{
-		id: 'hero-figure',
-		name: 'Hero with Figure',
-		description: 'Two-column hero section with large imagery',
-		create: () => [clone(heroFigureBlock)]
-	},
-	{
-		id: 'hero-overlay',
-		name: 'Hero Overlay',
-		description: 'Full-bleed hero with overlay image',
-		create: () => [clone(heroOverlayBlock)]
-	},
-	{
-		id: 'about-us-hero',
-		name: 'About Hero',
-		description: 'Centered hero for about pages',
-		create: () => [clone(aboutUsHeroBlock)]
-	},
-	{
-		id: 'about-us-card',
-		name: 'About Card',
-		description: 'Two-column story with image',
-		create: () => [clone(aboutUsCardBlock)]
-	},
-	{
-		id: 'card-with-slider',
-		name: 'Card + Slider',
-		description: 'Content card alongside an image slider',
-		create: () => [clone(cardWithSliderBlock)]
-	},
-	{
-		id: 'icon-bar',
-		name: 'Icon Bar',
-		description: 'Icon-driven highlight strip',
-		create: () => [clone(iconBarBlock)]
-	},
-	{
-		id: 'grid-ctas',
-		name: 'Grid CTAs',
-		description: 'Image grid with call-to-action buttons',
-		create: () => [clone(gridCtasBlock)]
-	},
-	{
-		id: 'services-grid',
-		name: 'Services Grid',
-		description: 'Multi-column service highlights',
-		create: () => [clone(servicesGridBlock)]
-	}
-];
+/**
+ * Section defaults - used by themes to compose pages
+ */
+export const sectionDefaults: Record<string, BlockSnapshot> = {
+	'hero-figure': heroFigureBlock,
+	'hero-overlay': heroOverlayBlock,
+	'about-us-hero': aboutUsHeroBlock,
+	'about-us-card': aboutUsCardBlock,
+	'card-with-slider': cardWithSliderBlock,
+	'icon-bar': iconBarBlock,
+	'grid-ctas': gridCtasBlock,
+	'services-grid': servicesGridBlock
+};
 
-export const layoutPresetMap = new Map(layoutPresets.map((preset) => [preset.id, preset]));
+export const getSectionDefault = (sectionId: string): BlockSnapshot | undefined => {
+	return sectionDefaults[sectionId];
+};
 
-export const getLayoutPreset = (id: string | null | undefined) =>
-	(id ? layoutPresetMap.get(id) : undefined) ?? layoutPresets[0];
-
-export const createLayoutBlocks = (presetId: string): BlockSnapshot[] => {
-	const preset = getLayoutPreset(presetId);
-	return preset.create();
+export const createSectionBlocks = (...sectionIds: string[]): BlockSnapshot[] => {
+	return sectionIds
+		.map(id => getSectionDefault(id))
+		.filter((section): section is BlockSnapshot => section !== undefined);
 };

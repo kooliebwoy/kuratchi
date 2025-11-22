@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { Settings, Shield, AlertTriangle, Key, CreditCard, Lock, Users } from 'lucide-svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
@@ -8,6 +9,8 @@
   }
 
   let { children }: Props = $props();
+
+  const activeSelection = $derived(page.url.pathname);
 
   const tabs = $state([
     { label: 'Account', href: '/settings', icon: Settings },
@@ -35,7 +38,7 @@
   </div>
 
   <!-- Tabs Navigation -->
-  <Tabs {tabs}>
+  <Tabs {tabs} {activeSelection}>
     {@render children()}
   </Tabs>
 </div>

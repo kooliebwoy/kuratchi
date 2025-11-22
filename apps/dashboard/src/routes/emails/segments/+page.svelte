@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Users, Plus, Trash2, Mail, Loader2, Search } from 'lucide-svelte';
+  import { Users, Plus, Trash2, Mail, Loader2, Search, X } from 'lucide-svelte';
   import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
   import {
     listSegments,
@@ -130,61 +130,54 @@
 </svelte:head>
 
 <div class="kui-segments">
-  <header class="kui-segments__header">
+  <div class="kui-segments__header">
     <div>
-      <p class="kui-eyebrow">Audiences</p>
-      <h1>Segments</h1>
-      <p class="kui-subtext">Organize contacts into reusable audiences.</p>
+      <h2>Segments</h2>
+      <p class="kui-segments__subtitle">Organize contacts into reusable audiences</p>
     </div>
     <Button variant="primary" onclick={() => (showCreateModal = true)}>
       <Plus class="kui-icon" />
-      New segment
+      New Segment
     </Button>
-  </header>
+  </div>
 
-  <Card class="kui-panel">
-    <div class="kui-filters">
-      <div class="kui-input-group">
-        <Search class="kui-icon" />
-        <input type="text" class="kui-input" placeholder="Search segments..." bind:value={searchQuery} />
-      </div>
+  {#if segmentsResource.loading}
+    <div class="kui-center"><Loading size="md" /></div>
+  {:else if segments.length === 0}
+    <div class="kui-empty">
+      <Users class="kui-empty__icon" />
+      <p class="kui-empty__text">No segments yet</p>
+      <p class="kui-empty__subtext">Create your first segment to organize contacts</p>
+    </div>
+  {:else}
+    <div class="kui-search-box">
+      <Search class="kui-search-icon" />
+      <input type="text" class="kui-search-input" placeholder="Search segments..." bind:value={searchQuery} />
     </div>
 
-    {#if segmentsResource.loading}
-      <div class="kui-center"><Loading size="md" /></div>
-    {:else if filteredSegments.length === 0}
-      <div class="kui-center">
-        <Users class="kui-empty__icon" />
-        <p class="kui-subtext">No segments yet</p>
-        <Button variant="primary" size="sm" onclick={() => (showCreateModal = true)}>Create segment</Button>
-      </div>
-    {:else}
-      <div class="kui-grid">
-        {#each filteredSegments as segment}
-          <Card class="kui-panel">
-            <div class="kui-segment-card">
-              <div>
-                <h3>{segment.name}</h3>
-                <p class="kui-subtext">{segment.contactCount || 0} contacts</p>
-              </div>
-              <div class="kui-inline end">
-                <Button variant="outline" size="sm" onclick={() => openContactsModal(segment)}>
-                  <Mail class="kui-icon" /> Contacts
-                </Button>
-                <Button variant="ghost" size="sm" onclick={() => handleDeleteSegment(segment.id)} disabled={deletingId === segment.id}>
-                  {#if deletingId === segment.id}
-                    <Loader2 class="kui-icon spinning" />
-                  {:else}
-                    <Trash2 class="kui-icon error" />
-                  {/if}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        {/each}
-      </div>
-    {/if}
-  </Card>
+    <div class="kui-list">
+      {#each filteredSegments as segment}
+        <div class="kui-segment-item">
+          <div class="kui-segment-item__content">
+            <h3 class="kui-segment-item__name">{segment.name}</h3>
+            <p class="kui-segment-item__count">{segment.subscriberCount || 0} contacts</p>
+          </div>
+          <div class="kui-segment-item__actions">
+            <Button variant="outline" size="sm" onclick={() => openContactsModal(segment)}>
+              <Mail class="kui-icon" />
+            </Button>
+            <Button variant="ghost" size="sm" onclick={() => handleDeleteSegment(segment.id)} disabled={deletingId === segment.id}>
+              {#if deletingId === segment.id}
+                <Loader2 class="kui-icon spinning" />
+              {:else}
+                <Trash2 class="kui-icon" />
+              {/if}
+            </Button>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 {#if showCreateModal}
@@ -253,7 +246,7 @@
                       {#each contacts as contact}
                         <tr>
                           <td>{contact.email}</td>
-                          <td>{contact.firstName} {contact.lastName}</td>
+                          <td>{contact.first_name} {contact.last_name}</td>
                           <td class="text-right">
                             <Button variant="ghost" size="xs" onclick={() => handleRemoveContact(contact)}>
                               <Trash2 class="kui-icon error" />
@@ -303,61 +296,246 @@
 <style>
   .kui-segments {
     display: grid;
-    gap: var(--kui-spacing-md);
-  }
-
-  .kui-tabs {
-    display: flex;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--kui-color-border);
-  }
-
-  .kui-tab {
-    padding: 0.55rem 0.9rem;
-    border-radius: var(--kui-radius-md);
-    text-decoration: none;
-    color: var(--kui-color-muted);
-    border: 1px solid transparent;
-  }
-
-  .kui-tab.is-active {
-    border-color: var(--kui-color-border);
-    background: var(--kui-color-surface);
-    color: var(--kui-color-text);
-    box-shadow: var(--kui-shadow-xs);
+    gap: 1.5rem;
   }
 
   .kui-segments__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--kui-spacing-md);
+    gap: 1.5rem;
     flex-wrap: wrap;
   }
 
-  h1 {
-    margin: 0.1rem 0 0.2rem;
-    font-size: 1.6rem;
+  .kui-segments__header h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
   }
 
-  .kui-eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--kui-color-muted);
-    font-weight: 700;
+  .kui-segments__subtitle {
     margin: 0;
+    font-size: 0.9rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-empty {
+    display: grid;
+    gap: 0.75rem;
+    justify-items: center;
+    text-align: center;
+    padding: 3rem 1.5rem;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+  }
+
+  .kui-empty__icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-empty__text {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+  }
+
+  .kui-empty__subtext {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-search-icon {
+    width: 1rem;
+    height: 1rem;
+    color: var(--kui-color-muted);
+    flex-shrink: 0;
+  }
+
+  .kui-search-input {
+    border: none;
+    outline: none;
+    width: 100%;
+    background: transparent;
+    font-size: 0.9rem;
+    color: var(--kui-color-text);
+  }
+
+  .kui-search-input::placeholder {
+    color: var(--kui-color-muted);
+  }
+
+  .kui-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .kui-segment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    transition: all 150ms ease;
+  }
+
+  .kui-segment-item:hover {
+    border-color: var(--kui-color-primary);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-segment-item__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kui-segment-item__name {
+    margin: 0 0 0.25rem 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+  }
+
+  .kui-segment-item__count {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-segment-item__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .kui-center {
+    display: grid;
+    place-items: center;
+    min-height: 200px;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .kui-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .kui-modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .kui-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .kui-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  .kui-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .kui-segment-contacts {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .kui-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .kui-table th,
+  .kui-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--kui-color-border);
+    text-align: left;
+  }
+
+  .kui-table thead th {
+    background: var(--kui-color-surface-muted);
+    font-weight: 600;
+    color: var(--kui-color-muted);
     font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
-  .kui-subtext {
+  .kui-table tbody tr:hover {
+    background: var(--kui-color-surface-muted);
+  }
+
+  .kui-table .text-right {
+    text-align: right;
+  }
+
+  .kui-divider {
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.85rem;
     color: var(--kui-color-muted);
-    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1rem 0;
+    border-top: 1px solid var(--kui-color-border);
+    border-bottom: 1px solid var(--kui-color-border);
+  }
+
+  .kui-callout {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: 1rem;
+    background: var(--kui-color-surface-muted);
+    color: var(--kui-color-text);
+    font-size: 0.9rem;
+  }
+
+  .kui-callout.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
   }
 
   .kui-inline {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
   }
 
   .kui-inline.end {
@@ -373,107 +551,23 @@
     animation: spin 1s linear infinite;
   }
 
-  .kui-panel .kui-card__body {
-    gap: var(--kui-spacing-md);
-  }
-
-  .kui-filters {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: var(--kui-spacing-sm);
-  }
-
-  .kui-input-group {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    border: 1px solid var(--kui-color-border);
-    border-radius: var(--kui-radius-md);
-    padding: 0.45rem 0.6rem;
-    background: var(--kui-color-surface);
-  }
-
-  .kui-input {
-    border: none;
-    outline: none;
-    width: 100%;
-    background: transparent;
-    font-size: 0.95rem;
-    color: var(--kui-color-text);
-  }
-
-  .kui-list {
-    display: grid;
-    gap: var(--kui-spacing-sm);
-  }
-
-  .kui-grid {
-    display: grid;
-    gap: var(--kui-spacing-sm);
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  }
-
-  .kui-segment-card {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--kui-spacing-md);
-    align-items: center;
-  }
-
-  .kui-segment-contacts {
-    display: grid;
-    gap: var(--kui-spacing-sm);
-  }
-
-  .kui-table-scroll {
-    overflow: auto;
-    border: 1px solid var(--kui-color-border);
-    border-radius: var(--kui-radius-lg);
-    background: var(--kui-color-surface);
-  }
-
-  .kui-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .kui-table th,
-  .kui-table td {
-    padding: 0.65rem;
-    border-bottom: 1px solid var(--kui-color-border);
-    text-align: left;
-  }
-
-  .kui-table thead th {
-    background: var(--kui-color-surface-muted);
-    font-weight: 700;
-  }
-
-  .kui-divider {
-    text-align: center;
-    font-weight: 700;
-    color: var(--kui-color-muted);
-  }
-
-  .kui-callout {
-    border: 1px solid var(--kui-color-border);
-    border-radius: var(--kui-radius-md);
-    padding: var(--kui-spacing-sm);
-    background: var(--kui-color-surface);
-  }
-
-  .kui-callout.error {
-    border-color: color-mix(in srgb, var(--kui-color-error) 40%, var(--kui-color-border) 60%);
-    background: rgba(239, 68, 68, 0.08);
-  }
-
-  .kui-empty__icon {
-    width: 3rem;
-    height: 3rem;
-    color: var(--kui-color-muted);
-  }
-
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 768px) {
+    .kui-segment-item {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .kui-segment-item__actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .kui-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

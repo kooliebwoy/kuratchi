@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
     import { onMount } from "svelte";
 
     interface Props {
@@ -55,7 +55,7 @@
 {#if editable}
     <div class="editor-item group relative krt-button-block" bind:this={component}>
         {#if mounted}
-            <SideActions {component}>
+            <BlockActions {component}>
                 <small>Button Style</small>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'primary'}>Primary</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'secondary'}>Secondary</button></li>
@@ -73,7 +73,7 @@
                 <small>Link Target</small>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => target = '_self'}>Same Window</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => target = '_blank'}>New Window</button></li>
-            </SideActions>
+            </BlockActions>
         {/if}
         
         <div data-type={type} {id} class="krt-button-body">

@@ -1,6 +1,4 @@
-import type { BlockPresetDefinition, BlockSnapshot, SiteRegionState } from './types';
-
-const clone = <T extends BlockSnapshot>(snapshot: T): T => JSON.parse(JSON.stringify(snapshot));
+import type { BlockSnapshot, SiteRegionState } from '../presets/types';
 
 const saigeBlakeDefaults: BlockSnapshot = {
 	type: 'saige-blake-header',
@@ -35,34 +33,44 @@ const twigAndPearlDefaults: BlockSnapshot = {
 	useMobileMenuOnDesktop: false
 };
 
-export const headerPresets: BlockPresetDefinition[] = [
+const cloneSnapshot = <T extends BlockSnapshot>(snapshot: T): T =>
+	JSON.parse(JSON.stringify(snapshot));
+
+export interface HeaderOption {
+	id: string;
+	name: string;
+	description: string;
+	blockType: string;
+	create: () => BlockSnapshot;
+}
+
+export const headerOptions: HeaderOption[] = [
 	{
 		id: 'saige-blake-header',
 		name: 'Saige & Blake',
 		description: 'Two-column header with icons and navigation',
-		create: () => [clone(saigeBlakeDefaults)]
+		blockType: saigeBlakeDefaults.type,
+		create: () => cloneSnapshot(saigeBlakeDefaults)
 	},
 	{
 		id: 'twig-and-pearl-header',
 		name: 'Twig & Pearl',
 		description: 'Minimalist nav with centered menu',
-		create: () => [clone(twigAndPearlDefaults)]
+		blockType: twigAndPearlDefaults.type,
+		create: () => cloneSnapshot(twigAndPearlDefaults)
 	}
 ];
 
-const headerPresetMap = new Map(headerPresets.map((preset) => [preset.id, preset]));
-const headerBlockTypes = new Set(headerPresets.flatMap((preset) => preset.create().map((block) => block.type)));
-
-export const getHeaderPreset = (id: string | null | undefined) =>
-	(id ? headerPresetMap.get(id) : undefined) ?? headerPresets[0];
+const headerOptionMap = new Map(headerOptions.map((option) => [option.id, option]));
+const defaultHeaderId = headerOptions[0]?.id ?? 'saige-blake-header';
 
 export const isHeaderBlockType = (type: string | null | undefined) =>
-	!!type && headerBlockTypes.has(type);
+	!!type && headerOptions.some((option) => option.blockType === type);
 
 export const createHeaderRegion = (presetId: string): SiteRegionState => {
-	const preset = getHeaderPreset(presetId);
+	const option = headerOptionMap.get(presetId) ?? headerOptions[0];
 	return {
-		presetId: preset.id,
-		blocks: preset.create()
+		presetId: option.id,
+		blocks: [option.create()]
 	};
 };

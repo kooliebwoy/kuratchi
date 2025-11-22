@@ -852,37 +852,76 @@ a {
 .kui-tabs-container {
   display: flex;
   flex-direction: column;
-  gap: var(--kui-spacing-md);
+  gap: var(--kui-spacing-lg);
 }
 
 .kui-tabs {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem;
-  border-radius: var(--kui-radius-lg);
-  background-color: var(--kui-color-surface-muted);
+  gap: 0;
+  border-bottom: 2px solid var(--kui-color-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.kui-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .kui-tabs__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   border: none;
   background: transparent;
-  border-radius: var(--kui-radius-md);
-  padding: 0.4rem 0.85rem;
+  padding: 0.75rem 1rem;
   cursor: pointer;
   font-weight: 500;
+  font-size: 0.95rem;
   color: var(--kui-color-muted);
+  text-decoration: none;
+  position: relative;
+  transition: color var(--kui-duration-base) ease;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.kui-tabs__item:hover {
+  color: var(--kui-color-text);
 }
 
 .kui-tabs__item--active {
-  background-color: var(--kui-color-surface);
-  color: var(--kui-color-text);
-  box-shadow: var(--kui-shadow-xs);
+  color: var(--kui-color-primary);
+  border-bottom-color: var(--kui-color-primary);
+  font-weight: 600;
 }
 
 .kui-tabs__icon {
   width: 1rem;
   height: 1rem;
+  flex-shrink: 0;
+}
+
+.kui-tabs__label {
+  display: inline-block;
+}
+
+.kui-tabs__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--kui-color-primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 1.25rem;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .kui-tabs__content {

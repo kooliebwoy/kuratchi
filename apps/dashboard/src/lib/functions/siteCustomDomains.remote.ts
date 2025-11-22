@@ -8,7 +8,7 @@ import { error } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { getDatabase, getAdminDatabase } from '$lib/server/db-context';
 import { syncCustomDomainToKV, removeCustomDomainFromKV } from '$lib/server/kv-sync';
-import { createCustomHostname } from 'kuratchi-sdk/domains';
+import { createCustomHostname, getCustomHostname } from 'kuratchi-sdk/domains';
 import { env } from '$env/dynamic/private';
 
 const ensureSession = () => {
@@ -286,20 +286,61 @@ export const getDomainLinkInstructions = guardedCommand(domainInstructionsSchema
 
     const domain = domainResult.data;
 
-    // Parse cloudflareVerification JSON if present
-    let httpValidation: { http_url?: string; http_body?: string } | undefined;
-    if (domain.cloudflareVerification) {
-      try {
-        const parsed = typeof domain.cloudflareVerification === 'string' 
-          ? JSON.parse(domain.cloudflareVerification)
-          : domain.cloudflareVerification;
-        
-        // Check for HTTP validation (ownership_verification_http)
-        if (parsed.ownership_verification_http) {
-          httpValidation = parsed.ownership_verification_http;
+    // Fetch fresh data from Cloudflare if we have a hostname ID
+    let cfHostnameData: any = null;
+    if (domain.cloudflareHostnameId) {
+      const zoneId = env.CF_SSL_FOR_SAAS_ZONE_ID;
+      if (zoneId) {
+        const cfResponse = await getCustomHostname(zoneId, domain.cloudflareHostnameId);
+        if (cfResponse?.success && cfResponse.result) {
+          cfHostnameData = cfResponse.result;
+          
+          // Update the database with fresh data
+          await adminDb.domains
+            .where({ id: data.domainId })
+            .update({
+              cloudflareHostnameStatus: cfHostnameData.status || 'pending',
+              cloudflareVerification: JSON.stringify({
+                ownership_verification: cfHostnameData.ownership_verification || {},
+                ssl: cfHostnameData.ssl || {}
+              }),
+              updated_at: new Date().toISOString()
+            });
         }
-      } catch (e) {
-        console.error('Failed to parse cloudflareVerification:', e);
+      }
+    }
+
+    // Parse Cloudflare TXT records from fresh data or fallback to stored data
+    let ownershipVerificationRecord: { type: string; name: string; value: string; description?: string } | undefined;
+    let sslValidationRecords: Array<{ type: string; name: string; value: string; description?: string }> = [];
+    
+    const dataSource = cfHostnameData || (domain.cloudflareVerification ? 
+      (typeof domain.cloudflareVerification === 'string' ? JSON.parse(domain.cloudflareVerification) : domain.cloudflareVerification) 
+      : null);
+
+    if (dataSource) {
+      // Extract ownership verification (hostname pre-validation)
+      const ownership = dataSource?.ownership_verification;
+      if (ownership?.type && ownership?.name && ownership?.value) {
+        ownershipVerificationRecord = {
+          type: ownership.type.toUpperCase(),
+          name: ownership.name,
+          value: ownership.value,
+          description: 'Hostname pre-validation TXT record. Add this first to prove ownership.'
+        };
+      }
+
+      // Extract SSL certificate validation records from the fresh data
+      const sslValidation = dataSource?.ssl?.validation_records;
+      if (Array.isArray(sslValidation)) {
+        sslValidationRecords = sslValidation
+          .filter((record: any) => record?.txt_name && record?.txt_value)
+          .map((record: any) => ({
+            type: 'TXT',
+            name: record.txt_name,
+            value: record.txt_value,
+            description: 'Certificate validation TXT record. Add this for SSL certificate issuance.'
+          }));
       }
     }
 
@@ -315,17 +356,25 @@ export const getDomainLinkInstructions = guardedCommand(domainInstructionsSchema
       }
     }
 
+    const currentStatus = cfHostnameData?.status || domain.cloudflareHostnameStatus || 'pending';
+
     return {
       success: true,
       instructions: {
-        httpValidation,
-        cname: {
+        ownershipVerification: ownershipVerificationRecord,
+        sslValidation: sslValidationRecords.length > 0 ? sslValidationRecords : undefined,
+        cname: currentStatus === 'active' ? {
           name: domain.name,
           target: cnameTarget,
-          description: 'Point your domain to this CNAME target. Cloudflare will automatically verify ownership via HTTP.'
+          description: 'Your domain is verified! Point your domain to this CNAME target to go live.'
+        } : {
+          name: domain.name,
+          target: cnameTarget,
+          description: 'After TXT verification completes, point your domain to this CNAME target.'
         }
       },
-      hostnameStatus: domain.cloudflareHostnameStatus || 'pending'
+      hostnameStatus: currentStatus,
+      sslStatus: cfHostnameData?.ssl?.status || domain.cloudflareHostnameStatus || 'pending'
     };
   } catch (err) {
     console.error('[siteCustomDomains.getDomainLinkInstructions] error:', err);
@@ -395,18 +444,19 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
 
     // Create custom hostname in Cloudflare
     const zoneId = env.CF_SSL_FOR_SAAS_ZONE_ID;
-    const originHost = env.SITE_RENDERER_ORIGIN_HOST;
-
-    if (!zoneId || !originHost) {
+    
+    if (!zoneId) {
       return { success: false, error: 'Cloudflare SSL for SaaS not configured' };
     }
 
+    // Omit originHost to use the zone's fallback origin (*.kuratchi.site)
+    // Or set SITE_RENDERER_ORIGIN_HOST to override with a specific origin
     const hostnameResult = await createCustomHostname({
       zoneId,
       hostname: domain.name,
-      originHost,
+      originHost: env.SITE_RENDERER_ORIGIN_HOST || undefined, // undefined = use zone fallback
       ssl: {
-        method: 'http',
+        method: 'txt',
         type: 'dv'
       },
       metadata: {
@@ -450,7 +500,7 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
       return { success: false, error: 'Failed to create site custom domain record' };
     }
 
-    // Update admin domain record with linkage
+    // Update admin domain record with linkage and complete verification data
     await adminDb.domains
       .where({ id: data.domainId })
       .update({
@@ -458,38 +508,12 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
         siteCustomDomainId: customDomainId,
         cloudflareHostnameId: cfHostname.id,
         cloudflareHostnameStatus: cfHostname.status || 'pending',
-        cloudflareVerification: JSON.stringify(cfHostname.ownership_verification || {}),
+        cloudflareVerification: JSON.stringify({
+          ownership_verification: cfHostname.ownership_verification || {},
+          ssl: cfHostname.ssl || {}
+        }),
         updated_at: now
       });
-
-    // Store HTTP validation data in KV for site-renderer to access
-    if (cfHostname.ownership_verification?.ownership_verification_http) {
-      const httpValidation = cfHostname.ownership_verification.ownership_verification_http;
-      const kvKey = `cf-validation:${domain.name}`;
-      
-      try {
-        const kv = (event.locals.kuratchi as any)?.kv?.default;
-        if (kv) {
-          await kv.put(
-            kvKey,
-            JSON.stringify({
-              http_url: httpValidation.http_url,
-              http_body: httpValidation.http_body,
-              hostname: domain.name,
-              created_at: now
-            }),
-            {
-              expirationTtl: 86400 // 24 hours - validation should complete well before this
-            }
-          );
-          console.log(`[siteCustomDomains] Stored validation data in KV for ${domain.name}`);
-        } else {
-          console.warn('[siteCustomDomains] KV not available for storing validation data');
-        }
-      } catch (err) {
-        console.error('[siteCustomDomains] Failed to store validation in KV:', err);
-      }
-    }
 
     // If hostname is already active, sync to KV immediately
     if (cfHostname.status === 'active') {
@@ -507,23 +531,40 @@ export const linkDomainToSite = guardedCommand(linkDomainSchema, async (data) =>
         .update({ verified: true });
     }
 
-    const verificationRecord = cfHostname.ownership_verification && typeof cfHostname.ownership_verification === 'object'
+    // Extract ownership verification
+    const ownershipVerification = cfHostname.ownership_verification && typeof cfHostname.ownership_verification === 'object'
       ? (cfHostname.ownership_verification as { type?: string; name?: string; value?: string })
       : undefined;
+
+    // Extract SSL validation records
+    const sslValidationRecords: Array<{ type: string; name: string; value: string; description?: string }> = [];
+    if (cfHostname.ssl?.validation_records && Array.isArray(cfHostname.ssl.validation_records)) {
+      cfHostname.ssl.validation_records.forEach((record: any) => {
+        if (record?.txt_name && record?.txt_value) {
+          sslValidationRecords.push({
+            type: 'TXT',
+            name: record.txt_name,
+            value: record.txt_value,
+            description: 'Certificate validation TXT record. Add this for SSL certificate issuance.'
+          });
+        }
+      });
+    }
 
     return { 
       success: true,
       customDomain: insertResult.results,
       cloudflareHostname: cfHostname,
       instructions: {
-        verification: verificationRecord?.type && verificationRecord?.name && verificationRecord?.value
+        ownershipVerification: ownershipVerification?.type && ownershipVerification?.name && ownershipVerification?.value
           ? {
-              type: verificationRecord.type.toUpperCase(),
-              name: verificationRecord.name,
-              value: verificationRecord.value,
-              description: 'Add this TXT record to prove ownership so Cloudflare can issue the certificate.'
+              type: ownershipVerification.type.toUpperCase(),
+              name: ownershipVerification.name,
+              value: ownershipVerification.value,
+              description: 'Hostname pre-validation TXT record. Add this first to prove ownership.'
             }
           : undefined,
+        sslValidation: sslValidationRecords.length > 0 ? sslValidationRecords : undefined,
         cname: {
           name: domain.name,
           target: cnameTarget,

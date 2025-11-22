@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { Pencil, GripVertical, X, Trash2 } from '@lucide/svelte';
+    import { Pencil, GripVertical, Trash2 } from '@lucide/svelte';
     import type { Snippet } from 'svelte';
+    import SideActions from './SideActions.svelte';
     import { deleteElement } from '../../utils/editor.svelte.js';
-    import { isFooterBlockType } from '../../presets/footers.js';
-    import { isHeaderBlockType } from '../../presets/headers.js';
-    import { openRightPanel } from '../../stores/right-panel.js';
+    import { isFooterBlockType } from '../../registry/footers.svelte';
+    import { isHeaderBlockType } from '../../registry/headers.svelte';
 
     interface Props {
         id: string;
@@ -18,8 +18,7 @@
     let component: HTMLElement;
 
     const isNotHeaderOrFooter = !isFooterBlockType(type) && !isHeaderBlockType(type);
-
-    let drawerState = $state(false);
+    const sideActionsId = $derived(`section-sideActions-${id}`);
 </script>
 
 <div
@@ -39,15 +38,23 @@
             <GripVertical aria-hidden="true" />
             <span class="krt-shellBlock__sr">Drag to reorder</span>
         </button>
-        <button
-            class="krt-shellBlock__iconButton"
-            type="button"
-            onclick={() => drawerContent ? openRightPanel(drawerContent, `Edit ${type}`) : drawerState = true}
-            title="Edit component"
-        >
-            <Pencil aria-hidden="true" />
-            <span class="krt-shellBlock__sr">Edit component</span>
-        </button>
+        {#if drawerContent}
+            <SideActions id={sideActionsId}>
+                {#snippet label()}
+                    <button
+                        class="krt-shellBlock__iconButton"
+                        type="button"
+                        title="Edit component"
+                    >
+                        <Pencil aria-hidden="true" />
+                        <span class="krt-shellBlock__sr">Edit component</span>
+                    </button>
+                {/snippet}
+                {#snippet content()}
+                    {@render drawerContent?.()}
+                {/snippet}
+            </SideActions>
+        {/if}
         {#if isNotHeaderOrFooter}
             <button
                 class="krt-shellBlock__iconButton krt-shellBlock__iconButton--danger"
@@ -67,24 +74,6 @@
         </div>
         {@render children?.()}
     </div>
-</div>
-
-<div class="krt-shellDrawer" class:krt-shellDrawer--open={drawerState}>
-    <div class="krt-shellDrawer__backdrop" role="presentation" onclick={() => drawerState = false}></div>
-    <aside class="krt-shellDrawer__panel" aria-label={`Edit ${type}`}>
-        <header class="krt-shellDrawer__header">
-            <button
-                class="krt-shellDrawer__close"
-                type="button"
-                onclick={() => drawerState = false}
-            >
-                <X aria-hidden="true" />
-            </button>
-        </header>
-        <div class="krt-shellDrawer__body">
-            {@render drawerContent?.()}
-        </div>
-    </aside>
 </div>
 
 <style>
@@ -186,85 +175,4 @@
         clip: rect(0, 0, 0, 0);
         white-space: nowrap;
         border: 0;
-    }
-
-    .krt-shellDrawer {
-        position: fixed;
-        inset: 0;
-        display: grid;
-        pointer-events: none;
-        z-index: 50;
-    }
-
-    .krt-shellDrawer__backdrop {
-        grid-area: 1 / 1;
-        background: rgba(15, 23, 42, 0.4);
-        opacity: 0;
-        transition: opacity 180ms ease;
-    }
-
-    .krt-shellDrawer__panel {
-        grid-area: 1 / 1;
-        margin-inline-start: auto;
-        width: min(28rem, 100%);
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        background: #f9fafb;
-        color: #0f172a;
-        transform: translateX(100%);
-        transition: transform 200ms ease;
-        box-shadow: -24px 0 60px rgba(15, 23, 42, 0.26);
-    }
-
-    .krt-shellDrawer__header {
-        display: flex;
-        justify-content: flex-end;
-        padding: var(--krt-space-md, 0.75rem) var(--krt-space-lg, 1rem);
-    }
-
-    .krt-shellDrawer__close {
-        inline-size: 2.25rem;
-        block-size: 2.25rem;
-        border-radius: var(--krt-radius-pill, 999px);
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        background: rgba(15, 23, 42, 0.08);
-        color: inherit;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: transform 150ms ease, background 150ms ease;
-    }
-
-    .krt-shellDrawer__close:hover {
-        transform: translateY(-1px);
-        background: rgba(15, 23, 42, 0.12);
-    }
-
-    .krt-shellDrawer__close :global(svg) {
-        width: 1.35rem;
-        height: 1.35rem;
-    }
-
-    .krt-shellDrawer__body {
-        flex: 1 1 auto;
-        overflow: auto;
-        padding: var(--krt-space-lg, 1rem);
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-md, 0.75rem);
-    }
-
-    .krt-shellDrawer--open {
-        pointer-events: auto;
-    }
-
-    .krt-shellDrawer--open .krt-shellDrawer__backdrop {
-        opacity: 1;
-    }
-
-    .krt-shellDrawer--open .krt-shellDrawer__panel {
-        transform: translateX(0%);
-    }
 </style>

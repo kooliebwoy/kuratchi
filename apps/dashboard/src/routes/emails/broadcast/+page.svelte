@@ -95,7 +95,7 @@
         name: formName.trim(),
         subject: formSubject.trim(),
         html: formHtml.trim(),
-        audienceId: formAudienceId
+        segmentId: formAudienceId
       });
       await broadcastsResource.refresh();
       closeCreateModal();
@@ -156,63 +156,58 @@
 </svelte:head>
 
 <div class="kui-broadcast">
-  <header class="kui-broadcast__header">
+  <div class="kui-broadcast__header">
     <div>
-      <p class="kui-eyebrow">Direct Email</p>
-      <h1>Broadcasts</h1>
-      <p class="kui-subtext">Send emails directly to your audiences.</p>
+      <h2>Broadcasts</h2>
+      <p class="kui-broadcast__subtitle">Send direct emails to your audiences</p>
     </div>
     <Button variant="primary" onclick={openCreateModal}>
       <Plus class="kui-icon" />
       New Broadcast
     </Button>
-  </header>
+  </div>
 
   {#if broadcasts.length === 0}
-    <Card class="kui-panel center">
+    <div class="kui-empty">
       <Send class="kui-empty__icon" />
-      <p class="kui-subtext">No broadcasts yet</p>
-      <p class="kui-subtext">Create your first broadcast to get started</p>
-    </Card>
+      <p class="kui-empty__text">No broadcasts yet</p>
+      <p class="kui-empty__subtext">Create your first broadcast to get started</p>
+    </div>
   {:else}
     <div class="kui-list">
       {#each broadcasts as broadcast}
         {@const badge = getStatusVariant(broadcast.status)}
-        <Card class="kui-panel">
-          <div class="kui-broadcast__item">
-            <div>
-              <h3>{broadcast.name}</h3>
-              <p class="kui-subtext">{broadcast.subject}</p>
-              <div class="kui-inline">
-                <Badge variant={badge.variant} size="xs">{badge.label}</Badge>
-                <span class="kui-subtext">{getSegmentName(broadcast.audienceId)}</span>
-              </div>
-            </div>
-            <div class="kui-inline end">
-              <Button variant="ghost" size="sm" onclick={() => openPreviewModal(broadcast)} aria-label="Preview">
-                <Eye class="kui-icon" />
-              </Button>
-              {#if broadcast.status === 'draft'}
-                <Button variant="primary" size="sm" onclick={() => handleSendBroadcast(broadcast.id)} disabled={sendingId === broadcast.id}>
-                  {#if sendingId === broadcast.id}
-                    <Loader2 class="kui-icon spinning" />
-                    Sending...
-                  {:else}
-                    <Send class="kui-icon" />
-                    Send
-                  {/if}
-                </Button>
-              {/if}
-              <Button variant="ghost" size="sm" onclick={() => handleDeleteBroadcast(broadcast.id)} disabled={deletingId === broadcast.id}>
-                {#if deletingId === broadcast.id}
-                  <Loader2 class="kui-icon spinning" />
-                {:else}
-                  <Trash2 class="kui-icon error" />
-                {/if}
-              </Button>
+        <div class="kui-broadcast-item">
+          <div class="kui-broadcast-item__content">
+            <h3 class="kui-broadcast-item__title">{broadcast.name}</h3>
+            <p class="kui-broadcast-item__subject">{broadcast.subject}</p>
+            <div class="kui-broadcast-item__meta">
+              <Badge variant={badge.variant} size="xs">{badge.label}</Badge>
+              <span class="kui-broadcast-item__audience">{getSegmentName(broadcast.segmentId)}</span>
             </div>
           </div>
-        </Card>
+          <div class="kui-broadcast-item__actions">
+            <Button variant="ghost" size="sm" onclick={() => openPreviewModal(broadcast)} title="Preview">
+              <Eye class="kui-icon" />
+            </Button>
+            {#if broadcast.status === 'draft'}
+              <Button variant="primary" size="sm" onclick={() => handleSendBroadcast(broadcast.id)} disabled={sendingId === broadcast.id}>
+                {#if sendingId === broadcast.id}
+                  <Loader2 class="kui-icon spinning" />
+                {:else}
+                  <Send class="kui-icon" />
+                {/if}
+              </Button>
+            {/if}
+            <Button variant="ghost" size="sm" onclick={() => handleDeleteBroadcast(broadcast.id)} disabled={deletingId === broadcast.id} title="Delete">
+              {#if deletingId === broadcast.id}
+                <Loader2 class="kui-icon spinning" />
+              {:else}
+                <Trash2 class="kui-icon" />
+              {/if}
+            </Button>
+          </div>
+        </div>
       {/each}
     </div>
   {/if}
@@ -284,10 +279,8 @@
               <p class="kui-eyebrow">Broadcast Name</p>
               <p class="kui-strong">{formName}</p>
             </div>
-            <div>
               <p class="kui-eyebrow">Target Audience</p>
               <p class="kui-strong">{getSegmentName(formAudienceId)}</p>
-            </div>
             <div>
               <p class="kui-eyebrow">Subject Line</p>
               <p class="kui-strong">{formSubject}</p>
@@ -341,7 +334,7 @@
       <div class="kui-modal__header">
         <div>
           <h2>{selectedBroadcast.name}</h2>
-          <p class="kui-subtext">To: {getSegmentName(selectedBroadcast.audienceId)}</p>
+          <p class="kui-subtext">To: {getSegmentName(selectedBroadcast.segmentId)}</p>
         </div>
         <Button variant="ghost" size="xs" onclick={() => (showPreviewModal = false)}>
           <X class="kui-icon" />
@@ -371,42 +364,38 @@
 <style>
   .kui-broadcast {
     display: grid;
-    gap: var(--kui-spacing-md);
+    gap: 1.5rem;
   }
 
   .kui-broadcast__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--kui-spacing-md);
+    gap: 1.5rem;
     flex-wrap: wrap;
   }
 
-  .kui-eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--kui-color-muted);
-    font-weight: 700;
+  .kui-broadcast__header h2 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .kui-broadcast__subtitle {
     margin: 0;
-    font-size: 0.8rem;
-  }
-
-  h1 {
-    margin: 0.1rem 0 0.2rem;
-    font-size: 1.6rem;
-  }
-
-  .kui-subtext {
+    font-size: 0.9rem;
     color: var(--kui-color-muted);
-    margin: 0;
   }
 
-  .kui-panel.center {
+  .kui-empty {
     display: grid;
-    gap: 0.35rem;
+    gap: 0.75rem;
     justify-items: center;
     text-align: center;
-    padding: var(--kui-spacing-lg);
+    padding: 3rem 1.5rem;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
   }
 
   .kui-empty__icon {
@@ -415,26 +404,79 @@
     color: var(--kui-color-muted);
   }
 
+  .kui-empty__text {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+  }
+
+  .kui-empty__subtext {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+  }
+
   .kui-list {
     display: grid;
-    gap: var(--kui-spacing-sm);
+    gap: 0.75rem;
   }
 
-  .kui-broadcast__item {
+  .kui-broadcast-item {
     display: flex;
-    justify-content: space-between;
-    gap: var(--kui-spacing-md);
-    align-items: flex-start;
-  }
-
-  .kui-inline {
-    display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    transition: all 150ms ease;
   }
 
-  .kui-inline.end {
-    justify-content: flex-end;
+  .kui-broadcast-item:hover {
+    border-color: var(--kui-color-primary);
+    box-shadow: var(--kui-shadow-xs);
+  }
+
+  .kui-broadcast-item__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kui-broadcast-item__title {
+    margin: 0 0 0.25rem 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+  }
+
+  .kui-broadcast-item__subject {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kui-broadcast-item__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .kui-broadcast-item__audience {
+    font-size: 0.8rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-broadcast-item__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   .kui-icon {
@@ -446,6 +488,11 @@
     animation: spin 1s linear infinite;
   }
 
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Modal styles */
   .kui-overlay {
     position: fixed;
     inset: 0;
@@ -477,12 +524,12 @@
 
   .kui-modal__header,
   .kui-modal__footer {
-    padding: var(--kui-spacing-md);
+    padding: 1.5rem;
     border-bottom: 1px solid var(--kui-color-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--kui-spacing-sm);
+    gap: 1rem;
   }
 
   .kui-modal__footer {
@@ -491,16 +538,16 @@
   }
 
   .kui-modal__body {
-    padding: var(--kui-spacing-md);
+    padding: 1.5rem;
     overflow-y: auto;
     display: grid;
-    gap: var(--kui-spacing-sm);
+    gap: 1rem;
   }
 
   .kui-steps {
     display: flex;
-    gap: var(--kui-spacing-sm);
-    padding: var(--kui-spacing-md);
+    gap: 1rem;
+    padding: 1.5rem;
     border-bottom: 1px solid var(--kui-color-border);
     flex-wrap: wrap;
   }
@@ -508,7 +555,7 @@
   .kui-step {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
   }
 
   .kui-step__badge {
@@ -519,7 +566,8 @@
     place-items: center;
     background: var(--kui-color-surface-muted);
     color: var(--kui-color-text);
-    font-weight: 700;
+    font-weight: 600;
+    font-size: 0.875rem;
   }
 
   .kui-step__badge.is-active {
@@ -534,7 +582,7 @@
 
   .kui-step__bar {
     width: 2.5rem;
-    height: 4px;
+    height: 3px;
     border-radius: 999px;
     background: var(--kui-color-border);
   }
@@ -543,10 +591,16 @@
     background: var(--kui-color-success);
   }
 
+  .kui-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
   .kui-label {
     display: grid;
-    gap: 0.25rem;
-    font-weight: 600;
+    gap: 0.35rem;
+    font-weight: 500;
+    font-size: 0.9rem;
   }
 
   .kui-input,
@@ -554,7 +608,7 @@
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-md);
     padding: 0.65rem 0.75rem;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     background: var(--kui-color-surface);
     color: var(--kui-color-text);
   }
@@ -565,7 +619,7 @@
 
   .kui-review {
     display: grid;
-    gap: var(--kui-spacing-sm);
+    gap: 1.5rem;
   }
 
   .kui-preview {
@@ -573,7 +627,6 @@
     border-radius: var(--kui-radius-md);
     overflow: hidden;
     background: var(--kui-color-surface);
-    min-height: 200px;
   }
 
   .kui-preview iframe {
@@ -587,7 +640,7 @@
   }
 
   .kui-preview-body {
-    padding: var(--kui-spacing-md);
+    padding: 1.5rem;
     overflow-y: auto;
   }
 
@@ -604,26 +657,55 @@
     border: none;
   }
 
+  .kui-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .kui-strong {
+    font-weight: 600;
+    color: var(--kui-color-text);
+    margin: 0;
+  }
+
+  .kui-subtext {
+    color: var(--kui-color-muted);
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
   .kui-callout {
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-md);
-    padding: var(--kui-spacing-sm);
-    background: var(--kui-color-surface);
+    padding: 1rem;
+    background: var(--kui-color-surface-muted);
     color: var(--kui-color-text);
+    font-size: 0.9rem;
   }
 
   .kui-callout.error {
-    border-color: color-mix(in srgb, var(--kui-color-error) 40%, var(--kui-color-border) 60%);
+    border-color: rgba(239, 68, 68, 0.3);
     background: rgba(239, 68, 68, 0.08);
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  @media (max-width: 720px) {
-    .kui-broadcast__item {
+  @media (max-width: 768px) {
+    .kui-broadcast-item {
       flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .kui-broadcast-item__actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .kui-modal,
+    .kui-preview-modal {
+      width: min(90vw, calc(100vw - 32px));
     }
   }
 </style>

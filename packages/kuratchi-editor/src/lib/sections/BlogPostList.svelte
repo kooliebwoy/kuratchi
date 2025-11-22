@@ -1,6 +1,8 @@
 <script lang="ts">
     import { ArrowRight } from '@lucide/svelte';
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
     import { blogStore } from '../stores/blog';
     import type { BlogData } from '../types';
 
@@ -120,11 +122,84 @@
         metadata: { ...layoutMetadata },
         posts
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-blogList" style={layoutStyle}>
+        <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-blogList__container">
+            {#if posts.length}
+                <div class={`krt-blogList__grid ${layout === 'list' ? 'krt-blogList__grid--list' : ''}`}>
+                    {#each posts as post (post.id)}
+                        <article class="krt-blogListCard">
+                            {#if post.coverImage?.url}
+                                <figure class="krt-blogListCard__media">
+                                    <img src={post.coverImage.url} alt={post.coverImage.alt ?? post.title} loading="lazy" />
+                                </figure>
+                            {/if}
+                            <div class="krt-blogListCard__body">
+                                {#if showCategories}
+                                    <div class="krt-blogListCard__tags">
+                                        {#if post.categories?.length}
+                                            {#each post.categories as categorySlug}
+                                                {@const category = ($blog?.categories ?? []).find((entry) => entry.slug === categorySlug)}
+                                                <span class="krt-blogListCard__tag">{category?.name ?? categorySlug}</span>
+                                            {/each}
+                                        {:else}
+                                            <span class="krt-blogListCard__tag">Blog</span>
+                                        {/if}
+                                    </div>
+                                {/if}
+                                <h3 class="krt-blogListCard__title">{post.title}</h3>
+                                {#if showExcerpt}
+                                    <p class="krt-blogListCard__excerpt">{post.excerpt}</p>
+                                {/if}
+                                <div class="krt-blogListCard__meta">
+                                    {#if showDate}
+                                        <span>{post.publishedOn}</span>
+                                    {/if}
+                                    {#if showReadMore}
+                                        <a
+                                            class="krt-blogListCard__readMore"
+                                            href={`/${$blog?.settings?.indexSlug ?? 'blog'}/${post.slug}`}
+                                            onclick={(event) => event.preventDefault()}
+                                        >
+                                            {readMoreLabel}
+                                            <ArrowRight aria-hidden="true" />
+                                        </a>
+                                    {/if}
+                                </div>
+                            </div>
+                        </article>
+                    {/each}
+                </div>
+            {:else}
+                <p class="krt-blogList__empty">No posts yet. Add a blog post in the Blog panel to populate this section.</p>
+            {/if}
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog post list settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-blogListDrawer">
             <section class="krt-blogListDrawer__section">
                 <h3>Layout</h3>
@@ -190,67 +265,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-blogList" style={layoutStyle} data-type={type}>
-            <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-blogList__container">
-                {#if posts.length}
-                    <div class={`krt-blogList__grid ${layout === 'list' ? 'krt-blogList__grid--list' : ''}`}>
-                        {#each posts as post (post.id)}
-                            <article class="krt-blogListCard">
-                                {#if post.coverImage?.url}
-                                    <figure class="krt-blogListCard__media">
-                                        <img src={post.coverImage.url} alt={post.coverImage.alt ?? post.title} loading="lazy" />
-                                    </figure>
-                                {/if}
-                                <div class="krt-blogListCard__body">
-                                    {#if showCategories}
-                                        <div class="krt-blogListCard__tags">
-                                            {#if post.categories?.length}
-                                                {#each post.categories as categorySlug}
-                                                    {@const category = ($blog?.categories ?? []).find((entry) => entry.slug === categorySlug)}
-                                                    <span class="krt-blogListCard__tag">{category?.name ?? categorySlug}</span>
-                                                {/each}
-                                            {:else}
-                                                <span class="krt-blogListCard__tag">Blog</span>
-                                            {/if}
-                                        </div>
-                                    {/if}
-                                    <h3 class="krt-blogListCard__title">{post.title}</h3>
-                                    {#if showExcerpt}
-                                        <p class="krt-blogListCard__excerpt">{post.excerpt}</p>
-                                    {/if}
-                                    <div class="krt-blogListCard__meta">
-                                        {#if showDate}
-                                            <span>{post.publishedOn}</span>
-                                        {/if}
-                                        {#if showReadMore}
-                                            <a
-                                                class="krt-blogListCard__readMore"
-                                                href={`/${$blog?.settings?.indexSlug ?? 'blog'}/${post.slug}`}
-                                                onclick={(event) => event.preventDefault()}
-                                            >
-                                                {readMoreLabel}
-                                                <ArrowRight aria-hidden="true" />
-                                            </a>
-                                        {/if}
-                                    </div>
-                                </div>
-                            </article>
-                        {/each}
-                    </div>
-                {:else}
-                    <p class="krt-blogList__empty">No posts yet. Add a blog post in the Blog panel to populate this section.</p>
-                {/if}
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogList" style={layoutStyle}>
         <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>

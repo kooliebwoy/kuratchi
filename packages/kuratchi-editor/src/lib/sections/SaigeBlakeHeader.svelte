@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
     import { IconPicker, ImagePicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
@@ -76,10 +78,167 @@
         if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
         return '#';
     }
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+{#if editable}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <div
+        {id}
+        class="krt-header krt-header--saige"
+        style:background-color={backgroundColor}
+        style:color={textColor}
+        data-type={type}
+    >
+        <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
+            <div class="krt-header__segment">
+                {#if reverseOrder}
+                    <div class="krt-header__metaGroup">
+                        {#each icons as { icon, link, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="krt-header__navShell">
+                        <a class="krt-header__logoLink" href="homepage">
+                            {#if logoUrl}
+                                <img src={logoUrl} alt={logoAlt} />
+                            {/if}
+                        </a>
+                        {#if localMenu.length}
+                            <ul class="krt-header__navList">
+                                {#each localMenu as item, index}
+                                    {#if item.items?.length}
+                                        <li class="krt-header__navItem">
+                                            <details class="krt-header__navDropdown">
+                                                <summary>{item.label}</summary>
+                                                <ul class="krt-header__menuPopover">
+                                                    {#each item.items as subItem}
+                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                    {/each}
+                                                </ul>
+                                            </details>
+                                        </li>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <li class="krt-header__navItem">
+                                            <a href={hrefFrom(item)}>{item.label}</a>
+                                        </li>
+                                    {/if}
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                {/if}
+            </div>
+
+            <div class="krt-header__brand">
+                {#if localMenu.length}
+                    <details class="krt-header__sheetToggle">
+                        <summary aria-label="Toggle menu">
+                            <span class="krt-header__mobileTrigger">
+                                <Menu aria-hidden="true" />
+                            </span>
+                        </summary>
+                        <ul class="krt-header__sheet">
+                            {#each localMenu as item, index}
+                                <li>
+                                    {#if item.items?.length}
+                                        <details class="krt-header__sheetDropdown">
+                                            <summary>{item.label}</summary>
+                                            <ul>
+                                                {#each item.items as subItem}
+                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                {/each}
+                                            </ul>
+                                        </details>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <a href={hrefFrom(item)}>{item.label}</a>
+                                    {/if}
+                                </li>
+                            {/each}
+                        </ul>
+                    </details>
+                {/if}
+            </div>
+
+            <div class="krt-header__segment">
+                {#if reverseOrder}
+                    <div class="krt-header__navShell">
+                        <a class="krt-header__logoLink" href="homepage">
+                            {#if logoUrl}
+                                <img src={logoUrl} alt={logoAlt} />
+                            {/if}
+                        </a>
+                        {#if localMenu.length}
+                            <ul class="krt-header__navList">
+                                {#each localMenu as item, index}
+                                    {@const itemKey = item.id ?? item.slug ?? `item-${index}`}
+                                    {#if item.items?.length}
+                                        <li class="krt-header__navItem">
+                                            <button
+                                                class="krt-header__navButton"
+                                                type="button"
+                                                popovertarget={`saige-popover-${itemKey}`}
+                                                style={`anchor-name: --saige-anchor-${itemKey}`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                            <ul
+                                                id={`saige-popover-${itemKey}`}
+                                                popover
+                                                class="krt-header__menuPopover"
+                                                style={`position-anchor: --saige-anchor-${itemKey}`}
+                                            >
+                                                {#each item.items as subItem}
+                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                {/each}
+                                            </ul>
+                                        </li>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <li class="krt-header__navItem">
+                                            <a href={hrefFrom(item)}>{item.label}</a>
+                                        </li>
+                                    {/if}
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                {:else}
+                    <div class="krt-header__metaGroup">
+                        {#each icons as { icon, link, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </div>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit header settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-headerDrawer">
             <section class="krt-headerDrawer__section">
                 <h3 class="krt-headerDrawer__title">Layout</h3>
@@ -147,149 +306,146 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <div
-            class="krt-header krt-header--saige"
-            style:background-color={backgroundColor}
-            style:color={textColor}
-            data-type={type}
-        >
-            <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
-                <div class="krt-header__segment">
-                    {#if reverseOrder}
-                        <div class="krt-header__metaGroup">
-                            {#each icons as { icon, link, name }}
-                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                                <a class="krt-header__iconButton" href={link} aria-label={name}>
-                                    <Comp aria-hidden="true" />
-                                </a>
-                            {/each}
-                        </div>
-                    {:else}
-                        <div class="krt-header__navShell">
-                            <a class="krt-header__logoLink" href="homepage">
-                                {#if logoUrl}
-                                    <img src={logoUrl} alt={logoAlt} />
-                                {/if}
+</SideActions>
+{:else}
+    <div
+        {id}
+        class="krt-header krt-header--saige"
+        style:background-color={backgroundColor}
+        style:color={textColor}
+        data-type={type}
+    >
+        <div class="krt-header__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
+            <div class="krt-header__segment">
+                {#if reverseOrder}
+                    <div class="krt-header__metaGroup">
+                        {#each icons as { icon, link, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                <Comp aria-hidden="true" />
                             </a>
-                            {#if localMenu.length}
-                                <ul class="krt-header__navList">
-                                    {#each localMenu as item, index}
-                                        {#if item.items?.length}
-                                            <li class="krt-header__navItem">
-                                                <details class="krt-header__navDropdown">
-                                                    <summary>{item.label}</summary>
-                                                    <ul class="krt-header__menuPopover">
-                                                        {#each item.items as subItem}
-                                                            <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                        {/each}
-                                                    </ul>
-                                                </details>
-                                            </li>
-                                        {:else if hrefFrom(item) !== '#'}
-                                            <li class="krt-header__navItem">
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            </li>
-                                        {/if}
-                                    {/each}
-                                </ul>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="krt-header__navShell">
+                        <a class="krt-header__logoLink" href="homepage">
+                            {#if logoUrl}
+                                <img src={logoUrl} alt={logoAlt} />
                             {/if}
-                        </div>
-                    {/if}
-                </div>
-
-                <div class="krt-header__brand">
-                    {#if localMenu.length}
-                        <details class="krt-header__sheetToggle">
-                            <summary aria-label="Toggle menu">
-                                <span class="krt-header__mobileTrigger">
-                                    <Menu aria-hidden="true" />
-                                </span>
-                            </summary>
-                            <ul class="krt-header__sheet">
+                        </a>
+                        {#if localMenu.length}
+                            <ul class="krt-header__navList">
                                 {#each localMenu as item, index}
-                                    <li>
-                                        {#if item.items?.length}
-                                            <details class="krt-header__sheetDropdown">
+                                    {#if item.items?.length}
+                                        <li class="krt-header__navItem">
+                                            <details class="krt-header__navDropdown">
                                                 <summary>{item.label}</summary>
-                                                <ul>
+                                                <ul class="krt-header__menuPopover">
                                                     {#each item.items as subItem}
                                                         <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
                                                     {/each}
                                                 </ul>
                                             </details>
-                                        {:else if hrefFrom(item) !== '#'}
+                                        </li>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <li class="krt-header__navItem">
                                             <a href={hrefFrom(item)}>{item.label}</a>
-                                        {/if}
-                                    </li>
+                                        </li>
+                                    {/if}
                                 {/each}
                             </ul>
-                        </details>
-                    {/if}
-                </div>
+                        {/if}
+                    </div>
+                {/if}
+            </div>
 
-                <div class="krt-header__segment">
-                    {#if reverseOrder}
-                        <div class="krt-header__navShell">
-                            <a class="krt-header__logoLink" href="homepage">
-                                {#if logoUrl}
-                                    <img src={logoUrl} alt={logoAlt} />
-                                {/if}
-                            </a>
-                            {#if localMenu.length}
-                                <ul class="krt-header__navList">
-                                    {#each localMenu as item, index}
-                                        {@const itemKey = item.id ?? item.slug ?? `item-${index}`}
-                                        {#if item.items?.length}
-                                            <li class="krt-header__navItem">
-                                                <button
-                                                    class="krt-header__navButton"
-                                                    type="button"
-                                                    popovertarget={`saige-popover-${itemKey}`}
-                                                    style={`anchor-name: --saige-anchor-${itemKey}`}
-                                                >
-                                                    {item.label}
-                                                </button>
-                                                <ul
-                                                    id={`saige-popover-${itemKey}`}
-                                                    popover
-                                                    class="krt-header__menuPopover"
-                                                    style={`position-anchor: --saige-anchor-${itemKey}`}
-                                                >
-                                                    {#each item.items as subItem}
-                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                    {/each}
-                                                </ul>
-                                            </li>
-                                        {:else if hrefFrom(item) !== '#'}
-                                            <li class="krt-header__navItem">
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            </li>
-                                        {/if}
-                                    {/each}
-                                </ul>
-                            {/if}
-                        </div>
-                    {:else}
-                        <div class="krt-header__metaGroup">
-                            {#each icons as { icon, link, name }}
-                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                                <a class="krt-header__iconButton" href={link} aria-label={name}>
-                                    <Comp aria-hidden="true" />
-                                </a>
+            <div class="krt-header__brand">
+                {#if localMenu.length}
+                    <details class="krt-header__sheetToggle">
+                        <summary aria-label="Toggle menu">
+                            <span class="krt-header__mobileTrigger">
+                                <Menu aria-hidden="true" />
+                            </span>
+                        </summary>
+                        <ul class="krt-header__sheet">
+                            {#each localMenu as item, index}
+                                <li>
+                                    {#if item.items?.length}
+                                        <details class="krt-header__sheetDropdown">
+                                            <summary>{item.label}</summary>
+                                            <ul>
+                                                {#each item.items as subItem}
+                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                {/each}
+                                            </ul>
+                                        </details>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <a href={hrefFrom(item)}>{item.label}</a>
+                                    {/if}
+                                </li>
                             {/each}
-                        </div>
-                    {/if}
-                </div>
+                        </ul>
+                    </details>
+                {/if}
+            </div>
+
+            <div class="krt-header__segment">
+                {#if reverseOrder}
+                    <div class="krt-header__navShell">
+                        <a class="krt-header__logoLink" href="homepage">
+                            {#if logoUrl}
+                                <img src={logoUrl} alt={logoAlt} />
+                            {/if}
+                        </a>
+                        {#if localMenu.length}
+                            <ul class="krt-header__navList">
+                                {#each localMenu as item, index}
+                                    {@const itemKey = item.id ?? item.slug ?? `item-${index}`}
+                                    {#if item.items?.length}
+                                        <li class="krt-header__navItem">
+                                            <button
+                                                class="krt-header__navButton"
+                                                type="button"
+                                                popovertarget={`saige-popover-${itemKey}`}
+                                                style={`anchor-name: --saige-anchor-${itemKey}`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                            <ul
+                                                id={`saige-popover-${itemKey}`}
+                                                popover
+                                                class="krt-header__menuPopover"
+                                                style={`position-anchor: --saige-anchor-${itemKey}`}
+                                            >
+                                                {#each item.items as subItem}
+                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                {/each}
+                                            </ul>
+                                        </li>
+                                    {:else if hrefFrom(item) !== '#'}
+                                        <li class="krt-header__navItem">
+                                            <a href={hrefFrom(item)}>{item.label}</a>
+                                        </li>
+                                    {/if}
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                {:else}
+                    <div class="krt-header__metaGroup">
+                        {#each icons as { icon, link, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         </div>
-    {/snippet}
-</LayoutBlock>
+    </div>
+{/if}
 
 <style>
     .krt-headerDrawer {

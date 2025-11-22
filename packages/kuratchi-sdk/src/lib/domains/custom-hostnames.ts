@@ -4,7 +4,7 @@ import type { CloudflareAPIResponse, CreateCustomHostnamePayload } from '../util
 export interface CreateCustomHostnameOptions {
   zoneId: string;
   hostname: string;
-  originHost: string;
+  originHost?: string; // Optional - if omitted, uses zone's fallback origin
   ssl?: CreateCustomHostnamePayload['ssl'];
   metadata?: Record<string, unknown>;
   customOriginSni?: string;
@@ -25,8 +25,8 @@ export async function createCustomHostname(options: CreateCustomHostnameOptions)
   try {
     const payload: CreateCustomHostnamePayload = {
       hostname: options.hostname,
-      custom_origin_server: options.originHost,
-      custom_origin_sni: options.customOriginSni,
+      ...(options.originHost && { custom_origin_server: options.originHost }),
+      ...(options.customOriginSni && { custom_origin_sni: options.customOriginSni }),
       ssl: options.ssl ?? {
         method: 'http',
         type: 'dv'

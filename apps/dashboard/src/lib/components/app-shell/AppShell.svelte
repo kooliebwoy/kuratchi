@@ -17,7 +17,7 @@
     { label: 'Overview', icon: Home, href: '/' },
     { label: 'Sites', icon: Layout, href: '/sites' },
     { label: 'Emails', icon: Mail, href: '/emails' },
-    { label: 'Database', icon: Database, href: '/database' },
+    // { label: 'Database', icon: Database, href: '/database' },
     { label: 'Domains', icon: GlobeLock, href: '/domains' },
     { label: 'Storage', icon: Folder, href: '/storage' },
     { label: 'Activity', icon: Activity, href: '/activity' },

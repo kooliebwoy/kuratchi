@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { ArrowRight } from '@lucide/svelte';
+    import { ArrowRight, Pencil } from '@lucide/svelte';
+    import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { LayoutBlock } from '../shell/index.js';
+    import { BlockActions, SideActions } from '../shell/index.js';
 
     interface HeroButton {
         label?: string;
@@ -69,86 +70,107 @@
         image,
         metadata: { ...layoutMetadata }
     });
+    let component = $state<HTMLElement>();
+    let mounted = $state(false);
+    const sideActionsId = $derived(`hero-figure-side-actions-${id}`);
+
+    onMount(() => {
+        if (!editable) return;
+        mounted = true;
+    });
 </script>
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
-        <div class="krt-heroFigureDrawer">
-            <section class="krt-heroFigureDrawer__section">
-                <div class="krt-heroFigureDrawer__toggle">
-                    <label>
-                        <span>Swap hero and media</span>
-                        <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-heroFigureDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-heroFigureDrawer__grid">
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Background</span>
-                        <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Heading</span>
-                        <input type="color" aria-label="Heading color" bind:value={layoutMetadata.headingColor} />
-                    </label>
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Body text</span>
-                        <input type="color" aria-label="Body text color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Button</span>
-                        <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-heroFigureDrawer__section">
-                <h3>Button</h3>
-                <label class="krt-heroFigureDrawer__field">
-                    <span>Label</span>
-                    <input type="text" placeholder="Read more" bind:value={button.label} />
-                </label>
-                <label class="krt-heroFigureDrawer__field">
-                    <span>Link</span>
-                    <input type="url" placeholder="https://" bind:value={button.link} />
-                </label>
-            </section>
-
-            <section class="krt-heroFigureDrawer__section">
-                <h3>Image</h3>
-                <ImagePicker bind:selectedImage={image} mode="single" />
-            </section>
-        </div>
-    {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class={`krt-heroFigure ${layoutMetadata.reverseOrder ? 'krt-heroFigure--reverse' : ''}`} style={layoutStyle} data-type={type}>
-            <div class="krt-heroFigure__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-heroFigure__media">
-                {#if image?.url}
-                    <img src={image.url} alt={image.alt ?? 'Hero figure image'} loading="lazy" />
-                {:else}
-                    <div class="krt-heroFigure__placeholder">Add hero image</div>
-                {/if}
-            </div>
-            <div class="krt-heroFigure__content">
-                <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
-                <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>
-                <button class="krt-heroFigure__cta" type="button" onclick={(event) => event.preventDefault()}>
-                    <span contenteditable bind:innerHTML={button.label}></span>
-                    <ArrowRight aria-hidden="true" />
+<div class="editor-item group relative krt-heroFigure__wrapper" bind:this={component}>
+    {#if mounted}
+        <BlockActions {component}>
+            <small>Layout</small>
+            <li>
+                <button class="btn btn-ghost btn-sm" onclick={() => (layoutMetadata.reverseOrder = !layoutMetadata.reverseOrder)}>
+                    {layoutMetadata.reverseOrder ? 'Normal order' : 'Swap layout'}
                 </button>
+            </li>
+        </BlockActions>
+    {/if}
+
+    <SideActions id={sideActionsId}>
+        {#snippet label()}
+            <button class="krt-heroFigure__editButton" type="button">
+                <Pencil aria-hidden="true" />
+                <span>Edit section</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-heroFigureDrawer">
+                <section class="krt-heroFigureDrawer__section">
+                    <div class="krt-heroFigureDrawer__toggle">
+                        <label>
+                            <span>Swap hero and media</span>
+                            <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-heroFigureDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-heroFigureDrawer__grid">
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Background</span>
+                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Heading</span>
+                            <input type="color" aria-label="Heading color" bind:value={layoutMetadata.headingColor} />
+                        </label>
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Body text</span>
+                            <input type="color" aria-label="Body text color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Button</span>
+                            <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-heroFigureDrawer__section">
+                    <h3>Button</h3>
+                    <label class="krt-heroFigureDrawer__field">
+                        <span>Label</span>
+                        <input type="text" placeholder="Read more" bind:value={button.label} />
+                    </label>
+                    <label class="krt-heroFigureDrawer__field">
+                        <span>Link</span>
+                        <input type="url" placeholder="https://" bind:value={button.link} />
+                    </label>
+                </section>
+
+                <section class="krt-heroFigureDrawer__section">
+                    <h3>Image</h3>
+                    <ImagePicker bind:selectedImage={image} mode="single" />
+                </section>
             </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+        {/snippet}
+    </SideActions>
+
+    <section class={`krt-heroFigure ${layoutMetadata.reverseOrder ? 'krt-heroFigure--reverse' : ''}`} style={layoutStyle} data-type={type}>
+        <div class="krt-heroFigure__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-heroFigure__media">
+            {#if image?.url}
+                <img src={image.url} alt={image.alt ?? 'Hero figure image'} loading="lazy" />
+            {:else}
+                <div class="krt-heroFigure__placeholder">Add hero image</div>
+            {/if}
+        </div>
+        <div class="krt-heroFigure__content">
+            <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
+            <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>
+            <button class="krt-heroFigure__cta" type="button" onclick={(event) => event.preventDefault()}>
+                <span contenteditable bind:innerHTML={button.label}></span>
+                <ArrowRight aria-hidden="true" />
+            </button>
+        </div>
+    </section>
+</div>
 {:else}
     <section
         id={id}

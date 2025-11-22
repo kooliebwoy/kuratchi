@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
 
     interface HeroButton {
         label?: string;
@@ -83,11 +85,58 @@
         image,
         metadata: { ...layoutMetadata }
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
   
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section
+        {id}
+        data-type={type}
+        class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
+        style={layoutStyle}
+    >
+        <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-heroOverlay__background" aria-hidden="true"></div>
+        <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
+        <div class="krt-heroOverlay__content">
+            <div class="krt-heroOverlay__copy">
+                <h1 class="krt-heroOverlay__heading" contenteditable bind:innerHTML={heading}></h1>
+                <p class="krt-heroOverlay__body" contenteditable bind:innerHTML={body}></p>
+                <a
+                    class="krt-heroOverlay__cta"
+                    href={button?.link ?? '#'}
+                    aria-label={button?.label ?? 'Edit hero button label'}
+                >
+                    <span contenteditable bind:innerHTML={button.label}></span>
+                </a>
+            </div>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button
+            id={sideActionsId}
+            class="krt-editButton"
+            aria-label="Edit hero overlay settings"
+        >
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-heroOverlayDrawer">
             <section class="krt-heroOverlayDrawer__section">
                 <h3>Layout</h3>
@@ -130,35 +179,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section
-            class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
-            style={layoutStyle}
-        >
-            <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-heroOverlay__background" aria-hidden="true"></div>
-            <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
-            <div class="krt-heroOverlay__content">
-                <div class="krt-heroOverlay__copy">
-                    <h1 class="krt-heroOverlay__heading" contenteditable bind:innerHTML={heading}></h1>
-                    <p class="krt-heroOverlay__body" contenteditable bind:innerHTML={body}></p>
-                    <a
-                        class="krt-heroOverlay__cta"
-                        href={button?.link ?? '#'}
-                        aria-label={button?.label ?? 'Edit hero button label'}
-                    >
-                        <span contenteditable bind:innerHTML={button.label}></span>
-                    </a>
-                </div>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section
         id={id}

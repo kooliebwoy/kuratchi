@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from "../shell/index.js";
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from "../shell/index.js";
     import { IconPicker } from "../plugins/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
@@ -81,11 +83,42 @@
     };
 
     const radiusClass = $derived(() => radiusClassMap[roundedBorder] ?? radiusClassMap['rounded-md']);
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
+        <div class="krt-iconBar__band" style:color={iconColors}>
+            {#each iconsState as { icon, name }}
+                {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                <div class="krt-iconBar__item">
+                    <Comp aria-hidden="true" />
+                    <h6>{name}</h6>
+                </div>
+            {/each}
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit icon bar settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-iconBar__drawer">
             <section class="krt-iconBar__drawerSection">
                 <h3>Appearance</h3>
@@ -140,25 +173,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
-            <div class="krt-iconBar__band" style:color={iconColors}>
-                {#each iconsState as { icon, name }}
-                    {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                    <div class="krt-iconBar__item">
-                        <Comp aria-hidden="true" />
-                        <h6>{name}</h6>
-                    </div>
-                {/each}
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
         <div class="krt-iconBar__metadata">{JSON.stringify(content)}</div>

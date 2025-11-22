@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte";
 	import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
 	import EditorToolbar from "../plugins/EditorToolbar.svelte";
-	import SideActions from "../shell/components/SideActions.svelte";
+	import { BlockActions } from "../shell/index.js";
 
     interface Props {
         id?: string;
@@ -71,7 +71,7 @@
         {/if}
 
         {#if mounted}
-            <SideActions {component} />
+            <BlockActions {component} />
         {/if}
         
         <div data-type={type} id={id} class="krt-paragraph-body">

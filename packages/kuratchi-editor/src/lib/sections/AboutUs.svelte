@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
 
     interface ButtonConfig {
         label: string;
@@ -57,11 +59,47 @@
             ...layoutMetadata
         }
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
+        <div class="krt-aboutHero__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-aboutHero__content">
+            <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading}></h1>
+            <p class="krt-aboutHero__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
+            <a
+                class="krt-aboutHero__cta"
+                href={button.link}
+                style:background-color={layoutMetadata.buttonColor}
+                style:color={layoutMetadata.textColor}
+                aria-label={button.label || 'Edit button label'}
+            >
+                <span contenteditable bind:innerHTML={button.label}></span>
+            </a>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit about us settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-aboutHeroDrawer">
             <section class="krt-aboutHeroDrawer__section">
                 <h3>Content</h3>
@@ -108,30 +146,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor} data-type={type}>
-            <div class="krt-aboutHero__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-aboutHero__content">
-                <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading}></h1>
-                <p class="krt-aboutHero__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
-                <a
-                    class="krt-aboutHero__cta"
-                    href={button.link}
-                    style:background-color={layoutMetadata.buttonColor}
-                    style:color={layoutMetadata.textColor}
-                    aria-label={button.label || 'Edit button label'}
-                >
-                    <span contenteditable bind:innerHTML={button.label}></span>
-                </a>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
         <div class="krt-aboutHero__metadata">{JSON.stringify(content)}</div>

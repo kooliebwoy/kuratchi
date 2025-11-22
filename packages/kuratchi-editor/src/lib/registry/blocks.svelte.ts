@@ -10,22 +10,23 @@ import TwoColumnBlock from '../blocks/TwoColumn.svelte';
 import ImageDifference from '../blocks/ImageDifference.svelte';
 import Carousel from '../blocks/Carousel.svelte';
 import HoverCard from '../blocks/HoverCard.svelte';
-import HeroFigure from '../layouts/HeroFigure.svelte';
-import HeroOverlay from '../layouts/HeroOverlay.svelte';
-import AboutUs from '../layouts/AboutUs.svelte';
-import AboutUsCard from '../layouts/AboutUsCard.svelte';
-import CardWithSlider from '../layouts/CardWithSlider.svelte';
-import IconBar from '../layouts/IconBar.svelte';
-import GridCTAs from '../layouts/GridCTAs.svelte';
-import ServicesGrid from '../layouts/ServicesGrid.svelte';
-import BlogHero from '../layouts/BlogHero.svelte';
-import BlogPostList from '../layouts/BlogPostList.svelte';
-import SaigeBlakeHeader from '../headers/SaigeBlakeHeader.svelte';
-import TwigAndPearlHeader from '../headers/TwigAndPearlHeader.svelte';
-import SaigeBlakeFooter from '../footers/SaigeBlakeFooter.svelte';
-import TwigAndPearlFooter from '../footers/TwigAndPearlFooter.svelte';
+import Modal from '../blocks/Modal.svelte';
+import HeroFigure from '../sections/HeroFigure.svelte';
+import HeroOverlay from '../sections/HeroOverlay.svelte';
+import AboutUs from '../sections/AboutUs.svelte';
+import AboutUsCard from '../sections/AboutUsCard.svelte';
+import CardWithSlider from '../sections/CardWithSlider.svelte';
+import IconBar from '../sections/IconBar.svelte';
+import GridCTAs from '../sections/GridCTAs.svelte';
+import ServicesGrid from '../sections/ServicesGrid.svelte';
+import BlogHero from '../sections/BlogHero.svelte';
+import BlogPostList from '../sections/BlogPostList.svelte';
+import SaigeBlakeHeader from '../sections/SaigeBlakeHeader.svelte';
+import TwigAndPearlHeader from '../sections/TwigAndPearlHeader.svelte';
+import SaigeBlakeFooter from '../sections/SaigeBlakeFooter.svelte';
+import TwigAndPearlFooter from '../sections/TwigAndPearlFooter.svelte';
 import type { Component } from 'svelte';
-import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, LayoutGrid, ListChecks, Minus, MousePointerClick, PanelBottom, PanelTop, PanelsTopLeft, Sparkles } from '@lucide/svelte';
+import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, LayoutGrid, ListChecks, Minus, MousePointerClick, PanelBottom, PanelTop, PanelsTopLeft, Sparkles, Square } from '@lucide/svelte';
 
 export interface BlockDefinition {
 	name: string;
@@ -133,7 +134,15 @@ export const blocks: BlockDefinition[] = [
 		component: HoverCard,
 		showInPalette: true
 	},
-	// Layout blocks (hidden from default picker, composed via presets)
+	{
+		name: 'Modal',
+		type: 'modal',
+		icon: Square,
+		description: 'Popup modal with forms, images, or custom content',
+		component: Modal,
+		showInPalette: true
+	},
+	// Section blocks (hidden from default picker, composed via presets)
 	{
 		name: 'Hero Figure',
 		type: 'hero-figure',

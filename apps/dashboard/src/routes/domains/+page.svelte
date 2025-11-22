@@ -4,7 +4,8 @@
     getEmailDomains, 
     addEmailDomain, 
     verifyEmailDomain, 
-    deleteEmailDomain 
+    deleteEmailDomain,
+    syncDomainStatuses
   } from '$lib/functions/emailDomains.remote';
   import { getSites } from '$lib/functions/sites.remote';
   import { linkDomainToSite, getDomainLinkInstructions } from '$lib/functions/siteCustomDomains.remote';
@@ -31,24 +32,17 @@
   let currentStep = $state(0); // For add domain wizard: 0 = input, 1 = DNS setup
   let selectedSiteId = $state('');
   let siteLinkInstructions = $state<{
-    verification?: {
-      type: string;
-      name: string;
-      value: string;
-      description?: string;
-    };
-    cname?: {
-      name: string;
-      target: string;
-      description?: string;
-    };
+    ownershipVerification?: { type: string; name: string; value: string; description?: string };
+    sslValidation?: Array<{ type: string; name: string; value: string; description?: string }>;
+    cname?: { name: string; target: string; description?: string };
   } | null>(null);
   let lastSubmittedPurpose = $state<'email' | 'site' | 'both'>('email');
   let submittedSiteName = $state('');
   let submittedDomainName = $state('');
   let instructionsLoading = $state(false);
   let domainInstructions = $state<{
-    verification?: { type: string; name: string; value: string; description?: string } | null;
+    ownershipVerification?: { type: string; name: string; value: string; description?: string } | null;
+    sslValidation?: Array<{ type: string; name: string; value: string; description?: string }> | null;
     cname?: { name: string; target: string; description?: string } | null;
     status?: string;
   } | null>(null);
@@ -147,6 +141,21 @@
     }
   }
 
+  async function handleRefreshStatuses() {
+    try {
+      const result = await syncDomainStatuses({});
+      if (result.success) {
+        setToast(`Updated ${result.updated || 0} domain(s)`);
+        domains.refresh();
+      } else {
+        alert(result.error || 'Failed to refresh statuses');
+      }
+    } catch (err) {
+      console.error('Error refreshing statuses:', err);
+      alert('Failed to refresh statuses');
+    }
+  }
+
   async function handleDeleteDomain() {
     if (!selectedDomain) return;
     
@@ -192,9 +201,10 @@
       const result = await getDomainLinkInstructions({ domainId: domain.id });
       if (result.success) {
         domainInstructions = {
-          verification: result.instructions?.verification || null,
+          ownershipVerification: result.instructions?.ownershipVerification || null,
+          sslValidation: result.instructions?.sslValidation || null,
           cname: result.instructions?.cname || null,
-          status: result.status || 'pending'
+          status: result.hostnameStatus || 'pending'
         };
       } else {
         domainInstructions = null;
@@ -257,6 +267,35 @@
     return [];
   }
 
+  function getApexDomain(domain: string): string {
+    const parts = domain.split('.');
+    if (parts.length >= 2) {
+      return parts.slice(-2).join('.');
+    }
+    return domain;
+  }
+
+  function isSubdomain(domain: string): boolean {
+    const parts = domain.split('.');
+    return parts.length > 2;
+  }
+
+  function openAddEmailModal(domain: any) {
+    // If it's a subdomain, suggest adding apex domain for email
+    if (isSubdomain(domain.name)) {
+      const apex = getApexDomain(domain.name);
+      if (confirm(`To set up email, you need to add the apex domain: ${apex}\n\nWould you like to add it now?`)) {
+        newDomain = apex;
+        domainPurpose = 'email';
+        selectedSiteId = '';
+        showAddModal = true;
+      }
+    } else {
+      // It's already an apex domain, just needs email enabled
+      alert('This feature will allow converting site-only domains to support email. Coming soon!');
+    }
+  }
+
   function setToast(message: string) {
     toastMessage = message;
     setTimeout(() => {
@@ -302,10 +341,16 @@
         </div>
       </div>
       {#if domains.current && domains.current.length > 0}
-        <Button variant="primary" onclick={() => showAddModal = true}>
-          <Plus class="h-4 w-4" />
-          Add Domain
-        </Button>
+        <div style="display: flex; gap: 0.5rem;">
+          <Button variant="ghost" onclick={handleRefreshStatuses} title="Sync domain statuses from Cloudflare">
+            <RefreshCw class="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button variant="primary" onclick={() => showAddModal = true}>
+            <Plus class="h-4 w-4" />
+            Add Domain
+          </Button>
+        </div>
       {/if}
     </div>
   </div>
@@ -452,6 +497,18 @@
                 </td>
                 <td class="kui-domains__actionsCell">
                   <div class="flex gap-1 justify-end">
+                    {#if !domain.emailEnabled}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="gap-1"
+                        onclick={() => openAddEmailModal(domain)}
+                        title="Add email sending to this domain"
+                      >
+                        <Mail class="h-4 w-4" />
+                        Add Email
+                      </Button>
+                    {/if}
                     {#if !domain.siteId}
                       <Button
                         variant="ghost"
@@ -464,16 +521,18 @@
                         Link to Site
                       </Button>
                     {:else}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        class="gap-1"
-                        onclick={() => openInstructions(domain)}
-                        title="View DNS instructions"
-                      >
-                        <Globe class="h-4 w-4" />
-                        DNS Instructions
-                      </Button>
+                      {#if domain.cloudflareHostnameStatus !== 'active'}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="gap-1"
+                          onclick={() => openInstructions(domain)}
+                          title="View DNS setup instructions"
+                        >
+                          <Globe class="h-4 w-4" />
+                          DNS Instructions
+                        </Button>
+                      {/if}
                     {/if}
                     {#if domain.emailEnabled && !domain.emailVerified}
                       <Button
@@ -762,17 +821,135 @@
               </div>
             </div>
 
-            <!-- Single Step: CNAME -->
-            {#if siteLinkInstructions?.cname}
+            <!-- Step 1: Ownership Verification TXT -->
+            {#if siteLinkInstructions?.ownershipVerification}
               <div class="dns-instruction-step">
                 <div class="dns-step-header">
                   <div class="dns-step-number">1</div>
                   <div>
-                    <h4 class="dns-step-title">Point Your Domain</h4>
-                    <p class="dns-step-description">Add this CNAME record to activate your custom domain</p>
+                    <h4 class="dns-step-title">Verify Ownership</h4>
+                    <p class="dns-step-description">Hostname pre-validation TXT record</p>
                   </div>
                 </div>
-                
+                <div class="dns-record-box">
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Record Type</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code">{siteLinkInstructions.ownershipVerification.type}</code>
+                    </div>
+                  </div>
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Name / Host</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code">{siteLinkInstructions.ownershipVerification.name}</code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="dns-copy-btn"
+                        onclick={() => copyToClipboard(siteLinkInstructions.ownershipVerification?.name || '')}
+                        title="Copy to clipboard"
+                      >
+                        <Copy class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Value</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code">{siteLinkInstructions.ownershipVerification.value}</code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="dns-copy-btn"
+                        onclick={() => copyToClipboard(siteLinkInstructions.ownershipVerification?.value || '')}
+                        title="Copy to clipboard"
+                      >
+                        <Copy class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div class="dns-step-note">
+                  <p>✅ {siteLinkInstructions.ownershipVerification.description || 'Add this TXT record first to prove ownership.'}</p>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Step 2: SSL Validation TXT Records -->
+            {#if siteLinkInstructions?.sslValidation && siteLinkInstructions.sslValidation.length > 0}
+              {#each siteLinkInstructions.sslValidation as sslRecord, index}
+                <div class="dns-instruction-step">
+                  <div class="dns-step-header">
+                    <div class="dns-step-number">{siteLinkInstructions.ownershipVerification ? index + 2 : index + 1}</div>
+                    <div>
+                      <h4 class="dns-step-title">Certificate Validation{siteLinkInstructions.sslValidation.length > 1 ? ` ${index + 1}` : ''}</h4>
+                      <p class="dns-step-description">SSL certificate validation TXT record</p>
+                    </div>
+                  </div>
+                  <div class="dns-record-box">
+                    <div class="dns-record-row">
+                      <div class="dns-record-label">Record Type</div>
+                      <div class="dns-record-value-wrapper">
+                        <code class="dns-record-code">{sslRecord.type}</code>
+                      </div>
+                    </div>
+                    <div class="dns-record-row">
+                      <div class="dns-record-label">Name / Host</div>
+                      <div class="dns-record-value-wrapper">
+                        <code class="dns-record-code">{sslRecord.name}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="dns-copy-btn"
+                          onclick={() => copyToClipboard(sslRecord.name)}
+                          title="Copy to clipboard"
+                        >
+                          <Copy class="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div class="dns-record-row">
+                      <div class="dns-record-label">Value</div>
+                      <div class="dns-record-value-wrapper">
+                        <code class="dns-record-code">{sslRecord.value}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="dns-copy-btn"
+                          onclick={() => copyToClipboard(sslRecord.value)}
+                          title="Copy to clipboard"
+                        >
+                          <Copy class="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dns-step-note">
+                    <p>🔒 {sslRecord.description || 'Add this TXT record for SSL certificate validation.'}</p>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+
+            <!-- Final Step: CNAME -->
+            {#if siteLinkInstructions?.cname}
+              <div class="dns-instruction-step">
+                <div class="dns-step-header">
+                  <div class="dns-step-number">
+                    {#if siteLinkInstructions.ownershipVerification && siteLinkInstructions.sslValidation}
+                      {1 + (siteLinkInstructions.sslValidation?.length || 0) + 1}
+                    {:else if siteLinkInstructions.ownershipVerification || siteLinkInstructions.sslValidation}
+                      {1 + (siteLinkInstructions.sslValidation?.length || 1)}
+                    {:else}
+                      1
+                    {/if}
+                  </div>
+                  <div>
+                    <h4 class="dns-step-title">Point Your Domain</h4>
+                    <p class="dns-step-description">Add this CNAME record after TXT verification is detected</p>
+                  </div>
+                </div>
+
                 <div class="dns-record-box">
                   <div class="dns-record-row">
                     <div class="dns-record-label">Record Type</div>
@@ -780,14 +957,14 @@
                       <code class="dns-record-code">CNAME</code>
                     </div>
                   </div>
-                  
+
                   <div class="dns-record-row">
                     <div class="dns-record-label">Name / Host</div>
                     <div class="dns-record-value-wrapper">
                       <code class="dns-record-code">{siteLinkInstructions.cname.name}</code>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         class="dns-copy-btn"
                         onclick={() => copyToClipboard(siteLinkInstructions.cname?.name || '')}
                         title="Copy to clipboard"
@@ -796,14 +973,14 @@
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div class="dns-record-row">
                     <div class="dns-record-label">Target / Value</div>
                     <div class="dns-record-value-wrapper">
                       <code class="dns-record-code">{siteLinkInstructions.cname.target}</code>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         class="dns-copy-btn"
                         onclick={() => copyToClipboard(siteLinkInstructions.cname?.target || '')}
                         title="Copy to clipboard"
@@ -813,10 +990,10 @@
                     </div>
                   </div>
                 </div>
-                
+
                 <div class="dns-step-note">
-                  <p>✨ <strong>Automatic Verification:</strong> Once you add this CNAME record, Cloudflare will automatically verify ownership and issue an SSL certificate. This usually takes a few minutes.</p>
-                  <p class="mt-2">ℹ️ DNS changes can take up to 30 minutes to propagate. Your site will be live once verification completes.</p>
+                  <p>✨ After the TXT record propagates, point the domain at this CNAME. Cloudflare will finish issuing the SSL certificate once both records are present.</p>
+                  <p class="mt-2">ℹ️ DNS changes can take up to 30 minutes to propagate.</p>
                 </div>
               </div>
             {:else}
@@ -894,19 +1071,30 @@
               <div class="dns-status-indicator"></div>
               <div>
                 <p class="dns-status-label">Current Status</p>
-                <p class="dns-status-value">{domainInstructions.status === 'active' ? '✓ Active' : '⏳ Pending'}</p>
+                <p class="dns-status-value">{domainInstructions.status === 'active' ? '✓ Active' : '⏳ Pending Validation'}</p>
               </div>
             </div>
           </div>
 
-          <!-- Step 1: Verification -->
-          {#if domainInstructions.verification}
+          {#if domainInstructions.status === 'active'}
+            <!-- Active State - No validation records needed -->
+            <Alert type="success">
+              <div class="kui-stack">
+                <p class="font-semibold">🎉 Domain Verified Successfully!</p>
+                <p class="text-sm">Your domain ownership and SSL certificate have been validated. You can now point your domain to go live.</p>
+              </div>
+            </Alert>
+          {:else}
+            <!-- Pending State - Show validation records -->
+            
+          <!-- Step 1: Ownership Verification -->
+          {#if domainInstructions.ownershipVerification}
             <div class="dns-instruction-step">
               <div class="dns-step-header">
                 <div class="dns-step-number">1</div>
                 <div>
                   <h4 class="dns-step-title">Verify Ownership</h4>
-                  <p class="dns-step-description">Add this TXT record to prove you own the domain</p>
+                  <p class="dns-step-description">Hostname pre-validation TXT record</p>
                 </div>
               </div>
               
@@ -914,19 +1102,19 @@
                 <div class="dns-record-row">
                   <div class="dns-record-label">Record Type</div>
                   <div class="dns-record-value-wrapper">
-                    <code class="dns-record-code">{domainInstructions.verification.type}</code>
+                    <code class="dns-record-code">{domainInstructions.ownershipVerification.type}</code>
                   </div>
                 </div>
                 
                 <div class="dns-record-row">
                   <div class="dns-record-label">Name / Host</div>
                   <div class="dns-record-value-wrapper">
-                    <code class="dns-record-code">{domainInstructions.verification.name}</code>
+                    <code class="dns-record-code">{domainInstructions.ownershipVerification.name}</code>
                     <Button 
                       variant="ghost" 
                       size="sm" 
                       class="dns-copy-btn"
-                      onclick={() => copyToClipboard(domainInstructions.verification?.name || '')}
+                      onclick={() => copyToClipboard(domainInstructions.ownershipVerification?.name || '')}
                       title="Copy to clipboard"
                     >
                       <Copy class="h-4 w-4" />
@@ -937,12 +1125,12 @@
                 <div class="dns-record-row">
                   <div class="dns-record-label">Value</div>
                   <div class="dns-record-value-wrapper">
-                    <code class="dns-record-code dns-record-code--long">{domainInstructions.verification.value}</code>
+                    <code class="dns-record-code dns-record-code--long">{domainInstructions.ownershipVerification.value}</code>
                     <Button 
                       variant="ghost" 
                       size="sm" 
                       class="dns-copy-btn"
-                      onclick={() => copyToClipboard(domainInstructions.verification?.value || '')}
+                      onclick={() => copyToClipboard(domainInstructions.ownershipVerification?.value || '')}
                       title="Copy to clipboard"
                     >
                       <Copy class="h-4 w-4" />
@@ -952,16 +1140,84 @@
               </div>
               
               <div class="dns-step-note">
-                <p>ℹ️ After adding this record, Cloudflare will automatically verify ownership and issue an SSL certificate. This usually takes a few minutes.</p>
+                <p>ℹ️ {domainInstructions.ownershipVerification.description || 'Add this TXT record to prove you own the domain.'}</p>
               </div>
             </div>
           {/if}
 
-          <!-- Step 2: CNAME -->
+          <!-- SSL Validation Records -->
+          {#if domainInstructions.sslValidation && domainInstructions.sslValidation.length > 0}
+            {#each domainInstructions.sslValidation as sslRecord, index}
+              <div class="dns-instruction-step">
+                <div class="dns-step-header">
+                  <div class="dns-step-number">{domainInstructions.ownershipVerification ? index + 2 : index + 1}</div>
+                  <div>
+                    <h4 class="dns-step-title">Certificate Validation{domainInstructions.sslValidation.length > 1 ? ` ${index + 1}` : ''}</h4>
+                    <p class="dns-step-description">SSL certificate validation TXT record</p>
+                  </div>
+                </div>
+                
+                <div class="dns-record-box">
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Record Type</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code">{sslRecord.type}</code>
+                    </div>
+                  </div>
+                  
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Name / Host</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code">{sslRecord.name}</code>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        class="dns-copy-btn"
+                        onclick={() => copyToClipboard(sslRecord.name)}
+                        title="Copy to clipboard"
+                      >
+                        <Copy class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div class="dns-record-row">
+                    <div class="dns-record-label">Value</div>
+                    <div class="dns-record-value-wrapper">
+                      <code class="dns-record-code dns-record-code--long">{sslRecord.value}</code>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        class="dns-copy-btn"
+                        onclick={() => copyToClipboard(sslRecord.value)}
+                        title="Copy to clipboard"
+                      >
+                        <Copy class="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="dns-step-note">
+                  <p>🔒 {sslRecord.description || 'Add this TXT record for SSL certificate validation.'}</p>
+                </div>
+              </div>
+            {/each}
+          {/if}
+
+          <!-- Final Step: CNAME -->
           {#if domainInstructions.cname}
             <div class="dns-instruction-step">
               <div class="dns-step-header">
-                <div class="dns-step-number" class:disabled={domainInstructions.status !== 'active'}>2</div>
+                <div class="dns-step-number" class:disabled={domainInstructions.status !== 'active'}>
+                  {#if domainInstructions.ownershipVerification && domainInstructions.sslValidation}
+                    {1 + (domainInstructions.sslValidation?.length || 0) + 1}
+                  {:else if domainInstructions.ownershipVerification || domainInstructions.sslValidation}
+                    {1 + (domainInstructions.sslValidation?.length || 1)}
+                  {:else}
+                    1
+                  {/if}
+                </div>
                 <div>
                   <h4 class="dns-step-title">Point Your Domain</h4>
                   <p class="dns-step-description">
@@ -1013,11 +1269,14 @@
               </div>
             </div>
           {/if}
+          
+          {/if}
+          <!-- End of pending state validation records -->
 
           <!-- Refresh Button -->
           <div class="dns-refresh-section">
             <Button 
-              variant="outline" 
+              variant="ghost" 
               class="w-full"
               onclick={() => domains.refresh()}
             >

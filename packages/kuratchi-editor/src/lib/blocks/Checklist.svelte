@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
     import Checkbox from "./Checkbox.svelte";
     import { onMount, mount } from "svelte";
 
@@ -84,7 +84,7 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <SideActions {component} />
+            <BlockActions {component} />
         {/if}
 
         <div data-type={type} id={id} class="w-full min-w-full">

@@ -64,7 +64,10 @@
     }
 
     if (filterStatus !== 'all') {
-      filtered = filtered.filter((a: any) => filterStatus === 'success' ? a.status !== false : a.status === false);
+      filtered = filtered.filter((a: any) => {
+        const status = a.status ?? true;
+        return filterStatus === 'success' ? status : !status;
+      });
     }
 
     if (filterType !== 'all') {
@@ -106,7 +109,8 @@
 
   function handleClearOld() {
     if (!confirm('Clear activities older than 90 days?')) return;
-    document.getElementById('clear-old-form')?.requestSubmit();
+    const form = document.getElementById('clear-old-form') as HTMLFormElement;
+    form?.requestSubmit();
   }
 </script>
 
@@ -179,8 +183,8 @@
       <div class="kui-activity__list">
         {#each filteredActivities as activity}
           <article class="kui-activity__item">
-            <div class={`kui-activity__status ${activity.status ? 'success' : 'error'}`}>
-              {#if activity.status}
+            <div class={`kui-activity__status ${(activity.status ?? true) ? 'success' : 'error'}`}>
+              {#if activity.status ?? true}
                 <CheckCircle />
               {:else}
                 <XCircle />

@@ -110,14 +110,24 @@ export const getActivities = guardedQuery(async () => {
     const enriched = sorted.map((activity: any) => {
       const user = activity.userId ? userMap.get(activity.userId) : null;
       
+      // Parse data if it's a JSON string
+      let parsedData = activity.data;
+      if (typeof activity.data === 'string') {
+        try {
+          parsedData = JSON.parse(activity.data);
+        } catch (e) {
+          parsedData = activity.data;
+        }
+      }
+      
       return {
         id: activity.id,
         userId: activity.userId,
         userName: (user as any)?.name || 'System',
         userEmail: (user as any)?.email || null,
         action: activity.action,
-        data: activity.data,
-        status: activity.status,
+        data: parsedData,
+        status: activity.status ?? true,
         isAdminAction: activity.isAdminAction || false,
         isHidden: activity.isHidden || false,
         organizationId: activity.organizationId,

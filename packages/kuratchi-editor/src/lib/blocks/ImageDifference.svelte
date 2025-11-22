@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { SideActions } from '../shell/index.js';
+    import { BlockActions } from '../shell/index.js';
 
     interface DifferenceImage {
         id: string;
@@ -62,7 +62,7 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <SideActions {component} />
+            <BlockActions {component} />
         {/if}
 
         <div data-type={type} id={id} class="krt-diff">

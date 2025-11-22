@@ -5,8 +5,6 @@
     import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
-    import { layoutPresets } from "./presets/layouts.js";
-    import PresetPreview from "./presets/PresetPreview.svelte";
     import type { SiteRegionState } from "./presets/types.js";
 
     interface Props {
@@ -309,8 +307,6 @@
         cleanupEditorDragAndDrop?.();
     });
 
-    let layoutModal: HTMLDialogElement;
-
     const headerBlocksState = $derived(header?.blocks ?? []);
     const footerBlocksState = $derived(footer?.blocks ?? []);
 
@@ -362,7 +358,7 @@
             <div class="krt-editorCanvas__addBlock">
                 <div class="krt-editorCanvas__addBlock__buttons">
                     {#if layoutsEnabled}
-                        <button class="krt-editorCanvas__iconButton" onclick={() => layoutModal.showModal()} aria-label="Add layout">
+                        <button class="krt-editorCanvas__iconButton" aria-label="Add section" title="Section presets coming soon">
                             <PanelsTopLeft />
                         </button>
                     {/if}     
@@ -411,33 +407,7 @@
         </div>
     </div>
 
-    {#if layoutsEnabled}
-        <dialog class="krt-editorCanvas__modal" bind:this={layoutModal}>
-            <div class="krt-editorCanvas__modalBox">
-                <form method="dialog">
-                    <button type="button" class="krt-editorCanvas__closeButton" onclick={() => layoutModal.close()}>✕</button>
-                </form>
-                <h3 class="krt-editorCanvas__modalTitle">Select Layout</h3>
-                <div class="krt-editorCanvas__layoutGrid">
-                    {#each layoutPresets as preset}
-                        <button
-                            class="krt-editorCanvas__layoutCard"
-                            onclick={() => {
-                                insertLayoutPreset(preset.id);
-                                layoutModal.close();
-                            }}
-                        >
-                            <PresetPreview {preset} />
-                            <div class="krt-editorCanvas__layoutName">{preset.name}</div>
-                        </button>
-                    {/each}
-                </div> 
-            </div>
-            <form method="dialog" class="krt-editorCanvas__modalBackdrop">
-                <button>close</button>
-            </form>
-        </dialog>
-    {/if}
+    
 
     {#if isWebpage}
         <div bind:this={footerElement} class="krt-editorCanvas__footer"> 

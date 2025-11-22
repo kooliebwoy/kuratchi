@@ -10,29 +10,16 @@
 
   interface Props {
     tabs: Tab[];
+    activeSelection?: string;
     children: Snippet;
   }
 
-  let { tabs, children }: Props = $props();
-
-  let currentPath = $state(typeof window !== 'undefined' ? window.location.pathname : '');
-  
-  $effect(() => {
-    if (typeof window === 'undefined') return;
-    const updatePath = () => {
-      currentPath = window.location.pathname;
-    };
-    window.addEventListener('popstate', updatePath);
-    return () => {
-      window.removeEventListener('popstate', updatePath);
-    };
-  });
+  let { tabs, activeSelection, children }: Props = $props();
 
   function isActive(tabHref: string): boolean {
-    // Exact match for root paths, or prefix match for nested paths
-    if (currentPath === tabHref) return true;
-    if (tabHref !== '/' && currentPath.startsWith(tabHref + '/')) return true;
-    return false;
+    if (!activeSelection) return false;
+    // Exact match only - one tab should be active at a time
+    return activeSelection === tabHref;
   }
 </script>
 
@@ -44,13 +31,15 @@
         href={tab.href} 
         class={`kui-tabs__item ${isActive(tab.href) ? 'kui-tabs__item--active' : ''}`.trim()}
         aria-current={isActive(tab.href) ? 'page' : undefined}
+        role="tab"
+        aria-selected={isActive(tab.href)}
       >
         {#if Icon}
-          <Icon class="kui-tabs__icon" />
+          <Icon class="kui-tabs__icon" aria-hidden="true" />
         {/if}
-        {tab.label}
+        <span class="kui-tabs__label">{tab.label}</span>
         {#if tab.badge !== undefined}
-          <span class="kui-badge kui-badge--size-sm">{tab.badge}</span>
+          <span class="kui-tabs__badge">{tab.badge}</span>
         {/if}
       </a>
     {/each}

@@ -162,6 +162,115 @@ const createBlogSeed = (): BlogData => ({
 
 export const createDefaultBlogData = (): BlogData => structuredClone(createBlogSeed());
 
+// Form Builder Types
+export type FormFieldType = 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'checkbox' | 'radio' | 'date' | 'file';
+
+export interface FormFieldOption {
+  id: string;
+  label: string;
+  value: string;
+}
+
+export interface FormField {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  placeholder?: string;
+  required: boolean;
+  name: string;
+  options?: FormFieldOption[];  // For select, radio, checkbox
+  defaultValue?: string;
+  helpText?: string;
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    errorMessage?: string;
+  };
+  width?: '25' | '33' | '50' | '66' | '75' | '100';  // Percentage width for layout
+}
+
+export interface FormSettings {
+  formName: string;
+  submitButtonText: string;
+  successMessage: string;
+  errorMessage: string;
+  recipients: string[];  // Email addresses to receive submissions
+  autoResponder: {
+    enabled: boolean;
+    subject: string;
+    message: string;
+    replyTo?: string;
+  };
+  styling: {
+    buttonColor?: string;
+    buttonTextColor?: string;
+    borderRadius?: string;
+    spacing?: 'compact' | 'normal' | 'relaxed';
+  };
+  redirectUrl?: string;  // Optional redirect after submission
+  submitEndpoint?: string;  // Custom endpoint for form submission
+}
+
+export interface FormData {
+  id: string;
+  fields: FormField[];
+  settings: FormSettings;
+}
+
+const createFormSeed = (): FormData => ({
+  id: uuid(),
+  fields: [
+    {
+      id: uuid(),
+      type: 'text',
+      label: 'Full Name',
+      name: 'fullName',
+      placeholder: 'Enter your full name',
+      required: true,
+      width: '100'
+    },
+    {
+      id: uuid(),
+      type: 'email',
+      label: 'Email Address',
+      name: 'email',
+      placeholder: 'your@email.com',
+      required: true,
+      width: '100'
+    },
+    {
+      id: uuid(),
+      type: 'textarea',
+      label: 'Message',
+      name: 'message',
+      placeholder: 'Type your message here...',
+      required: false,
+      width: '100'
+    }
+  ],
+  settings: {
+    formName: 'Contact Form',
+    submitButtonText: 'Send Message',
+    successMessage: 'Thank you! Your message has been sent successfully.',
+    errorMessage: 'Sorry, something went wrong. Please try again.',
+    recipients: [],
+    autoResponder: {
+      enabled: false,
+      subject: 'Thank you for contacting us',
+      message: 'We have received your message and will get back to you soon.'
+    },
+    styling: {
+      buttonColor: '#3b82f6',
+      buttonTextColor: '#ffffff',
+      borderRadius: '0.375rem',
+      spacing: 'normal'
+    }
+  }
+});
+
+export const createDefaultFormData = (): FormData => structuredClone(createFormSeed());
+
 export interface EditorOptions {
   /**
    * Reference to the rendered editor container. Managed internally when omitted.

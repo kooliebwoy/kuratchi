@@ -1,7 +1,9 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
     import CardNoImage from "./CardNoImage.svelte";
     import NoMarginCarousel from "./NoMarginCarousel.svelte";
-    import { LayoutBlock } from "../shell/index.js";
+    import { BlockActions, SideActions } from "../shell/index.js";
     import { ImagePicker } from "../plugins/index.js";
     
     interface CarouselImage {
@@ -77,12 +79,51 @@
             headingColor,
             contentColor
         }
-    })
+    });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
+        <div class="krt-sliderLayout__inner" class:krt-sliderLayout__inner--reverse={reverseOrder}>
+            <div class="krt-sliderLayout__card">
+                <CardNoImage
+                    bind:heading={heading}
+                    bind:body={body}
+                    link={button.link}
+                    bind:button={button.label}
+                    backgroundColor={cardBackgroundColor}
+                    buttonColor={buttonColor}
+                    {headingColor}
+                    {contentColor}
+                />
+            </div>
+            <div class="krt-sliderLayout__carousel">
+                <NoMarginCarousel bind:images={images} />
+            </div>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit card with slider settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-sliderDrawer">
             <section class="krt-sliderDrawer__section">
                 <h3>Layout</h3>
@@ -124,33 +165,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-sliderLayout" style:background-color={backgroundColor} data-type={type}>
-            <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
-                <div class="krt-sliderLayout__card">
-                    <CardNoImage
-                        bind:heading={heading}
-                        bind:body={body}
-                        link={button.link}
-                        bind:button={button.label}
-                        backgroundColor={cardBackgroundColor}
-                        buttonColor={buttonColor}
-                        {headingColor}
-                        {contentColor}
-                    />
-                </div>
-                <div class="krt-sliderLayout__carousel">
-                    <NoMarginCarousel bind:images={images} />
-                </div>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
         <div class="krt-sliderLayout__metadata">{JSON.stringify(content)}</div>

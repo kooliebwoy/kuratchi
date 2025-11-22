@@ -1,7 +1,9 @@
 <script lang="ts">
     import { ArrowRight } from '@lucide/svelte';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { LayoutBlock } from '../shell/index.js';
+    import { BlockActions, SideActions } from '../shell/index.js';
 
     interface CardImage {
         key?: string;
@@ -150,12 +152,72 @@
             }
         });
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet metadata()}{JSON.stringify(content)}{/snippet}
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section {id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
+        <div class="krt-gridCtas__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-gridCtas__inner">
+            <header class="krt-gridCtas__header">
+                <h2 class="krt-gridCtas__heading" contenteditable bind:innerHTML={heading}></h2>
+                <a
+                    class="krt-gridCtas__cta"
+                    href={button.link ?? '#'}
+                    onclick={(event) => event.preventDefault()}
+                    aria-label={button.label ? `Edit ${button.label} label` : 'Edit primary call to action label'}
+                >
+                    <span contenteditable bind:innerHTML={button.label}></span>
+                    <ArrowRight aria-hidden="true" />
+                </a>
+            </header>
+
+            <div class="krt-gridCtas__grid">
+                {#each cards as card, index (index)}
+                    <article class="krt-gridCtas__card">
+                        {#if resolveImageUrl(card.image)}
+                            <figure class="krt-gridCtas__image">
+                                <img src={resolveImageUrl(card.image)} alt={card.image?.alt ?? card.title} />
+                            </figure>
+                        {/if}
+                        <div class="krt-gridCtas__cardBody">
+                            <h3 class="krt-gridCtas__cardTitle" contenteditable bind:innerHTML={card.title}></h3>
+                            <a
+                                class="krt-gridCtas__cardButton"
+                                href={card.buttonLink ?? '#'}
+                                onclick={(event) => event.preventDefault()}
+                                aria-label={`Edit ${card.buttonLabel || 'card'} button label`}
+                            >
+                                <span contenteditable bind:innerHTML={card.buttonLabel}></span>
+                                <ArrowRight aria-hidden="true" />
+                            </a>
+                        </div>
+                    </article>
+                {/each}
+            </div>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit grid CTAs settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-gridCtasDrawer">
             <section class="krt-gridCtasDrawer__section">
                 <h3>Section content</h3>
@@ -233,51 +295,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet children()}
-        <section class="krt-gridCtas" style={layoutStyle} data-type={type}>
-            <div class="krt-gridCtas__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-gridCtas__inner">
-                <header class="krt-gridCtas__header">
-                    <h2 class="krt-gridCtas__heading" contenteditable bind:innerHTML={heading}></h2>
-                    <a
-                        class="krt-gridCtas__cta"
-                        href={button.link ?? '#'}
-                        onclick={(event) => event.preventDefault()}
-                        aria-label={button.label ? `Edit ${button.label} label` : 'Edit primary call to action label'}
-                    >
-                        <span contenteditable bind:innerHTML={button.label}></span>
-                        <ArrowRight aria-hidden="true" />
-                    </a>
-                </header>
-
-                <div class="krt-gridCtas__grid">
-                    {#each cards as card, index (index)}
-                        <article class="krt-gridCtas__card">
-                            {#if resolveImageUrl(card.image)}
-                                <figure class="krt-gridCtas__image">
-                                    <img src={resolveImageUrl(card.image)} alt={card.image?.alt ?? card.title} />
-                                </figure>
-                            {/if}
-                            <div class="krt-gridCtas__cardBody">
-                                <h3 class="krt-gridCtas__cardTitle" contenteditable bind:innerHTML={card.title}></h3>
-                                <a
-                                    class="krt-gridCtas__cardButton"
-                                    href={card.buttonLink ?? '#'}
-                                    onclick={(event) => event.preventDefault()}
-                                    aria-label={`Edit ${card.buttonLabel || 'card'} button label`}
-                                >
-                                    <span contenteditable bind:innerHTML={card.buttonLabel}></span>
-                                    <ArrowRight aria-hidden="true" />
-                                </a>
-                            </div>
-                        </article>
-                    {/each}
-                </div>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
         <div class="krt-gridCtas__metadata">{JSON.stringify(content)}</div>

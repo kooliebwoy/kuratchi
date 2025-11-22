@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
     import { ImagePicker } from '../plugins/index.js';
 
     interface CardImage {
@@ -64,11 +66,52 @@
         image,
         metadata: { ...layoutMetadata }
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <section
+        {id}
+        data-type={type}
+        class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
+        style:background-color={layoutMetadata.backgroundColor}
+    >
+        <div class="krt-aboutCard__metadata">{JSON.stringify(content)}</div>
+        <div class="krt-aboutCard__inner">
+            <div class="krt-aboutCard__copy">
+                <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={heading}></h2>
+                <p class="krt-aboutCard__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
+            </div>
+            <figure class="krt-aboutCard__media">
+                {#if imageUrl}
+                    <img src={imageUrl} alt={image.alt} title={image.title} />
+                {:else}
+                    <div class="krt-aboutCard__placeholder" aria-hidden="true">Add image</div>
+                {/if}
+            </figure>
+        </div>
+    </section>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit about us card settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-aboutCardDrawer">
             <section class="krt-aboutCardDrawer__section">
                 <h3>Content</h3>
@@ -112,34 +155,7 @@
             </section>
         </div>
     {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section
-            class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
-            style:background-color={layoutMetadata.backgroundColor}
-            data-type={type}
-        >
-            <div class="krt-aboutCard__metadata">{JSON.stringify(content)}</div>
-            <div class="krt-aboutCard__inner">
-                <div class="krt-aboutCard__copy">
-                    <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={heading}></h2>
-                    <p class="krt-aboutCard__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
-                </div>
-                <figure class="krt-aboutCard__media">
-                    {#if imageUrl}
-                        <img src={imageUrl} alt={image.alt} title={image.title} />
-                    {:else}
-                        <div class="krt-aboutCard__placeholder" aria-hidden="true">Add image</div>
-                    {/if}
-                </figure>
-            </div>
-        </section>
-    {/snippet}
-</LayoutBlock>
+</SideActions>
 {:else}
     <section
         id={id}

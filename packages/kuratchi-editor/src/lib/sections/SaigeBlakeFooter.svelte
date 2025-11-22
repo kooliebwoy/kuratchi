@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from 'lucide-svelte';
+    import { BlockActions, SideActions } from '../shell/index.js';
     import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
@@ -74,10 +76,99 @@
         if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
         return '#';
     }
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
+{#if editable}
+<div class="editor-item" bind:this={component}>
+    {#if mounted}
+        <BlockActions {id} {type} element={component} />
+    {/if}
+    <div
+        {id}
+        class="krt-footer krt-footer--saige"
+        style:background-color={backgroundColor}
+        style:color={textColor}
+        data-type={type}
+    >
+        <section class="krt-footer__cta">
+            <h2 class="krt-footer__heading" contenteditable bind:innerHTML={subscribeText}></h2>
+            <div class="krt-footer__form">
+                <input
+                    type="email"
+                    class="krt-footer__input"
+                    placeholder="Email Address"
+                    aria-label="Email address"
+                />
+                <button class="krt-footer__button" type="button">Subscribe</button>
+            </div>
+        </section>
+
+        <section class="krt-footer__secondary" class:krt-footer__secondary--reversed={reverseOrder}>
+            <div class="krt-footer__segment">
+                {#if reverseOrder}
+                    {#if !menuHidden}
+                        <nav class="krt-footer__menu">
+                            {#each computedMenu as item}
+                                <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
+                            {/each}
+                        </nav>
+                    {/if}
+                {:else}
+                    <div class="krt-footer__icons">
+                        {#each icons as { icon, slug, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+            <div class="krt-footer__segment">
+                {#if reverseOrder}
+                    <div class="krt-footer__icons">
+                        {#each icons as { icon, slug, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {:else if !menuHidden}
+                    <nav class="krt-footer__menu">
+                        {#each computedMenu as item}
+                            <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
+                        {/each}
+                    </nav>
+                {/if}
+            </div>
+        </section>
+
+        <section class="krt-footer__legal">
+            <p>{new Date().getFullYear()} {copyrightText.by} · All rights reserved.</p>
+            <small>
+                <a href="https://kayde.io" target="_blank" rel="noreferrer noopener">{poweredBy}</a>
+            </small>
+        </section>
+    </div>
+</div>
+
+<SideActions triggerId={sideActionsId}>
+    {#snippet label()}
+        <button id={sideActionsId} class="krt-editButton" aria-label="Edit footer settings">
+            <Pencil size={16} />
+            <span>Edit Settings</span>
+        </button>
+    {/snippet}
+    {#snippet content()}
         <div class="krt-footerDrawer">
             <section class="krt-footerDrawer__section">
                 <h3 class="krt-footerDrawer__title">Layout</h3>
@@ -136,80 +227,78 @@
             </section>
         </div>
     {/snippet}
+</SideActions>
+{:else}
+    <div
+        {id}
+        class="krt-footer krt-footer--saige"
+        style:background-color={backgroundColor}
+        style:color={textColor}
+        data-type={type}
+    >
+        <div class="krt-footer__metadata">{JSON.stringify(content)}</div>
+        <section class="krt-footer__cta">
+            <h2 class="krt-footer__heading">{subscribeText}</h2>
+            <div class="krt-footer__form">
+                <input
+                    type="email"
+                    class="krt-footer__input"
+                    placeholder="Email Address"
+                    aria-label="Email address"
+                />
+                <button class="krt-footer__button" type="button">Subscribe</button>
+            </div>
+        </section>
 
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <div
-            class="krt-footer krt-footer--saige"
-            style:background-color={backgroundColor}
-            style:color={textColor}
-        >
-            <section class="krt-footer__cta">
-                <h2 class="krt-footer__heading" contenteditable bind:innerHTML={subscribeText}></h2>
-                <div class="krt-footer__form">
-                    <input
-                        type="email"
-                        class="krt-footer__input"
-                        placeholder="Email Address"
-                        aria-label="Email address"
-                    />
-                    <button class="krt-footer__button" type="button">Subscribe</button>
-                </div>
-            </section>
-
-            <section class="krt-footer__secondary" class:krt-footer__secondary--reversed={reverseOrder}>
-                <div class="krt-footer__segment">
-                    {#if reverseOrder}
-                        {#if !menuHidden}
-                            <nav class="krt-footer__menu">
-                                {#each computedMenu as item}
-                                    <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
-                                {/each}
-                            </nav>
-                        {/if}
-                    {:else}
-                        <div class="krt-footer__icons">
-                            {#each icons as { icon, slug, name }}
-                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                                <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
-                                    <Comp aria-hidden="true" />
-                                </a>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-                <div class="krt-footer__segment">
-                    {#if reverseOrder}
-                        <div class="krt-footer__icons">
-                            {#each icons as { icon, slug, name }}
-                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                                <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
-                                    <Comp aria-hidden="true" />
-                                </a>
-                            {/each}
-                        </div>
-                    {:else if !menuHidden}
+        <section class="krt-footer__secondary" class:krt-footer__secondary--reversed={reverseOrder}>
+            <div class="krt-footer__segment">
+                {#if reverseOrder}
+                    {#if !menuHidden}
                         <nav class="krt-footer__menu">
                             {#each computedMenu as item}
                                 <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
                             {/each}
                         </nav>
                     {/if}
-                </div>
-            </section>
+                {:else}
+                    <div class="krt-footer__icons">
+                        {#each icons as { icon, slug, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+            <div class="krt-footer__segment">
+                {#if reverseOrder}
+                    <div class="krt-footer__icons">
+                        {#each icons as { icon, slug, name }}
+                            {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                            <a class="krt-footer__iconButton" href={hrefFrom({ slug })} aria-label={name}>
+                                <Comp aria-hidden="true" />
+                            </a>
+                        {/each}
+                    </div>
+                {:else if !menuHidden}
+                    <nav class="krt-footer__menu">
+                        {#each computedMenu as item}
+                            <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
+                        {/each}
+                    </nav>
+                {/if}
+            </div>
+        </section>
 
-            <section class="krt-footer__legal">
-                <p>{new Date().getFullYear()} {copyrightText.by} · All rights reserved.</p>
-                <small>
-                    <a href="https://kayde.io" target="_blank" rel="noreferrer noopener">{poweredBy}</a>
-                </small>
-            </section>
-        </div>
-    {/snippet}
-</LayoutBlock>
+        <section class="krt-footer__legal">
+            <p>{new Date().getFullYear()} {copyrightText.by} · All rights reserved.</p>
+            <small>
+                <a href="https://kayde.io" target="_blank" rel="noreferrer noopener">{poweredBy}</a>
+            </small>
+        </section>
+    </div>
+{/if}
 
 <style>
     .krt-footerDrawer {

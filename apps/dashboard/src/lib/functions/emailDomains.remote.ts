@@ -15,7 +15,7 @@ import {
 import { env } from '$env/dynamic/private';
 import * as v from 'valibot';
 import { getAdminDatabase, getDatabase } from '$lib/server/db-context';
-import { deleteCustomHostname } from 'kuratchi-sdk/domains';
+import { deleteCustomHostname, getCustomHostname } from 'kuratchi-sdk/domains';
 import { removeCustomDomainFromKV } from '$lib/server/kv-sync';
 
 // SES V2 client helper
@@ -420,5 +420,80 @@ export const deleteEmailDomain = guardedCommand(deleteDomainSchema, async (data)
   } catch (err) {
     console.error('[emailDomains.delete] error:', err);
     return { success: false, error: 'Failed to delete domain' };
+  }
+});
+
+/**
+ * Sync domain statuses from Cloudflare
+ * Fetches latest hostname data and updates database
+ */
+export const syncDomainStatuses = guardedCommand(v.object({}), async () => {
+  try {
+    const { event } = ensureSession();
+    const adminDb = await getAdminDatabase(event.locals);
+    
+    if (!adminDb) {
+      return { success: false, error: 'Database not available' };
+    }
+
+    const organizationId = (event.locals.session as any)?.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'Organization not found' };
+    }
+
+    // Get all domains for this org that have Cloudflare hostname IDs
+    const domainsResult = await adminDb.domains
+      .where({ 
+        organizationId, 
+        deleted_at: { isNullish: true },
+        cloudflareHostnameId: { isNotNullish: true }
+      })
+      .many();
+
+    if (!domainsResult.success || !domainsResult.data) {
+      return { success: true, updated: 0 }; // No domains to sync
+    }
+
+    const zoneId = env.CF_SSL_FOR_SAAS_ZONE_ID;
+    if (!zoneId) {
+      return { success: false, error: 'Cloudflare zone not configured' };
+    }
+
+    let updated = 0;
+    const now = new Date().toISOString();
+
+    // Update each domain with fresh Cloudflare data
+    for (const domain of domainsResult.data) {
+      if (!domain.cloudflareHostnameId) continue;
+
+      try {
+        const cfResponse = await getCustomHostname(zoneId, domain.cloudflareHostnameId);
+        
+        if (cfResponse?.success && cfResponse.result) {
+          const cfData = cfResponse.result;
+          
+          await adminDb.domains
+            .where({ id: domain.id })
+            .update({
+              cloudflareHostnameStatus: cfData.status || 'pending',
+              cloudflareVerification: JSON.stringify({
+                ownership_verification: cfData.ownership_verification || {},
+                ssl: cfData.ssl || {}
+              }),
+              updated_at: now
+            });
+          
+          updated++;
+        }
+      } catch (err) {
+        console.warn(`[syncDomainStatuses] Failed to sync domain ${domain.id}:`, err);
+        // Continue with next domain
+      }
+    }
+
+    return { success: true, updated };
+  } catch (err) {
+    console.error('[syncDomainStatuses] error:', err);
+    return { success: false, error: 'Failed to sync domain statuses' };
   }
 });

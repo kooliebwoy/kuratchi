@@ -1,18 +1,17 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import type { EditorOptions, PageData, BlogData, BlogPost, BlogSettings } from "./types.js";
+    import type { EditorOptions, PageData, BlogData, BlogPost, BlogSettings, FormData } from "./types.js";
     import type { SiteRegionState } from "./presets/types.js";
-    import { defaultEditorOptions, defaultPageData, createDefaultBlogData } from "./types.js";
+    import { defaultEditorOptions, defaultPageData, createDefaultBlogData, createDefaultFormData } from "./types.js";
     import { blocks, getBlock } from "./registry";
     import { addComponentToEditor } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
-    import { MenuWidget, BlogManager } from "./plugins";
+    import { MenuWidget, BlogManager, FormBuilder } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
     import PresetPreview from "./presets/PresetPreview.svelte";
-    import { layoutPresets } from "./presets/layouts.js";
-    import { headerPresets, createHeaderRegion } from "./presets/headers.js";
-    import { footerPresets, createFooterRegion } from "./presets/footers.js";
+    import { headerOptions, createHeaderRegion } from "./registry/headers.svelte";
+    import { footerOptions, createFooterRegion } from "./registry/footers.svelte";
     import { blogStore } from "./stores/blog";
     import ThemePreview from "./themes/ThemePreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
@@ -22,7 +21,6 @@
         ChevronLeft,
         ChevronRight,
         Eye,
-        LayoutGrid,
         Monitor,
         Navigation,
         Pencil,
@@ -34,7 +32,8 @@
         FileText,
         Plus,
         Palette,
-        BookOpen
+        BookOpen,
+        FileInput
     } from "@lucide/svelte";
 
     type Props = EditorOptions;
@@ -77,14 +76,16 @@ let {
     const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
     const themeOptions = getAllThemes();
     const blogThemeOptions = getAllBlogThemes();
-    let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
-    let blogData = $state<BlogData>(blog ?? (siteMetadata as any)?.blog ?? createDefaultBlogData());
-    let blogSnapshot = JSON.stringify(blogData);
-    blogStore.set(blogData);
-    let selectedPostId = $state(blogData.posts[0]?.id ?? null);
-    let selectedPageForBlog = $state(getPageList()[0]?.id ?? null);
+let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
+let blogData = $state<BlogData>(blog ?? (siteMetadata as any)?.blog ?? createDefaultBlogData());
+let blogSnapshot = JSON.stringify(blogData);
+blogStore.set(blogData);
+let selectedPostId = $state(blogData.posts[0]?.id ?? null);
+let selectedPageForBlog = $state(getPageList()[0]?.id ?? null);
 
-    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+// Forms state
+let formsData = $state<FormData[]>((siteMetadata as any)?.forms ?? []);
+let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2));
 
@@ -166,18 +167,6 @@ let {
 
     const applyFooterPreset = async (presetId: string) => {
         await handleFooterChange(createFooterRegion(presetId));
-    };
-
-    const insertLayoutPreset = (presetId: string) => {
-        if (!editor) return;
-        const preset = layoutPresets.find((candidate) => candidate.id === presetId);
-        if (!preset) return;
-        preset.create().forEach((snapshot) => {
-            const definition = getBlock(snapshot.type);
-            if (!definition) return;
-            const props = { ...snapshot };
-            addComponentToEditor(editor, definition.component, props);
-        });
     };
 
     const applyTheme = async (themeId: string) => {
@@ -536,6 +525,38 @@ let {
             return blog;
         });
     };
+
+// Forms handlers
+const handleFormUpdate = async (updatedForm: FormData) => {
+    formsData = formsData.map(form => 
+        form.id === updatedForm.id ? updatedForm : form
+    );
+    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
+    if (onSiteMetadataUpdate) {
+        await onSiteMetadataUpdate(siteMetadata);
+    }
+};
+
+const addNewForm = () => {
+    const newForm = createDefaultFormData();
+    formsData = [...formsData, newForm];
+    selectedFormId = newForm.id;
+    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
+    if (onSiteMetadataUpdate) {
+        onSiteMetadataUpdate(siteMetadata);
+    }
+};
+
+const deleteForm = (formId: string) => {
+    formsData = formsData.filter(f => f.id !== formId);
+    if (selectedFormId === formId) {
+        selectedFormId = formsData[0]?.id ?? null;
+    }
+    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
+    if (onSiteMetadataUpdate) {
+        onSiteMetadataUpdate(siteMetadata);
+    }
+};
 </script>
 
 {#if !showUI}
@@ -568,13 +589,6 @@ let {
                 <Box />
             </button>
             <button 
-                class={`krt-editor__railButton ${activeTab === 'layouts' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('layouts')}
-                title="Layouts"
-            >
-                <LayoutGrid />
-            </button>
-            <button 
                 class={`krt-editor__railButton ${activeTab === 'site' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('site')}
                 title="Site"
@@ -594,6 +608,13 @@ let {
                 title="Blog"
             >
                 <BookOpen />
+            </button>
+            <button 
+                class={`krt-editor__railButton ${activeTab === 'forms' ? 'is-active' : ''}`}
+                onclick={() => toggleSidebar('forms')}
+                title="Forms"
+            >
+                <FileInput />
             </button>
             <button 
                 class={`krt-editor__railButton ${activeTab === 'navigation' ? 'is-active' : ''}`}
@@ -623,10 +644,10 @@ let {
             <div class="krt-editor__sidebarHeader">
                 <h2>
                     {activeTab === 'blocks' ? 'Blocks' : 
-                     activeTab === 'layouts' ? 'Layouts' : 
                      activeTab === 'site' ? 'Site' : 
                      activeTab === 'themes' ? 'Themes' :
                      activeTab === 'blog' ? 'Blog' :
+                     activeTab === 'forms' ? 'Forms' :
                      activeTab === 'navigation' ? 'Navigation' : 
                      activeTab === 'settings' ? 'Settings' : 
                      activeTab === 'pages' ? 'Pages' : 'Page Builder'}
@@ -656,22 +677,6 @@ let {
                         {:else}
                             <div class="krt-editor__loadingMessage">Editor loading...</div>
                         {/if}
-                    {:else if activeTab === 'layouts'}
-                        {#if editor}
-                            <div class="krt-editor__sidebarList">
-                                {#each layoutPresets as preset}
-                                    <button
-                                        class="krt-editor__presetButton"
-                                        onclick={() => insertLayoutPreset(preset.id)}
-                                    >
-                                        <PresetPreview {preset} />
-                                        <div>{preset.name}</div>
-                                    </button>
-                                {/each}
-                            </div>
-                        {:else}
-                            <div class="krt-editor__loadingMessage">Editor loading...</div>
-                        {/if}
                     {:else if activeTab === 'site'}
                         <div class="krt-editor__sidebarSection">
                             <!-- Header Selection -->
@@ -681,13 +686,13 @@ let {
                                     <span>Header</span>
                                 </div>
                                 <div class="krt-editor__presetStack">
-                                    {#each headerPresets as preset}
+                                    {#each headerOptions as option}
                                         <button
-                                            class={`krt-editor__presetButton ${siteHeader?.presetId === preset.id ? 'is-active' : ''}`}
-                                            onclick={() => applyHeaderPreset(preset.id)}
+                                            class={`krt-editor__presetButton ${siteHeader?.presetId === option.id ? 'is-active' : ''}`}
+                                            onclick={() => applyHeaderPreset(option.id)}
                                         >
-                                            <PresetPreview {preset} />
-                                            <div>{preset.name}</div>
+                                            <PresetPreview preset={{ id: option.id, name: option.name, description: option.description, create: () => [option.create()] }} />
+                                            <div>{option.name}</div>
                                         </button>
                                     {/each}
                                 </div>
@@ -700,13 +705,13 @@ let {
                                     <span>Footer</span>
                                 </div>
                                 <div class="krt-editor__presetStack">
-                                    {#each footerPresets as preset}
+                                    {#each footerOptions as option}
                                         <button
-                                            class={`krt-editor__presetButton ${siteFooter?.presetId === preset.id ? 'is-active' : ''}`}
-                                            onclick={() => applyFooterPreset(preset.id)}
+                                            class={`krt-editor__presetButton ${siteFooter?.presetId === option.id ? 'is-active' : ''}`}
+                                            onclick={() => applyFooterPreset(option.id)}
                                         >
-                                            <PresetPreview {preset} />
-                                            <div>{preset.name}</div>
+                                            <PresetPreview preset={{ id: option.id, name: option.name, description: option.description, create: () => [option.create()] }} />
+                                            <div>{option.name}</div>
                                         </button>
                                     {/each}
                                 </div>
@@ -752,6 +757,68 @@ let {
                             blogThemes={blogThemeOptions}
                             onApplyTheme={applyBlogTheme}
                         />
+                    {:else if activeTab === 'forms'}
+                        <div class="krt-editor__sidebarSection">
+                            <div class="krt-editor__sidebarSectionHeader">
+                                <h3>Your Forms</h3>
+                                <button 
+                                    class="krt-editor__ghostButton"
+                                    onclick={addNewForm}
+                                >
+                                    <Plus />
+                                    <span>New</span>
+                                </button>
+                            </div>
+
+                            {#if formsData.length === 0}
+                                <div class="krt-editor__emptyState">
+                                    <p>No forms yet</p>
+                                    <button 
+                                        class="krt-editor__primaryButton"
+                                        onclick={addNewForm}
+                                    >
+                                        <Plus />
+                                        Create First Form
+                                    </button>
+                                </div>
+                            {:else}
+                                <div class="krt-editor__formControls">
+                                    <label class="krt-editor__formLabel">
+                                        <span>Select Form</span>
+                                        <select 
+                                            class="krt-editor__select"
+                                            bind:value={selectedFormId}
+                                        >
+                                            {#each formsData as form}
+                                                <option value={form.id}>{form.settings.formName}</option>
+                                            {/each}
+                                        </select>
+                                    </label>
+                                </div>
+
+                                {#if selectedFormId}
+                                    {@const formIndex = formsData.findIndex(f => f.id === selectedFormId)}
+                                    {#if formIndex !== -1}
+                                        <div class="krt-editor__formControls">
+                                            <button 
+                                                class="krt-editor__dangerButton"
+                                                onclick={() => {
+                                                    if (confirm(`Delete form "${formsData[formIndex].settings.formName}"?`)) {
+                                                        deleteForm(formsData[formIndex].id);
+                                                    }
+                                                }}
+                                            >
+                                                Delete Form
+                                            </button>
+                                        </div>
+                                        <FormBuilder 
+                                            bind:formData={formsData[formIndex]}
+                                            onUpdateForm={handleFormUpdate}
+                                        />
+                                    {/if}
+                                {/if}
+                            {/if}
+                        </div>
                     {:else if activeTab === 'navigation'}
                         <div class="krt-editor__sidebarSection">
                             <!-- Header Menu Section -->
@@ -1561,5 +1628,67 @@ let {
         0% { opacity: 0.4; }
         50% { opacity: 1; }
         100% { opacity: 0.4; }
+    }
+
+    /* ===== FORM CONTROLS ===== */
+    .krt-editor__formControls {
+        padding: 0 1rem 1rem 1rem;
+    }
+
+    .krt-editor__formLabel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .krt-editor__formLabel > span {
+        font-weight: 500;
+        color: rgba(17, 24, 39, 0.8);
+        font-size: 0.75rem;
+    }
+
+    .krt-editor__select {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        color: #1f2937;
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+
+    .krt-editor__select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .krt-editor__dangerButton {
+        width: 100%;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #dc2626;
+        background: transparent;
+        border: 1px solid rgba(220, 38, 38, 0.3);
+        border-radius: 0.375rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+
+    .krt-editor__dangerButton:hover {
+        background: rgba(220, 38, 38, 0.1);
+        border-color: #dc2626;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .krt-editor__dangerButton:active {
+        transform: translateY(0);
     }
 </style>

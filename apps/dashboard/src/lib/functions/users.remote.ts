@@ -255,6 +255,42 @@ export const createUser = guardedForm(
         }
       }
 
+      // Log activity
+      if (locals.kuratchi?.activity?.log) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.created',
+            data: {
+              userId,
+              email,
+              name,
+              isSuperAdmin,
+              organizations: orgIds
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[createUser] Failed to log activity:', activityErr);
+        }
+      }
+
+      // Log activity
+      if (locals.kuratchi?.activity?.log) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.created',
+            data: {
+              userId,
+              email,
+              name,
+              isSuperAdmin,
+              organizations: orgIds
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[createUser] Failed to log activity:', activityErr);
+        }
+      }
+
       await getUsers().refresh();
       return { success: true, userId };
     } catch (err: any) {
@@ -299,6 +335,21 @@ export const updateUser = guardedForm(
         }
       }
 
+      // Log activity
+      if (locals.kuratchi?.activity?.log) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.updated',
+            data: {
+              userId: id,
+              changes: updateData
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[updateUser] Failed to log activity:', activityErr);
+        }
+      }
+
       await getUsers().refresh();
       return { success: true };
     } catch (err) {
@@ -315,12 +366,31 @@ export const suspendUser = guardedForm(
       const { locals } = getRequestEvent();
       const db = await getDatabase(locals);
 
+      const userResult = await db.users.where({ id }).first();
+      const user = userResult?.data;
+
       await db.users
         .where({ id })
         .update({ 
           status: false,
           updated_at: new Date().toISOString() 
         });
+
+      // Log activity
+      if (locals.kuratchi?.activity?.log && user) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.suspended',
+            data: {
+              userId: id,
+              email: user.email,
+              name: user.name
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[suspendUser] Failed to log activity:', activityErr);
+        }
+      }
 
       await getUsers().refresh();
       return { success: true };
@@ -338,12 +408,31 @@ export const activateUser = guardedForm(
       const { locals } = getRequestEvent();
       const db = await getDatabase(locals);
 
+      const userResult = await db.users.where({ id }).first();
+      const user = userResult?.data;
+
       await db.users
         .where({ id })
         .update({ 
           status: true,
           updated_at: new Date().toISOString() 
         });
+
+      // Log activity
+      if (locals.kuratchi?.activity?.log && user) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.unsuspended',
+            data: {
+              userId: id,
+              email: user.email,
+              name: user.name
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[activateUser] Failed to log activity:', activityErr);
+        }
+      }
 
       await getUsers().refresh();
       return { success: true };
@@ -394,6 +483,21 @@ export const deleteUser = guardedForm(
           } catch (err) {
             console.error(`[deleteUser] Failed to remove user from org ${ou.organizationId}:`, err);
           }
+        }
+      }
+
+      // Log activity
+      if (locals.kuratchi?.activity?.log && email) {
+        try {
+          await locals.kuratchi.activity.log({
+            action: 'user.deleted',
+            data: {
+              userId: id,
+              email
+            }
+          });
+        } catch (activityErr) {
+          console.warn('[deleteUser] Failed to log activity:', activityErr);
         }
       }
 

@@ -2,7 +2,7 @@
     import { deserialize } from "$app/forms";
     import { Upload } from "@lucide/svelte";
     import type { ActionResult } from "@sveltejs/kit";
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
     import { onMount } from "svelte";
     import { imageConfig } from "../stores/imageConfig.js";
 
@@ -127,7 +127,7 @@
 {#if editable}
     <div class="editor-item group relative krt-image-block" bind:this={component}>
         {#if mounted}
-            <SideActions {component} />
+            <BlockActions {component} />
         {/if}
 
         <div data-type={type} id={id} class="krt-image-body">

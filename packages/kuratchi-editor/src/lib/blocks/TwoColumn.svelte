@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SideActions } from "../shell/index.js";
+    import { BlockActions } from "../shell/index.js";
     import { onMount } from "svelte";
 
     interface Props {
@@ -102,7 +102,7 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <SideActions {component}>
+            <BlockActions {component}>
                 <small>Column Width</small>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => leftWidth = '1/3'}>1/3 - 2/3</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => leftWidth = '1/2'}>1/2 - 1/2</button></li>
@@ -120,7 +120,7 @@
                 <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'top'}>Top</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'center'}>Center</button></li>
                 <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'bottom'}>Bottom</button></li>
-            </SideActions>
+            </BlockActions>
         {/if}
         
         <div data-type={type} {id} class="w-full min-w-full">
