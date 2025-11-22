@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertTriangle, Shield, Trash2, X } from 'lucide-svelte';
+  import { AlertTriangle, Shield, Trash2, X } from '@lucide/svelte';
   import { Button, Card, Dialog } from '@kuratchi/ui';
   import { cancelSubscription, deleteAccount } from '$lib/functions/settings.remote';
 

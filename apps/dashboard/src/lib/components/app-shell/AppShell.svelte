@@ -3,7 +3,7 @@
   import AppHeader from './AppHeader.svelte';
   import AppSidebar from './AppSidebar.svelte';
   import type { AppNavItem, AppUser } from './types';
-  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield } from 'lucide-svelte';
+  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield } from '@lucide/svelte';
 
   interface Props {
     workspace: string;

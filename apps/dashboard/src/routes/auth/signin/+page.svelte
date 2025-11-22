@@ -2,7 +2,7 @@
   import { signInWithCredentials } from '$lib/functions/auth.remote';
   import { Button, Card, FormField, FormInput, Loading } from '@kuratchi/ui';
   import { goto } from '$app/navigation';
-  import { LogIn } from 'lucide-svelte';
+  import { LogIn } from '@lucide/svelte';
 
   const { data } = $props();
   const turnstile = data.turnstile;

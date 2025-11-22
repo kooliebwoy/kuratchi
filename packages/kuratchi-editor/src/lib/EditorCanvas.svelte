@@ -2,13 +2,18 @@
     import { onDestroy, onMount, tick } from "svelte";
     import { blocks, getBlock } from "./registry/blocks.svelte";
     import type { BlockDefinition } from "./registry/blocks.svelte";
-    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks } from "./utils/editor.svelte";
+    import { getHeader } from "./registry/headers.svelte";
+    import { getFooter } from "./registry/footers.svelte";
+    import { getSection } from "./registry/sections.svelte";
+    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop, generateBlockKey, updateRegionData, setupEditorObserver } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
-    import type { SiteRegionState } from "./presets/types.js";
+    import type { SiteRegionState } from "./types.js";
 
     interface Props {
         editor?: HTMLElement | null;
+        headerElement?: HTMLElement | undefined;
+        footerElement?: HTMLElement | undefined;
         content?: Array<Record<string, unknown>>;
         editable?: boolean;
         isWebpage?: boolean;
@@ -28,6 +33,8 @@
 
     let { 
         editor = $bindable(null),
+        headerElement = $bindable<HTMLElement | undefined>(undefined),
+        footerElement = $bindable<HTMLElement | undefined>(undefined),
         content = $bindable([]),
         editable = true,
         isWebpage = true,
@@ -58,27 +65,6 @@
         )
     );
 
-    const getDragAfterElement = (container: HTMLElement, clientY: number) => {
-        const draggableElements = Array.from(
-            container.querySelectorAll<HTMLElement>('.editor-block:not(.dragging)')
-        );
-
-        const result = draggableElements.reduce(
-            (closest, child) => {
-                const box = child.getBoundingClientRect();
-                const offset = clientY - box.top - box.height / 2;
-
-                if (offset < 0 && offset > closest.offset) {
-                    return { offset, element: child };
-                }
-
-                return closest;
-            },
-            { offset: Number.NEGATIVE_INFINITY, element: null as HTMLElement | null }
-        );
-
-        return result.element;
-    };
 
     const updateEditorData = async () => {
         const blocks = await saveEditorBlocks(editor);
@@ -88,32 +74,29 @@
         }
     }
 
-    const blockKey = (block: Record<string, unknown>, index: number) => {
-        if (typeof block.id === 'string' && block.id.length > 0) return block.id;
-        if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
-        return `block-${index}`;
-    };
 
     const updateHeaderData = async () => {
-        if (!headerElement) return;
-        const blocks = await saveEditorHeaderBlocks(headerElement);
-        if (!blocks) return;
-        if (JSON.stringify(blocks) !== JSON.stringify(header?.blocks)) {
-            const next = { presetId: header?.presetId ?? null, blocks };
-            header = next;
-            onHeaderChange?.(next);
-        }
+        await updateRegionData({
+            element: headerElement,
+            saveFunction: saveEditorHeaderBlocks,
+            currentState: header,
+            onChange: (next) => {
+                header = next;
+                onHeaderChange?.(next);
+            }
+        });
     };
 
     const updateFooterData = async () => {
-        if (!footerElement) return;
-        const blocks = await saveEditorFooterBlocks(footerElement);
-        if (!blocks) return;
-        if (JSON.stringify(blocks) !== JSON.stringify(footer?.blocks)) {
-            const next = { presetId: footer?.presetId ?? null, blocks };
-            footer = next;
-            onFooterChange?.(next);
-        }
+        await updateRegionData({
+            element: footerElement,
+            saveFunction: saveEditorFooterBlocks,
+            currentState: footer,
+            onChange: (next) => {
+                footer = next;
+                onFooterChange?.(next);
+            }
+        });
     };
 
     const addComponent = (definition: BlockDefinition, initialProps?: Record<string, unknown>) => {
@@ -124,7 +107,10 @@
         inlineBlockSearchInput?.focus();
     }
 
-    const loadEditorBlock = (type: string) => getBlock(type);
+    const loadEditorBlock = (type: string) => {
+        // Only blocks and sections are allowed in the editor
+        return getSection(type) || getBlock(type);
+    };
 
     const insertLayoutPreset = (presetId: string) => {
         const preset = layoutPresets.find((candidate) => candidate.id === presetId);
@@ -154,19 +140,15 @@
         }
     }
 
-    let headerElement = $state<HTMLElement>();
-    let footerElement = $state<HTMLElement>();
-    let contentUpdateTimeout: number;
-    let headerUpdateTimeout: number;
-    let footerUpdateTimeout: number;
+    let contentUpdateTimeout: ReturnType<typeof setTimeout>;
+    let cleanupContentObserver: (() => void) | null = null;
+    let cleanupHeaderObserver: (() => void) | null = null;
+    let cleanupFooterObserver: (() => void) | null = null;
 
     let cleanupEditorDragAndDrop: (() => void) | null = null;
-    let dropIndicator: HTMLDivElement | null = null;
 
     const initEditorDragAndDrop = async () => {
         cleanupEditorDragAndDrop?.();
-        dropIndicator?.remove();
-        dropIndicator = null;
         if (!editable) return;
         await tick();
 
@@ -175,131 +157,42 @@
             return;
         }
 
-        let draggedElement: HTMLElement | null = null;
-        dropIndicator = document.createElement('div');
-        dropIndicator.className = 'editor-drop-indicator';
-        dropIndicator.setAttribute('aria-hidden', 'true');
-
-        const resetDragging = () => {
-            draggedElement?.classList.remove('dragging');
-            draggedElement = null;
-            dropIndicator?.remove();
-            editor.classList.remove('is-reordering');
-        };
-
-        const handleDragStart = (event: DragEvent) => {
-            const target = event.target as HTMLElement | null;
-            const handle = target?.closest('.drag-handle, .handle');
-            if (!handle) return;
-            const block = handle.closest<HTMLElement>('.editor-block');
-            if (!block) return;
-
-            draggedElement = block;
-            block.classList.add('dragging');
-            editor.classList.add('is-reordering');
-            if (event.dataTransfer) {
-                event.dataTransfer.effectAllowed = 'move';
-                const dragOffsetX = block.clientWidth / 2;
-                const dragOffsetY = Math.min(event.offsetY ?? block.clientHeight / 2, block.clientHeight / 2);
-                event.dataTransfer.setDragImage(block, dragOffsetX, dragOffsetY);
-                event.dataTransfer.setData('text/plain', block.id ?? 'block');
+        cleanupEditorDragAndDrop = setupEditorDragAndDrop({
+            editor,
+            onReorder: () => {
+                clearTimeout(contentUpdateTimeout);
+                contentUpdateTimeout = setTimeout(updateEditorData, 300);
             }
-        };
-
-        const handleDragOver = (event: DragEvent) => {
-            if (!draggedElement || !(editor instanceof HTMLElement)) return;
-            event.preventDefault();
-            const afterElement = getDragAfterElement(editor, event.clientY);
-            if (!afterElement) {
-                if (dropIndicator) {
-                    editor.appendChild(dropIndicator);
-                }
-                editor.appendChild(draggedElement);
-                return;
-            }
-
-            if (dropIndicator) {
-                editor.insertBefore(dropIndicator, afterElement);
-            }
-            if (afterElement !== draggedElement) {
-                editor.insertBefore(draggedElement, afterElement);
-            }
-        };
-
-        const handleDrop = (event: DragEvent) => {
-            if (!draggedElement) return;
-            event.preventDefault();
-            resetDragging();
-            clearTimeout(contentUpdateTimeout);
-            contentUpdateTimeout = setTimeout(updateEditorData, 300);
-        };
-
-        const handleDragEnd = () => resetDragging();
-
-        editor.addEventListener('dragstart', handleDragStart);
-        editor.addEventListener('dragover', handleDragOver);
-        editor.addEventListener('drop', handleDrop);
-        editor.addEventListener('dragend', handleDragEnd);
-
-        cleanupEditorDragAndDrop = () => {
-            editor.removeEventListener('dragstart', handleDragStart);
-            editor.removeEventListener('dragover', handleDragOver);
-            editor.removeEventListener('drop', handleDrop);
-            editor.removeEventListener('dragend', handleDragEnd);
-            dropIndicator?.remove();
-        };
+        });
     };
 
     onMount(() => {
         imageConfig.set(editorImageConfig);
         initEditorDragAndDrop();
 
-        const observer = new MutationObserver(() => {
-            clearTimeout(contentUpdateTimeout);
-            contentUpdateTimeout = setTimeout(updateEditorData, 1500);
+        cleanupContentObserver = setupEditorObserver({
+            element: editor,
+            onUpdate: updateEditorData
         });
 
-        if (editor) {
-            observer.observe(editor, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-        }
-
-        if (headerElement) {
-            const headerObserver = new MutationObserver(() => {
-                clearTimeout(headerUpdateTimeout);
-                headerUpdateTimeout = setTimeout(updateHeaderData, 1500);
-            });
-            
-            headerObserver.observe(headerElement, {
-                childList: true,
-                subtree: true,
-                characterData: true,
-                attributes: true
-            });
-        }
+        cleanupHeaderObserver = setupEditorObserver({
+            element: headerElement,
+            onUpdate: updateHeaderData,
+            observeAttributes: true
+        });
         
-        if (footerElement) {
-            const footerObserver = new MutationObserver(() => {
-                clearTimeout(footerUpdateTimeout);
-                footerUpdateTimeout = setTimeout(updateFooterData, 1500);
-            });
-            
-            footerObserver.observe(footerElement, {
-                childList: true,
-                subtree: true,
-                characterData: true,
-                attributes: true
-            });
-        }
+        cleanupFooterObserver = setupEditorObserver({
+            element: footerElement,
+            onUpdate: updateFooterData,
+            observeAttributes: true
+        });
         
         return () => {
             cleanupEditorDragAndDrop?.();
+            cleanupContentObserver?.();
+            cleanupHeaderObserver?.();
+            cleanupFooterObserver?.();
             clearTimeout(contentUpdateTimeout);
-            clearTimeout(headerUpdateTimeout);
-            clearTimeout(footerUpdateTimeout);
         };
     });
 
@@ -321,21 +214,20 @@
 <div class="krt-editorCanvas" style:background-color={backgroundColor}>
     {#if isWebpage}
         <div bind:this={headerElement} class="krt-editorCanvas__header">
-            {#if headerBlocksState.length === 0}
+            {#if headerBlocksState.length === 0 && (!headerElement || headerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState">Select a header preset to get started</div>
-            {:else}
-                {#each headerBlocksState as block, index (blockKey(block, index))}
-                    {@const blockDefinition = loadEditorBlock(block.type)}
-                    {#if blockDefinition}
-                        <blockDefinition.component
-                            {...block}
-                            menu={navigation?.header?.items ?? (block as any)?.menu}
-                            useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (block as any)?.useMobileMenuOnDesktop}
-                            menuHidden={headerMenuHidden}
-                        />
-                    {/if}
-                {/each}
             {/if}
+            {#each headerBlocksState as block, index (generateBlockKey(block, index))}
+                {@const blockDefinition = getHeader(block.type)}
+                {#if blockDefinition}
+                    <blockDefinition.component
+                        {...block}
+                        menu={navigation?.header?.items ?? (block as any)?.menu}
+                        useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (block as any)?.useMobileMenuOnDesktop}
+                        menuHidden={headerMenuHidden}
+                    />
+                {/if}
+            {/each}
         </div> 
     {/if}
 
@@ -346,17 +238,17 @@
                 role="application" 
                 class="krt-editorCanvas__article"
             >
-                {#each editorBlocks as block, index (blockKey(block, index))}
+                {#each editorBlocks as block, index (generateBlockKey(block, index))}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
                         <div class="krt-editorCanvas__block editor-block">
-                            <editorBlock.component {...block} />
+                            <editorBlock.component {...block} editable={editable} />
                         </div>
                     {/if}
                 {/each}
             </article>
             <div class="krt-editorCanvas__addBlock">
-                <div class="krt-editorCanvas__addBlock__buttons">
+                <!-- <div class="krt-editorCanvas__addBlock__buttons">
                     {#if layoutsEnabled}
                         <button class="krt-editorCanvas__iconButton" aria-label="Add section" title="Section presets coming soon">
                             <PanelsTopLeft />
@@ -382,7 +274,7 @@
                             {/each}
                         {/if}
                     </ul>
-                </div>
+                </div> -->
                 <div class="krt-editorCanvas__inlineSearch">
                     <input 
                         class="krt-editorCanvas__inlineInput" 
@@ -411,20 +303,19 @@
 
     {#if isWebpage}
         <div bind:this={footerElement} class="krt-editorCanvas__footer"> 
-            {#if footerBlocksState.length === 0}
+            {#if footerBlocksState.length === 0 && (!footerElement || footerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState krt-editorCanvas__emptyState--footer">Select a footer preset to get started</div>
-            {:else}
-                {#each footerBlocksState as block, index (blockKey(block, index))}
-                    {@const blockDefinition = loadEditorBlock(block.type)}
-                    {#if blockDefinition}
-                        <blockDefinition.component
-                            {...block}
-                            menu={navigation?.footer?.items ?? (block as any)?.menu}
-                            menuHidden={footerMenuHidden}
-                        />
-                    {/if}
-                {/each}
             {/if}
+            {#each footerBlocksState as block, index (generateBlockKey(block, index))}
+                {@const blockDefinition = getFooter(block.type)}
+                {#if blockDefinition}
+                    <blockDefinition.component
+                        {...block}
+                        menu={navigation?.footer?.items ?? (block as any)?.menu}
+                        menuHidden={footerMenuHidden}
+                    />
+                {/if}
+            {/each}
         </div>
     {/if}
 </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { ArrowRight } from 'lucide-svelte';
+  import { ArrowRight } from '@lucide/svelte';
   import { MetricCard, Card } from '@kuratchi/ui';
   import { getUsers } from '$lib/functions/users.remote';
   import { getSites } from '$lib/functions/sites.remote';

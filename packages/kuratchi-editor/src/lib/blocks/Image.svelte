@@ -2,7 +2,7 @@
     import { deserialize } from "$app/forms";
     import { Upload } from "@lucide/svelte";
     import type { ActionResult } from "@sveltejs/kit";
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { onMount } from "svelte";
     import { imageConfig } from "../stores/imageConfig.js";
 
@@ -132,9 +132,9 @@
 
         <div data-type={type} id={id} class="krt-image-body">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
 
             {#if !uploadedImage?.id}
                 <div class="krt-image-dropzone">

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MessageSquare } from 'lucide-svelte';
+  import { MessageSquare } from '@lucide/svelte';
 </script>
 
 <header class="border-b border-base-300 bg-base-200 px-6 py-4">

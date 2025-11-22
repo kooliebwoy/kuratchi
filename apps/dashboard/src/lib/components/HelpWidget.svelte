@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { HelpCircle, X, MessageSquare, Headphones, Send, Mail, MessageCircle } from 'lucide-svelte';
+    import { HelpCircle, X, MessageSquare, Headphones, Send, Mail, MessageCircle } from '@lucide/svelte';
     import { Button, Card } from '@kuratchi/ui';
     import { enhance } from '$app/forms';
     import type { SubmitFunction } from '@sveltejs/kit';

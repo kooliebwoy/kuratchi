@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { onMount } from 'svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Home, Search, Menu } from '@lucide/svelte';
@@ -73,6 +75,14 @@
 
     const showDesktopMenu = $derived(!useMobileMenuOnDesktop);
 
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
+
     function hrefFrom(item: any): string {
         if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
         if (typeof item?.slug === 'string' && item.slug.length > 0) return `/${item.slug}`;
@@ -80,83 +90,230 @@
     }
 </script>
 
-<LayoutBlock {id} type={type}>
-{#snippet drawerContent()}
-    <div class="krt-headerDrawer">
-        <section class="krt-headerDrawer__section">
-            <h3 class="krt-headerDrawer__title">Layout</h3>
-            <div class="krt-headerDrawer__cards">
-                <label class="krt-headerDrawer__card">
-                    <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
-                    <span>Swap Icons and Nav Menu</span>
-                </label>
-                <label class="krt-headerDrawer__card">
-                    <input type="checkbox" class="krt-switch" bind:checked={searchEnabled} />
-                    <span>Search Bar Enabled</span>
-                </label>
-            </div>
-        </section>
-
-        <section class="krt-headerDrawer__section">
-            <h3 class="krt-headerDrawer__title">Styling</h3>
-            <div class="krt-headerDrawer__cards">
-                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                    <span>Background Color</span>
-                    <div class="krt-headerDrawer__colorControl">
-                        <input type="color" bind:value={backgroundColor} />
-                        <span>{backgroundColor}</span>
-                    </div>
-                </label>
-                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                    <span>Home Icon Color</span>
-                    <div class="krt-headerDrawer__colorControl">
-                        <input type="color" bind:value={homeIconColor} />
-                        <span>{homeIconColor}</span>
-                    </div>
-                </label>
-                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                    <span>Text Color</span>
-                    <div class="krt-headerDrawer__colorControl">
-                        <input type="color" bind:value={textColor} />
-                        <span>{textColor}</span>
-                    </div>
-                </label>
-            </div>
-        </section>
-
-        <section class="krt-headerDrawer__section">
-            <h3 class="krt-headerDrawer__title">Social Icons</h3>
-            <div class="krt-headerDrawer__cards">
-                <div class="krt-headerDrawer__card">
-                    <IconPicker bind:selectedIcons={icons} />
+{#if editable}
+    <div class="editor-header-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <div
+            id={id}
+            data-type={type}
+            class="krt-header krt-header--twig"
+            style:background-color={backgroundColor}
+            style:color={textColor}
+        >
+            <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+            <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
+                <div class="krt-header__segment">
+                    {#if reverseOrder}
+                        <div class="krt-header__metaGroup">
+                            {#if searchEnabled}
+                                <label class="krt-header__search">
+                                    <Search aria-hidden="true" />
+                                    <input type="text" placeholder="Search" />
+                                </label>
+                            {/if}
+                            {#each icons as { icon, link, name }}
+                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                                <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                    <Comp aria-hidden="true" />
+                                </a>
+                            {/each}
+                        </div>
+                    {:else}
+                        <nav class="krt-header__desktopNav" class:krt-header__desktopNav--visible={showDesktopMenu && !menuHidden}>
+                            <a class="krt-header__home" href="homepage" style:color={homeIconColor}>
+                                <Home aria-hidden="true" />
+                            </a>
+                            {#if !menuHidden}
+                                <ul class="krt-header__navList">
+                                    {#each menu as item}
+                                        <li class="krt-header__navItem">
+                                            {#if item.items}
+                                                <details class="krt-header__dropdown">
+                                                    <summary>{item.label}</summary>
+                                                    <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
+                                                        {#each item.items as subItem}
+                                                            <li>
+                                                                <a href={hrefFrom(subItem)}>{subItem.label}</a>
+                                                            </li>
+                                                        {/each}
+                                                    </ul>
+                                                </details>
+                                            {:else}
+                                                <a href={hrefFrom(item)}>{item.label}</a>
+                                            {/if}
+                                        </li>
+                                    {/each}
+                                </ul>
+                            {/if}
+                        </nav>
+                    {/if}
                 </div>
 
-                {#each icons as icon}
-                    {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                    <label class="krt-headerDrawer__card krt-headerDrawer__card--icon">
-                        <div class="krt-headerDrawer__iconHeading">
-                            <Comp aria-hidden="true" />
-                            <span>{icon.name}</span>
+                <div class="krt-header__brand">
+                    {#if !menuHidden}
+                        <details class="krt-header__sheetToggle" class:krt-header__sheetToggle--desktopHidden={showDesktopMenu}>
+                            <summary aria-label="Open menu">
+                                <span class="krt-header__mobileTrigger">
+                                    <Menu aria-hidden="true" />
+                                </span>
+                            </summary>
+                            <ul class="krt-header__sheet" style:background-color={backgroundColor}>
+                                {#each menu as item}
+                                    <li>
+                                        {#if item.items}
+                                            <details class="krt-header__sheetDropdown">
+                                                <summary>{item.label}</summary>
+                                                <ul>
+                                                    {#each item.items as subItem}
+                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
+                                                    {/each}
+                                                </ul>
+                                            </details>
+                                        {:else}
+                                            <a href={hrefFrom(item)}>{item.label}</a>
+                                        {/if}
+                                    </li>
+                                {/each}
+                            </ul>
+                        </details>
+                    {/if}
+
+                    <a class="krt-header__logo" href="homepage">
+                        <img src={image.src} alt={image.alt} title={image.title} />
+                    </a>
+                </div>
+
+                <div class="krt-header__segment">
+                    {#if reverseOrder}
+                        <nav class="krt-header__desktopNav" class:krt-header__desktopNav--visible={showDesktopMenu && !menuHidden}>
+                            <a class="krt-header__home" href="homepage" style:color={homeIconColor}>
+                                <Home aria-hidden="true" />
+                            </a>
+                            {#if !menuHidden}
+                                <ul class="krt-header__navList">
+                                    {#each menu as item}
+                                        <li class="krt-header__navItem">
+                                            {#if item.items}
+                                                <details class="krt-header__dropdown">
+                                                    <summary>{item.label}</summary>
+                                                    <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
+                                                        {#each item.items as subItem}
+                                                            <li>
+                                                                <a href={hrefFrom(subItem)}>{subItem.label}</a>
+                                                            </li>
+                                                        {/each}
+                                                    </ul>
+                                                </details>
+                                            {:else if item.link}
+                                                <a href={hrefFrom(item)}>{item.label}</a>
+                                            {/if}
+                                        </li>
+                                    {/each}
+                                </ul>
+                            {/if}
+                        </nav>
+                    {:else}
+                        <div class="krt-header__metaGroup">
+                            {#if searchEnabled}
+                                <label class="krt-header__search">
+                                    <Search aria-hidden="true" />
+                                    <input type="text" placeholder="Search" />
+                                </label>
+                            {/if}
+                            {#each icons as { icon, link, name }}
+                                {@const Comp = LucideIconMap[icon as LucideIconKey]}
+                                <a class="krt-header__iconButton" href={link} aria-label={name}>
+                                    <Comp aria-hidden="true" />
+                                </a>
+                            {/each}
                         </div>
-                        <input
-                            type="text"
-                            class="krt-headerDrawer__input"
-                            placeholder="https://example.com"
-                            value={icon.link}
-                            onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
-                        />
-                    </label>
-                {/each}
+                    {/if}
+                </div>
             </div>
-        </section>
+        </div>
     </div>
-{/snippet}
 
-{#snippet metadata()}
-    {JSON.stringify(content)}
-{/snippet}
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit header settings" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-headerDrawer">
+                <section class="krt-headerDrawer__section">
+                    <h3 class="krt-headerDrawer__title">Layout</h3>
+                    <div class="krt-headerDrawer__cards">
+                        <label class="krt-headerDrawer__card">
+                            <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
+                            <span>Swap Icons and Nav Menu</span>
+                        </label>
+                        <label class="krt-headerDrawer__card">
+                            <input type="checkbox" class="krt-switch" bind:checked={searchEnabled} />
+                            <span>Search Bar Enabled</span>
+                        </label>
+                    </div>
+                </section>
 
-{#snippet children()}
+                <section class="krt-headerDrawer__section">
+                    <h3 class="krt-headerDrawer__title">Styling</h3>
+                    <div class="krt-headerDrawer__cards">
+                        <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                            <span>Background Color</span>
+                            <div class="krt-headerDrawer__colorControl">
+                                <input type="color" bind:value={backgroundColor} />
+                                <span>{backgroundColor}</span>
+                            </div>
+                        </label>
+                        <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                            <span>Home Icon Color</span>
+                            <div class="krt-headerDrawer__colorControl">
+                                <input type="color" bind:value={homeIconColor} />
+                                <span>{homeIconColor}</span>
+                            </div>
+                        </label>
+                        <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                            <span>Text Color</span>
+                            <div class="krt-headerDrawer__colorControl">
+                                <input type="color" bind:value={textColor} />
+                                <span>{textColor}</span>
+                            </div>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-headerDrawer__section">
+                    <h3 class="krt-headerDrawer__title">Social Icons</h3>
+                    <div class="krt-headerDrawer__cards">
+                        <div class="krt-headerDrawer__card">
+                            <IconPicker bind:selectedIcons={icons} />
+                        </div>
+
+                        {#each icons as icon}
+                            {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                            <label class="krt-headerDrawer__card krt-headerDrawer__card--icon">
+                                <div class="krt-headerDrawer__iconHeading">
+                                    <Comp aria-hidden="true" />
+                                    <span>{icon.name}</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    class="krt-headerDrawer__input"
+                                    placeholder="https://example.com"
+                                    value={icon.link}
+                                    onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
+                                />
+                            </label>
+                        {/each}
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
+{:else}
     <div
         id={id}
         data-type={type}
@@ -164,6 +321,7 @@
         style:background-color={backgroundColor}
         style:color={textColor}
     >
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}
@@ -294,8 +452,7 @@
             </div>
         </div>
     </div>
-{/snippet}
-</LayoutBlock>
+{/if}
 
 <style>
     .krt-headerDrawer {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Dialog, FormField, FormInput, FormSelect, FormTextarea, Badge } from '@kuratchi/ui';
-  import { Package, Plus, Archive, Check, X } from 'lucide-svelte';
+  import { Package, Plus, Archive, Check, X } from '@lucide/svelte';
   import { getProducts, createProduct, archiveProduct, createPrice, archivePrice } from '$lib/functions/products.remote';
 
   const products = getProducts();

@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { X } from '@lucide/svelte';
+    import { Pencil, X } from '@lucide/svelte';
     import { getContext } from 'svelte';
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface Props {
         id?: string;
@@ -110,6 +111,10 @@
         return siteMetadata.forms.find((f: any) => f.id === formId);
     };
 
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
     $effect(() => {
         if (typeof window !== 'undefined') {
             window.addEventListener('keydown', handleKeydown);
@@ -121,11 +126,50 @@
     });
 
     const availableForms = $derived(siteMetadata?.forms || []);
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-    <LayoutBlock {id} {type}>
-        {#snippet drawerContent()}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <div class="modal-trigger-wrapper" {id} data-type={type}>
+            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            {#if triggerStyle === 'button'}
+                <button
+                    class="modal-trigger-button"
+                    style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
+                >
+                    {triggerText}
+                </button>
+            {:else if triggerStyle === 'link'}
+                <button class="modal-trigger-link">
+                    {triggerText}
+                </button>
+            {:else if triggerStyle === 'image' && triggerImage}
+                <button class="modal-trigger-image">
+                    <img src={triggerImage} alt="Open modal" />
+                </button>
+            {:else}
+                <div class="editor-placeholder">
+                    <p>Click to configure modal trigger</p>
+                </div>
+            {/if}
+        </div>
+    </div>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit modal settings" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
             <div class="space-y-4">
                 <label class="form-control">
                     <span class="label-text text-xs">Content Type</span>
@@ -228,40 +272,11 @@
                 </div>
             </div>
         {/snippet}
-
-        {#snippet metadata()}
-            {JSON.stringify(content)}
-        {/snippet}
-
-        {#snippet children()}
-            <div class="modal-trigger-wrapper" data-type={type}>
-                {#if triggerStyle === 'button'}
-                    <button
-                        class="modal-trigger-button"
-                        style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
-                    >
-                        {triggerText}
-                    </button>
-                {:else if triggerStyle === 'link'}
-                    <button class="modal-trigger-link">
-                        {triggerText}
-                    </button>
-                {:else if triggerStyle === 'image' && triggerImage}
-                    <button class="modal-trigger-image">
-                        <img src={triggerImage} alt="Open modal" />
-                    </button>
-                {:else}
-                    <div class="editor-placeholder">
-                        <p>Click to configure modal trigger</p>
-                    </div>
-                {/if}
-            </div>
-        {/snippet}
-    </LayoutBlock>
+    </SideActions>
 {:else}
     <!-- Non-editable mode (actual website) -->
     <section id={id} data-type={type}>
-        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="modal-trigger-wrapper">
         {#if triggerStyle === 'button'}
             <button

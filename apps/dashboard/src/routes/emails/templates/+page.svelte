@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Plus, Trash2, Eye, Loader2, Code2 } from 'lucide-svelte';
+  import { Plus, Trash2, Eye, Loader2, Code2 } from '@lucide/svelte';
   import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
   import {

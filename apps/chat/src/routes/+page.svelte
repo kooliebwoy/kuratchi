@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MessageSquare, Send, User, Wifi, WifiOff } from 'lucide-svelte';
+  import { MessageSquare, Send, User, Wifi, WifiOff } from '@lucide/svelte';
   import type { PageData } from './$types';
   import * as spaces from 'kuratchi-sdk/spaces';
   import type { Message } from 'kuratchi-sdk/spaces';

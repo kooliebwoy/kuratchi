@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Dialog, FormField, FormInput, Alert } from '@kuratchi/ui';
-  import { UserPlus, X } from 'lucide-svelte';
+  import { UserPlus, X } from '@lucide/svelte';
   import { getAllOrganizations, getAllUsers, createSuperadminUser } from '$lib/functions/superadmin.remote';
 
   const organizationsQuery = getAllOrganizations();

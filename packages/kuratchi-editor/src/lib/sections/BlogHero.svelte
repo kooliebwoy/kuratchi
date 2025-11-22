@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     type Alignment = 'left' | 'center';
 
@@ -60,7 +60,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-blogHero" style={layoutStyle}>
-        <div class="krt-blogHero__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
             <h1 class="krt-blogHero__heading" contenteditable bind:innerHTML={heading}></h1>
             <p class="krt-blogHero__body" contenteditable bind:innerHTML={body}></p>
@@ -114,7 +114,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogHero" style={layoutStyle}>
-        <div class="krt-blogHero__metadata" data-type={type}>{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
             <h1 class="krt-blogHero__heading">{@html heading}</h1>
             <div class="krt-blogHero__body">{@html body}</div>

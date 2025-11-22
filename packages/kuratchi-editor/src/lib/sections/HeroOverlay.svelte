@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface HeroButton {
         label?: string;
@@ -106,7 +106,7 @@
         class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
-        <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-heroOverlay__background" aria-hidden="true"></div>
         <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
         <div class="krt-heroOverlay__content">
@@ -187,7 +187,7 @@
         class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
-        <div class="krt-heroOverlay__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-heroOverlay__background" aria-hidden="true"></div>
         <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
         <div class="krt-heroOverlay__content">

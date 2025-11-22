@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Save, Crown, Zap, Sparkles, Calendar, Receipt, Settings, Check, Loader2 } from 'lucide-svelte';
+  import { Save, Crown, Zap, Sparkles, Calendar, Receipt, Settings, Check, Loader2 } from '@lucide/svelte';
   import { Button, Card, Badge, Loading, FormField, FormInput } from '@kuratchi/ui';
   import {
     getBillingInfo,

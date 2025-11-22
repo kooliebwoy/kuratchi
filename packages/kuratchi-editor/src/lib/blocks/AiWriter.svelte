@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { EditorDrawer as Drawer } from '../shell/index.js';
+    import { EditorDrawer as Drawer } from '../utils/index.js';
     import { Pencil, GripVertical, Trash2, Wand2 } from '@lucide/svelte';
 	import { deserialize, applyAction } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
@@ -126,9 +126,9 @@
 
 		<div data-type={type} id={id} bind:this={component} class="w-full min-w-full">
 			<!-- JSON Data for this component -->
-			<div class="hidden" id="metadata-{id}">
+			<script type="application/json" id="metadata-{id}">
 				{JSON.stringify(content)}
-			</div>
+			</script>
 
 			<article id="generatedContent" class="prose w-full min-w-full" contenteditable bind:innerHTML={generatedContent}></article>
 		</div>

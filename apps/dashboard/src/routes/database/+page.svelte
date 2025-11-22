@@ -5,7 +5,7 @@
     getDatabases, 
     createDatabase
   } from '$lib/functions/database.remote';
-  import { EllipsisVertical, Plus, Database } from 'lucide-svelte';
+  import { EllipsisVertical, Plus, Database } from '@lucide/svelte';
 
   logRouteActivity();
   const databases = getDatabases();

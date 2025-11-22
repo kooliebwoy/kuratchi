@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Settings, Shield, AlertTriangle, Key, CreditCard, Lock, Users } from 'lucide-svelte';
+  import { Settings, Shield, AlertTriangle, Key, CreditCard, Lock, Users } from '@lucide/svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
 

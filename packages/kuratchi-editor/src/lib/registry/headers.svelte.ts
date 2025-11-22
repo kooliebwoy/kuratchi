@@ -1,76 +1,33 @@
-import type { BlockSnapshot, SiteRegionState } from '../presets/types';
+import SaigeBlakeHeader from '../headers/SaigeBlakeHeader.svelte';
+import TwigAndPearlHeader from '../headers/TwigAndPearlHeader.svelte';
+import type { Component } from 'svelte';
+import { PanelTop } from '@lucide/svelte';
 
-const saigeBlakeDefaults: BlockSnapshot = {
-	type: 'saige-blake-header',
-	backgroundColor: '#ffffff',
-	textColor: '#92c8c8',
-	reverseOrder: false,
-	icons: [
-		{ icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-		{ icon: 'x', link: '#', name: 'X', enabled: true },
-		{ icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-	],
-	menu: [],
-	logo: {
-		url: '/clutch-cms-logo.png',
-		alt: 'Logo'
-	}
-};
-
-const twigAndPearlDefaults: BlockSnapshot = {
-	type: 'twig-and-pearl-header',
-	backgroundColor: '#212121',
-	homeIconColor: '#575757',
-	textColor: '#ffffff',
-	reverseOrder: false,
-	searchEnabled: true,
-	icons: [
-		{ icon: 'facebook', link: '#', name: 'Facebook', enabled: true },
-		{ icon: 'x', link: '#', name: 'X', enabled: true },
-		{ icon: 'instagram', link: '#', name: 'Instagram', enabled: true }
-	],
-	menu: [],
-	useMobileMenuOnDesktop: false
-};
-
-const cloneSnapshot = <T extends BlockSnapshot>(snapshot: T): T =>
-	JSON.parse(JSON.stringify(snapshot));
-
-export interface HeaderOption {
-	id: string;
+export interface HeaderDefinition {
 	name: string;
+	type: string;
+	icon: Component<any>;
 	description: string;
-	blockType: string;
-	create: () => BlockSnapshot;
+	component: Component<any>;
 }
 
-export const headerOptions: HeaderOption[] = [
+export const headers: HeaderDefinition[] = [
 	{
-		id: 'saige-blake-header',
 		name: 'Saige & Blake',
+		type: 'saige-blake-header',
+		icon: PanelTop,
 		description: 'Two-column header with icons and navigation',
-		blockType: saigeBlakeDefaults.type,
-		create: () => cloneSnapshot(saigeBlakeDefaults)
+		component: SaigeBlakeHeader
 	},
 	{
-		id: 'twig-and-pearl-header',
 		name: 'Twig & Pearl',
+		type: 'twig-and-pearl-header',
+		icon: PanelTop,
 		description: 'Minimalist nav with centered menu',
-		blockType: twigAndPearlDefaults.type,
-		create: () => cloneSnapshot(twigAndPearlDefaults)
+		component: TwigAndPearlHeader
 	}
 ];
 
-const headerOptionMap = new Map(headerOptions.map((option) => [option.id, option]));
-const defaultHeaderId = headerOptions[0]?.id ?? 'saige-blake-header';
+export const headerMap = new Map(headers.map((def) => [def.type, def]));
 
-export const isHeaderBlockType = (type: string | null | undefined) =>
-	!!type && headerOptions.some((option) => option.blockType === type);
-
-export const createHeaderRegion = (presetId: string): SiteRegionState => {
-	const option = headerOptionMap.get(presetId) ?? headerOptions[0];
-	return {
-		presetId: option.id,
-		blocks: [option.create()]
-	};
-};
+export const getHeader = (type: string) => headerMap.get(type);

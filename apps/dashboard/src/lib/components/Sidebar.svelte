@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Home, Database, Shield, Settings, Activity, Globe, Clock, Mail, Folder, Package, Layout, GlobeLock } from 'lucide-svelte';
+  import { Home, Database, Shield, Settings, Activity, Globe, Clock, Mail, Folder, Package, Layout, GlobeLock } from '@lucide/svelte';
 
   let { isSuperadmin }: { isSuperadmin: boolean } = $props();
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Building2, Plus, Pencil, Trash2, X } from 'lucide-svelte';
+	import { Building2, Plus, Pencil, Trash2, X } from '@lucide/svelte';
 	import { Badge, Button, Card, Dialog, FormField, FormInput, FormSelect, FormTextarea, Alert, Loading } from '@kuratchi/ui';
 	import { getOrganizations, createOrganization, updateOrganization, deleteOrganization } from '$lib/functions/organizations.remote';
 

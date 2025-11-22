@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Send, CheckCircle, XCircle, Clock, RefreshCw, AlertCircle, ExternalLink, Eye, MousePointer, AlertTriangle, Check, Trash2, Copy } from 'lucide-svelte';
+  import { Mail, Send, CheckCircle, XCircle, Clock, RefreshCw, AlertCircle, ExternalLink, Eye, MousePointer, AlertTriangle, Check, Trash2, Copy } from '@lucide/svelte';
   import { Button, Card, Badge, Dialog, Loading } from '@kuratchi/ui';
   import { getEmails, sendTestEmail } from '$lib/functions/emails.remote';
   import { getEmailDomains } from '$lib/functions/emailDomains.remote';

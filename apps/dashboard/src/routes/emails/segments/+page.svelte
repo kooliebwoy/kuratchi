@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Users, Plus, Trash2, Mail, Loader2, Search, X } from 'lucide-svelte';
+  import { Users, Plus, Trash2, Mail, Loader2, Search, X } from '@lucide/svelte';
   import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
   import {
     listSegments,

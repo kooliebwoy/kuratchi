@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bell, Send, Database, Shield, CreditCard, Package, AlertTriangle, CheckCircle, Clock, Trash2 } from 'lucide-svelte';
+  import { Bell, Send, Database, Shield, CreditCard, Package, AlertTriangle, CheckCircle, Clock, Trash2 } from '@lucide/svelte';
   import { onMount } from 'svelte';
   import { Badge, Button, Card, Loading } from '@kuratchi/ui';
 

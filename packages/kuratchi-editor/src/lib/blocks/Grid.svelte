@@ -45,9 +45,9 @@
         
         <div data-type={type} id={id} bind:this={component} class="w-full min-w-full">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
 
             <div class="grid"></div>
         </div>

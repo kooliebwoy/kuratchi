@@ -1,5 +1,6 @@
 import { browser } from "$app/environment";
 import { mount, onMount } from "svelte";
+import type { SiteRegionState } from "../types.js";
 
 const wrapSelection = (tag: string, attributes: Record<string, string> = {}) => {
     if (!browser) return;
@@ -384,4 +385,216 @@ export function sanitizeContent(content: string): string {
         // Normalize whitespace and return
         return div.innerHTML.replace(/\s+/g, ' ').trim();
     });
+}
+
+/**
+ * Generates a unique key for a block in the editor
+ * @param block The block data object
+ * @param index The index of the block in the array
+ * @returns A unique string key for the block
+ */
+export const generateBlockKey = (block: Record<string, unknown>, index: number): string => {
+    if (typeof block.id === 'string' && block.id.length > 0) return block.id;
+    if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
+    return `block-${index}`;
+};
+
+/**
+ * Configuration options for region data updates
+ */
+export interface RegionUpdateOptions {
+    /** The HTML element containing the region */
+    element: HTMLElement | undefined;
+    /** Function to save blocks from the element */
+    saveFunction: (el: HTMLElement) => Promise<Array<Record<string, unknown>>>;
+    /** Current state of the region */
+    currentState: SiteRegionState | null;
+    /** Callback fired when region data changes */
+    onChange: (state: SiteRegionState) => void;
+}
+
+/**
+ * Updates region data (header/footer) by comparing current state with saved blocks
+ * @param options Configuration options for the update
+ */
+export const updateRegionData = async (options: RegionUpdateOptions): Promise<void> => {
+    const { element, saveFunction, currentState, onChange } = options;
+    
+    if (!element) return;
+    const blocks = await saveFunction(element);
+    if (!blocks) return;
+    
+    if (JSON.stringify(blocks) !== JSON.stringify(currentState?.blocks)) {
+        const next: SiteRegionState = { blocks: blocks as any };
+        onChange(next);
+    }
+};
+
+/**
+ * Configuration options for MutationObserver setup
+ */
+export interface EditorObserverOptions {
+    /** The element to observe for changes */
+    element: HTMLElement | undefined | null;
+    /** Callback fired when mutations are detected */
+    onUpdate: () => void;
+    /** Debounce delay in milliseconds (default: 1500) */
+    debounceMs?: number;
+    /** Whether to observe attribute changes (default: false) */
+    observeAttributes?: boolean;
+}
+
+/**
+ * Sets up a MutationObserver with debounced updates
+ * @param options Configuration options
+ * @returns Cleanup function to disconnect the observer
+ */
+export const setupEditorObserver = (options: EditorObserverOptions): (() => void) => {
+    const { element, onUpdate, debounceMs = 1500, observeAttributes = false } = options;
+    
+    if (!element) return () => {};
+    
+    let updateTimeout: ReturnType<typeof setTimeout>;
+    
+    const observer = new MutationObserver(() => {
+        clearTimeout(updateTimeout);
+        updateTimeout = setTimeout(onUpdate, debounceMs);
+    });
+    
+    const observerConfig: MutationObserverInit = {
+        childList: true,
+        subtree: true,
+        characterData: true
+    };
+    
+    if (observeAttributes) {
+        observerConfig.attributes = true;
+    }
+    
+    observer.observe(element, observerConfig);
+    
+    return () => {
+        clearTimeout(updateTimeout);
+        observer.disconnect();
+    };
+};
+
+/**
+ * Determines the element after which a dragged element should be inserted
+ * @param container The container element holding draggable blocks
+ * @param clientY The Y coordinate of the drag event
+ * @returns The element after which to insert, or null to append to end
+ */
+export const getDragAfterElement = (container: HTMLElement, clientY: number): HTMLElement | null => {
+    const draggableElements = Array.from(
+        container.querySelectorAll<HTMLElement>('.editor-block:not(.dragging)')
+    );
+
+    const result = draggableElements.reduce(
+        (closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = clientY - box.top - box.height / 2;
+
+            if (offset < 0 && offset > closest.offset) {
+                return { offset, element: child };
+            }
+
+            return closest;
+        },
+        { offset: Number.NEGATIVE_INFINITY, element: null as HTMLElement | null }
+    );
+
+    return result.element;
+};
+
+/**
+ * Configuration options for drag and drop setup
+ */
+export interface DragAndDropOptions {
+    /** The editor container element */
+    editor: HTMLElement;
+    /** Callback fired when blocks are reordered */
+    onReorder?: () => void;
+}
+
+/**
+ * Sets up drag and drop functionality for editor blocks
+ * @param options Configuration options
+ * @returns Cleanup function to remove event listeners
+ */
+export const setupEditorDragAndDrop = (options: DragAndDropOptions): (() => void) => {
+    const { editor, onReorder } = options;
+
+    if (!browser || !(editor instanceof HTMLElement)) {
+        return () => {};
+    }
+
+    let draggedElement: HTMLElement | null = null;
+    const dropIndicator = document.createElement('div');
+    dropIndicator.className = 'editor-drop-indicator';
+    dropIndicator.setAttribute('aria-hidden', 'true');
+
+    const resetDragging = () => {
+        draggedElement?.classList.remove('dragging');
+        draggedElement = null;
+        dropIndicator.remove();
+        editor.classList.remove('is-reordering');
+    };
+
+    const handleDragStart = (event: DragEvent) => {
+        const target = event.target as HTMLElement | null;
+        const handle = target?.closest('.drag-handle, .handle');
+        if (!handle) return;
+        const block = handle.closest<HTMLElement>('.editor-block');
+        if (!block) return;
+
+        draggedElement = block;
+        block.classList.add('dragging');
+        editor.classList.add('is-reordering');
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            const dragOffsetX = block.clientWidth / 2;
+            const dragOffsetY = Math.min(event.offsetY ?? block.clientHeight / 2, block.clientHeight / 2);
+            event.dataTransfer.setDragImage(block, dragOffsetX, dragOffsetY);
+            event.dataTransfer.setData('text/plain', block.id ?? 'block');
+        }
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+        if (!draggedElement) return;
+        event.preventDefault();
+        const afterElement = getDragAfterElement(editor, event.clientY);
+        if (!afterElement) {
+            editor.appendChild(dropIndicator);
+            editor.appendChild(draggedElement);
+            return;
+        }
+
+        editor.insertBefore(dropIndicator, afterElement);
+        if (afterElement !== draggedElement) {
+            editor.insertBefore(draggedElement, afterElement);
+        }
+    };
+
+    const handleDrop = (event: DragEvent) => {
+        if (!draggedElement) return;
+        event.preventDefault();
+        resetDragging();
+        onReorder?.();
+    };
+
+    const handleDragEnd = () => resetDragging();
+
+    editor.addEventListener('dragstart', handleDragStart);
+    editor.addEventListener('dragover', handleDragOver);
+    editor.addEventListener('drop', handleDrop);
+    editor.addEventListener('dragend', handleDragEnd);
+
+    return () => {
+        editor.removeEventListener('dragstart', handleDragStart);
+        editor.removeEventListener('dragover', handleDragOver);
+        editor.removeEventListener('drop', handleDrop);
+        editor.removeEventListener('dragend', handleDragEnd);
+        dropIndicator.remove();
+    };
 }

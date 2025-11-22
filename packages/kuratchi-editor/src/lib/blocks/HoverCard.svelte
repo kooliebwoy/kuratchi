@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { LayoutBlock } from "../shell/index.js";
+	import { Pencil } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { BlockActions, SideActions } from "../utils/index.js";
 
 	interface Props {
 		id?: string;
@@ -35,11 +37,47 @@
 		imageUrl,
 		backgroundUrl
 	});
+
+	let component: HTMLElement;
+	let mounted = $state(false);
+	const sideActionsId = `side-actions-${id}`;
+
+	onMount(() => {
+		mounted = true;
+	});
 </script>
 
 {#if editable}
-	<LayoutBlock {id} {type}>
-		{#snippet drawerContent()}
+	<div class="editor-item group relative" bind:this={component}>
+		{#if mounted}
+			<BlockActions {id} {type} element={component} />
+		{/if}
+		<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`} {id} data-type={type}>
+			<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+				<div class="content-3d">
+					<div class="copy-3d">
+						<p class="text-sm uppercase tracking-widest opacity-70">Featured</p>
+						<h3 class="text-4xl font-semibold">{title}</h3>
+						<p class="opacity-80" contenteditable bind:innerHTML={subtitle}></p>
+						{#if ctaLabel}
+							<a class="btn btn-outline btn-sm rounded-full mt-2" href={ctaLink} target="_blank">{ctaLabel}</a>
+						{/if}
+					</div>
+					<div class="image-3d">
+						<img src={imageUrl} alt={title} class="rounded-2xl shadow-2xl" />
+					</div>
+				</div>
+			</div>
+	</div>
+
+	<SideActions triggerId={sideActionsId}>
+		{#snippet label()}
+			<button id={sideActionsId} class="krt-editButton" aria-label="Edit hover card settings" type="button">
+				<Pencil size={16} />
+				<span>Edit Settings</span>
+			</button>
+		{/snippet}
+		{#snippet content()}
 			<div class="space-y-4">
 				<label class="form-control">
 					<span class="label-text text-xs">Title</span>
@@ -69,32 +107,10 @@
 				</label>
 			</div>
 		{/snippet}
-
-		{#snippet metadata()}
-			{JSON.stringify(content)}
-		{/snippet}
-
-		{#snippet children()}
-	<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`} data-type={type}>
-				<div class="content-3d">
-					<div class="copy-3d">
-						<p class="text-sm uppercase tracking-widest opacity-70">Featured</p>
-						<h3 class="text-4xl font-semibold">{title}</h3>
-						<p class="opacity-80" contenteditable bind:innerHTML={subtitle}></p>
-						{#if ctaLabel}
-							<a class="btn btn-outline btn-sm rounded-full mt-2" href={ctaLink} target="_blank">{ctaLabel}</a>
-						{/if}
-					</div>
-					<div class="image-3d">
-						<img src={imageUrl} alt={title} class="rounded-2xl shadow-2xl" />
-					</div>
-				</div>
-			</div>
-		{/snippet}
-	</LayoutBlock>
+	</SideActions>
 {:else}
 	<section id={id} data-type={type}>
-		<div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+		<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
 	<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`}>
 			<div class="content-3d">
 				<div class="copy-3d">

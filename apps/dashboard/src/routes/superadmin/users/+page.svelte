@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Dialog, Badge, Alert, Loading } from '@kuratchi/ui';
-  import { Users, Trash2, X } from 'lucide-svelte';
+  import { Users, Trash2, X } from '@lucide/svelte';
   import { getAllUsers, deleteSuperadmin } from '$lib/functions/superadmin.remote';
 
   const usersQuery = getAllUsers();

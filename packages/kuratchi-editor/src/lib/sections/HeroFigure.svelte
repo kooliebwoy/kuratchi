@@ -2,7 +2,7 @@
     import { ArrowRight, Pencil } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface HeroButton {
         label?: string;
@@ -153,14 +153,23 @@
     </SideActions>
 
     <section class={`krt-heroFigure ${layoutMetadata.reverseOrder ? 'krt-heroFigure--reverse' : ''}`} style={layoutStyle} data-type={type}>
-        <div class="krt-heroFigure__metadata">{JSON.stringify(content)}</div>
-        <div class="krt-heroFigure__media">
-            {#if image?.url}
-                <img src={image.url} alt={image.alt ?? 'Hero figure image'} loading="lazy" />
-            {:else}
-                <div class="krt-heroFigure__placeholder">Add hero image</div>
-            {/if}
-        </div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div class="krt-heroFigure__inner">
+            <div class="krt-heroFigure__media">
+                {#if image?.url}
+                    <img src={image.url} alt={image.alt ?? 'Hero figure image'} loading="lazy" />
+                {:else}
+                    <div class="krt-heroFigure__placeholder">Add hero image</div>
+                {/if}
+            </div>
+            <div class="krt-heroFigure__content">
+                <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
+                <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>
+                <button class="krt-heroFigure__cta" type="button" onclick={(event) => event.preventDefault()}>
+                    <span contenteditable bind:innerHTML={button.label}></span>
+                    <ArrowRight aria-hidden="true" />
+                </button>
+            </div>
         <div class="krt-heroFigure__content">
             <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
             <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>

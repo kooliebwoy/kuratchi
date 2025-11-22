@@ -1,6 +1,9 @@
 import type { ComponentType } from 'svelte';
 
 import { getBlock } from '../registry/blocks.svelte';
+import { getHeader } from '../registry/headers.svelte';
+import { getFooter } from '../registry/footers.svelte';
+import { getSection } from '../registry/sections.svelte';
 
 type HeadingMetadata = Record<string, unknown> & { size?: string; color?: string };
 type ParagraphMetadata = Record<string, unknown> & { color?: string };
@@ -18,6 +21,40 @@ export function resolveBlockRender(block: Record<string, unknown> | null | undef
     return null;
   }
 
+  // Check headers first
+  const headerDef = getHeader(rawType);
+  if (headerDef?.component) {
+    const props: Record<string, unknown> = { ...block };
+    props.editable = false;
+    return {
+      component: headerDef.component as ComponentType,
+      props
+    };
+  }
+
+  // Check footers
+  const footerDef = getFooter(rawType);
+  if (footerDef?.component) {
+    const props: Record<string, unknown> = { ...block };
+    props.editable = false;
+    return {
+      component: footerDef.component as ComponentType,
+      props
+    };
+  }
+
+  // Check sections
+  const sectionDef = getSection(rawType);
+  if (sectionDef?.component) {
+    const props: Record<string, unknown> = { ...block };
+    props.editable = false;
+    return {
+      component: sectionDef.component as ComponentType,
+      props
+    };
+  }
+
+  // Fall back to blocks registry
   const blockEntry = getBlock(rawType);
   if (!blockEntry?.component) {
     return null;

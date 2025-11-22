@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface ButtonConfig {
         label: string;
@@ -75,7 +75,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
-        <div class="krt-aboutHero__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading}></h1>
             <p class="krt-aboutHero__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
@@ -149,7 +149,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
-        <div class="krt-aboutHero__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor}>
                 {@html heading}

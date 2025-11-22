@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { ArrowRight } from '@lucide/svelte';
-    import { LayoutBlock } from '../shell/index.js';
+    import { ArrowRight, Pencil } from '@lucide/svelte';
+    import { onMount } from 'svelte';
     import { blogStore } from '../stores/blog';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface LayoutMetadata {
         backgroundColor: string;
@@ -74,69 +75,23 @@
         metadata: { ...layoutMetadata },
         previewPosts
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
-        <div class="krt-featuredBlogsDrawer">
-            <section class="krt-featuredBlogsDrawer__section">
-                <h3>Content</h3>
-                <div class="krt-featuredBlogsDrawer__fields">
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" placeholder="Our blog" bind:value={heading} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Body</span>
-                        <textarea rows="3" placeholder="Tell readers what the blog covers" bind:value={body}></textarea>
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Button text</span>
-                        <input type="text" placeholder="Read more" bind:value={buttonText} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Button link</span>
-                        <input type="url" placeholder="https://" bind:value={buttonLink} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-featuredBlogsDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-featuredBlogsDrawer__grid">
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Background</span>
-                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Heading</span>
-                        <input type="color" bind:value={layoutMetadata.headingColor} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Body text</span>
-                        <input type="color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Button</span>
-                        <input type="color" bind:value={layoutMetadata.buttonColor} />
-                    </label>
-                    <label class="krt-featuredBlogsDrawer__field">
-                        <span>Card background</span>
-                        <input type="color" bind:value={layoutMetadata.cardBackground} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-featuredBlogs" style={layoutStyle} data-type={type}>
-            <div class="krt-featuredBlogs__metadata">{JSON.stringify(content)}</div>
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <section class="krt-featuredBlogs" style={layoutStyle} {id} data-type={type}>
+            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
             <div class="krt-featuredBlogs__hero">
                 <div class="krt-featuredBlogs__headingGroup">
                     <p class="krt-featuredBlogs__eyebrow">Featured stories</p>
@@ -193,11 +148,70 @@
                 {/if}
             </div>
         </section>
-    {/snippet}
-</LayoutBlock>
+    </div>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit featured blogs settings" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-featuredBlogsDrawer">
+                <section class="krt-featuredBlogsDrawer__section">
+                    <h3>Content</h3>
+                    <div class="krt-featuredBlogsDrawer__fields">
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" placeholder="Our blog" bind:value={heading} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Body</span>
+                            <textarea rows="3" placeholder="Tell readers what the blog covers" bind:value={body}></textarea>
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Button text</span>
+                            <input type="text" placeholder="Read more" bind:value={buttonText} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Button link</span>
+                            <input type="url" placeholder="https://" bind:value={buttonLink} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-featuredBlogsDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-featuredBlogsDrawer__grid">
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Background</span>
+                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Heading</span>
+                            <input type="color" bind:value={layoutMetadata.headingColor} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Body text</span>
+                            <input type="color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Button</span>
+                            <input type="color" bind:value={layoutMetadata.buttonColor} />
+                        </label>
+                        <label class="krt-featuredBlogsDrawer__field">
+                            <span>Card background</span>
+                            <input type="color" bind:value={layoutMetadata.cardBackground} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-featuredBlogs" style={layoutStyle}>
-        <div class="krt-featuredBlogs__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-featuredBlogs__hero">
             <div class="krt-featuredBlogs__headingGroup">
                 <p class="krt-featuredBlogs__eyebrow">Featured stories</p>

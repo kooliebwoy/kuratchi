@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { tick } from "svelte";
 
     type ListKind = 'ul' | 'ol';
@@ -114,9 +114,9 @@
         </BlockActions>
 
         <div data-type={type} id={id} class="w-full min-w-full">
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
 
             <svelte:element this={listType} class="space-y-2 prose-ul:list-disc prose-ol:list-decimal" bind:this={listContainer}>
                 {#each items as item, index}

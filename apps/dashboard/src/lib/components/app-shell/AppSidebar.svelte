@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Globe } from 'lucide-svelte';
+  import { Globe } from '@lucide/svelte';
   import type { AppNavItem } from './types';
 
   interface Props {

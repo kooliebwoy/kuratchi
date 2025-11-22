@@ -4,7 +4,7 @@
     enableBucketPublicDomain, 
     addBucketCustomDomain 
   } from '$lib/functions/storage.remote';
-  import { HardDrive, Globe, ExternalLink, Settings, CheckCircle, XCircle, AlertCircle, X } from 'lucide-svelte';
+  import { HardDrive, Globe, ExternalLink, Settings, CheckCircle, XCircle, AlertCircle, X } from '@lucide/svelte';
   import { Button, Dialog, Loading } from '@kuratchi/ui';
 
   let bucketsQuery = getAllBuckets(undefined);

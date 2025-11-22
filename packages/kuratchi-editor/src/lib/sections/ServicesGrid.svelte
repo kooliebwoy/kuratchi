@@ -1,8 +1,8 @@
 <script lang="ts">
     import { Plus, ArrowUp, ArrowDown, Trash2 } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
     type ServicesSpacing = 'small' | 'medium' | 'large';
@@ -175,7 +175,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
-        <div class="krt-servicesGrid__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-servicesGrid__container">
             {#if title || subtitle}
                 <header class="krt-servicesGrid__header">
@@ -330,7 +330,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
-        <div class="krt-servicesGrid__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-servicesGrid__container">
             {#if layoutMetadata.title || layoutMetadata.subtitle}
                 <header class="krt-servicesGrid__header">

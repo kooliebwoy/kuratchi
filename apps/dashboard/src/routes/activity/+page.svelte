@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity, CheckCircle, XCircle, User, Clock, Info, Shield, Building2, Trash2, Search, ChevronDown, ChevronRight } from 'lucide-svelte';
+  import { Activity, CheckCircle, XCircle, User, Clock, Info, Shield, Building2, Trash2, Search, ChevronDown, ChevronRight } from '@lucide/svelte';
   import { getActivities, clearOldActivities } from '$lib/functions/activity.remote';
   import { Badge, Button, Card, Loading } from '@kuratchi/ui';
 

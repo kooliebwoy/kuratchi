@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { IconPicker, ImagePicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
@@ -89,7 +89,7 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-header-item" bind:this={component}>
     {#if mounted}
         <BlockActions {id} {type} element={component} />
     {/if}
@@ -315,7 +315,7 @@
         style:color={textColor}
         data-type={type}
     >
-        <div class="krt-header__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

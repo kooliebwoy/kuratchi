@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Shield, Plus, Pencil, Trash2, X } from 'lucide-svelte';
+  import { Shield, Plus, Pencil, Trash2, X } from '@lucide/svelte';
   import { Dialog, Button, Card, Badge, Loading, FormField, FormInput, FormTextarea } from '@kuratchi/ui';
   import {
     getRoles,

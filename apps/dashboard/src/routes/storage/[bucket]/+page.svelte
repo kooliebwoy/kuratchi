@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { getAllMedia, getFolders, getBucketDetails, uploadMedia, updateMedia, deleteMedia, createFolder, updateFolder, deleteFolder } from '$lib/functions/storage.remote';
   import { Button, Card, Badge, Dialog, Loading } from '@kuratchi/ui';
-  import { Upload, FolderPlus, Trash2, Edit, Image, Film, FileText, File as FileIcon, X, Grid3x3, List, Folder, Eye, ArrowLeft, Copy, CheckCircle, Globe } from 'lucide-svelte';
+  import { Upload, FolderPlus, Trash2, Edit, Image, Film, FileText, File as FileIcon, X, Grid3x3, List, Folder, Eye, ArrowLeft, Copy, CheckCircle, Globe } from '@lucide/svelte';
 
   let bucketName = $derived(page.params.bucket);
 

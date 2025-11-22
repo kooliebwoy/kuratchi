@@ -7,12 +7,8 @@
  * - Themes: header + footer + homepage (composed of sections) + metadata
  */
 
-import type { PageData } from '../types';
-import type { SiteRegionState } from '../presets/types';
-import { createHeaderRegion } from '../registry/headers.svelte.js';
-import { createFooterRegion } from '../registry/footers.svelte.js';
+import type { PageData, SiteRegionState } from '../types';
 import { createDefaultBlogData } from '../types';
-import { createSectionBlocks } from '../registry/sections.svelte.js';
 
 export interface ThemeMetadata {
   id: string;
@@ -47,10 +43,14 @@ const createMinimalTheme = (): ThemeTemplate => ({
     seoTitle: 'Welcome to Your Site',
     seoDescription: 'A beautiful minimal website',
     slug: 'homepage',
-    content: createSectionBlocks('hero-figure', 'icon-bar', 'services-grid')
+    content: [
+      { type: 'hero-figure' },
+      { type: 'icon-bar' },
+      { type: 'services-grid' }
+    ]
   },
-  siteHeader: createHeaderRegion('saige-blake-header'),
-  siteFooter: createFooterRegion('saige-blake-footer'),
+  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
+  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
   siteMetadata: {
     backgroundColor: '#ffffff',
     themeId: 'minimal',
@@ -74,10 +74,14 @@ const createModernTheme = (): ThemeTemplate => ({
     seoTitle: 'Modern Design - Your Site',
     seoDescription: 'A contemporary website with modern aesthetics',
     slug: 'homepage',
-    content: createSectionBlocks('hero-overlay', 'card-with-slider', 'grid-ctas')
+    content: [
+      { type: 'hero-overlay' },
+      { type: 'card-with-slider' },
+      { type: 'grid-ctas' }
+    ]
   },
-  siteHeader: createHeaderRegion('twig-and-pearl-header'),
-  siteFooter: createFooterRegion('twig-and-pearl-footer'),
+  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
+  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
   siteMetadata: {
     backgroundColor: '#f8f9fa',
     themeId: 'modern',
@@ -101,10 +105,14 @@ const createClassicTheme = (): ThemeTemplate => ({
     seoTitle: 'Classic Elegance - Your Site',
     seoDescription: 'A timeless website with elegant design',
     slug: 'homepage',
-    content: createSectionBlocks('about-us-hero', 'about-us-card', 'grid-ctas')
+    content: [
+      { type: 'about-us-hero' },
+      { type: 'about-us-card' },
+      { type: 'grid-ctas' }
+    ]
   },
-  siteHeader: createHeaderRegion('saige-blake-header'),
-  siteFooter: createFooterRegion('twig-and-pearl-footer'),
+  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
+  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
   siteMetadata: {
     backgroundColor: '#fafafa',
     themeId: 'classic',
@@ -128,10 +136,14 @@ const createBoldTheme = (): ThemeTemplate => ({
     seoTitle: 'Make a Statement - Your Site',
     seoDescription: 'A bold and vibrant website that stands out',
     slug: 'homepage',
-    content: createSectionBlocks('hero-overlay', 'icon-bar', 'services-grid')
+    content: [
+      { type: 'hero-overlay' },
+      { type: 'icon-bar' },
+      { type: 'services-grid' }
+    ]
   },
-  siteHeader: createHeaderRegion('twig-and-pearl-header'),
-  siteFooter: createFooterRegion('saige-blake-footer'),
+  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
+  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
   siteMetadata: {
     backgroundColor: '#1a1a1a',
     themeId: 'bold',
@@ -155,10 +167,14 @@ const createCreativeTheme = (): ThemeTemplate => ({
     seoTitle: 'Creative Expression - Your Site',
     seoDescription: 'An artistic website for creative minds',
     slug: 'homepage',
-    content: createSectionBlocks('hero-overlay', 'card-with-slider', 'grid-ctas')
+    content: [
+      { type: 'hero-overlay' },
+      { type: 'card-with-slider' },
+      { type: 'grid-ctas' }
+    ]
   },
-  siteHeader: createHeaderRegion('twig-and-pearl-header'),
-  siteFooter: createFooterRegion('twig-and-pearl-footer'),
+  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
+  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
   siteMetadata: {
     backgroundColor: '#f0f4f8',
     themeId: 'creative',
@@ -182,10 +198,14 @@ const createProfessionalTheme = (): ThemeTemplate => ({
     seoTitle: 'Professional Solutions - Your Business',
     seoDescription: 'A professional website for your business',
     slug: 'homepage',
-    content: createSectionBlocks('hero-overlay', 'services-grid', 'about-us-card')
+    content: [
+      { type: 'hero-overlay' },
+      { type: 'services-grid' },
+      { type: 'about-us-card' }
+    ]
   },
-  siteHeader: createHeaderRegion('saige-blake-header'),
-  siteFooter: createFooterRegion('saige-blake-footer'),
+  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
+  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
   siteMetadata: {
     backgroundColor: '#ffffff',
     themeId: 'professional',

@@ -1,4 +1,4 @@
-import type { SiteRegionState } from './presets/types';
+import type { ComponentType } from 'svelte';
 
 const uuid = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -6,6 +6,26 @@ const uuid = () => {
   }
   return Math.random().toString(36).slice(2);
 };
+
+/**
+ * Serializable snapshot for a block instance. Matches the payload saved in metadata script tags.
+ */
+export interface BlockSnapshot extends Record<string, unknown> {
+	type: string;
+}
+
+export interface BlockPresetDefinition {
+	id: string;
+	name: string;
+	description?: string;
+	icon?: ComponentType;
+	tags?: string[];
+	create: () => BlockSnapshot[];
+}
+
+export interface SiteRegionState {
+	blocks: BlockSnapshot[];
+}
 
 /**
  * Single source of truth for all page data
@@ -368,6 +388,23 @@ export interface EditorOptions {
    * Callback when site metadata changes
    */
   onSiteMetadataUpdate?: (metadata: Record<string, unknown>) => void | Promise<void>;
+  /**
+   * Current page ID for multi-page editing
+   */
+  currentPageId?: string;
+  /**
+   * Callback when user switches pages
+   */
+  onPageSwitch?: (pageId: string) => void;
+  /**
+   * Callback when user creates a new page
+   */
+  onCreatePage?: () => void;
+  /**
+   * List of enabled plugin IDs (e.g., ['forms', 'blog'])
+   * If not specified, all registered plugins are enabled
+   */
+  enabledPlugins?: string[];
 }
 
 export const defaultPageData: PageData = {

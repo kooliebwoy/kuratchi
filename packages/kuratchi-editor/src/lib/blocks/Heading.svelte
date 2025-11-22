@@ -3,7 +3,7 @@
     import EditorToolbar from "../plugins/EditorToolbar.svelte";
     import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
 
     interface Props {
         id?: string;
@@ -87,9 +87,9 @@
         
         <div data-type={type} id={id} class="krt-heading-body">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
             {#if size === 'h1'}
                 <h1 id="heading" class="krt-heading krt-heading--h1 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
             {:else if size === 'h2'}

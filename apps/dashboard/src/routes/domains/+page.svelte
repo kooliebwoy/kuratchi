@@ -9,7 +9,7 @@
   } from '$lib/functions/emailDomains.remote';
   import { getSites } from '$lib/functions/sites.remote';
   import { linkDomainToSite, getDomainLinkInstructions } from '$lib/functions/siteCustomDomains.remote';
-  import { Mail, Plus, CheckCircle, AlertCircle, Copy, Trash2, RefreshCw, ExternalLink, Check, X, Globe, Sparkles, Database, Link, Loader2 } from 'lucide-svelte';
+  import { Mail, Plus, CheckCircle, AlertCircle, Copy, Trash2, RefreshCw, ExternalLink, Check, X, Globe, Sparkles, Database, Link, Loader2 } from '@lucide/svelte';
 
   // Load domains and sites
   const domains = getEmailDomains();

@@ -14,7 +14,7 @@
     Code,
     Undo2,
     Redo2
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   interface Props {
     content?: string;

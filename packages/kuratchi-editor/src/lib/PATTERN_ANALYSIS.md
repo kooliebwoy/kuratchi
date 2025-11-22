@@ -1,7 +1,7 @@
 # Component Refactor Pattern Analysis
 
 ## Pattern Overview
-Based on examination of `IconBar.svelte` and `LayoutBlock.svelte`, here is the **exact pattern** that must be followed for component refactoring:
+Components now use `BlockActions` and `SideActions` from `$lib/utils` instead of `LayoutBlock`. Editable experiences follow the same shape as our newer sections such as `IconBar`.
 
 ## 1. Props Interface Structure
 ```typescript
@@ -9,6 +9,7 @@ interface Props {
     id?: string;
     type?: string;
     metadata?: any;
+    editable?: boolean;
     // Component-specific properties
 }
 ```
@@ -18,101 +19,58 @@ interface Props {
 let {
     id = crypto.randomUUID(),
     type = 'component-type',
-    metadata = { /* default metadata object */ },
+    metadata = {},
+    editable = true,
     // Component-specific props with defaults
 }: Props = $props();
 ```
 
 ## 3. State Management Pattern
-- **$state()** for reactive individual properties:
-  ```typescript  
-  let componentSpecificState = $state(initialValue);
-  let metadataProperty = $state(metadata.property);
-  ```
+- Use `$state()` for reactive values and `$derived()` for computed content.
+- Rebuild a serializable `content` object that includes `id`, `type`, component data, and `metadata`.
 
-- **$derived()** for computed content object:
-  ```typescript
-  let content = $derived({
-      id,
-      type,
-      // component properties
-      metadata: {
-          // rebuilt from state variables
-      }
-  })
-  ```
-
-## 4. Required Import List
+## 4. Required Imports
 ```typescript
-import { LayoutBlock } from "$lib/shell";
-// Additional component-specific imports as needed
+import { onMount } from 'svelte';
+import { Pencil } from '@lucide/svelte';
+import { BlockActions, SideActions } from '$lib/utils';
 ```
 
-## 5. Three Required Snippets
-
-### A. drawerContent Snippet
-- Contains the editing interface for the component
-- Uses `<div class="space-y-6">` as root container
-- Implements form controls with `fieldset` and `fieldset-legend` classes
-- Uses `<div class="divider"></div>` to separate sections
-- Binds to state variables with `bind:value={stateVariable}`
-
-### B. metadata Snippet  
-- Simple JSON serialization: `{JSON.stringify(content)}`
-- No additional logic or formatting
-
-### C. children Snippet
-- Contains the actual component render output
-- Uses state variables for dynamic content
-- Implements the visual representation users see
-
-## 6. LayoutBlock Wrapper Structure
+## 5. Editable/Read-Only Structure
 ```svelte
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
-        <!-- editing interface -->
-    {/snippet}
+{#if editable}
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <section {id} data-type={type}>
+            <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
+            <!-- component output -->
+        </section>
+    </div>
 
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <!-- drawer controls -->
+        {/snippet}
+    </SideActions>
+{:else}
+    <section {id} data-type={type}>
+        <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
         <!-- component output -->
-    {/snippet}
-</LayoutBlock>
+    </section>
+{/if}
 ```
 
-## Key Pattern Requirements
-
-### State Variables
-- Use `$state()` for all reactive properties
-- Extract metadata properties into individual state variables
-- Keep state variables flat and simple
-
-### Content Object
-- Must be a `$derived()` reactive statement
-- Always includes `id`, `type`, and `metadata`
-- Metadata object reconstructed from individual state variables
-- Additional component properties included at root level
-
-### Editing Interface Standards
-- Use consistent CSS classes: `fieldset`, `fieldset-legend`, `form-control`, `input input-bordered`, `select`
-- Group related controls in `<div class="form-control gap-4">`
-- Use `<div class="divider"></div>` between major sections
-- Color inputs should have `h-12` class
-- Bind directly to state variables
-
-### Import Requirements
-- Always import `LayoutBlock` from `$lib/shell`
-- Additional imports as needed for specific component functionality
-- Follow existing import patterns in codebase
-
-## Critical Success Factors
-1. **Exact snippet names**: `drawerContent`, `metadata`, `children`
-2. **Proper state reactivity**: All editable properties must use `$state()`
-3. **Content derivation**: The `content` object must be `$derived()` and include all serializable data
-4. **Metadata reconstruction**: Individual state variables must be properly reconstructed into metadata object
-5. **LayoutBlock integration**: Must pass `{id}` and `{type}` to LayoutBlock component
-
-This pattern ensures components integrate seamlessly with the editor system while maintaining proper state management and serialization capabilities.
+## Key Requirements
+- Include `id` and `type` in `content` and on the rendered section.
+- Add hidden metadata JSON inside the rendered markup for serialization.
+- Use `editor-item` on editable wrappers so `BlockActions` hover/keyboard styles apply.
+- Gate `BlockActions` behind `onMount` when using browser-only APIs like `crypto.randomUUID()`.
+- Keep drawer controls inside `SideActions` and pair them with a trigger button that sets `triggerId`.

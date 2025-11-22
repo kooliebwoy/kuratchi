@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { ArrowRight, Plus } from '@lucide/svelte';
-    import { LayoutBlock } from '../shell/index.js';
+    import { ArrowRight, Pencil, Plus } from '@lucide/svelte';
+    import { onMount } from 'svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface ProductItem {
         id?: string;
@@ -79,99 +80,23 @@
         products: normalizedProducts,
         metadata: { ...layoutMetadata }
     });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
-        <div class="krt-productCarouselDrawer">
-            <section class="krt-productCarouselDrawer__section">
-                <h3>Content</h3>
-                <div class="krt-productCarouselDrawer__grid">
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" placeholder="Latest arrivals" bind:value={heading} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field krt-productCarouselDrawer__field--full">
-                        <span>Body</span>
-                        <textarea rows="3" placeholder="Tell people what makes these products special" bind:value={body}></textarea>
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Button text</span>
-                        <input type="text" placeholder="All products" bind:value={buttonText} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Button link</span>
-                        <input type="url" placeholder="https://" bind:value={buttonLink} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-productCarouselDrawer__section">
-                <div class="krt-productCarouselDrawer__headingRow">
-                    <h3>Products</h3>
-                    <p>{products.length} items</p>
-                </div>
-                <div class="krt-productCarouselDrawer__list">
-                    {#each products as product, index}
-                        <article class="krt-productCarouselDrawer__item">
-                            <header>
-                                <span>Product {index + 1}</span>
-                            </header>
-                            <div class="krt-productCarouselDrawer__fields">
-                                <label class="krt-productCarouselDrawer__field">
-                                    <span>Name</span>
-                                    <input type="text" placeholder="Cozy hoodie" bind:value={product.name} />
-                                </label>
-                                <label class="krt-productCarouselDrawer__field">
-                                    <span>Price</span>
-                                    <input type="text" placeholder="$199" bind:value={product.price} />
-                                </label>
-                                <label class="krt-productCarouselDrawer__field krt-productCarouselDrawer__field--full">
-                                    <span>Image URL</span>
-                                    <input type="url" placeholder="https://" bind:value={product.image} />
-                                </label>
-                            </div>
-                        </article>
-                    {/each}
-                </div>
-            </section>
-
-            <section class="krt-productCarouselDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-productCarouselDrawer__grid">
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Background</span>
-                        <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Text</span>
-                        <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Muted</span>
-                        <input type="color" aria-label="Muted text color" bind:value={layoutMetadata.mutedColor} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Card</span>
-                        <input type="color" aria-label="Card background" bind:value={layoutMetadata.cardBackground} />
-                    </label>
-                    <label class="krt-productCarouselDrawer__field">
-                        <span>Button</span>
-                        <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-productCarousel" style={layoutStyle} data-type={type}>
-            <div class="krt-productCarousel__metadata">{JSON.stringify(content)}</div>
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <section class="krt-productCarousel" style={layoutStyle} {id} data-type={type}>
+            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
             <div class="krt-productCarousel__hero">
                 <div class="krt-productCarousel__textGroup">
                     <p class="krt-productCarousel__eyebrow">Featured products</p>
@@ -221,11 +146,100 @@
                 {/if}
             </div>
         </section>
-    {/snippet}
-</LayoutBlock>
+    </div>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit product carousel settings" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-productCarouselDrawer">
+                <section class="krt-productCarouselDrawer__section">
+                    <h3>Content</h3>
+                    <div class="krt-productCarouselDrawer__grid">
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" placeholder="Latest arrivals" bind:value={heading} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field krt-productCarouselDrawer__field--full">
+                            <span>Body</span>
+                            <textarea rows="3" placeholder="Tell people what makes these products special" bind:value={body}></textarea>
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Button text</span>
+                            <input type="text" placeholder="All products" bind:value={buttonText} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Button link</span>
+                            <input type="url" placeholder="https://" bind:value={buttonLink} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-productCarouselDrawer__section">
+                    <div class="krt-productCarouselDrawer__headingRow">
+                        <h3>Products</h3>
+                        <p>{products.length} items</p>
+                    </div>
+                    <div class="krt-productCarouselDrawer__list">
+                        {#each products as product, index}
+                            <article class="krt-productCarouselDrawer__item">
+                                <header>
+                                    <span>Product {index + 1}</span>
+                                </header>
+                                <div class="krt-productCarouselDrawer__fields">
+                                    <label class="krt-productCarouselDrawer__field">
+                                        <span>Name</span>
+                                        <input type="text" placeholder="Cozy hoodie" bind:value={product.name} />
+                                    </label>
+                                    <label class="krt-productCarouselDrawer__field">
+                                        <span>Price</span>
+                                        <input type="text" placeholder="$199" bind:value={product.price} />
+                                    </label>
+                                    <label class="krt-productCarouselDrawer__field krt-productCarouselDrawer__field--full">
+                                        <span>Image URL</span>
+                                        <input type="url" placeholder="https://" bind:value={product.image} />
+                                    </label>
+                                </div>
+                            </article>
+                        {/each}
+                    </div>
+                </section>
+
+                <section class="krt-productCarouselDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-productCarouselDrawer__grid">
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Background</span>
+                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Text</span>
+                            <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Muted</span>
+                            <input type="color" aria-label="Muted text color" bind:value={layoutMetadata.mutedColor} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Card</span>
+                            <input type="color" aria-label="Card background" bind:value={layoutMetadata.cardBackground} />
+                        </label>
+                        <label class="krt-productCarouselDrawer__field">
+                            <span>Button</span>
+                            <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-productCarousel" style={layoutStyle}>
-        <div class="krt-productCarousel__metadata" data-type={type}>{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-productCarousel__hero">
             <div class="krt-productCarousel__textGroup">
                 <p class="krt-productCarousel__eyebrow">Featured products</p>

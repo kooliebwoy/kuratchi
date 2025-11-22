@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight, X } from 'lucide-svelte';
+  import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight, X } from '@lucide/svelte';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
   import { Button, Card, Dialog, Badge, Loading, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
   import {

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
     import Checkbox from "./Checkbox.svelte";
     import { onMount, mount } from "svelte";
 

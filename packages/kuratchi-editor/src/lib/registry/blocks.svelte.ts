@@ -11,22 +11,8 @@ import ImageDifference from '../blocks/ImageDifference.svelte';
 import Carousel from '../blocks/Carousel.svelte';
 import HoverCard from '../blocks/HoverCard.svelte';
 import Modal from '../blocks/Modal.svelte';
-import HeroFigure from '../sections/HeroFigure.svelte';
-import HeroOverlay from '../sections/HeroOverlay.svelte';
-import AboutUs from '../sections/AboutUs.svelte';
-import AboutUsCard from '../sections/AboutUsCard.svelte';
-import CardWithSlider from '../sections/CardWithSlider.svelte';
-import IconBar from '../sections/IconBar.svelte';
-import GridCTAs from '../sections/GridCTAs.svelte';
-import ServicesGrid from '../sections/ServicesGrid.svelte';
-import BlogHero from '../sections/BlogHero.svelte';
-import BlogPostList from '../sections/BlogPostList.svelte';
-import SaigeBlakeHeader from '../sections/SaigeBlakeHeader.svelte';
-import TwigAndPearlHeader from '../sections/TwigAndPearlHeader.svelte';
-import SaigeBlakeFooter from '../sections/SaigeBlakeFooter.svelte';
-import TwigAndPearlFooter from '../sections/TwigAndPearlFooter.svelte';
 import type { Component } from 'svelte';
-import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, LayoutGrid, ListChecks, Minus, MousePointerClick, PanelBottom, PanelTop, PanelsTopLeft, Sparkles, Square } from '@lucide/svelte';
+import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, ListChecks, Minus, MousePointerClick, Sparkles, Square, PanelsTopLeft } from '@lucide/svelte';
 
 export interface BlockDefinition {
 	name: string;
@@ -34,7 +20,6 @@ export interface BlockDefinition {
 	icon: Component<any>;
 	description: string;
 	component: Component<any>;
-	showInPalette?: boolean;
 }
 
 export const blocks: BlockDefinition[] = [
@@ -43,218 +28,91 @@ export const blocks: BlockDefinition[] = [
 		type: 'heading',
 		icon: Heading1,
 		description: 'Add a heading block',
-		component: Heading,
-		showInPalette: true
+		component: Heading
 	},
 	{
 		name: 'Paragraph',
 		type: 'paragraph',
 		icon: AlignLeft,
 		description: 'Add a paragraph block',
-		component: Paragraph,
-		showInPalette: true
+		component: Paragraph
 	},
 	{
 		name: 'Checklist',
 		type: 'checklist',
 		icon: CheckSquare,
 		description: 'Add a checklist block',
-		component: Checklist,
-		showInPalette: true
+		component: Checklist
 	},
 	{
 		name: 'Divider',
 		type: 'divider',
 		icon: Minus,
 		description: 'Add a section divider',
-		component: Divider,
-		showInPalette: true
+		component: Divider
 	},
 	{
 		name: 'Button',
 		type: 'button',
 		icon: MousePointerClick,
 		description: 'Add a customizable call-to-action button',
-		component: Button,
-		showInPalette: true
+		component: Button
 	},
 	{
 		name: 'Image',
 		type: 'image',
 		icon: ImageIcon,
 		description: 'Insert a single image',
-		component: ImageBlock,
-		showInPalette: true
+		component: ImageBlock
 	},
 	{
 		name: 'List',
 		type: 'list',
 		icon: ListChecks,
 		description: 'Add an ordered or unordered list',
-		component: ListsBlock,
-		showInPalette: true
+		component: ListsBlock
 	},
 	{
 		name: 'Grid',
 		type: 'grid',
 		icon: Grid2x2,
 		description: 'Flexible multi-column grid layout',
-		component: GridBlock,
-		showInPalette: true
+		component: GridBlock
 	},
 	{
 		name: 'Two Column',
 		type: 'two-column',
 		icon: Columns2,
 		description: 'Split content into two columns',
-		component: TwoColumnBlock,
-		showInPalette: true
+		component: TwoColumnBlock
 	},
 	{
 		name: 'Image Difference',
 		type: 'image-difference',
 		icon: PanelsTopLeft,
 		description: 'Compare two images with a slider',
-		component: ImageDifference,
-		showInPalette: true
+		component: ImageDifference
 	},
 	{
 		name: 'Carousel',
 		type: 'carousel',
 		icon: Images,
 		description: 'Full-width carousel with navigation controls',
-		component: Carousel,
-		showInPalette: true
+		component: Carousel
 	},
 	{
 		name: '3D Hover Card',
 		type: 'hover-card',
 		icon: Sparkles,
 		description: '3D hover image card with CTA',
-		component: HoverCard,
-		showInPalette: true
+		component: HoverCard
 	},
 	{
 		name: 'Modal',
 		type: 'modal',
 		icon: Square,
 		description: 'Popup modal with forms, images, or custom content',
-		component: Modal,
-		showInPalette: true
-	},
-	// Section blocks (hidden from default picker, composed via presets)
-	{
-		name: 'Hero Figure',
-		type: 'hero-figure',
-		icon: LayoutGrid,
-		description: 'Hero with two-column image',
-		component: HeroFigure,
-		showInPalette: false
-	},
-	{
-		name: 'Hero Overlay',
-		type: 'hero-overlay',
-		icon: PanelsTopLeft,
-		description: 'Hero with overlay background',
-		component: HeroOverlay,
-		showInPalette: false
-	},
-	{
-		name: 'About Us Hero',
-		type: 'about-us-hero',
-		icon: LayoutGrid,
-		description: 'Centered hero section',
-		component: AboutUs,
-		showInPalette: false
-	},
-	{
-		name: 'About Us Card',
-		type: 'about-us-card',
-		icon: LayoutGrid,
-		description: 'Two-column about section',
-		component: AboutUsCard,
-		showInPalette: false
-	},
-	{
-		name: 'Card With Slider',
-		type: 'card-with-slider',
-		icon: LayoutGrid,
-		description: 'Content card paired with image slider',
-		component: CardWithSlider,
-		showInPalette: false
-	},
-	{
-		name: 'Icon Bar',
-		type: 'icon-bar',
-		icon: LayoutGrid,
-		description: 'Icon highlights strip',
-		component: IconBar,
-		showInPalette: false
-	},
-	{
-		name: 'Grid CTAs',
-		type: 'grid-ctas',
-		icon: LayoutGrid,
-		description: 'Image cards grid',
-		component: GridCTAs,
-		showInPalette: false
-	},
-	{
-		name: 'Services Grid',
-		type: 'services-grid',
-		icon: LayoutGrid,
-		description: 'Feature/service grid',
-		component: ServicesGrid,
-		showInPalette: false
-	},
-	{
-		name: 'Blog Hero',
-		type: 'blog-hero',
-		icon: LayoutGrid,
-		description: 'Hero section for blog index pages',
-		component: BlogHero,
-		showInPalette: false
-	},
-	{
-		name: 'Blog Post List',
-		type: 'blog-post-list',
-		icon: LayoutGrid,
-		description: 'Listing of recent blog posts',
-		component: BlogPostList,
-		showInPalette: false
-	},
-	// Site chrome blocks (headers/footers)
-	{
-		name: 'Saige & Blake Header',
-		type: 'saige-blake-header',
-		icon: PanelTop,
-		description: 'Two-column nav with social icons',
-		component: SaigeBlakeHeader,
-		showInPalette: false
-	},
-	{
-		name: 'Twig & Pearl Header',
-		type: 'twig-and-pearl-header',
-		icon: PanelTop,
-		description: 'Minimal navigation header',
-		component: TwigAndPearlHeader,
-		showInPalette: false
-	},
-	{
-		name: 'Saige & Blake Footer',
-		type: 'saige-blake-footer',
-		icon: PanelBottom,
-		description: 'Footer with CTA and menu',
-		component: SaigeBlakeFooter,
-		showInPalette: false
-	},
-	{
-		name: 'Twig & Pearl Footer',
-		type: 'twig-and-pearl-footer',
-		icon: PanelBottom,
-		description: 'Multi-column footer',
-		component: TwigAndPearlFooter,
-		showInPalette: false
+		component: Modal
 	}
 ];
 

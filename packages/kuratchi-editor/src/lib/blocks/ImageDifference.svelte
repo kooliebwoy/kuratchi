@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { BlockActions } from '../shell/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface DifferenceImage {
         id: string;

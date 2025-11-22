@@ -1,21 +1,19 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import type { EditorOptions, PageData, BlogData, BlogPost, BlogSettings, FormData } from "./types.js";
-    import type { SiteRegionState } from "./presets/types.js";
-    import { defaultEditorOptions, defaultPageData, createDefaultBlogData, createDefaultFormData } from "./types.js";
-    import { blocks, getBlock } from "./registry";
+    import type { EditorOptions, PageData, SiteRegionState } from "./types.js";
+    import type { PluginContext } from "./plugins/types";
+    import { defaultEditorOptions, defaultPageData } from "./types.js";
+    import { blocks, getBlock, getEnabledPlugins } from "./registry";
+    import { sectionDefaults } from "./registry/sections.svelte";
+    import { headers } from "./registry/headers.svelte";
+    import { footers } from "./registry/footers.svelte";
     import { addComponentToEditor } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
-    import { MenuWidget, BlogManager, FormBuilder } from "./plugins";
+    import { MenuWidget } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
-    import PresetPreview from "./presets/PresetPreview.svelte";
-    import { headerOptions, createHeaderRegion } from "./registry/headers.svelte";
-    import { footerOptions, createFooterRegion } from "./registry/footers.svelte";
-    import { blogStore } from "./stores/blog";
     import ThemePreview from "./themes/ThemePreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
-    import { getAllBlogThemes, getBlogTheme } from "./blog/themes";
     import {
         Box,
         ChevronLeft,
@@ -32,8 +30,7 @@
         FileText,
         Plus,
         Palette,
-        BookOpen,
-        FileInput
+        PanelsTopLeft
     } from "@lucide/svelte";
 
     type Props = EditorOptions;
@@ -60,8 +57,9 @@ let {
         onSiteMetadataUpdate,
         currentPageId,
         onPageSwitch,
-        onCreatePage
-}: Props = $props();
+        onCreatePage,
+        enabledPlugins
+    }: Props = $props();
 
     const getPageList = () => Array.isArray(pages) ? pages : [];
     
@@ -73,19 +71,34 @@ let {
     let activeTab = $state('blocks');
     let browserMockup: HTMLDivElement;
     let activeSize = $state(initialDeviceSize);
+    let headerElement = $state<HTMLElement | undefined>(undefined);
+    let footerElement = $state<HTMLElement | undefined>(undefined);
     const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
     const themeOptions = getAllThemes();
-    const blogThemeOptions = getAllBlogThemes();
-let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
-let blogData = $state<BlogData>(blog ?? (siteMetadata as any)?.blog ?? createDefaultBlogData());
-let blogSnapshot = JSON.stringify(blogData);
-blogStore.set(blogData);
-let selectedPostId = $state(blogData.posts[0]?.id ?? null);
-let selectedPageForBlog = $state(getPageList()[0]?.id ?? null);
+    let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
 
-// Forms state
-let formsData = $state<FormData[]>((siteMetadata as any)?.forms ?? []);
-let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    // Plugin system
+    const activePlugins = getEnabledPlugins(enabledPlugins);
+    
+    // Plugin context - provides plugins with editor interaction capabilities
+    const pluginContext: PluginContext = {
+        siteMetadata,
+        updateSiteMetadata: async (updates: Record<string, unknown>) => {
+            siteMetadata = { ...siteMetadata, ...updates };
+            if (onSiteMetadataUpdate) {
+                await onSiteMetadataUpdate(siteMetadata);
+            }
+        },
+        pages: getPageList().map(p => ({
+            id: (p as any).id ?? '',
+            name: (p as any).name ?? '',
+            slug: (p as any).slug ?? ''
+        })),
+        reservedPages: (reservedPages ?? []).map(p => (p as any).slug ?? ''),
+        editor
+    };
+    
+    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2));
 
@@ -122,25 +135,6 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         }, autoSaveDelay);
     };
 
-    const persistBlog = async (next: BlogData) => {
-        blogData = next;
-        blogSnapshot = JSON.stringify(blogData);
-        blogStore.set(blogData);
-        blog = blogData;
-        siteMetadata = { ...(siteMetadata || {}), blog: blogData };
-        if (onSiteMetadataUpdate) {
-            await onSiteMetadataUpdate(siteMetadata);
-        }
-    };
-
-    const updateBlog = async (updater: (current: BlogData) => BlogData) => {
-        const next = updater(JSON.parse(JSON.stringify(blogData)));
-        await persistBlog(next);
-        if (!selectedPostId && next.posts.length > 0) {
-            selectedPostId = next.posts[0].id;
-        }
-    };
-
     // Handle changes from EditorCanvas
     const handleContentChange = (content: Array<Record<string, unknown>>) => {
         localPageData.content = content;
@@ -161,13 +155,6 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         }
     };
 
-    const applyHeaderPreset = async (presetId: string) => {
-        await handleHeaderChange(createHeaderRegion(presetId));
-    };
-
-    const applyFooterPreset = async (presetId: string) => {
-        await handleFooterChange(createFooterRegion(presetId));
-    };
 
     const applyTheme = async (themeId: string) => {
         const template = getThemeTemplate(themeId);
@@ -175,36 +162,12 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         const homepage = template.defaultHomepage;
         localPageData = { ...localPageData, ...homepage };
         siteMetadata = { ...(template.siteMetadata || {}), themeId };
-        if (!(siteMetadata as any)?.blog) {
-            (siteMetadata as any).blog = createDefaultBlogData();
-        }
-        blogData = JSON.parse(JSON.stringify((siteMetadata as any).blog)) as BlogData;
-        blogSnapshot = JSON.stringify(blogData);
-        blogStore.set(blogData);
-        blog = blogData;
-        selectedPostId = blogData.posts[0]?.id ?? null;
         await handleHeaderChange(template.siteHeader);
         await handleFooterChange(template.siteFooter);
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
         }
         navState = ensureNavigation();
-    };
-
-    const applyBlogTheme = async (themeId: string) => {
-        if (!editor) return;
-        const theme = getBlogTheme(themeId);
-        const blocks = theme.createIndexBlocks();
-        blocks.forEach((snapshot) => {
-            const definition = getBlock(snapshot.type);
-            if (!definition) return;
-            const props = { ...snapshot };
-            addComponentToEditor(editor, definition.component, props);
-        });
-        await updateBlog((blog) => {
-            blog.settings = { ...blog.settings, ...theme.defaultSettings, themeId: theme.id };
-            return blog;
-        });
     };
 
     const adjustBrowserSize = (size: 'phone' | 'tablet' | 'desktop') => {
@@ -241,21 +204,6 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         }
     });
 
-    $effect(() => {
-        const incomingBlog = (siteMetadata as any)?.blog;
-        if (incomingBlog) {
-            const incomingSnapshot = JSON.stringify(incomingBlog);
-            if (incomingSnapshot !== blogSnapshot) {
-                blogData = JSON.parse(incomingSnapshot) as BlogData;
-                blogSnapshot = incomingSnapshot;
-                blogStore.set(blogData);
-                blog = blogData;
-                if (!selectedPostId && blogData.posts.length > 0) {
-                    selectedPostId = blogData.posts[0].id;
-                }
-            }
-        }
-    });
 
     $effect(() => {
         const incomingTheme = (siteMetadata as any)?.themeId;
@@ -264,12 +212,6 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         }
     });
 
-    $effect(() => {
-        const firstPage = getPageList()[0];
-        if (!selectedPageForBlog && firstPage) {
-            selectedPageForBlog = firstPage.id;
-        }
-    });
 
     onMount(() => {
         $sideBarStore = false;
@@ -367,202 +309,15 @@ let selectedFormId = $state<string | null>(formsData[0]?.id ?? null);    const r
         await saveNavigation(navState);
     };
 
-    const addCategory = async () => {
-        await updateBlog((blog) => {
-            const name = `Category ${blog.categories.length + 1}`;
-            blog.categories.push({
-                id: randomId(),
-                name,
-                slug: slugify(name)
-            });
-            return blog;
-        });
-    };
 
-    const updateCategoryField = async (index: number, field: 'name' | 'slug', value: string) => {
-        await updateBlog((blog) => {
-            const category = blog.categories[index];
-            if (!category) return blog;
-            if (field === 'name') {
-                category.name = value;
-            } else {
-                category.slug = slugify(value);
-            }
-            return blog;
-        });
-    };
-
-    const removeCategory = async (index: number) => {
-        await updateBlog((blog) => {
-            const removed = blog.categories[index];
-            if (!removed) return blog;
-            blog.categories.splice(index, 1);
-            blog.posts.forEach((post) => {
-                post.categories = post.categories.filter((slug) => slug !== removed.slug);
-            });
-            return blog;
-        });
-    };
-
-    const addTag = async () => {
-        await updateBlog((blog) => {
-            const name = `Tag ${blog.tags.length + 1}`;
-            blog.tags.push({
-                id: randomId(),
-                name,
-                slug: slugify(name)
-            });
-            return blog;
-        });
-    };
-
-    const updateTagField = async (index: number, field: 'name' | 'slug', value: string) => {
-        await updateBlog((blog) => {
-            const tag = blog.tags[index];
-            if (!tag) return blog;
-            if (field === 'name') {
-                tag.name = value;
-            } else {
-                tag.slug = slugify(value);
-            }
-            return blog;
-        });
-    };
-
-    const removeTag = async (index: number) => {
-        await updateBlog((blog) => {
-            const removed = blog.tags[index];
-            if (!removed) return blog;
-            blog.tags.splice(index, 1);
-            blog.posts.forEach((post) => {
-                post.tags = post.tags.filter((slug) => slug !== removed.slug);
-            });
-            return blog;
-        });
-    };
-
-    const addPostFromPageId = async (pageId: string | null | undefined) => {
-        if (!pageId) return;
-        const page = getPageList().find((entry) => entry.id === pageId);
-        if (!page) return;
-        const title = page.title ?? 'Untitled Post';
-        const slugValue = page.slug ?? slugify(title);
-        const newPost: BlogPost = {
-            id: randomId(),
-            pageId: page.id,
-            title,
-            slug: slugValue,
-            excerpt: 'Add a short description for this article.',
-            publishedOn: toDateInputValue(),
-            coverImage: undefined,
-            categories: [],
-            tags: [],
-            featured: blogData.posts.length === 0
-        };
-        await updateBlog((blog) => {
-            blog.posts = [newPost, ...blog.posts];
-            if (!blog.settings.featuredPostId) {
-                blog.settings.featuredPostId = newPost.id;
-            }
-            return blog;
-        });
-        selectedPostId = newPost.id;
-    };
-
-    const updatePost = async (postId: string, mutate: (post: BlogPost) => void) => {
-        await updateBlog((blog) => {
-            const post = blog.posts.find((p) => p.id === postId);
-            if (post) {
-                mutate(post);
-            }
-            return blog;
-        });
-    };
-
-    const removePost = async (postId: string) => {
-        await updateBlog((blog) => {
-            blog.posts = blog.posts.filter((post) => post.id !== postId);
-            if (blog.settings.featuredPostId === postId) {
-                blog.settings.featuredPostId = blog.posts[0]?.id ?? null;
-            }
-            return blog;
-        });
-        if (selectedPostId === postId) {
-            selectedPostId = blogData.posts[0]?.id ?? null;
-        }
-    };
-
-    const togglePostCategory = async (postId: string, slug: string) => {
-        await updatePost(postId, (post) => {
-            if (post.categories.includes(slug)) {
-                post.categories = post.categories.filter((entry) => entry !== slug);
-            } else {
-                post.categories.push(slug);
-            }
-        });
-    };
-
-    const togglePostTag = async (postId: string, slug: string) => {
-        await updatePost(postId, (post) => {
-            if (post.tags.includes(slug)) {
-                post.tags = post.tags.filter((entry) => entry !== slug);
-            } else {
-                post.tags.push(slug);
-            }
-        });
-    };
-
-    const setFeaturedPost = async (postId: string | null) => {
-        await updateBlog((blog) => {
-            blog.settings.featuredPostId = postId;
-            return blog;
-        });
-    };
-
-    const updateBlogSetting = async (field: keyof BlogSettings, value: string | number | boolean | null) => {
-        await updateBlog((blog) => {
-            (blog.settings as any)[field] = value;
-            return blog;
-        });
-    };
-
-// Forms handlers
-const handleFormUpdate = async (updatedForm: FormData) => {
-    formsData = formsData.map(form => 
-        form.id === updatedForm.id ? updatedForm : form
-    );
-    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
-    if (onSiteMetadataUpdate) {
-        await onSiteMetadataUpdate(siteMetadata);
-    }
-};
-
-const addNewForm = () => {
-    const newForm = createDefaultFormData();
-    formsData = [...formsData, newForm];
-    selectedFormId = newForm.id;
-    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
-    if (onSiteMetadataUpdate) {
-        onSiteMetadataUpdate(siteMetadata);
-    }
-};
-
-const deleteForm = (formId: string) => {
-    formsData = formsData.filter(f => f.id !== formId);
-    if (selectedFormId === formId) {
-        selectedFormId = formsData[0]?.id ?? null;
-    }
-    siteMetadata = { ...(siteMetadata || {}), forms: formsData };
-    if (onSiteMetadataUpdate) {
-        onSiteMetadataUpdate(siteMetadata);
-    }
-};
 </script>
 
 {#if !showUI}
     <!-- Canvas-only mode for simple embedding -->
     <EditorCanvas 
         bind:editor
+        bind:headerElement
+        bind:footerElement
         content={localPageData.content}
         backgroundColor={siteMetadata?.backgroundColor || '#000000'}
         header={siteHeader}
@@ -589,6 +344,13 @@ const deleteForm = (formId: string) => {
                 <Box />
             </button>
             <button 
+                class={`krt-editor__railButton ${activeTab === 'sections' ? 'is-active' : ''}`}
+                onclick={() => toggleSidebar('sections')}
+                title="Sections"
+            >
+                <PanelsTopLeft />
+            </button>
+            <button 
                 class={`krt-editor__railButton ${activeTab === 'site' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('site')}
                 title="Site"
@@ -602,20 +364,15 @@ const deleteForm = (formId: string) => {
             >
                 <Palette />
             </button>
-            <button 
-                class={`krt-editor__railButton ${activeTab === 'blog' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('blog')}
-                title="Blog"
-            >
-                <BookOpen />
-            </button>
-            <button 
-                class={`krt-editor__railButton ${activeTab === 'forms' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('forms')}
-                title="Forms"
-            >
-                <FileInput />
-            </button>
+            {#each activePlugins as plugin}
+                <button 
+                    class={`krt-editor__railButton ${activeTab === plugin.id ? 'is-active' : ''}`}
+                    onclick={() => toggleSidebar(plugin.id)}
+                    title={plugin.railButton?.title ?? plugin.name}
+                >
+                    <plugin.icon />
+                </button>
+            {/each}
             <button 
                 class={`krt-editor__railButton ${activeTab === 'navigation' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('navigation')}
@@ -644,13 +401,13 @@ const deleteForm = (formId: string) => {
             <div class="krt-editor__sidebarHeader">
                 <h2>
                     {activeTab === 'blocks' ? 'Blocks' : 
+                     activeTab === 'sections' ? 'Sections' : 
                      activeTab === 'site' ? 'Site' : 
                      activeTab === 'themes' ? 'Themes' :
-                     activeTab === 'blog' ? 'Blog' :
-                     activeTab === 'forms' ? 'Forms' :
                      activeTab === 'navigation' ? 'Navigation' : 
                      activeTab === 'settings' ? 'Settings' : 
-                     activeTab === 'pages' ? 'Pages' : 'Page Builder'}
+                     activeTab === 'pages' ? 'Pages' : 
+                     activePlugins.find(p => p.id === activeTab)?.name ?? 'Page Builder'}
                 </h2>
                 <button 
                     class="krt-editor__sidebarClose"
@@ -677,44 +434,61 @@ const deleteForm = (formId: string) => {
                         {:else}
                             <div class="krt-editor__loadingMessage">Editor loading...</div>
                         {/if}
+                    {:else if activeTab === 'sections'}
+                        {#if editor}
+                            <div class="krt-editor__paletteList">
+                                {#each Object.entries(sectionDefaults) as [id, section]}
+                                    {@const blockDef = getBlock(section.type)}
+                                    {#if blockDef}
+                                        <button
+                                            class="krt-editor__sidebarItem"
+                                            onclick={() => addComponentToEditor(editor, blockDef.component, section)}
+                                        >
+                                            <blockDef.icon />
+                                            <span>{blockDef.name}</span>
+                                        </button>
+                                    {/if}
+                                {/each}
+                            </div>
+                        {:else}
+                            <div class="krt-editor__loadingMessage">Editor loading...</div>
+                        {/if}
                     {:else if activeTab === 'site'}
                         <div class="krt-editor__sidebarSection">
-                            <!-- Header Selection -->
-                            <div>
-                                <div class="krt-editor__sectionLabel">
-                                    <PanelTop />
-                                    <span>Header</span>
-                                </div>
-                                <div class="krt-editor__presetStack">
-                                    {#each headerOptions as option}
-                                        <button
-                                            class={`krt-editor__presetButton ${siteHeader?.presetId === option.id ? 'is-active' : ''}`}
-                                            onclick={() => applyHeaderPreset(option.id)}
-                                        >
-                                            <PresetPreview preset={{ id: option.id, name: option.name, description: option.description, create: () => [option.create()] }} />
-                                            <div>{option.name}</div>
-                                        </button>
-                                    {/each}
-                                </div>
+                            <h3 class="krt-editor__sectionTitle">Headers</h3>
+                            <div class="krt-editor__blockGrid">
+                                {#each headers as header}
+                                    {@const Icon = header.icon}
+                                    <button
+                                        class="krt-editor__blockButton"
+                                        onclick={() => {
+                                            if (headerElement) {
+                                                addComponentToEditor(headerElement, header.component, { type: header.type });
+                                            }
+                                        }}
+                                    >
+                                        <Icon />
+                                        <span>{header.name}</span>
+                                    </button>
+                                {/each}
                             </div>
-
-                            <!-- Footer Selection -->
-                            <div>
-                                <div class="krt-editor__sectionLabel">
-                                    <PanelBottom />
-                                    <span>Footer</span>
-                                </div>
-                                <div class="krt-editor__presetStack">
-                                    {#each footerOptions as option}
-                                        <button
-                                            class={`krt-editor__presetButton ${siteFooter?.presetId === option.id ? 'is-active' : ''}`}
-                                            onclick={() => applyFooterPreset(option.id)}
-                                        >
-                                            <PresetPreview preset={{ id: option.id, name: option.name, description: option.description, create: () => [option.create()] }} />
-                                            <div>{option.name}</div>
-                                        </button>
-                                    {/each}
-                                </div>
+                            
+                            <h3 class="krt-editor__sectionTitle">Footers</h3>
+                            <div class="krt-editor__blockGrid">
+                                {#each footers as footer}
+                                    {@const Icon = footer.icon}
+                                    <button
+                                        class="krt-editor__blockButton"
+                                        onclick={() => {
+                                            if (footerElement) {
+                                                addComponentToEditor(footerElement, footer.component, { type: footer.type });
+                                            }
+                                        }}
+                                    >
+                                        <Icon />
+                                        <span>{footer.name}</span>
+                                    </button>
+                                {/each}
                             </div>
                         </div>
                     {:else if activeTab === 'themes'}
@@ -732,94 +506,16 @@ const deleteForm = (formId: string) => {
                                 </button>
                             {/each}
                         </div>
-                    {:else if activeTab === 'blog'}
-                        <BlogManager
-                            blogData={blogData}
-                            selectedPageForBlog={selectedPageForBlog}
-                            selectedPostId={selectedPostId}
-                            addCustomNavItem={addCustomNavItem}
-                            addCategory={addCategory}
-                            updateCategoryField={updateCategoryField}
-                            removeCategory={removeCategory}
-                            addTag={addTag}
-                            updateTagField={updateTagField}
-                            removeTag={removeTag}
-                            addPostFromPageId={addPostFromPageId}
-                            updatePost={updatePost}
-                            removePost={removePost}
-                            togglePostCategory={togglePostCategory}
-                            togglePostTag={togglePostTag}
-                            setFeaturedPost={setFeaturedPost}
-                            updateBlogSetting={updateBlogSetting}
-                            slugify={slugify}
-                            toDateInputValue={toDateInputValue}
-                            getPageList={getPageList}
-                            blogThemes={blogThemeOptions}
-                            onApplyTheme={applyBlogTheme}
-                        />
-                    {:else if activeTab === 'forms'}
-                        <div class="krt-editor__sidebarSection">
-                            <div class="krt-editor__sidebarSectionHeader">
-                                <h3>Your Forms</h3>
-                                <button 
-                                    class="krt-editor__ghostButton"
-                                    onclick={addNewForm}
-                                >
-                                    <Plus />
-                                    <span>New</span>
-                                </button>
-                            </div>
-
-                            {#if formsData.length === 0}
-                                <div class="krt-editor__emptyState">
-                                    <p>No forms yet</p>
-                                    <button 
-                                        class="krt-editor__primaryButton"
-                                        onclick={addNewForm}
-                                    >
-                                        <Plus />
-                                        Create First Form
-                                    </button>
-                                </div>
-                            {:else}
-                                <div class="krt-editor__formControls">
-                                    <label class="krt-editor__formLabel">
-                                        <span>Select Form</span>
-                                        <select 
-                                            class="krt-editor__select"
-                                            bind:value={selectedFormId}
-                                        >
-                                            {#each formsData as form}
-                                                <option value={form.id}>{form.settings.formName}</option>
-                                            {/each}
-                                        </select>
-                                    </label>
-                                </div>
-
-                                {#if selectedFormId}
-                                    {@const formIndex = formsData.findIndex(f => f.id === selectedFormId)}
-                                    {#if formIndex !== -1}
-                                        <div class="krt-editor__formControls">
-                                            <button 
-                                                class="krt-editor__dangerButton"
-                                                onclick={() => {
-                                                    if (confirm(`Delete form "${formsData[formIndex].settings.formName}"?`)) {
-                                                        deleteForm(formsData[formIndex].id);
-                                                    }
-                                                }}
-                                            >
-                                                Delete Form
-                                            </button>
-                                        </div>
-                                        <FormBuilder 
-                                            bind:formData={formsData[formIndex]}
-                                            onUpdateForm={handleFormUpdate}
-                                        />
-                                    {/if}
-                                {/if}
+                    {:else}
+                        <!-- Dynamic plugin rendering -->
+                        {#each activePlugins as plugin}
+                            {#if activeTab === plugin.id}
+                                <plugin.sidebar context={pluginContext} />
                             {/if}
-                        </div>
-                    {:else if activeTab === 'navigation'}
+                        {/each}
+                    {/if}
+                    
+                    {#if activeTab === 'navigation'}
                         <div class="krt-editor__sidebarSection">
                             <!-- Header Menu Section -->
                             <div class="krt-editor__navCard">
@@ -1048,6 +744,8 @@ const deleteForm = (formId: string) => {
                         {#key `${(pageData?.id || pageData?.slug || 'noid')}-${siteHeader?.type || 'none'}-${siteFooter?.type || 'none'}`}
                             <EditorCanvas 
                                 bind:editor
+                                bind:headerElement
+                                bind:footerElement
                                 content={localPageData.content}
                                 backgroundColor={siteMetadata?.backgroundColor || '#000000'}
                                 header={siteHeader}
@@ -1249,11 +947,6 @@ const deleteForm = (formId: string) => {
         gap: 0.75rem;
     }
 
-    .krt-editor__presetStack {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
 
     .krt-editor__sectionLabel {
         display: flex;
@@ -1271,7 +964,6 @@ const deleteForm = (formId: string) => {
         color: var(--krt-color-primary);
     }
 
-    .krt-editor__presetButton,
     .krt-editor__themeButton {
         border: none;
         border-radius: var(--krt-radius-md);
@@ -1286,7 +978,6 @@ const deleteForm = (formId: string) => {
         transition: transform 160ms ease, box-shadow 160ms ease, border 160ms ease;
     }
 
-    .krt-editor__presetButton.is-active,
     .krt-editor__themeButton.is-active {
         border: 1px solid var(--krt-color-primary);
         box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);

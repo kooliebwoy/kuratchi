@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Shield, Building2, Users, Activity } from 'lucide-svelte';
+  import { Shield, Building2, Users, Activity } from '@lucide/svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
 

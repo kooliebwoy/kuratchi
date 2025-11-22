@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { onMount } from "svelte";
 
     interface Props {
@@ -40,10 +40,7 @@
 
         <div data-type={type} id={id} class="w-full min-w-full">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </div>
-
+            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
             <div class="divider"></div>
         </div>
     </div>

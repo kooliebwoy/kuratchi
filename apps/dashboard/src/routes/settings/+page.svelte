@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Badge } from '@kuratchi/ui';
-  import { Save, User, Copy, Check } from 'lucide-svelte';
+  import { Save, User, Copy, Check } from '@lucide/svelte';
   import { getAccountSettings, updateProfile } from '$lib/functions/settings.remote';
 
   const account = getAccountSettings();

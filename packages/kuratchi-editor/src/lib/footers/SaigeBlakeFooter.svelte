@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
@@ -17,6 +17,7 @@
         copyrightText?: any;
         menu?: any;
         menuHidden?: boolean;
+        editable?: boolean;
     }
 
     let {
@@ -40,7 +41,8 @@
             { label: 'Follow Us', slug: '/product-c' },
             { label: 'Contact Us', slug: '/product-d' },
         ],
-        menuHidden = false
+        menuHidden = false,
+        editable = true
     }: Props = $props();
 
     let icons = $state(initialIcons);
@@ -87,7 +89,7 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-footer-item" bind:this={component}>
     {#if mounted}
         <BlockActions {id} {type} element={component} />
     {/if}
@@ -236,7 +238,7 @@
         style:color={textColor}
         data-type={type}
     >
-        <div class="krt-footer__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading">{subscribeText}</h2>
             <div class="krt-footer__form">

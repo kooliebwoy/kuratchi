@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { ThemeTemplate } from '../themes';
-	import type { BlockSnapshot } from '../presets/types';
+	import type { BlockSnapshot } from '../types';
 	import { resolveBlockRender } from '../render';
 
 	const { theme, maxBodyBlocks = 3, scale = 0.4 } = $props<{
@@ -30,7 +30,7 @@
 				{#each sequence as block, index (keyFor(block, index))}
 					{@const renderable = resolveBlockRender(block)}
 					{#if renderable}
-						<svelte:component this={renderable.component} {...renderable.props} editable={false} />
+						<renderable.component {...renderable.props} editable={false} />
 					{/if}
 				{/each}
 			{/if}

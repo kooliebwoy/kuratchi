@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { ImagePicker } from '../plugins/index.js';
 
     interface CardImage {
@@ -87,7 +87,7 @@
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
         style:background-color={layoutMetadata.backgroundColor}
     >
-        <div class="krt-aboutCard__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-aboutCard__inner">
             <div class="krt-aboutCard__copy">
                 <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={heading}></h2>
@@ -163,7 +163,7 @@
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
         style:background-color={layoutMetadata.backgroundColor}
     >
-        <div class="krt-aboutCard__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-aboutCard__inner">
             <div class="krt-aboutCard__copy">
                 <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor}>

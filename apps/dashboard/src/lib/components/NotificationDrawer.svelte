@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Loading } from '@kuratchi/ui';
-  import { X, Bell, Check, Trash2, Database, Shield, CreditCard, User, Package, AlertTriangle, Info } from 'lucide-svelte';
+  import { X, Bell, Check, Trash2, Database, Shield, CreditCard, User, Package, AlertTriangle, Info } from '@lucide/svelte';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
 

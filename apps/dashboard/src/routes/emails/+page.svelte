@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Zap, Users, FileText, Globe, ArrowRight } from 'lucide-svelte';
+  import { Mail, Zap, Users, FileText, Globe, ArrowRight } from '@lucide/svelte';
   import { getEmails, getEmailStats } from '$lib/functions/emails.remote';
   import { listDripCampaigns, listSegments } from '$lib/functions/newsletter.remote';
   import { getEmailDomains } from '$lib/functions/emailDomains.remote';

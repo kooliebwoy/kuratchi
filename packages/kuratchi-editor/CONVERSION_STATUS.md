@@ -11,7 +11,7 @@ import { LayoutBlock } from '../shell/index.js';
 
 // NEW
 import { onMount } from 'svelte';
-import { Pencil } from 'lucide-svelte';
+import { Pencil } from '@lucide/svelte';
 import { BlockActions, SideActions } from '../shell/index.js';
 ```
 

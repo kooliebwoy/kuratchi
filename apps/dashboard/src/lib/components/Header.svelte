@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card } from '@kuratchi/ui';
-  import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from 'lucide-svelte';
+  import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from '@lucide/svelte';
   import { searchOrganizations, setActiveOrganization } from '$lib/functions/superadmin.remote';
   import { signOut } from '$lib/functions/auth.remote';
   import { goto, invalidateAll } from '$app/navigation';

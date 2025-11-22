@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Activity } from 'lucide-svelte';
+  import { Activity } from '@lucide/svelte';
   import { getPlatformActivity } from '$lib/functions/superadmin.remote';
 
   const activityQuery = getPlatformActivity();

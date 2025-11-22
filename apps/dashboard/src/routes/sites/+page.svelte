@@ -5,7 +5,7 @@
     createSite,
     deleteSite
   } from '$lib/functions/sites.remote';
-  import { Layout, Plus, ExternalLink, Settings, Trash2, X } from 'lucide-svelte';
+  import { Layout, Plus, ExternalLink, Settings, Trash2, X } from '@lucide/svelte';
   import { Button, Card, Badge, Dialog, Loading, FormField, FormInput } from '@kuratchi/ui';
 
   let createDialog: HTMLDialogElement;

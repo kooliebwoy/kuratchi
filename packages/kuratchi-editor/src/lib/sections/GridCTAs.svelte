@@ -1,9 +1,9 @@
 <script lang="ts">
     import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
+    import { Pencil } from '@lucide/svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface CardImage {
         key?: string;
@@ -168,7 +168,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
-        <div class="krt-gridCtas__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-gridCtas__inner">
             <header class="krt-gridCtas__header">
                 <h2 class="krt-gridCtas__heading" contenteditable bind:innerHTML={heading}></h2>
@@ -298,7 +298,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
-        <div class="krt-gridCtas__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-gridCtas__inner">
             <header class="krt-gridCtas__header">
                 {#if heading}

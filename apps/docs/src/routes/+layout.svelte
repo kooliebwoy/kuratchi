@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { Database, Github } from 'lucide-svelte';
+	import { Database, Github } from '@lucide/svelte';
 </script>
 
 <div class="min-h-screen bg-white text-gray-900">

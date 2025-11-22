@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Mail, List, Send, Zap, Users, FileText } from 'lucide-svelte';
+  import { Mail, List, Send, Zap, Users, FileText } from '@lucide/svelte';
   import { Tabs } from '@kuratchi/ui';
   import type { Snippet } from 'svelte';
 

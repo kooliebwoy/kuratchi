@@ -1,8 +1,8 @@
 <script lang="ts">
     import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from '../shell/index.js';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
     import { blogStore } from '../stores/blog';
     import type { BlogData } from '../types';
 

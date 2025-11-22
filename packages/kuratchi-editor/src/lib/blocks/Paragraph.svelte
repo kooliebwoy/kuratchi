@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte";
 	import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
 	import EditorToolbar from "../plugins/EditorToolbar.svelte";
-	import { BlockActions } from "../shell/index.js";
+	import { BlockActions } from "../utils/index.js";
 
     interface Props {
         id?: string;
@@ -76,9 +76,9 @@
         
         <div data-type={type} id={id} class="krt-paragraph-body">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
             <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable"></p>
         </div>
     </div>

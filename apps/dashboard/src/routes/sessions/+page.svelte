@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Dialog, Loading } from '@kuratchi/ui';
-  import { Clock, Users, Activity, Trash2, X, AlertCircle, MonitorSmartphone, MapPin, Search } from 'lucide-svelte';
+  import { Clock, Users, Activity, Trash2, X, AlertCircle, MonitorSmartphone, MapPin, Search } from '@lucide/svelte';
   import {
     getSessions,
     getSessionStats,

@@ -10,7 +10,7 @@ import {
   Server,
   ShieldCheck,
   Users
-} from 'lucide-svelte';
+} from '@lucide/svelte';
 
 export type OverviewCard = {
   title: string;

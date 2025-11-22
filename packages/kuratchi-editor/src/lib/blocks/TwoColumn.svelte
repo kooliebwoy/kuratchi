@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { BlockActions } from "../shell/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { onMount } from "svelte";
 
     interface Props {
@@ -125,9 +125,9 @@
         
         <div data-type={type} {id} class="w-full min-w-full">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <script type="application/json" id="metadata-{id}">
                 {JSON.stringify(content)}
-            </div>
+            </script>
 
             <div class={`grid ${gridClasses} ${gapClasses} ${alignClasses} py-4`}>
                 <div class={`${leftColClasses} prose prose-sm max-w-none`}>

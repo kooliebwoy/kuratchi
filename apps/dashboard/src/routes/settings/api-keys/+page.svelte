@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Key, Plus, Copy, RotateCw, Trash2, X } from 'lucide-svelte';
+  import { Key, Plus, Copy, RotateCw, Trash2, X } from '@lucide/svelte';
   import { Dialog, FormField, FormInput, FormTextarea, Button, Card, Badge, Loading } from '@kuratchi/ui';
   import {
     getApiKeys,

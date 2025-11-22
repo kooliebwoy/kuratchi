@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Database, Zap, Lock, Globe, GitBranch, Github, Code } from 'lucide-svelte';
+  import { Database, Zap, Lock, Globe, GitBranch, Github, Code } from '@lucide/svelte';
 </script>
 
 <svelte:head>

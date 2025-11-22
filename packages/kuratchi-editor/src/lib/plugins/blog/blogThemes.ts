@@ -1,5 +1,20 @@
-import type { BlockSnapshot } from '../presets/types';
-import type { BlogSettings } from '../types';
+import type { ComponentType } from 'svelte';
+import { BlogSettings } from '../../types';
+
+
+export interface BlockSnapshot extends Record<string, unknown> {
+    type: string;
+}
+
+export interface BlockPresetDefinition {
+    id: string;
+    name: string;
+    description?: string;
+    icon?: ComponentType;
+    tags?: string[];
+    create: () => BlockSnapshot[];
+}
+
 
 export interface BlogTheme {
   id: string;

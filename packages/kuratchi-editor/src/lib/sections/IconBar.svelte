@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import { BlockActions, SideActions } from "../shell/index.js";
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from "../utils/index.js";
     import { IconPicker } from "../plugins/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
@@ -176,7 +176,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
-        <div class="krt-iconBar__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-iconBar__band" style:color={iconColors}>
             {#each visibleIcons as iconItem}
                 {@const Comp = LucideIconMap[iconItem.icon as LucideIconKey]}

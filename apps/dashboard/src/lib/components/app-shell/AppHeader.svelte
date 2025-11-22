@@ -4,7 +4,7 @@
   import { searchOrganizations } from '$lib/functions/superadmin.remote';
   import { signOut } from '$lib/functions/auth.remote';
   import NotificationDrawer from '$lib/components/NotificationDrawer.svelte';
-  import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from 'lucide-svelte';
+  import { Bell, Search, Command, UserCircle, X, Building2, LogOut, ChevronDown } from '@lucide/svelte';
   import type { AppUser } from './types';
 
   interface Props {

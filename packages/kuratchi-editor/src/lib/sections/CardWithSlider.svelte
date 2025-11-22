@@ -1,10 +1,10 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from 'lucide-svelte';
-    import CardNoImage from "./CardNoImage.svelte";
-    import NoMarginCarousel from "./NoMarginCarousel.svelte";
-    import { BlockActions, SideActions } from "../shell/index.js";
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from "../utils/index.js";
     import { ImagePicker } from "../plugins/index.js";
+	import CardNoImage from '../blocks/CardNoImage.svelte';
+	import NoMarginCarousel from '../blocks/NoMarginCarousel.svelte';
     
     interface CarouselImage {
         key?: string;
@@ -168,7 +168,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
-        <div class="krt-sliderLayout__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
             <div class="krt-sliderLayout__card">
                 <CardNoImage

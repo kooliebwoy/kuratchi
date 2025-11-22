@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MessageSquare, User } from 'lucide-svelte';
+  import { MessageSquare, User } from '@lucide/svelte';
 
   interface Props {
     id: string;

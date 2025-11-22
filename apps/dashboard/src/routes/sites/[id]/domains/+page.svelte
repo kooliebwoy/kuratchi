@@ -6,7 +6,7 @@
     deleteSiteCustomDomain,
     linkDomainToSite
   } from '$lib/functions/siteCustomDomains.remote';
-  import { Globe, Link, Unlink, AlertCircle, ExternalLink, Plus, Loader2, X } from 'lucide-svelte';
+  import { Globe, Link, Unlink, AlertCircle, ExternalLink, Plus, Loader2, X } from '@lucide/svelte';
   import { Button, Card, Dialog, Badge, Loading } from '@kuratchi/ui';
 
   const siteId = $page.params.id;

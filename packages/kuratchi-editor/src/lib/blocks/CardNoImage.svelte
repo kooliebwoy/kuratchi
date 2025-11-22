@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { LayoutBlock } from '../shell/index.js';
+    import { onMount } from 'svelte';
+    import { Pencil } from '@lucide/svelte';
+    import { BlockActions, SideActions } from '../utils/index.js';
 
     interface Props {
         id?: string;
@@ -40,65 +42,24 @@
         buttonColor,
         headingColor,
         contentColor
-    })
+    });
+
+    let component: HTMLElement;
+    let mounted = $state(false);
+    const sideActionsId = `side-actions-${id}`;
+
+    onMount(() => {
+        mounted = true;
+    });
 </script>
 
 {#if editable}
-<LayoutBlock {id} {type}>
-    {#snippet drawerContent()}
-        <div class="krt-cardDrawer">
-            <section class="krt-cardDrawer__section">
-                <h3>Content</h3>
-                <div class="krt-cardDrawer__fields">
-                    <label class="krt-cardDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" bind:value={heading} placeholder="Enter heading" />
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Body</span>
-                        <textarea rows="3" bind:value={body} placeholder="Enter body"></textarea>
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Button text</span>
-                        <input type="text" bind:value={button} placeholder="Button text" />
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Link</span>
-                        <input type="url" bind:value={link} placeholder="Enter link" />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-cardDrawer__section">
-                <h3>Styles</h3>
-                <div class="krt-cardDrawer__fields">
-                    <label class="krt-cardDrawer__field">
-                        <span>Background color</span>
-                        <input type="color" bind:value={backgroundColor} />
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Button color</span>
-                        <input type="color" bind:value={buttonColor} />
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Heading color</span>
-                        <input type="color" bind:value={headingColor} />
-                    </label>
-                    <label class="krt-cardDrawer__field">
-                        <span>Content color</span>
-                        <input type="color" bind:value={contentColor} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-
-    {#snippet metadata()}
-        {JSON.stringify(content)}
-    {/snippet}
-
-    {#snippet children()}
-        <section class="krt-card krt-card--stacked" style:background-color={backgroundColor}>
+    <div class="editor-item group relative" bind:this={component}>
+        {#if mounted}
+            <BlockActions {id} {type} element={component} />
+        {/if}
+        <section {id} data-type={type} class="krt-card krt-card--stacked" style:background-color={backgroundColor}>
+            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
             <div class="krt-card__body krt-card__body--stacked">
                 <h2
                     class="krt-card__title"
@@ -121,11 +82,66 @@
                 </div>
             </div>
         </section>
-    {/snippet}
-</LayoutBlock>
+    </div>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit card settings" type="button">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-cardDrawer">
+                <section class="krt-cardDrawer__section">
+                    <h3>Content</h3>
+                    <div class="krt-cardDrawer__fields">
+                        <label class="krt-cardDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" bind:value={heading} placeholder="Enter heading" />
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Body</span>
+                            <textarea rows="3" bind:value={body} placeholder="Enter body"></textarea>
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Button text</span>
+                            <input type="text" bind:value={button} placeholder="Button text" />
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Link</span>
+                            <input type="url" bind:value={link} placeholder="Enter link" />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-cardDrawer__section">
+                    <h3>Styles</h3>
+                    <div class="krt-cardDrawer__fields">
+                        <label class="krt-cardDrawer__field">
+                            <span>Background color</span>
+                            <input type="color" bind:value={backgroundColor} />
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Button color</span>
+                            <input type="color" bind:value={buttonColor} />
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Heading color</span>
+                            <input type="color" bind:value={headingColor} />
+                        </label>
+                        <label class="krt-cardDrawer__field">
+                            <span>Content color</span>
+                            <input type="color" bind:value={contentColor} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-card krt-card--stacked" style:background-color={backgroundColor}>
-        <div class="krt-card__metadata">{JSON.stringify(content)}</div>
+        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-card__body krt-card__body--stacked">
             <h2 class="krt-card__title" style:color={headingColor}>{heading}</h2>
             <p class="krt-card__copy" style:color={contentColor}>{body}</p>
