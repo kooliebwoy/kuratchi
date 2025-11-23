@@ -101,60 +101,60 @@
             </figure>
         </div>
     </section>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit about us card settings">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-aboutCardDrawer">
+                <section class="krt-aboutCardDrawer__section">
+                    <h3>Content</h3>
+                    <div class="krt-aboutCardDrawer__fields">
+                        <label class="krt-aboutCardDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" bind:value={heading} placeholder="Heading" />
+                        </label>
+                        <label class="krt-aboutCardDrawer__field">
+                            <span>Body</span>
+                            <textarea rows="4" bind:value={body} placeholder="Tell your brand story"></textarea>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-aboutCardDrawer__section">
+                    <h3>Layout</h3>
+                    <label class="krt-aboutCardDrawer__toggle">
+                        <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                        <span>Swap image and copy</span>
+                    </label>
+                </section>
+
+                <section class="krt-aboutCardDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-aboutCardDrawer__grid">
+                        <label class="krt-aboutCardDrawer__field">
+                            <span>Background</span>
+                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-aboutCardDrawer__field">
+                            <span>Text</span>
+                            <input type="color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-aboutCardDrawer__section">
+                    <h3>Image</h3>
+                    <ImagePicker bind:selectedImage={image} mode="single" />
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 </div>
-
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button id={sideActionsId} class="krt-editButton" aria-label="Edit about us card settings">
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-aboutCardDrawer">
-            <section class="krt-aboutCardDrawer__section">
-                <h3>Content</h3>
-                <div class="krt-aboutCardDrawer__fields">
-                    <label class="krt-aboutCardDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" bind:value={heading} placeholder="Heading" />
-                    </label>
-                    <label class="krt-aboutCardDrawer__field">
-                        <span>Body</span>
-                        <textarea rows="4" bind:value={body} placeholder="Tell your brand story"></textarea>
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-aboutCardDrawer__section">
-                <h3>Layout</h3>
-                <label class="krt-aboutCardDrawer__toggle">
-                    <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                    <span>Swap image and copy</span>
-                </label>
-            </section>
-
-            <section class="krt-aboutCardDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-aboutCardDrawer__grid">
-                    <label class="krt-aboutCardDrawer__field">
-                        <span>Background</span>
-                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-aboutCardDrawer__field">
-                        <span>Text</span>
-                        <input type="color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-aboutCardDrawer__section">
-                <h3>Image</h3>
-                <ImagePicker bind:selectedImage={image} mode="single" />
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <section
         id={id}

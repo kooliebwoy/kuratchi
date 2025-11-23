@@ -103,7 +103,6 @@
             style:background-color={backgroundColor}
             style:color={textColor}
         >
-            <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
             <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
                 <div class="krt-header__segment">
                     {#if reverseOrder}
@@ -322,7 +321,6 @@
         style:background-color={backgroundColor}
         style:color={textColor}
     >
-        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

@@ -190,82 +190,82 @@
             {/if}
         </div>
     </section>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog post list settings">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-blogListDrawer">
+                <section class="krt-blogListDrawer__section">
+                    <h3>Layout</h3>
+                    <label class="krt-blogListDrawer__field">
+                        <span>Layout style</span>
+                        <select bind:value={layout}>
+                            <option value="grid">Grid</option>
+                            <option value="list">List</option>
+                        </select>
+                    </label>
+                </section>
+
+                <section class="krt-blogListDrawer__section">
+                    <h3>Display</h3>
+                    <div class="krt-blogListDrawer__checks">
+                        <label>
+                            <input type="checkbox" bind:checked={showExcerpt} />
+                            <span>Show excerpt</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" bind:checked={showDate} />
+                            <span>Show publish date</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" bind:checked={showCategories} />
+                            <span>Show categories</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" bind:checked={showReadMore} />
+                            <span>Show read more link</span>
+                        </label>
+                    </div>
+                    <label class="krt-blogListDrawer__field">
+                        <span>Read more label</span>
+                        <input type="text" bind:value={readMoreLabel} placeholder="Read article" />
+                    </label>
+                </section>
+
+                <section class="krt-blogListDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-blogListDrawer__grid">
+                        <label class="krt-blogListDrawer__field">
+                            <span>Background</span>
+                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Card</span>
+                            <input type="color" bind:value={layoutMetadata.cardBackground} />
+                        </label>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Border</span>
+                            <input type="color" bind:value={layoutMetadata.borderColor} />
+                        </label>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Text</span>
+                            <input type="color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Accent</span>
+                            <input type="color" bind:value={layoutMetadata.accentColor} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 </div>
-
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog post list settings">
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-blogListDrawer">
-            <section class="krt-blogListDrawer__section">
-                <h3>Layout</h3>
-                <label class="krt-blogListDrawer__field">
-                    <span>Layout style</span>
-                    <select bind:value={layout}>
-                        <option value="grid">Grid</option>
-                        <option value="list">List</option>
-                    </select>
-                </label>
-            </section>
-
-            <section class="krt-blogListDrawer__section">
-                <h3>Display</h3>
-                <div class="krt-blogListDrawer__checks">
-                    <label>
-                        <input type="checkbox" bind:checked={showExcerpt} />
-                        <span>Show excerpt</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" bind:checked={showDate} />
-                        <span>Show publish date</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" bind:checked={showCategories} />
-                        <span>Show categories</span>
-                    </label>
-                    <label>
-                        <input type="checkbox" bind:checked={showReadMore} />
-                        <span>Show read more link</span>
-                    </label>
-                </div>
-                <label class="krt-blogListDrawer__field">
-                    <span>Read more label</span>
-                    <input type="text" bind:value={readMoreLabel} placeholder="Read article" />
-                </label>
-            </section>
-
-            <section class="krt-blogListDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-blogListDrawer__grid">
-                    <label class="krt-blogListDrawer__field">
-                        <span>Background</span>
-                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Card</span>
-                        <input type="color" bind:value={layoutMetadata.cardBackground} />
-                    </label>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Border</span>
-                        <input type="color" bind:value={layoutMetadata.borderColor} />
-                    </label>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Text</span>
-                        <input type="color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Accent</span>
-                        <input type="color" bind:value={layoutMetadata.accentColor} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogList" style={layoutStyle}>
         <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>

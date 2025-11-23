@@ -47,15 +47,17 @@
             link: '#',
             label: 'Read more'
         }),
-        metadata: layoutMetadata = $bindable<LayoutMetadata>({
-            reverseOrder: false,
-            backgroundColor: '#05060a',
-            headingColor: '#f8fafc',
-            textColor: '#e2e8f0',
-            buttonColor: '#f97316',
-            showBackgroundImage: true,
-            backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay'
-        }) as LayoutMetadata,
+        metadata: layoutMetadata = $bindable<LayoutMetadata>(
+            {
+                reverseOrder: false,
+                backgroundColor: '#05060a',
+                headingColor: '#f8fafc',
+                textColor: '#e2e8f0',
+                buttonColor: '#f97316',
+                showBackgroundImage: true,
+                backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay'
+            } as LayoutMetadata
+        ),
         image = $bindable<HeroImage>({
             url: 'https://fakeimg.pl/960x1200/?text=Overlay+Hero',
             alt: 'Hero overlay image',
@@ -65,15 +67,15 @@
     }: Props = $props();
 
     const backgroundImageValue = $derived(
-        layoutMetadata.showBackgroundImage && layoutMetadata.backgroundImage
+        layoutMetadata?.showBackgroundImage && layoutMetadata?.backgroundImage
             ? `url(${layoutMetadata.backgroundImage})`
             : 'none'
     );
 
-    const backgroundOpacity = $derived(layoutMetadata.showBackgroundImage ? 1 : 0);
+    const backgroundOpacity = $derived(layoutMetadata?.showBackgroundImage ? 1 : 0);
 
     const layoutStyle = $derived(
-        `--krt-heroOverlay-bg: ${layoutMetadata.backgroundColor}; --krt-heroOverlay-heading: ${layoutMetadata.headingColor}; --krt-heroOverlay-text: ${layoutMetadata.textColor}; --krt-heroOverlay-button: ${layoutMetadata.buttonColor}; --krt-heroOverlay-bgImage: ${backgroundImageValue}; --krt-heroOverlay-bgOpacity: ${backgroundOpacity};`
+        `--krt-heroOverlay-bg: ${layoutMetadata?.backgroundColor || '#05060a'}; --krt-heroOverlay-heading: ${layoutMetadata?.headingColor || '#f8fafc'}; --krt-heroOverlay-text: ${layoutMetadata?.textColor || '#e2e8f0'}; --krt-heroOverlay-button: ${layoutMetadata?.buttonColor || '#f97316'}; --krt-heroOverlay-bgImage: ${backgroundImageValue}; --krt-heroOverlay-bgOpacity: ${backgroundOpacity};`
     );
 
     const content = $derived({
@@ -103,7 +105,7 @@
     <section
         {id}
         data-type={type}
-        class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
+        class={`krt-heroOverlay ${layoutMetadata?.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -123,68 +125,68 @@
             </div>
         </div>
     </section>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button
+                id={sideActionsId}
+                class="krt-editButton"
+                aria-label="Edit hero overlay settings"
+            >
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-heroOverlayDrawer">
+                <section class="krt-heroOverlayDrawer__section">
+                    <h3>Layout</h3>
+                    <label class="krt-heroOverlayDrawer__toggle">
+                        <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                        <span>Flip content alignment</span>
+                    </label>
+                    <label class="krt-heroOverlayDrawer__toggle">
+                        <input type="checkbox" bind:checked={layoutMetadata.showBackgroundImage} />
+                        <span>Show background image</span>
+                    </label>
+                    {#if layoutMetadata.showBackgroundImage}
+                        <label class="krt-heroOverlayDrawer__field">
+                            <span>Background image URL</span>
+                            <input type="text" bind:value={layoutMetadata.backgroundImage} />
+                        </label>
+                    {/if}
+                </section>
+
+                <section class="krt-heroOverlayDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-heroOverlayDrawer__grid">
+                        <label class="krt-heroOverlayDrawer__field">
+                            <span>Section background</span>
+                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-heroOverlayDrawer__field">
+                            <span>Heading</span>
+                            <input type="color" bind:value={layoutMetadata.headingColor} />
+                        </label>
+                        <label class="krt-heroOverlayDrawer__field">
+                            <span>Body text</span>
+                            <input type="color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-heroOverlayDrawer__field">
+                            <span>Button</span>
+                            <input type="color" bind:value={layoutMetadata.buttonColor} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 </div>
-
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button
-            id={sideActionsId}
-            class="krt-editButton"
-            aria-label="Edit hero overlay settings"
-        >
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-heroOverlayDrawer">
-            <section class="krt-heroOverlayDrawer__section">
-                <h3>Layout</h3>
-                <label class="krt-heroOverlayDrawer__toggle">
-                    <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                    <span>Flip content alignment</span>
-                </label>
-                <label class="krt-heroOverlayDrawer__toggle">
-                    <input type="checkbox" bind:checked={layoutMetadata.showBackgroundImage} />
-                    <span>Show background image</span>
-                </label>
-                {#if layoutMetadata.showBackgroundImage}
-                    <label class="krt-heroOverlayDrawer__field">
-                        <span>Background image URL</span>
-                        <input type="text" bind:value={layoutMetadata.backgroundImage} />
-                    </label>
-                {/if}
-            </section>
-
-            <section class="krt-heroOverlayDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-heroOverlayDrawer__grid">
-                    <label class="krt-heroOverlayDrawer__field">
-                        <span>Section background</span>
-                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-heroOverlayDrawer__field">
-                        <span>Heading</span>
-                        <input type="color" bind:value={layoutMetadata.headingColor} />
-                    </label>
-                    <label class="krt-heroOverlayDrawer__field">
-                        <span>Body text</span>
-                        <input type="color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-heroOverlayDrawer__field">
-                        <span>Button</span>
-                        <input type="color" bind:value={layoutMetadata.buttonColor} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <section
         id={id}
         data-type={type}
-        class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
+        class={`krt-heroOverlay ${layoutMetadata?.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
         <div class="krt-heroOverlay__background" aria-hidden="true"></div>

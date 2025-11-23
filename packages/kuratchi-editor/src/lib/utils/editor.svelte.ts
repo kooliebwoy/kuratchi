@@ -417,9 +417,33 @@ export function sanitizeContent(content: string): string {
  * @returns A unique string key for the block
  */
 export const generateBlockKey = (block: Record<string, unknown>, index: number): string => {
-    if (typeof block.id === 'string' && block.id.length > 0) return block.id;
-    if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
-    return `block-${index}`;
+    // First priority: use block.id if it exists and is a non-empty string
+    if (typeof block.id === 'string' && block.id.length > 0) {
+        return block.id;
+    }
+    
+    // Second priority: create a key from type and a hash of the block data
+    if (typeof block.type === 'string' && block.type.length > 0) {
+        // Create a simple hash of the block data to make it unique
+        const dataStr = JSON.stringify(block);
+        let hash = 0;
+        for (let i = 0; i < dataStr.length; i++) {
+            const char = dataStr.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return `${block.type}-${Math.abs(hash)}`;
+    }
+    
+    // Fallback: use a combination of data hash and index
+    const dataStr = JSON.stringify(block);
+    let hash = 0;
+    for (let i = 0; i < dataStr.length; i++) {
+        const char = dataStr.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return `block-${Math.abs(hash)}-${index}`;
 };
 
 /**

@@ -14,6 +14,8 @@
     import EditorCanvas from "./EditorCanvas.svelte";
     import ThemePreview from "./themes/ThemePreview.svelte";
     import SectionPreview from "./sections/SectionPreview.svelte";
+    import HeaderPreview from "./headers/HeaderPreview.svelte";
+    import FooterPreview from "./footers/FooterPreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
     import {
         Box,
@@ -464,37 +466,35 @@ let {
                     {:else if activeTab === 'site'}
                         <div class="krt-editor__sidebarSection">
                             <h3 class="krt-editor__sectionTitle">Headers</h3>
-                            <div class="krt-editor__blockGrid">
+                            <div class="krt-editor__presetGrid">
                                 {#each headers as header}
-                                    {@const Icon = header.icon}
                                     <button
-                                        class="krt-editor__blockButton"
+                                        class="krt-editor__presetButton"
                                         onclick={() => {
                                             if (headerElement) {
                                                 replaceRegionComponent(headerElement, header.component, { type: header.type });
                                             }
                                         }}
                                     >
-                                        <Icon />
-                                        <span>{header.name}</span>
+                                        <HeaderPreview {header} scale={0.25} />
+                                        <div class="krt-editor__presetLabel">{header.name}</div>
                                     </button>
                                 {/each}
                             </div>
                             
                             <h3 class="krt-editor__sectionTitle">Footers</h3>
-                            <div class="krt-editor__blockGrid">
+                            <div class="krt-editor__presetGrid">
                                 {#each footers as footer}
-                                    {@const Icon = footer.icon}
                                     <button
-                                        class="krt-editor__blockButton"
+                                        class="krt-editor__presetButton"
                                         onclick={() => {
                                             if (footerElement) {
                                                 replaceRegionComponent(footerElement, footer.component, { type: footer.type });
                                             }
                                         }}
                                     >
-                                        <Icon />
-                                        <span>{footer.name}</span>
+                                        <FooterPreview {footer} scale={0.25} />
+                                        <div class="krt-editor__presetLabel">{footer.name}</div>
                                     </button>
                                 {/each}
                             </div>
@@ -815,38 +815,38 @@ let {
 
     .krt-editor__rail {
         width: var(--krt-editor-rail-width);
-        background: #f1f3f7;
+        background: #ffffff;
         border-right: 1px solid var(--krt-color-border-subtle);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.75rem;
         padding: 1rem 0.5rem;
-        box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.05);
     }
 
     .krt-editor__railButton {
         width: 2.75rem;
         height: 2.75rem;
         border-radius: var(--krt-radius-md);
-        border: none;
+        border: 1px solid transparent;
         background: transparent;
-        color: rgba(17, 24, 39, 0.65);
+        color: rgba(15, 23, 42, 0.55);
         display: grid;
         place-items: center;
         cursor: pointer;
-        transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+        transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
     }
 
     .krt-editor__railButton:is(:hover, :focus-visible) {
-        background: rgba(15, 23, 42, 0.08);
-        color: var(--krt-color-text);
+        background: rgba(15, 23, 42, 0.05);
+        color: rgba(15, 23, 42, 0.85);
+        border-color: rgba(15, 23, 42, 0.1);
     }
 
     .krt-editor__railButton.is-active {
-        background: var(--krt-color-primary);
-        color: #fff;
-        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.25);
+        background: rgba(15, 23, 42, 0.92);
+        color: #f8fafc;
+        border-color: rgba(15, 23, 42, 0.92);
     }
 
     .krt-editor__railButton :global(svg) {
@@ -888,13 +888,22 @@ let {
         border-radius: var(--krt-radius-sm);
         background: transparent;
         color: rgba(17, 24, 39, 0.6);
-        padding: 0.25rem;
+        padding: 0.35rem;
         cursor: pointer;
+        transition: all 160ms ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .krt-editor__sidebarClose:is(:hover, :focus-visible) {
-        background: rgba(15, 23, 42, 0.08);
-        color: var(--krt-color-text);
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--krt-color-primary);
+    }
+
+    .krt-editor__sidebarClose :global(svg) {
+        width: 20px;
+        height: 20px;
     }
 
     .krt-editor__sidebarBody {
@@ -955,6 +964,79 @@ let {
         gap: 0.75rem;
     }
 
+    .krt-editor__sectionTitle {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin: 0.5rem 0 0.5rem 0;
+        color: rgba(17, 24, 39, 0.8);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .krt-editor__blockGrid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .krt-editor__blockButton {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.5rem;
+        border: 1px solid var(--krt-color-border-subtle);
+        border-radius: var(--krt-radius-md);
+        background: #fff;
+        cursor: pointer;
+        transition: all 160ms ease;
+        font-size: 0.75rem;
+        color: rgba(17, 24, 39, 0.7);
+    }
+
+    .krt-editor__blockButton:is(:hover, :focus-visible) {
+        border-color: var(--krt-color-primary);
+        background: rgba(99, 102, 241, 0.05);
+        color: var(--krt-color-primary);
+    }
+
+    .krt-editor__blockButton :global(svg) {
+        width: 18px;
+        height: 18px;
+    }
+
+    .krt-editor__presetGrid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-editor__presetButton {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        border: 1px solid var(--krt-color-border-subtle);
+        border-radius: var(--krt-radius-md);
+        background: #fff;
+        cursor: pointer;
+        transition: all 160ms ease;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .krt-editor__presetButton:is(:hover, :focus-visible) {
+        border-color: var(--krt-color-primary);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+        transform: translateY(-2px);
+    }
+
+    .krt-editor__presetLabel {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: rgba(17, 24, 39, 0.8);
+        text-align: left;
+    }
 
     .krt-editor__sectionLabel {
         display: flex;
@@ -973,22 +1055,29 @@ let {
     }
 
     .krt-editor__themeButton {
-        border: none;
+        border: 1px solid var(--krt-color-border-subtle);
         border-radius: var(--krt-radius-md);
         background: #fff;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         padding: 0.75rem;
         text-align: left;
         display: flex;
         flex-direction: column;
         gap: 0.4rem;
         cursor: pointer;
-        transition: transform 160ms ease, box-shadow 160ms ease, border 160ms ease;
+        transition: all 160ms ease;
+    }
+
+    .krt-editor__themeButton:is(:hover, :focus-visible) {
+        border-color: var(--krt-color-primary);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
     }
 
     .krt-editor__themeButton.is-active {
-        border: 1px solid var(--krt-color-primary);
-        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+        border: 2px solid var(--krt-color-primary);
+        box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
+        background: rgba(99, 102, 241, 0.02);
     }
 
     .krt-editor__themeDetails {
@@ -996,6 +1085,11 @@ let {
         flex-direction: column;
         gap: 0.15rem;
         font-size: 0.85rem;
+    }
+
+    .krt-editor__themeDetails > div {
+        font-weight: 600;
+        color: rgba(17, 24, 39, 0.9);
     }
 
     .krt-editor__themeButton p {
@@ -1011,10 +1105,44 @@ let {
         gap: 1rem;
     }
 
+    .krt-editor__settingsPanel h3 {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin: 0 0 0.5rem 0;
+        color: rgba(17, 24, 39, 0.8);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .krt-editor__settingsPanel label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        font-size: 0.8rem;
+        color: rgba(17, 24, 39, 0.7);
+    }
+
+    .krt-editor__settingsPanel input,
+    .krt-editor__settingsPanel textarea {
+        border-radius: var(--krt-radius-sm);
+        border: 1px solid var(--krt-color-border-subtle);
+        padding: 0.5rem 0.6rem;
+        font-size: 0.85rem;
+        font-family: inherit;
+    }
+
+    .krt-editor__settingsPanel input:focus,
+    .krt-editor__settingsPanel textarea:focus {
+        outline: none;
+        border-color: var(--krt-color-primary);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+    }
+
     .krt-editor__navCard {
         border: 1px solid var(--krt-color-border-subtle);
         border-radius: var(--krt-radius-md);
         background: #fff;
+        overflow: hidden;
     }
 
     .krt-editor__navCardHeader {
@@ -1031,6 +1159,13 @@ let {
         align-items: center;
         gap: 0.35rem;
         font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .krt-editor__navCardTitle :global(svg) {
+        width: 18px;
+        height: 18px;
+        color: var(--krt-color-primary);
     }
 
     .krt-editor__navCardHeader label {
@@ -1039,20 +1174,37 @@ let {
         gap: 0.35rem;
         font-size: 0.8rem;
         color: rgba(17, 24, 39, 0.65);
+        cursor: pointer;
+    }
+
+    .krt-editor__navCardHeader input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: var(--krt-color-primary);
     }
 
     .krt-editor__navCardBody {
         padding: 0.75rem 1rem 1rem;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.75rem;
     }
 
     .krt-editor__navCardBody label {
         display: flex;
+        align-items: center;
         gap: 0.4rem;
         font-size: 0.8rem;
         color: rgba(17, 24, 39, 0.7);
+        cursor: pointer;
+    }
+
+    .krt-editor__navCardBody input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: var(--krt-color-primary);
     }
 
     .krt-editor__divider {
@@ -1093,8 +1245,17 @@ let {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        padding: 0.3rem 0.6rem;
+        padding: 0.4rem 0.7rem;
         cursor: pointer;
+        transition: all 160ms ease;
+        color: rgba(17, 24, 39, 0.7);
+        font-family: inherit;
+    }
+
+    .krt-editor__ghostButton:is(:hover, :focus-visible) {
+        background: rgba(99, 102, 241, 0.05);
+        border-color: var(--krt-color-primary);
+        color: var(--krt-color-primary);
     }
 
     .krt-editor__ghostButton :global(svg) {
@@ -1110,15 +1271,22 @@ let {
 
     .krt-editor__pageListItem {
         background: #f2f4f8;
+        border: 1px solid var(--krt-color-border-subtle);
         border-radius: var(--krt-radius-md);
         padding: 0.6rem;
-        transition: background 160ms ease, color 160ms ease;
+        transition: all 160ms ease;
+    }
+
+    .krt-editor__pageListItem:is(:hover, :focus-within) {
+        border-color: var(--krt-color-primary);
+        background: rgba(99, 102, 241, 0.05);
     }
 
     .krt-editor__pageListItem.is-active {
         background: var(--krt-color-primary);
+        border-color: var(--krt-color-primary);
         color: #fff;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+        box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
     }
 
     .krt-editor__pageListItemInner {
@@ -1134,12 +1302,31 @@ let {
         text-align: left;
         flex: 1;
         cursor: pointer;
+        color: inherit;
+        font-family: inherit;
+    }
+
+    .krt-editor__pageListItemInner button:focus {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+
+    .krt-editor__pageListItemInner button > div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .krt-editor__pageListItemInner button span {
+        font-size: 0.9rem;
+        font-weight: 600;
     }
 
     .krt-editor__pageListItemInner button span:last-child {
         display: block;
         font-size: 0.75rem;
-        opacity: 0.7;
+        opacity: 0.65;
+        font-weight: 400;
     }
 
     .krt-editor__pageListItemInner > div:last-child {
@@ -1148,11 +1335,17 @@ let {
     }
 
     .krt-editor__pageListItemInner > div:last-child button {
-        border: 1px dashed rgba(255, 255, 255, 0.4);
+        border: 1px solid currentColor;
+        opacity: 0.6;
         border-radius: var(--krt-radius-pill);
-        padding: 0.2rem 0.6rem;
-        font-size: 0.7rem;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.75rem;
         color: inherit;
+        transition: opacity 160ms ease;
+    }
+
+    .krt-editor__pageListItemInner > div:last-child button:is(:hover, :focus-visible) {
+        opacity: 1;
     }
 
     .krt-editor__emptyState {
@@ -1161,7 +1354,14 @@ let {
         color: rgba(17, 24, 39, 0.6);
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .krt-editor__emptyState p {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
     }
 
     .krt-editor__primaryButton {
@@ -1169,11 +1369,31 @@ let {
         border-radius: var(--krt-radius-pill);
         background: var(--krt-color-primary);
         color: #fff;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem 1.2rem;
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
         cursor: pointer;
+        font-weight: 600;
+        transition: all 160ms ease;
+        font-size: 0.9rem;
+        font-family: inherit;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .krt-editor__primaryButton:is(:hover, :focus-visible) {
+        background: rgb(88, 76, 217);
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+        transform: translateY(-2px);
+    }
+
+    .krt-editor__primaryButton:active {
+        transform: translateY(0);
+    }
+
+    .krt-editor__primaryButton :global(svg) {
+        width: 18px;
+        height: 18px;
     }
 
     .krt-editor__workspace {
@@ -1303,6 +1523,20 @@ let {
         padding: 0.35rem;
         cursor: pointer;
         color: rgba(17, 24, 39, 0.6);
+        transition: all 160ms ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .krt-editor__inspectorClose:is(:hover, :focus-visible) {
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--krt-color-primary);
+    }
+
+    .krt-editor__inspectorClose :global(svg) {
+        width: 20px;
+        height: 20px;
     }
 
     .krt-editor__inspectorBody {

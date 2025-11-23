@@ -66,52 +66,52 @@
             <p class="krt-blogHero__body" contenteditable bind:innerHTML={body}></p>
         </div>
     </section>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog hero settings">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-blogHeroDrawer">
+                <section class="krt-blogHeroDrawer__section">
+                    <h3>Content</h3>
+                    <label class="krt-blogHeroDrawer__field">
+                        <span>Heading</span>
+                        <input type="text" placeholder="From the studio" bind:value={heading} />
+                    </label>
+                    <label class="krt-blogHeroDrawer__field">
+                        <span>Body</span>
+                        <textarea rows="3" placeholder="Describe the blog" bind:value={body}></textarea>
+                    </label>
+                    <label class="krt-blogHeroDrawer__field">
+                        <span>Alignment</span>
+                        <select bind:value={layoutMetadata.align}>
+                            <option value="left">Left</option>
+                            <option value="center">Center</option>
+                        </select>
+                    </label>
+                </section>
+
+                <section class="krt-blogHeroDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-blogHeroDrawer__grid">
+                        <label class="krt-blogHeroDrawer__field">
+                            <span>Background</span>
+                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-blogHeroDrawer__field">
+                            <span>Text</span>
+                            <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 </div>
-
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog hero settings">
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-blogHeroDrawer">
-            <section class="krt-blogHeroDrawer__section">
-                <h3>Content</h3>
-                <label class="krt-blogHeroDrawer__field">
-                    <span>Heading</span>
-                    <input type="text" placeholder="From the studio" bind:value={heading} />
-                </label>
-                <label class="krt-blogHeroDrawer__field">
-                    <span>Body</span>
-                    <textarea rows="3" placeholder="Describe the blog" bind:value={body}></textarea>
-                </label>
-                <label class="krt-blogHeroDrawer__field">
-                    <span>Alignment</span>
-                    <select bind:value={layoutMetadata.align}>
-                        <option value="left">Left</option>
-                        <option value="center">Center</option>
-                    </select>
-                </label>
-            </section>
-
-            <section class="krt-blogHeroDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-blogHeroDrawer__grid">
-                    <label class="krt-blogHeroDrawer__field">
-                        <span>Background</span>
-                        <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-blogHeroDrawer__field">
-                        <span>Text</span>
-                        <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                </div>
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogHero" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>

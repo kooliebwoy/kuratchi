@@ -48,7 +48,7 @@
         <Plus aria-hidden="true" />
     </button>
     <ul
-        popover
+        popover="auto"
         id={popoverId}
         style={`position-anchor:${anchorName}`}
         class="krt-blockActions__menu"
@@ -70,15 +70,18 @@
 <style>
     .krt-blockActions {
         position: absolute;
-        inset-block-start: 50%;
-        inset-inline-start: calc(-1 * var(--krt-space-5xl, 3.5rem));
+        inset-block-start: 0;
+        inset-inline-end: 0;
         transform: translateY(-50%);
         display: flex;
         gap: var(--krt-space-xs, 0.25rem);
         opacity: 0;
-        pointer-events: none;
         transition: opacity 150ms ease;
         z-index: 4;
+        background: #f8fafc;
+        padding: 0.35rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
     }
 
     :global(.editor-item:hover) .krt-blockActions,
@@ -86,27 +89,27 @@
     :global(.krt-shellBlock:hover) .krt-blockActions,
     :global(.krt-shellBlock:focus-within) .krt-blockActions {
         opacity: 1;
-        pointer-events: auto;
     }
 
     .krt-blockActions__button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 2.25rem;
-        height: 2.25rem;
-        border-radius: var(--krt-radius-pill, 999px);
-        border: 1px solid rgba(15, 23, 42, 0.18);
-        background: rgba(15, 23, 42, 0.85);
-        color: #f8fafc;
+        width: 2rem;
+        height: 2rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        background: #ffffff;
+        color: rgba(15, 23, 42, 0.8);
         cursor: pointer;
         transition: transform 150ms ease, background 150ms ease, border 150ms ease;
     }
 
     .krt-blockActions__button:hover {
         transform: translateY(-1px);
-        background: rgba(15, 23, 42, 0.92);
-        border-color: rgba(15, 23, 42, 0.24);
+        background: rgba(99, 102, 241, 0.08);
+        border-color: rgba(99, 102, 241, 0.4);
+        color: rgba(99, 102, 241, 0.9);
     }
 
     .krt-blockActions__button:focus-visible {
@@ -123,23 +126,34 @@
     }
 
     .krt-blockActions__button :global(svg) {
-        width: 1.1rem;
-        height: 1.1rem;
+        width: 1rem;
+        height: 1rem;
     }
 
     .krt-blockActions__menu {
         list-style: none;
         margin: 0;
         padding: var(--krt-space-sm, 0.5rem);
-        display: flex;
+        display: none;
         flex-direction: column;
         gap: var(--krt-space-xs, 0.25rem);
         min-width: 14rem;
         border-radius: var(--krt-radius-lg, 0.75rem);
-        border: 1px solid rgba(15, 23, 42, 0.14);
-        background: rgba(15, 23, 42, 0.92);
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
-        color: #f8fafc;
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        background: #ffffff;
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+        color: rgba(15, 23, 42, 0.8);
+        position: absolute;
+        inset: auto;
+        bottom: auto;
+        top: anchor(bottom);
+        left: anchor(center);
+        transform: translateX(-50%);
+        margin-top: 0.5rem;
+    }
+
+    .krt-blockActions__menu:popover-open {
+        display: flex;
     }
 
     .krt-blockActions__menuItem {
@@ -159,7 +173,8 @@
     }
 
     .krt-blockActions__menuItem:hover {
-        background: rgba(148, 163, 184, 0.22);
+        background: rgba(99, 102, 241, 0.08);
+        color: rgba(99, 102, 241, 0.9);
     }
 
     .krt-blockActions__menuItem:focus-visible {
@@ -168,11 +183,12 @@
     }
 
     .krt-blockActions__menuItem--danger {
-        color: #fecaca;
+        color: #ef4444;
     }
 
     .krt-blockActions__menuItem--danger:hover {
-        background: rgba(248, 113, 113, 0.18);
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
     }
 
     .krt-blockActions__menuItem :global(svg) {

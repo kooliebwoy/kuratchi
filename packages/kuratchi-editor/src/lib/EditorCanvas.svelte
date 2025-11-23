@@ -5,7 +5,7 @@
     import { getHeader } from "./registry/headers.svelte";
     import { getFooter } from "./registry/footers.svelte";
     import { getSection } from "./registry/sections.svelte";
-    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop, generateBlockKey, updateRegionData, setupEditorObserver } from "./utils/editor.svelte";
+    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
     import type { SiteRegionState } from "./types.js";
@@ -49,7 +49,6 @@
         navigation
     }: Props = $props();
     
-    let editorBlocks = $state(content);
     let blockSearchTerm = $state('');
     let inlineBlockSearchInput: HTMLInputElement;
     let inlineBlockSearch = $state('');
@@ -67,6 +66,7 @@
 
 
     const updateEditorData = async () => {
+        if (!editor) return;
         const blocks = await saveEditorBlocks(editor);
         if (JSON.stringify(blocks) !== JSON.stringify(content)) {
             content = blocks;
@@ -74,36 +74,40 @@
         }
     }
 
-
     const updateHeaderData = async () => {
-        await updateRegionData({
-            element: headerElement,
-            saveFunction: saveEditorHeaderBlocks,
-            currentState: header,
-            onChange: (next) => {
-                header = next;
-                onHeaderChange?.(next);
-            }
-        });
+        if (!headerElement) return;
+        const blocks = await saveEditorHeaderBlocks(headerElement);
+        if (JSON.stringify(blocks) !== JSON.stringify(header?.blocks)) {
+            const next: SiteRegionState = { blocks: blocks as any };
+            header = next;
+            onHeaderChange?.(next);
+        }
     };
 
     const updateFooterData = async () => {
-        await updateRegionData({
-            element: footerElement,
-            saveFunction: saveEditorFooterBlocks,
-            currentState: footer,
-            onChange: (next) => {
-                footer = next;
-                onFooterChange?.(next);
-            }
-        });
+        if (!footerElement) return;
+        const blocks = await saveEditorFooterBlocks(footerElement);
+        if (JSON.stringify(blocks) !== JSON.stringify(footer?.blocks)) {
+            const next: SiteRegionState = { blocks: blocks as any };
+            footer = next;
+            onFooterChange?.(next);
+        }
     };
 
-    const addComponent = (definition: BlockDefinition, initialProps?: Record<string, unknown>) => {
-        addComponentToEditor(editor, definition.component, initialProps);
+    const addComponent = async (definition: BlockDefinition, initialProps?: Record<string, unknown>) => {
+        // Add directly to content array instead of mounting to DOM
+        const newBlock = {
+            type: definition.type,
+            ...initialProps
+        };
+        
+        content = [...content, newBlock];
+        onContentChange?.(content);
+        
         blockSearchTerm = '';
         inlineDropdown.open = false;
         inlineBlockSearch = '';
+        await tick();
         inlineBlockSearchInput?.focus();
     }
 
@@ -141,10 +145,6 @@
     }
 
     let contentUpdateTimeout: ReturnType<typeof setTimeout>;
-    let cleanupContentObserver: (() => void) | null = null;
-    let cleanupHeaderObserver: (() => void) | null = null;
-    let cleanupFooterObserver: (() => void) | null = null;
-
     let cleanupEditorDragAndDrop: (() => void) | null = null;
 
     const initEditorDragAndDrop = async () => {
@@ -169,29 +169,9 @@
     onMount(() => {
         imageConfig.set(editorImageConfig);
         initEditorDragAndDrop();
-
-        cleanupContentObserver = setupEditorObserver({
-            element: editor,
-            onUpdate: updateEditorData
-        });
-
-        cleanupHeaderObserver = setupEditorObserver({
-            element: headerElement,
-            onUpdate: updateHeaderData,
-            observeAttributes: true
-        });
-        
-        cleanupFooterObserver = setupEditorObserver({
-            element: footerElement,
-            onUpdate: updateFooterData,
-            observeAttributes: true
-        });
         
         return () => {
             cleanupEditorDragAndDrop?.();
-            cleanupContentObserver?.();
-            cleanupHeaderObserver?.();
-            cleanupFooterObserver?.();
             clearTimeout(contentUpdateTimeout);
         };
     });
@@ -217,7 +197,7 @@
             {#if headerBlocksState.length === 0 && (!headerElement || headerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState">Select a header preset to get started</div>
             {/if}
-            {#each headerBlocksState as block, index (generateBlockKey(block, index))}
+            {#each headerBlocksState as block, index (block.type ? `header-${block.type}-${index}` : `header-${index}`)}
                 {@const blockDefinition = getHeader(block.type)}
                 {#if blockDefinition}
                     <blockDefinition.component
@@ -235,10 +215,9 @@
         <div class="krt-editorCanvas__container">
             <article 
                 bind:this={editor} 
-                role="application" 
-                class="krt-editorCanvas__article"
+                role="application" class="krt-editorCanvas__article"
             >
-                {#each editorBlocks as block, index (generateBlockKey(block, index))}
+                {#each content as block, index (block.type ? `editor-${block.type}-${index}` : `editor-${index}`)}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
                         <div class="krt-editorCanvas__block editor-block">
@@ -257,7 +236,7 @@
                     <button class="krt-editorCanvas__iconButton" popovertarget="searchBlocksPopover" style="anchor-name:--searchBlocksPopover" aria-label="Add block">
                         <Plus />
                     </button>
-                    <ul popover="" id="searchBlocksPopover" style="position-anchor:--searchBlocksPopover" class="krt-editorCanvas__blockMenu">
+                    <ul popover="auto" id="searchBlocksPopover" style="position-anchor:--searchBlocksPopover" class="krt-editorCanvas__blockMenu">
                         <li>
                             <label class="krt-editorCanvas__searchLabel">
                                 <input type="text" class="krt-editorCanvas__searchInput" placeholder="Search" bind:value={blockSearchTerm} />
@@ -306,7 +285,7 @@
             {#if footerBlocksState.length === 0 && (!footerElement || footerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState krt-editorCanvas__emptyState--footer">Select a footer preset to get started</div>
             {/if}
-            {#each footerBlocksState as block, index (generateBlockKey(block, index))}
+            {#each footerBlocksState as block, index (block.type ? `footer-${block.type}-${index}` : `footer-${index}`)}
                 {@const blockDefinition = getFooter(block.type)}
                 {#if blockDefinition}
                     <blockDefinition.component
@@ -334,6 +313,18 @@
         pointer-events: none;
         box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
         transition: transform 120ms ease;
+    }
+
+    :global(.editor-item) {
+        transition: border-color 150ms ease, box-shadow 150ms ease;
+        border: 2px solid transparent;
+        border-radius: 0.75rem;
+    }
+
+    :global(.editor-item:hover),
+    :global(.editor-item:focus-within) {
+        border-color: rgba(99, 102, 241, 0.3);
+        box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.2), 0 0 0 3px rgba(99, 102, 241, 0.1);
     }
 
     .krt-editorCanvas {
@@ -427,15 +418,19 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 0.25rem;
+        border-radius: 0.375rem;
         border: 1px solid rgba(0, 0, 0, 0.2);
         background: white;
         cursor: pointer;
         transition: all 150ms ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
     }
 
-    .krt-editorCanvas__iconButton:hover {
+    .krt-editorCanvas__iconButton:is(:hover, :focus-visible) {
         background: rgba(0, 0, 0, 0.05);
+        border-color: rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+        transform: translateY(-2px);
     }
 
     .krt-editorCanvas__iconButton :global(svg) {
@@ -447,10 +442,16 @@
         list-style: none;
         padding: 0.5rem;
         margin: 0;
+        display: none;
         background: rgba(0, 0, 0, 0.05);
         border-radius: 0.5rem;
         min-width: 12.5rem;
         box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+
+    .krt-editorCanvas__blockMenu:popover-open {
+        display: flex;
+        flex-direction: column;
     }
 
     .krt-editorCanvas__searchLabel {
@@ -498,6 +499,7 @@
 
     .krt-editorCanvas__inlineSearch {
         position: relative;
+        width: 100%;
     }
 
     .krt-editorCanvas__inlineInput {
@@ -505,11 +507,13 @@
         border: 0;
         outline: none;
         background: transparent;
-        padding: 0;
+        padding: 0.5rem 0;
+        font-size: 1rem;
+        font-weight: 500;
     }
 
     .krt-editorCanvas__inlineInput::placeholder {
-        opacity: 0.3;
+        opacity: 0.4;
     }
 
     .krt-editorCanvas__inlineInput:focus {
@@ -520,12 +524,12 @@
         position: absolute;
         top: 100%;
         left: 0;
-        margin-top: 0.5rem;
+        margin-top: 0.75rem;
         background: white;
         border-radius: 0.5rem;
-        width: 13rem;
+        width: 14rem;
         padding: 0.5rem;
-        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
         z-index: 50;
         border: 1px solid rgba(0, 0, 0, 0.1);
         display: flex;
@@ -537,23 +541,28 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.5rem;
+        padding: 0.6rem;
         background: transparent;
         border: none;
         border-radius: 0.375rem;
         cursor: pointer;
-        transition: background 150ms ease;
+        transition: all 160ms ease;
         text-align: left;
         width: 100%;
+        font-size: 0.9rem;
+        color: rgba(0, 0, 0, 0.8);
+        font-family: inherit;
     }
 
-    .krt-editorCanvas__inlineButton:hover {
-        background: rgba(0, 0, 0, 0.05);
+    .krt-editorCanvas__inlineButton:is(:hover, :focus-visible) {
+        background: rgba(99, 102, 241, 0.08);
+        color: rgba(0, 0, 0, 0.95);
     }
 
     .krt-editorCanvas__inlineButton :global(svg) {
         width: 1.125rem;
         height: 1.125rem;
+        flex-shrink: 0;
     }
 
     .krt-editorCanvas__modal {

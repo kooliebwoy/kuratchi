@@ -207,94 +207,94 @@
             </div>
         </div>
     </section>
+
+    <SideActions triggerId={sideActionsId}>
+        {#snippet label()}
+            <button id={sideActionsId} class="krt-editButton" aria-label="Edit grid CTAs settings">
+                <Pencil size={16} />
+                <span>Edit Settings</span>
+            </button>
+        {/snippet}
+        {#snippet content()}
+            <div class="krt-gridCtasDrawer">
+                <section class="krt-gridCtasDrawer__section">
+                    <h3>Section content</h3>
+                    <div class="krt-gridCtasDrawer__fields">
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" placeholder="Our services" bind:value={heading} />
+                        </label>
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Button label</span>
+                            <input type="text" placeholder="Read more" bind:value={button.label} />
+                        </label>
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Button link</span>
+                            <input type="text" placeholder="https://" bind:value={button.link} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-gridCtasDrawer__section">
+                    <h3>Colors</h3>
+                    <div class="krt-gridCtasDrawer__grid">
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Background</span>
+                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                        </label>
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Heading</span>
+                            <input type="color" bind:value={layoutMetadata.headingColor} />
+                        </label>
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Body text</span>
+                            <input type="color" bind:value={layoutMetadata.textColor} />
+                        </label>
+                        <label class="krt-gridCtasDrawer__field">
+                            <span>Button</span>
+                            <input type="color" bind:value={layoutMetadata.buttonColor} />
+                        </label>
+                    </div>
+                </section>
+
+                <section class="krt-gridCtasDrawer__section">
+                    <div class="krt-gridCtasDrawer__sectionHeader">
+                        <h3>Cards</h3>
+                        <p class="krt-gridCtasDrawer__hint">Select or remove images to manage cards.</p>
+                    </div>
+                    <ImagePicker bind:selectedImages={images} mode="multiple" />
+                    <div class="krt-gridCtasDrawer__cards">
+                        {#each cards as card, index}
+                            <article class="krt-gridCtasDrawer__card">
+                                <figure class="krt-gridCtasDrawer__preview" aria-label={`Card ${index + 1} image`}>
+                                    {#if resolveImageUrl(card.image)}
+                                        <img src={resolveImageUrl(card.image)} alt={card.image?.alt ?? card.title} />
+                                    {:else}
+                                        <span>No image</span>
+                                    {/if}
+                                </figure>
+                                <div class="krt-gridCtasDrawer__cardFields">
+                                    <label class="krt-gridCtasDrawer__field">
+                                        <span>Title</span>
+                                        <input type="text" placeholder="Card title" bind:value={card.title} />
+                                    </label>
+                                    <label class="krt-gridCtasDrawer__field">
+                                        <span>Button label</span>
+                                        <input type="text" placeholder="Learn more" bind:value={card.buttonLabel} />
+                                    </label>
+                                    <label class="krt-gridCtasDrawer__field">
+                                        <span>Button link</span>
+                                        <input type="text" placeholder="https://" bind:value={card.buttonLink} />
+                                    </label>
+                                </div>
+                            </article>
+                        {/each}
+                    </div>
+                </section>
+            </div>
+        {/snippet}
+    </SideActions>
 </div>
-
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button id={sideActionsId} class="krt-editButton" aria-label="Edit grid CTAs settings">
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-gridCtasDrawer">
-            <section class="krt-gridCtasDrawer__section">
-                <h3>Section content</h3>
-                <div class="krt-gridCtasDrawer__fields">
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" placeholder="Our services" bind:value={heading} />
-                    </label>
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Button label</span>
-                        <input type="text" placeholder="Read more" bind:value={button.label} />
-                    </label>
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Button link</span>
-                        <input type="text" placeholder="https://" bind:value={button.link} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-gridCtasDrawer__section">
-                <h3>Colors</h3>
-                <div class="krt-gridCtasDrawer__grid">
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Background</span>
-                        <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                    </label>
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Heading</span>
-                        <input type="color" bind:value={layoutMetadata.headingColor} />
-                    </label>
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Body text</span>
-                        <input type="color" bind:value={layoutMetadata.textColor} />
-                    </label>
-                    <label class="krt-gridCtasDrawer__field">
-                        <span>Button</span>
-                        <input type="color" bind:value={layoutMetadata.buttonColor} />
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-gridCtasDrawer__section">
-                <div class="krt-gridCtasDrawer__sectionHeader">
-                    <h3>Cards</h3>
-                    <p class="krt-gridCtasDrawer__hint">Select or remove images to manage cards.</p>
-                </div>
-                <ImagePicker bind:selectedImages={images} mode="multiple" />
-                <div class="krt-gridCtasDrawer__cards">
-                    {#each cards as card, index}
-                        <article class="krt-gridCtasDrawer__card">
-                            <figure class="krt-gridCtasDrawer__preview" aria-label={`Card ${index + 1} image`}>
-                                {#if resolveImageUrl(card.image)}
-                                    <img src={resolveImageUrl(card.image)} alt={card.image?.alt ?? card.title} />
-                                {:else}
-                                    <span>No image</span>
-                                {/if}
-                            </figure>
-                            <div class="krt-gridCtasDrawer__cardFields">
-                                <label class="krt-gridCtasDrawer__field">
-                                    <span>Title</span>
-                                    <input type="text" placeholder="Card title" bind:value={card.title} />
-                                </label>
-                                <label class="krt-gridCtasDrawer__field">
-                                    <span>Button label</span>
-                                    <input type="text" placeholder="Learn more" bind:value={card.buttonLabel} />
-                                </label>
-                                <label class="krt-gridCtasDrawer__field">
-                                    <span>Button link</span>
-                                    <input type="text" placeholder="https://" bind:value={card.buttonLink} />
-                                </label>
-                            </div>
-                        </article>
-                    {/each}
-                </div>
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
