@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import type { Component } from "svelte";
     import type { EditorOptions, PageData, SiteRegionState } from "./types.js";
     import type { PluginContext } from "./plugins/types";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
@@ -14,6 +13,7 @@
     import { MenuWidget } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
     import ThemePreview from "./themes/ThemePreview.svelte";
+    import SectionPreview from "./sections/SectionPreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
     import {
         Box,
@@ -444,18 +444,18 @@ let {
                         {/if}
                     {:else if activeTab === 'sections'}
                         {#if editor}
-                            <div class="krt-editor__paletteList">
-                                {#each Object.entries(sectionDefaults) as [id, section]}
-                                    {@const blockDef = getBlock(section.type)}
-                                    {#if blockDef}
-                                        <button
-                                            class="krt-editor__sidebarItem"
-                                            onclick={() => addComponentToEditor(editor, blockDef.component, section)}
-                                        >
-                                            <blockDef.icon />
-                                            <span>{blockDef.name}</span>
-                                        </button>
-                                    {/if}
+                            <div class="krt-editor__sidebarSection">
+                                {#each sections as section}
+                                    <button
+                                        class="krt-editor__themeButton"
+                                        onclick={() => addComponentToEditor(editor, section.component, { editable: true })}
+                                    >
+                                        <SectionPreview component={section.component} scale={0.18} />
+                                        <div class="krt-editor__themeDetails">
+                                            <div>{section.name}</div>
+                                            <p>{section.description}</p>
+                                        </div>
+                                    </button>
                                 {/each}
                             </div>
                         {:else}
