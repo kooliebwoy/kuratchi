@@ -99,6 +99,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-iconBar__band" style:color={iconColors}>
             {#each iconsState as { icon, name }}
                 {@const Comp = LucideIconMap[icon as LucideIconKey]}
@@ -176,7 +177,6 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-iconBar__band" style:color={iconColors}>
             {#each visibleIcons as iconItem}
                 {@const Comp = LucideIconMap[iconItem.icon as LucideIconKey]}

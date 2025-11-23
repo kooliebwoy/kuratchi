@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { ThemeTemplate } from '../themes';
-	import type { BlockSnapshot } from '../types';
-	import { resolveBlockRender } from '../render';
+	import type { Component } from 'svelte';
 
 	const { theme, maxBodyBlocks = 3, scale = 0.4 } = $props<{
 		theme: ThemeTemplate;
@@ -9,15 +8,22 @@
 		scale?: number;
 	}>();
 
-	const headerBlocks = $derived(theme.siteHeader?.blocks ?? []);
-	const footerBlocks = $derived(theme.siteFooter?.blocks ?? []);
-	const bodyBlocks = $derived((theme.defaultHomepage?.content ?? []).slice(0, maxBodyBlocks));
+	// Now theme has direct component references
+	const headerComponent = $derived(theme.header ? { component: theme.header } : null);
+	const footerComponent = $derived(theme.footer ? { component: theme.footer } : null);
+	const bodyComponents = $derived(
+		(theme.defaultHomepage?.content ?? []).slice(0, maxBodyBlocks).map((comp: Component<any>) => ({ component: comp }))
+	);
 
-	const sequence = $derived([...headerBlocks, ...bodyBlocks, ...footerBlocks]);
+	const sequence = $derived([
+		...(headerComponent ? [headerComponent] : []),
+		...bodyComponents,
+		...(footerComponent ? [footerComponent] : [])
+	]);
 
-	function keyFor(block: BlockSnapshot, index: number) {
-		if (typeof block.id === 'string' && block.id.length > 0) return block.id;
-		return `${block.type}-${index}`;
+	function keyFor(item: { component: Component<any> }, index: number) {
+		// Use component name or index for key
+		return `${item.component.name || 'component'}-${index}`;
 	}
 </script>
 
@@ -27,11 +33,8 @@
 			{#if sequence.length === 0}
 				<div class="krt-themePreview__empty">No preview data</div>
 			{:else}
-				{#each sequence as block, index (keyFor(block, index))}
-					{@const renderable = resolveBlockRender(block)}
-					{#if renderable}
-						<renderable.component {...renderable.props} editable={false} />
-					{/if}
+				{#each sequence as item, index (keyFor(item, index))}
+					<item.component editable={false} />
 				{/each}
 			{/if}
 		</div>

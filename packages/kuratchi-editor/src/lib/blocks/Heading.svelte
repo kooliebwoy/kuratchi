@@ -87,9 +87,7 @@
         
         <div data-type={type} id={id} class="krt-heading-body">
             <!-- JSON Data for this component -->
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             {#if size === 'h1'}
                 <h1 id="heading" class="krt-heading krt-heading--h1 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
             {:else if size === 'h2'}

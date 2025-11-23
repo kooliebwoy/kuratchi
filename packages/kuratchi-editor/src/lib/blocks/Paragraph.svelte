@@ -76,9 +76,7 @@
         
         <div data-type={type} id={id} class="krt-paragraph-body">
             <!-- JSON Data for this component -->
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable"></p>
         </div>
     </div>

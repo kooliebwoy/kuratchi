@@ -1,13 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
+    import type { Component } from "svelte";
     import type { EditorOptions, PageData, SiteRegionState } from "./types.js";
     import type { PluginContext } from "./plugins/types";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
     import { blocks, getBlock, getEnabledPlugins } from "./registry";
-    import { sectionDefaults } from "./registry/sections.svelte";
+    import { sections } from "./registry/sections.svelte";
     import { headers } from "./registry/headers.svelte";
     import { footers } from "./registry/footers.svelte";
-    import { addComponentToEditor } from "./utils/editor.svelte";
+    import { addComponentToEditor, replaceRegionComponent } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
     import { MenuWidget } from "./plugins";
@@ -160,13 +161,40 @@ let {
         const template = getThemeTemplate(themeId);
         selectedThemeId = themeId;
         const homepage = template.defaultHomepage;
-        localPageData = { ...localPageData, ...homepage };
+        
+        // Clear and mount header component directly
+        if (headerElement && template.header) {
+            replaceRegionComponent(headerElement, template.header, { editable: true });
+        }
+        
+        // Clear and mount footer component directly
+        if (footerElement && template.footer) {
+            replaceRegionComponent(footerElement, template.footer, { editable: true });
+        }
+        
+        // Clear editor and mount content components directly
+        if (editor && homepage.content) {
+            editor.innerHTML = ''; // Clear existing content
+            homepage.content.forEach((component) => {
+                addComponentToEditor(editor, component, { editable: true });
+            });
+        }
+        
+        // Update local page data with theme homepage info (but not content since we mounted it directly)
+        localPageData = { 
+            ...localPageData, 
+            title: homepage.title,
+            seoTitle: homepage.seoTitle,
+            seoDescription: homepage.seoDescription,
+            slug: homepage.slug
+        };
+        
         siteMetadata = { ...(template.siteMetadata || {}), themeId };
-        await handleHeaderChange(template.siteHeader);
-        await handleFooterChange(template.siteFooter);
+        
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
         }
+        
         navState = ensureNavigation();
     };
 
@@ -182,6 +210,7 @@ let {
 
     const handleTitleEdit = async (title: string) => {
         localPageData.title = title;
+        $headingStore = title || '';
         triggerSave();
     }
 
@@ -190,32 +219,11 @@ let {
         triggerSave();
     }
 
-    $effect(() => {
-        $headingStore = localPageData.title || '';
-    });
-
-    $effect(() => {
-        const incomingId = (pageData as any)?.id ?? null;
-        const currentId = (localPageData as any)?.id ?? null;
-        const incomingSlug = (pageData as any)?.slug ?? '';
-        const currentSlug = (localPageData as any)?.slug ?? '';
-        if (incomingId !== currentId || incomingSlug !== currentSlug) {
-            localPageData = { ...defaultPageData, ...pageData } as PageData;
-        }
-    });
-
-
-    $effect(() => {
-        const incomingTheme = (siteMetadata as any)?.themeId;
-        if (incomingTheme && incomingTheme !== selectedThemeId) {
-            selectedThemeId = incomingTheme;
-        }
-    });
-
-
     onMount(() => {
         $sideBarStore = false;
+        $headingStore = localPageData.title || '';
     });
+     
 
     onDestroy(() => {
         $sideBarStore = true;
@@ -463,7 +471,7 @@ let {
                                         class="krt-editor__blockButton"
                                         onclick={() => {
                                             if (headerElement) {
-                                                addComponentToEditor(headerElement, header.component, { type: header.type });
+                                                replaceRegionComponent(headerElement, header.component, { type: header.type });
                                             }
                                         }}
                                     >
@@ -481,7 +489,7 @@ let {
                                         class="krt-editor__blockButton"
                                         onclick={() => {
                                             if (footerElement) {
-                                                addComponentToEditor(footerElement, footer.component, { type: footer.type });
+                                                replaceRegionComponent(footerElement, footer.component, { type: footer.type });
                                             }
                                         }}
                                     >

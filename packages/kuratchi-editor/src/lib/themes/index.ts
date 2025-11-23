@@ -7,7 +7,20 @@
  * - Themes: header + footer + homepage (composed of sections) + metadata
  */
 
-import type { PageData, SiteRegionState } from '../types';
+import type { Component } from 'svelte';
+import SaigeBlakeFooter from '../footers/SaigeBlakeFooter.svelte';
+import SaigeBlakeHeader from '../headers/SaigeBlakeHeader.svelte';
+import TwigAndPearlFooter from '../footers/TwigAndPearlFooter.svelte';
+import TwigAndPearlHeader from '../headers/TwigAndPearlHeader.svelte';
+import HeroFigure from '../sections/HeroFigure.svelte';
+import IconBar from '../sections/IconBar.svelte';
+import ServicesGrid from '../sections/ServicesGrid.svelte';
+import HeroOverlay from '../sections/HeroOverlay.svelte';
+import CardWithSlider from '../sections/CardWithSlider.svelte';
+import GridCTAs from '../sections/GridCTAs.svelte';
+import AboutUs from '../sections/AboutUs.svelte';
+import AboutUsCard from '../sections/AboutUsCard.svelte';
+import type { PageData } from '../types';
 import { createDefaultBlogData } from '../types';
 
 export interface ThemeMetadata {
@@ -21,9 +34,14 @@ export interface ThemeMetadata {
 
 export interface ThemeTemplate {
   metadata: ThemeMetadata;
-  defaultHomepage: Omit<PageData, 'id' | 'domain'>;
-  siteHeader: SiteRegionState | null;
-  siteFooter: SiteRegionState | null;
+  defaultHomepage: Omit<PageData, 'id' | 'domain'> & {
+    /** Direct component references instead of type strings */
+    content: Component<any>[];
+  };
+  /** Header component to render */
+  header?: Component<any>;
+  /** Footer component to render */
+  footer?: Component<any>;
   siteMetadata: Record<string, unknown>;
 }
 
@@ -43,14 +61,10 @@ const createMinimalTheme = (): ThemeTemplate => ({
     seoTitle: 'Welcome to Your Site',
     seoDescription: 'A beautiful minimal website',
     slug: 'homepage',
-    content: [
-      { type: 'hero-figure' },
-      { type: 'icon-bar' },
-      { type: 'services-grid' }
-    ]
+    content: [HeroFigure, IconBar, ServicesGrid]
   },
-  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
-  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
+  header: SaigeBlakeHeader,
+  footer: SaigeBlakeFooter,
   siteMetadata: {
     backgroundColor: '#ffffff',
     themeId: 'minimal',
@@ -74,14 +88,10 @@ const createModernTheme = (): ThemeTemplate => ({
     seoTitle: 'Modern Design - Your Site',
     seoDescription: 'A contemporary website with modern aesthetics',
     slug: 'homepage',
-    content: [
-      { type: 'hero-overlay' },
-      { type: 'card-with-slider' },
-      { type: 'grid-ctas' }
-    ]
+    content: [HeroOverlay, CardWithSlider, GridCTAs]
   },
-  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
-  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
+  header: TwigAndPearlHeader,
+  footer: TwigAndPearlFooter,
   siteMetadata: {
     backgroundColor: '#f8f9fa',
     themeId: 'modern',
@@ -105,14 +115,10 @@ const createClassicTheme = (): ThemeTemplate => ({
     seoTitle: 'Classic Elegance - Your Site',
     seoDescription: 'A timeless website with elegant design',
     slug: 'homepage',
-    content: [
-      { type: 'about-us-hero' },
-      { type: 'about-us-card' },
-      { type: 'grid-ctas' }
-    ]
+    content: [AboutUs, AboutUsCard, GridCTAs]
   },
-  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
-  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
+  header: SaigeBlakeHeader,
+  footer: TwigAndPearlFooter,
   siteMetadata: {
     backgroundColor: '#fafafa',
     themeId: 'classic',
@@ -136,14 +142,10 @@ const createBoldTheme = (): ThemeTemplate => ({
     seoTitle: 'Make a Statement - Your Site',
     seoDescription: 'A bold and vibrant website that stands out',
     slug: 'homepage',
-    content: [
-      { type: 'hero-overlay' },
-      { type: 'icon-bar' },
-      { type: 'services-grid' }
-    ]
+    content: [HeroOverlay, IconBar, ServicesGrid]
   },
-  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
-  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
+  header: TwigAndPearlHeader,
+  footer: SaigeBlakeFooter,
   siteMetadata: {
     backgroundColor: '#1a1a1a',
     themeId: 'bold',
@@ -167,14 +169,10 @@ const createCreativeTheme = (): ThemeTemplate => ({
     seoTitle: 'Creative Expression - Your Site',
     seoDescription: 'An artistic website for creative minds',
     slug: 'homepage',
-    content: [
-      { type: 'hero-overlay' },
-      { type: 'card-with-slider' },
-      { type: 'grid-ctas' }
-    ]
+    content: [HeroOverlay, CardWithSlider, GridCTAs]
   },
-  siteHeader: { blocks: [{ type: 'twig-and-pearl-header' }] },
-  siteFooter: { blocks: [{ type: 'twig-and-pearl-footer' }] },
+  header: TwigAndPearlHeader,
+  footer: TwigAndPearlFooter,
   siteMetadata: {
     backgroundColor: '#f0f4f8',
     themeId: 'creative',
@@ -198,14 +196,10 @@ const createProfessionalTheme = (): ThemeTemplate => ({
     seoTitle: 'Professional Solutions - Your Business',
     seoDescription: 'A professional website for your business',
     slug: 'homepage',
-    content: [
-      { type: 'hero-overlay' },
-      { type: 'services-grid' },
-      { type: 'about-us-card' }
-    ]
+    content: [HeroOverlay, ServicesGrid, AboutUsCard]
   },
-  siteHeader: { blocks: [{ type: 'saige-blake-header' }] },
-  siteFooter: { blocks: [{ type: 'saige-blake-footer' }] },
+  header: SaigeBlakeHeader,
+  footer: SaigeBlakeFooter,
   siteMetadata: {
     backgroundColor: '#ffffff',
     themeId: 'professional',

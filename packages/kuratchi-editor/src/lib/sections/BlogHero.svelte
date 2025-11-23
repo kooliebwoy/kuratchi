@@ -60,7 +60,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-blogHero" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
             <h1 class="krt-blogHero__heading" contenteditable bind:innerHTML={heading}></h1>
             <p class="krt-blogHero__body" contenteditable bind:innerHTML={body}></p>
@@ -114,7 +114,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-blogHero" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class={`krt-blogHero__inner krt-blogHero__inner--${layoutMetadata.align}`}>
             <h1 class="krt-blogHero__heading">{@html heading}</h1>
             <div class="krt-blogHero__body">{@html body}</div>

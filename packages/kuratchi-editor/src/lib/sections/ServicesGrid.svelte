@@ -175,7 +175,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-servicesGrid__container">
             {#if title || subtitle}
                 <header class="krt-servicesGrid__header">
@@ -330,7 +330,6 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-servicesGrid__container">
             {#if layoutMetadata.title || layoutMetadata.subtitle}
                 <header class="krt-servicesGrid__header">

@@ -64,6 +64,7 @@
     }
 
     let content = $derived({
+        id,
         backgroundColor: backgroundColor,
         homeIconColor: homeIconColor,
         textColor: textColor,
@@ -321,7 +322,7 @@
         style:background-color={backgroundColor}
         style:color={textColor}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

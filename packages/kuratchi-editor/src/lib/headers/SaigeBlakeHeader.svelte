@@ -64,6 +64,7 @@
     let logoAlt = $derived(logo?.alt || 'Logo');
 
     let content = $derived({
+        id,
         backgroundColor,
         textColor,
         reverseOrder,
@@ -315,7 +316,7 @@
         style:color={textColor}
         data-type={type}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

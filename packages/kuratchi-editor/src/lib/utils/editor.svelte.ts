@@ -1,5 +1,5 @@
 import { browser } from "$app/environment";
-import { mount, onMount } from "svelte";
+import { mount, unmount, onMount } from "svelte";
 import type { SiteRegionState } from "../types.js";
 
 const wrapSelection = (tag: string, attributes: Record<string, string> = {}) => {
@@ -192,6 +192,27 @@ export const addComponentToEditor = (editor: HTMLElement, component: any, props?
     }
 }
 
+/**
+ * Clears all content from a region element and mounts a new component
+ * This prevents duplicate headers/footers when selecting a new preset
+ * @param regionElement The header or footer container element
+ * @param component The Svelte component to mount
+ * @param props Props to pass to the component
+ */
+export const replaceRegionComponent = (regionElement: HTMLElement, component: any, props?: Record<string, unknown>) => {
+    if (!browser || !regionElement) return;
+    
+    // Clear all existing content in the region
+    // This removes all previously mounted Svelte components
+    regionElement.innerHTML = '';
+    
+    // Mount the new component
+    mount(component, {
+        target: regionElement,
+        props
+    });
+}
+
 // configure blocks
 const collectSerializedBlocks = (root: HTMLElement | null | undefined, selector: string) => {
     if (!root) return [];
@@ -205,6 +226,8 @@ const collectSerializedBlocks = (root: HTMLElement | null | undefined, selector:
             results.push(dataToSaveToDB);
         } catch (error) {
             console.error('Error parsing JSON data:', error);
+            console.error('Invalid JSON content:', jsonDataElement.textContent);
+            console.error('Element:', element);
         }
     }
     return results;

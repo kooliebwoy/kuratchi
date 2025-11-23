@@ -78,9 +78,7 @@
         
         <div data-type={type} {id} class="krt-button-body">
             <!-- JSON Data for this component -->
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 
             <div class="krt-button-align">
                 <a 

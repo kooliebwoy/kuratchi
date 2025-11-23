@@ -153,7 +153,7 @@
     </SideActions>
 
     <section class={`krt-heroFigure ${layoutMetadata.reverseOrder ? 'krt-heroFigure--reverse' : ''}`} style={layoutStyle} data-type={type}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-heroFigure__inner">
             <div class="krt-heroFigure__media">
                 {#if image?.url}

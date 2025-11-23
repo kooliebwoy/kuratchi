@@ -96,7 +96,7 @@
             <BlockActions {id} {type} element={component} />
         {/if}
         <section class="krt-productCarousel" style={layoutStyle} {id} data-type={type}>
-            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <div class="krt-productCarousel__hero">
                 <div class="krt-productCarousel__textGroup">
                     <p class="krt-productCarousel__eyebrow">Featured products</p>
@@ -239,7 +239,7 @@
     </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-productCarousel" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-productCarousel__hero">
             <div class="krt-productCarousel__textGroup">
                 <p class="krt-productCarousel__eyebrow">Featured products</p>

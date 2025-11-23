@@ -114,9 +114,7 @@
         </BlockActions>
 
         <div data-type={type} id={id} class="w-full min-w-full">
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 
             <svelte:element this={listType} class="space-y-2 prose-ul:list-disc prose-ol:list-decimal" bind:this={listContainer}>
                 {#each items as item, index}

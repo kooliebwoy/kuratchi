@@ -76,6 +76,7 @@
     });
 
     let content = $derived({
+        id,
         backgroundColor: backgroundColor,
         textColor: textColor,
         reverseOrder: reverseOrder,
@@ -111,7 +112,7 @@
             style:background-color={backgroundColor}
             style:color={textColor}
         >
-            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
                 {#if reverseOrder}
                     <div class="krt-footer__columns">
@@ -250,7 +251,7 @@
         style:background-color={backgroundColor}
         style:color={textColor}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
             {#if reverseOrder}
                 <div class="krt-footer__columns">

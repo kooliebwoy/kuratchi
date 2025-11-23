@@ -91,7 +91,7 @@
             <BlockActions {id} {type} element={component} />
         {/if}
         <section class="krt-featuredBlogs" style={layoutStyle} {id} data-type={type}>
-            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <div class="krt-featuredBlogs__hero">
                 <div class="krt-featuredBlogs__headingGroup">
                     <p class="krt-featuredBlogs__eyebrow">Featured stories</p>
@@ -211,7 +211,7 @@
     </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-featuredBlogs" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-featuredBlogs__hero">
             <div class="krt-featuredBlogs__headingGroup">
                 <p class="krt-featuredBlogs__eyebrow">Featured stories</p>

@@ -48,13 +48,12 @@
         editable = true
     }: Props = $props();
 
-    $effect(() => {
-        layoutMetadata.backgroundColor ??= '#f3f4f680';
-        layoutMetadata.textColor ??= '#111827';
-        layoutMetadata.reverseOrder ??= false;
-        image.alt ??= 'About us image';
-        image.title ??= image.alt ?? 'About us image';
-    });
+    // Initialize defaults once
+    if (!layoutMetadata.backgroundColor) layoutMetadata.backgroundColor = '#f3f4f680';
+    if (!layoutMetadata.textColor) layoutMetadata.textColor = '#111827';
+    if (layoutMetadata.reverseOrder === undefined) layoutMetadata.reverseOrder = false;
+    if (!image.alt) image.alt = 'About us image';
+    if (!image.title) image.title = image.alt ?? 'About us image';
 
     const imageUrl = $derived(image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '');
 
@@ -87,7 +86,7 @@
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
         style:background-color={layoutMetadata.backgroundColor}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutCard__inner">
             <div class="krt-aboutCard__copy">
                 <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={heading}></h2>
@@ -163,7 +162,7 @@
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
         style:background-color={layoutMetadata.backgroundColor}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutCard__inner">
             <div class="krt-aboutCard__copy">
                 <h2 class="krt-aboutCard__heading" style:color={layoutMetadata.textColor}>

@@ -62,6 +62,7 @@
     const poweredBy = 'Powered by Clutch CMS';
 
     let content = $derived({
+        id,
         backgroundColor: backgroundColor,
         textColor: textColor,
         reverseOrder: reverseOrder,
@@ -238,7 +239,7 @@
         style:color={textColor}
         data-type={type}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading">{subscribeText}</h2>
             <div class="krt-footer__form">

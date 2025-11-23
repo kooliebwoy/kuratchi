@@ -53,7 +53,7 @@
 			<BlockActions {id} {type} element={component} />
 		{/if}
 		<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`} {id} data-type={type}>
-			<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+			<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 				<div class="content-3d">
 					<div class="copy-3d">
 						<p class="text-sm uppercase tracking-widest opacity-70">Featured</p>
@@ -110,7 +110,7 @@
 	</SideActions>
 {:else}
 	<section id={id} data-type={type}>
-		<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+		<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 	<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`}>
 			<div class="content-3d">
 				<div class="copy-3d">

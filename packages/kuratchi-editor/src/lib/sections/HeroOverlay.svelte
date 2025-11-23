@@ -106,7 +106,7 @@
         class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-heroOverlay__background" aria-hidden="true"></div>
         <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
         <div class="krt-heroOverlay__content">
@@ -187,7 +187,6 @@
         class={`krt-heroOverlay ${layoutMetadata.reverseOrder ? 'krt-heroOverlay--reverse' : ''}`}
         style={layoutStyle}
     >
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
         <div class="krt-heroOverlay__background" aria-hidden="true"></div>
         <div class="krt-heroOverlay__overlay" aria-hidden="true"></div>
         <div class="krt-heroOverlay__content">

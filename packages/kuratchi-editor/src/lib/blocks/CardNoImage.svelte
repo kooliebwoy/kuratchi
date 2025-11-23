@@ -59,7 +59,7 @@
             <BlockActions {id} {type} element={component} />
         {/if}
         <section {id} data-type={type} class="krt-card krt-card--stacked" style:background-color={backgroundColor}>
-            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <div class="krt-card__body krt-card__body--stacked">
                 <h2
                     class="krt-card__title"
@@ -141,7 +141,7 @@
     </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-card krt-card--stacked" style:background-color={backgroundColor}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-card__body krt-card__body--stacked">
             <h2 class="krt-card__title" style:color={headingColor}>{heading}</h2>
             <p class="krt-card__copy" style:color={contentColor}>{body}</p>

@@ -40,14 +40,13 @@
         editable = true
     }: Props = $props();
 
-    $effect(() => {
-        layoutMetadata.backgroundColor ??= '#54545499';
-        layoutMetadata.headingColor ??= '#212121';
-        layoutMetadata.buttonColor ??= '#212121';
-        layoutMetadata.textColor ??= '#ffffff';
-        button.label ??= 'Read more';
-        button.link ??= '#';
-    });
+    // Initialize defaults once
+    if (!layoutMetadata.backgroundColor) layoutMetadata.backgroundColor = '#54545499';
+    if (!layoutMetadata.headingColor) layoutMetadata.headingColor = '#212121';
+    if (!layoutMetadata.buttonColor) layoutMetadata.buttonColor = '#212121';
+    if (!layoutMetadata.textColor) layoutMetadata.textColor = '#ffffff';
+    if (!button.label) button.label = 'Read more';
+    if (!button.link) button.link = '#';
 
     let content = $derived({
         id,
@@ -75,7 +74,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading}></h1>
             <p class="krt-aboutHero__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body}></p>
@@ -149,7 +148,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor}>
                 {@html heading}

@@ -168,7 +168,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
             <div class="krt-sliderLayout__card">
                 <CardNoImage

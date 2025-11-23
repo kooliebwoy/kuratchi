@@ -121,7 +121,7 @@
 			<BlockActions {id} {type} element={component} />
 		{/if}
 		<div class="space-y-2" {id} data-type={type}>
-			<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+			<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 			<div class="carousel w-full rounded-box overflow-hidden">
 				{#each slides as slide, index (slide.id)}
 					<div class="carousel-item relative w-full" id={slideId(index)}>
@@ -209,7 +209,7 @@
 	</SideActions>
 {:else}
 	<section id={id} data-type={type} class="space-y-2">
-		<script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+		<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 		<div class="carousel w-full rounded-box overflow-hidden">
 			{#each slides as slide, index (slide.id)}
 				<div class="carousel-item relative w-full" id={slideId(index)}>

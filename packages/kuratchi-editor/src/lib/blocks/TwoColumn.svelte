@@ -125,9 +125,7 @@
         
         <div data-type={type} {id} class="w-full min-w-full">
             <!-- JSON Data for this component -->
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 
             <div class={`grid ${gridClasses} ${gapClasses} ${alignClasses} py-4`}>
                 <div class={`${leftColClasses} prose prose-sm max-w-none`}>

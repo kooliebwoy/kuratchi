@@ -85,12 +85,11 @@
         editable = true
     }: Props = $props();
 
-    $effect(() => {
-        layoutMetadata.backgroundColor ??= '#f8fafc';
-        layoutMetadata.headingColor ??= '#0f172a';
-        layoutMetadata.textColor ??= '#1f2937';
-        layoutMetadata.buttonColor ??= '#0f172a';
-    });
+    // Initialize defaults once
+    if (!layoutMetadata.backgroundColor) layoutMetadata.backgroundColor = '#f8fafc';
+    if (!layoutMetadata.headingColor) layoutMetadata.headingColor = '#0f172a';
+    if (!layoutMetadata.textColor) layoutMetadata.textColor = '#1f2937';
+    if (!layoutMetadata.buttonColor) layoutMetadata.buttonColor = '#0f172a';
 
     const normalizedCards = $derived(
         cards.map((card) => ({
@@ -131,27 +130,27 @@
 
     let images = $state(cards.map((card) => card.image).filter(Boolean));
 
-    $effect(() => {
-        if (!editable) {
-            return;
+    // Sync cards with images when images change - but avoid infinite loops
+    const syncCardsWithImages = () => {
+        if (!editable) return;
+        
+        // Filter out cards that don't have images in the images array
+        const validCards = cards.filter((card) => images.includes(card.image));
+        
+        // Add new cards for images that don't have cards yet
+        const newCards = images
+            .filter(image => !validCards.some((card) => card.image === image))
+            .map(image => ({
+                image,
+                title: 'New card',
+                buttonLabel: 'Edit label',
+                buttonLink: '#'
+            }));
+        
+        if (newCards.length > 0 || validCards.length !== cards.length) {
+            cards = [...validCards, ...newCards];
         }
-
-        cards = cards.filter((card) => images.includes(card.image));
-
-        images.forEach((image) => {
-            if (!cards.some((card) => card.image === image)) {
-                cards = [
-                    ...cards,
-                    {
-                        image,
-                        title: 'New card',
-                        buttonLabel: 'Edit label',
-                        buttonLink: '#'
-                    }
-                ];
-            }
-        });
-    });
+    };
 
     let component: HTMLElement;
     let mounted = $state(false);
@@ -168,7 +167,7 @@
         <BlockActions {id} {type} element={component} />
     {/if}
     <section {id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-gridCtas__inner">
             <header class="krt-gridCtas__header">
                 <h2 class="krt-gridCtas__heading" contenteditable bind:innerHTML={heading}></h2>
@@ -298,7 +297,7 @@
 </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-gridCtas" style={layoutStyle}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-gridCtas__inner">
             <header class="krt-gridCtas__header">
                 {#if heading}

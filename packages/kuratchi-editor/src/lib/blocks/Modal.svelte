@@ -138,7 +138,7 @@
             <BlockActions {id} {type} element={component} />
         {/if}
         <div class="modal-trigger-wrapper" {id} data-type={type}>
-            <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             {#if triggerStyle === 'button'}
                 <button
                     class="modal-trigger-button"
@@ -276,7 +276,7 @@
 {:else}
     <!-- Non-editable mode (actual website) -->
     <section id={id} data-type={type}>
-        <script type="application/json" id="metadata-{id}">{JSON.stringify(content)}</script>
+        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="modal-trigger-wrapper">
         {#if triggerStyle === 'button'}
             <button

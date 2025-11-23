@@ -132,9 +132,7 @@
 
         <div data-type={type} id={id} class="krt-image-body">
             <!-- JSON Data for this component -->
-            <script type="application/json" id="metadata-{id}">
-                {JSON.stringify(content)}
-            </script>
+            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 
             {#if !uploadedImage?.id}
                 <div class="krt-image-dropzone">
