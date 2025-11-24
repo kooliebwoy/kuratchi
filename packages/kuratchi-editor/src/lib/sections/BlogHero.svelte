@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     type Alignment = 'left' | 'center';
 
@@ -45,9 +44,8 @@
         metadata: { ...layoutMetadata }
     });
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -55,9 +53,51 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-blogHero__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions 
+            {id} 
+            {type} 
+            element={component}
+            inspectorTitle="Blog hero settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-blogHeroDrawer">
+                    <section class="krt-blogHeroDrawer__section">
+                        <h3>Content</h3>
+                        <label class="krt-blogHeroDrawer__field">
+                            <span>Heading</span>
+                            <input type="text" placeholder="From the studio" bind:value={heading} />
+                        </label>
+                        <label class="krt-blogHeroDrawer__field">
+                            <span>Body</span>
+                            <textarea rows="3" placeholder="Describe the blog" bind:value={body}></textarea>
+                        </label>
+                        <label class="krt-blogHeroDrawer__field">
+                            <span>Alignment</span>
+                            <select bind:value={layoutMetadata.align}>
+                                <option value="left">Left</option>
+                                <option value="center">Center</option>
+                            </select>
+                        </label>
+                    </section>
+
+                    <section class="krt-blogHeroDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-blogHeroDrawer__grid">
+                            <label class="krt-blogHeroDrawer__field">
+                                <span>Background</span>
+                                <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                            </label>
+                            <label class="krt-blogHeroDrawer__field">
+                                <span>Text</span>
+                                <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class="krt-blogHero" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -67,51 +107,7 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog hero settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-blogHeroDrawer">
-                <section class="krt-blogHeroDrawer__section">
-                    <h3>Content</h3>
-                    <label class="krt-blogHeroDrawer__field">
-                        <span>Heading</span>
-                        <input type="text" placeholder="From the studio" bind:value={heading} />
-                    </label>
-                    <label class="krt-blogHeroDrawer__field">
-                        <span>Body</span>
-                        <textarea rows="3" placeholder="Describe the blog" bind:value={body}></textarea>
-                    </label>
-                    <label class="krt-blogHeroDrawer__field">
-                        <span>Alignment</span>
-                        <select bind:value={layoutMetadata.align}>
-                            <option value="left">Left</option>
-                            <option value="center">Center</option>
-                        </select>
-                    </label>
-                </section>
-
-                <section class="krt-blogHeroDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-blogHeroDrawer__grid">
-                        <label class="krt-blogHeroDrawer__field">
-                            <span>Background</span>
-                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-blogHeroDrawer__field">
-                            <span>Text</span>
-                            <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
-</div>
+    </div>
 {:else}
     <section id={id} data-type={type} class="krt-blogHero" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -219,5 +215,9 @@
         font-size: 1rem;
         color: color-mix(in srgb, var(--krt-blogHero-text, #fff) 80%, transparent);
         max-width: 38rem;
+    }
+
+    .krt-blogHero__editor {
+        position: relative;
     }
 </style>

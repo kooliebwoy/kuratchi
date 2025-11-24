@@ -1,7 +1,7 @@
 # Component Refactor Pattern Analysis
 
 ## Pattern Overview
-Components now use `BlockActions` and `SideActions` from `$lib/utils` instead of `LayoutBlock`. Editable experiences follow the same shape as our newer sections such as `IconBar`.
+Components now use `BlockActions` from `$lib/utils` for both drag/delete controls and opening the inspector sidebar. `SideActions` remains available for legacy triggers but now routes its content into the right-hand inspector instead of a drawer.
 
 ## 1. Props Interface Structure
 ```typescript
@@ -32,8 +32,7 @@ let {
 ## 4. Required Imports
 ```typescript
 import { onMount } from 'svelte';
-import { Pencil } from '@lucide/svelte';
-import { BlockActions, SideActions } from '$lib/utils';
+import { BlockActions } from '$lib/utils';
 ```
 
 ## 5. Editable/Read-Only Structure
@@ -41,25 +40,17 @@ import { BlockActions, SideActions } from '$lib/utils';
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <BlockActions {id} {type} element={component} />
+            <BlockActions {id} {type} element={component}>
+                {#snippet inspector()}
+                    <!-- inspector controls -->
+                {/snippet}
+            </BlockActions>
         {/if}
         <section {id} data-type={type}>
             <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
             <!-- component output -->
         </section>
     </div>
-
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" type="button">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <!-- drawer controls -->
-        {/snippet}
-    </SideActions>
 {:else}
     <section {id} data-type={type}>
         <div class="hidden" data-metadata>{JSON.stringify(content)}</div>
@@ -73,4 +64,4 @@ import { BlockActions, SideActions } from '$lib/utils';
 - Add hidden metadata JSON inside the rendered markup for serialization.
 - Use `editor-item` on editable wrappers so `BlockActions` hover/keyboard styles apply.
 - Gate `BlockActions` behind `onMount` when using browser-only APIs like `crypto.randomUUID()`.
-- Keep drawer controls inside `SideActions` and pair them with a trigger button that sets `triggerId`.
+- Pass inspector controls to the `inspector` snippet on `BlockActions`. `SideActions` can still wrap legacy triggers but simply opens the right-hand inspector.

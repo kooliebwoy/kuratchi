@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { Pencil } from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { BlockActions, SideActions } from "../utils/index.js";
+	import { BlockActions } from "../utils/index.js";
 
 	interface Props {
 		id?: string;
@@ -40,7 +39,6 @@
 
 	let component: HTMLElement;
 	let mounted = $state(false);
-	const sideActionsId = `side-actions-${id}`;
 
 	onMount(() => {
 		mounted = true;
@@ -50,7 +48,43 @@
 {#if editable}
 	<div class="editor-item group relative" bind:this={component}>
 		{#if mounted}
-			<BlockActions {id} {type} element={component} />
+			<BlockActions
+				{id}
+				{type}
+				element={component}
+				inspectorTitle="Hover card settings"
+			>
+				{#snippet inspector()}
+					<div class="space-y-4">
+						<label class="form-control">
+							<span class="label-text text-xs">Title</span>
+							<input type="text" class="input input-sm input-bordered" bind:value={title} />
+						</label>
+						<label class="form-control">
+							<span class="label-text text-xs">Subtitle</span>
+							<textarea class="textarea textarea-sm textarea-bordered" rows="3" bind:value={subtitle}></textarea>
+						</label>
+						<div class="grid grid-cols-2 gap-2">
+							<label class="form-control">
+								<span class="label-text text-xs">CTA Label</span>
+								<input type="text" class="input input-sm input-bordered" bind:value={ctaLabel} />
+							</label>
+							<label class="form-control">
+								<span class="label-text text-xs">CTA Link</span>
+								<input type="text" class="input input-sm input-bordered" bind:value={ctaLink} />
+							</label>
+						</div>
+						<label class="form-control">
+							<span class="label-text text-xs">Foreground Image URL</span>
+							<input type="text" class="input input-sm input-bordered" bind:value={imageUrl} />
+						</label>
+						<label class="form-control">
+							<span class="label-text text-xs">Background Image URL</span>
+							<input type="text" class="input input-sm input-bordered" bind:value={backgroundUrl} />
+						</label>
+					</div>
+				{/snippet}
+			</BlockActions>
 		{/if}
 		<div class="card card-3d" style={`--bg-image:url('${backgroundUrl}')`} {id} data-type={type}>
 			<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -70,44 +104,6 @@
 			</div>
 	</div>
 
-	<SideActions triggerId={sideActionsId}>
-		{#snippet label()}
-			<button id={sideActionsId} class="krt-editButton" aria-label="Edit hover card settings" type="button">
-				<Pencil size={16} />
-				<span>Edit Settings</span>
-			</button>
-		{/snippet}
-		{#snippet content()}
-			<div class="space-y-4">
-				<label class="form-control">
-					<span class="label-text text-xs">Title</span>
-					<input type="text" class="input input-sm input-bordered" bind:value={title} />
-				</label>
-				<label class="form-control">
-					<span class="label-text text-xs">Subtitle</span>
-					<textarea class="textarea textarea-sm textarea-bordered" rows="3" bind:value={subtitle}></textarea>
-				</label>
-				<div class="grid grid-cols-2 gap-2">
-					<label class="form-control">
-						<span class="label-text text-xs">CTA Label</span>
-						<input type="text" class="input input-sm input-bordered" bind:value={ctaLabel} />
-					</label>
-					<label class="form-control">
-						<span class="label-text text-xs">CTA Link</span>
-						<input type="text" class="input input-sm input-bordered" bind:value={ctaLink} />
-					</label>
-				</div>
-				<label class="form-control">
-					<span class="label-text text-xs">Foreground Image URL</span>
-					<input type="text" class="input input-sm input-bordered" bind:value={imageUrl} />
-				</label>
-				<label class="form-control">
-					<span class="label-text text-xs">Background Image URL</span>
-					<input type="text" class="input input-sm input-bordered" bind:value={backgroundUrl} />
-				</label>
-			</div>
-		{/snippet}
-	</SideActions>
 {:else}
 	<section id={id} data-type={type}>
 		<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>

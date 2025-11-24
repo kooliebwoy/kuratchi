@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface HeroButton {
         label?: string;
@@ -88,9 +87,8 @@
         metadata: { ...layoutMetadata }
     });
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -98,9 +96,58 @@
 </script>
   
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-heroOverlay__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Hero overlay settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-heroOverlayDrawer">
+                    <section class="krt-heroOverlayDrawer__section">
+                        <h3>Layout</h3>
+                        <label class="krt-heroOverlayDrawer__toggle">
+                            <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                            <span>Flip content alignment</span>
+                        </label>
+                        <label class="krt-heroOverlayDrawer__toggle">
+                            <input type="checkbox" bind:checked={layoutMetadata.showBackgroundImage} />
+                            <span>Show background image</span>
+                        </label>
+                        {#if layoutMetadata.showBackgroundImage}
+                            <label class="krt-heroOverlayDrawer__field">
+                                <span>Background image URL</span>
+                                <input type="text" bind:value={layoutMetadata.backgroundImage} />
+                            </label>
+                        {/if}
+                    </section>
+
+                    <section class="krt-heroOverlayDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-heroOverlayDrawer__grid">
+                            <label class="krt-heroOverlayDrawer__field">
+                                <span>Section background</span>
+                                <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                            </label>
+                            <label class="krt-heroOverlayDrawer__field">
+                                <span>Heading</span>
+                                <input type="color" bind:value={layoutMetadata.headingColor} />
+                            </label>
+                            <label class="krt-heroOverlayDrawer__field">
+                                <span>Body text</span>
+                                <input type="color" bind:value={layoutMetadata.textColor} />
+                            </label>
+                            <label class="krt-heroOverlayDrawer__field">
+                                <span>Button</span>
+                                <input type="color" bind:value={layoutMetadata.buttonColor} />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section
         {id}
@@ -126,61 +173,6 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button
-                id={sideActionsId}
-                class="krt-editButton"
-                aria-label="Edit hero overlay settings"
-            >
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-heroOverlayDrawer">
-                <section class="krt-heroOverlayDrawer__section">
-                    <h3>Layout</h3>
-                    <label class="krt-heroOverlayDrawer__toggle">
-                        <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                        <span>Flip content alignment</span>
-                    </label>
-                    <label class="krt-heroOverlayDrawer__toggle">
-                        <input type="checkbox" bind:checked={layoutMetadata.showBackgroundImage} />
-                        <span>Show background image</span>
-                    </label>
-                    {#if layoutMetadata.showBackgroundImage}
-                        <label class="krt-heroOverlayDrawer__field">
-                            <span>Background image URL</span>
-                            <input type="text" bind:value={layoutMetadata.backgroundImage} />
-                        </label>
-                    {/if}
-                </section>
-
-                <section class="krt-heroOverlayDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-heroOverlayDrawer__grid">
-                        <label class="krt-heroOverlayDrawer__field">
-                            <span>Section background</span>
-                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-heroOverlayDrawer__field">
-                            <span>Heading</span>
-                            <input type="color" bind:value={layoutMetadata.headingColor} />
-                        </label>
-                        <label class="krt-heroOverlayDrawer__field">
-                            <span>Body text</span>
-                            <input type="color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                        <label class="krt-heroOverlayDrawer__field">
-                            <span>Button</span>
-                            <input type="color" bind:value={layoutMetadata.buttonColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 </div>
 {:else}
     <section
@@ -367,5 +359,9 @@
         border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
         padding: 0;
         cursor: pointer;
+    }
+
+    .krt-heroOverlay__editor {
+        position: relative;
     }
 </style>

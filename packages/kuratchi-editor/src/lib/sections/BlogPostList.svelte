@@ -1,8 +1,7 @@
 <script lang="ts">
     import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
     import { blogStore } from '../stores/blog';
     import type { BlogData } from '../types';
 
@@ -123,9 +122,8 @@
         posts
     });
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -133,9 +131,81 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-blogList__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions 
+            {id} 
+            {type} 
+            element={component}
+            inspectorTitle="Blog post list settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-blogListDrawer">
+                    <section class="krt-blogListDrawer__section">
+                        <h3>Layout</h3>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Layout style</span>
+                            <select bind:value={layout}>
+                                <option value="grid">Grid</option>
+                                <option value="list">List</option>
+                            </select>
+                        </label>
+                    </section>
+
+                    <section class="krt-blogListDrawer__section">
+                        <h3>Display</h3>
+                        <div class="krt-blogListDrawer__checks">
+                            <label>
+                                <input type="checkbox" bind:checked={showExcerpt} />
+                                <span>Show excerpt</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" bind:checked={showDate} />
+                                <span>Show publish date</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" bind:checked={showCategories} />
+                                <span>Show categories</span>
+                            </label>
+                            <label>
+                                <input type="checkbox" bind:checked={showReadMore} />
+                                <span>Show read more link</span>
+                            </label>
+                        </div>
+                        <label class="krt-blogListDrawer__field">
+                            <span>Read more label</span>
+                            <input type="text" bind:value={readMoreLabel} placeholder="Read article" />
+                        </label>
+                    </section>
+
+                    <section class="krt-blogListDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-blogListDrawer__grid">
+                            <label class="krt-blogListDrawer__field">
+                                <span>Background</span>
+                                <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                            </label>
+                            <label class="krt-blogListDrawer__field">
+                                <span>Card</span>
+                                <input type="color" bind:value={layoutMetadata.cardBackground} />
+                            </label>
+                            <label class="krt-blogListDrawer__field">
+                                <span>Border</span>
+                                <input type="color" bind:value={layoutMetadata.borderColor} />
+                            </label>
+                            <label class="krt-blogListDrawer__field">
+                                <span>Text</span>
+                                <input type="color" bind:value={layoutMetadata.textColor} />
+                            </label>
+                            <label class="krt-blogListDrawer__field">
+                                <span>Accent</span>
+                                <input type="color" bind:value={layoutMetadata.accentColor} />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class="krt-blogList" style={layoutStyle}>
         <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>
@@ -191,81 +261,7 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit blog post list settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-blogListDrawer">
-                <section class="krt-blogListDrawer__section">
-                    <h3>Layout</h3>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Layout style</span>
-                        <select bind:value={layout}>
-                            <option value="grid">Grid</option>
-                            <option value="list">List</option>
-                        </select>
-                    </label>
-                </section>
-
-                <section class="krt-blogListDrawer__section">
-                    <h3>Display</h3>
-                    <div class="krt-blogListDrawer__checks">
-                        <label>
-                            <input type="checkbox" bind:checked={showExcerpt} />
-                            <span>Show excerpt</span>
-                        </label>
-                        <label>
-                            <input type="checkbox" bind:checked={showDate} />
-                            <span>Show publish date</span>
-                        </label>
-                        <label>
-                            <input type="checkbox" bind:checked={showCategories} />
-                            <span>Show categories</span>
-                        </label>
-                        <label>
-                            <input type="checkbox" bind:checked={showReadMore} />
-                            <span>Show read more link</span>
-                        </label>
-                    </div>
-                    <label class="krt-blogListDrawer__field">
-                        <span>Read more label</span>
-                        <input type="text" bind:value={readMoreLabel} placeholder="Read article" />
-                    </label>
-                </section>
-
-                <section class="krt-blogListDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-blogListDrawer__grid">
-                        <label class="krt-blogListDrawer__field">
-                            <span>Background</span>
-                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-blogListDrawer__field">
-                            <span>Card</span>
-                            <input type="color" bind:value={layoutMetadata.cardBackground} />
-                        </label>
-                        <label class="krt-blogListDrawer__field">
-                            <span>Border</span>
-                            <input type="color" bind:value={layoutMetadata.borderColor} />
-                        </label>
-                        <label class="krt-blogListDrawer__field">
-                            <span>Text</span>
-                            <input type="color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                        <label class="krt-blogListDrawer__field">
-                            <span>Accent</span>
-                            <input type="color" bind:value={layoutMetadata.accentColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
-</div>
+    </div>
 {:else}
     <section id={id} data-type={type} class="krt-blogList" style={layoutStyle}>
         <div class="krt-blogList__metadata">{JSON.stringify(content)}</div>
@@ -524,5 +520,9 @@
         display: grid;
         gap: var(--krt-space-md, 0.75rem);
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .krt-blogList__editor {
+        position: relative;
     }
 </style>

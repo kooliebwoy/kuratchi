@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { Pencil } from '@lucide/svelte';
 	import { onMount } from 'svelte';
-	import { BlockActions, SideActions } from "../utils/index.js";
+	import { BlockActions } from "../utils/index.js";
 
 	type Slide = {
 		id?: string;
@@ -108,7 +107,6 @@
 
 	let component: HTMLElement;
 	let mounted = $state(false);
-	const sideActionsId = `side-actions-${id}`;
 
 	onMount(() => {
 		mounted = true;
@@ -118,7 +116,74 @@
 {#if editable}
 	<div class="editor-item group relative" bind:this={component}>
 		{#if mounted}
-			<BlockActions {id} {type} element={component} />
+			<BlockActions
+				{id}
+				{type}
+				element={component}
+				inspectorTitle="Carousel settings"
+			>
+				{#snippet inspector()}
+					<div class="krt-carouselDrawer">
+						<section class="krt-carouselDrawer__section">
+							<div class="krt-carouselDrawer__header">
+								<div>
+									<p class="krt-carouselDrawer__eyebrow">Slides</p>
+									<h3>Manage slides</h3>
+								</div>
+								<button class="krt-carouselDrawer__action" type="button" onclick={addSlide}>
+									Add slide
+								</button>
+							</div>
+
+							<div class="krt-carouselDrawer__list">
+								{#each slides as slide, index (slide.id)}
+									<article class="krt-carouselDrawer__card">
+										<header class="krt-carouselDrawer__cardHeader">
+											<span>Slide {index + 1}</span>
+											<div class="krt-carouselDrawer__cardControls">
+												<button type="button" onclick={() => moveSlide(index, 'up')} disabled={index === 0}>↑</button>
+												<button type="button" onclick={() => moveSlide(index, 'down')} disabled={index === slides.length - 1}>↓</button>
+												<button type="button" class="krt-carouselDrawer__danger" onclick={() => removeSlide(index)}>✕</button>
+											</div>
+										</header>
+
+										<div class="krt-carouselDrawer__grid">
+											<label class="krt-carouselDrawer__field">
+												<span>Title</span>
+												<input type="text" bind:value={slides[index].title} placeholder="Slide title" />
+											</label>
+											<label class="krt-carouselDrawer__field">
+												<span>Description</span>
+												<textarea rows="2" bind:value={slides[index].description} placeholder="Short description"></textarea>
+											</label>
+											<label class="krt-carouselDrawer__field">
+												<span>Image URL</span>
+												<input type="url" bind:value={slides[index].imageUrl} placeholder="https://" />
+											</label>
+											<label class="krt-carouselDrawer__field">
+												<span>CTA label</span>
+												<input type="text" bind:value={slides[index].ctaLabel} placeholder="Learn more" />
+											</label>
+											<label class="krt-carouselDrawer__field">
+												<span>CTA link</span>
+												<input type="url" bind:value={slides[index].ctaLink} placeholder="https://" />
+											</label>
+										</div>
+									</article>
+								{/each}
+							</div>
+						</section>
+
+						<section class="krt-carouselDrawer__section">
+							<h3>Display</h3>
+							<label class="krt-carouselDrawer__toggle">
+								<input type="checkbox" bind:checked={showIndicators} />
+								<span>Show slide indicators</span>
+							</label>
+						</section>
+					</div>
+				{/snippet}
+			</BlockActions>
 		{/if}
 		<div class="space-y-2" {id} data-type={type}>
 			<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -152,61 +217,7 @@
 		</div>
 	</div>
 
-	<SideActions triggerId={sideActionsId}>
-		{#snippet label()}
-			<button id={sideActionsId} class="krt-editButton" aria-label="Edit carousel settings" type="button">
-				<Pencil size={16} />
-				<span>Edit Settings</span>
-			</button>
-		{/snippet}
-		{#snippet content()}
-			<div class="space-y-4">
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" class="checkbox checkbox-sm checkbox-accent" bind:checked={showIndicators} />
-					Show slide indicators
-				</label>
-
-				<button class="btn btn-sm btn-primary w-full" type="button" onclick={addSlide}>
-					Add slide
-				</button>
-
-				<div class="space-y-3 max-h-[26rem] overflow-y-auto pr-1">
-					{#each slides as slide, index (slide.id)}
-						<div class="border border-base-300 rounded-lg p-3 space-y-2 bg-base-100">
-							<div class="flex justify-between items-center">
-								<h4 class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Slide {index + 1}</h4>
-								<button class="btn btn-ghost btn-xs text-error" type="button" onclick={() => removeSlide(index)} disabled={slides.length <= 1}>
-									Remove
-								</button>
-							</div>
-							<label class="form-control w-full">
-								<span class="label-text text-xs">Image URL</span>
-								<input type="text" class="input input-sm input-bordered" bind:value={slide.imageUrl} placeholder="https://..." />
-							</label>
-							<label class="form-control w-full">
-								<span class="label-text text-xs">Title</span>
-								<input type="text" class="input input-sm input-bordered" bind:value={slide.title} placeholder="Slide title" />
-							</label>
-							<label class="form-control w-full">
-								<span class="label-text text-xs">Description</span>
-								<textarea class="textarea textarea-sm textarea-bordered" rows="2" bind:value={slide.description} placeholder="Add supporting copy"></textarea>
-							</label>
-							<div class="grid grid-cols-2 gap-2">
-								<label class="form-control">
-									<span class="label-text text-xs">Button label</span>
-									<input type="text" class="input input-sm input-bordered" bind:value={slide.ctaLabel} placeholder="Learn more" />
-								</label>
-								<label class="form-control">
-									<span class="label-text text-xs">Button link</span>
-									<input type="text" class="input input-sm input-bordered" bind:value={slide.ctaLink} placeholder="https://..." />
-								</label>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</div>
-		{/snippet}
-	</SideActions>
+	
 {:else}
 	<section id={id} data-type={type} class="space-y-2">
 		<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -239,3 +250,4 @@
 		{/if}
 	</section>
 {/if}
+

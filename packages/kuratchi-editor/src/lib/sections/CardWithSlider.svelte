@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from "../utils/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { ImagePicker } from "../plugins/index.js";
 	import CardNoImage from '../blocks/CardNoImage.svelte';
 	import NoMarginCarousel from '../blocks/NoMarginCarousel.svelte';
@@ -81,9 +80,8 @@
         }
     });
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -91,9 +89,57 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-cardWithSlider__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Card with slider settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-sliderDrawer">
+                    <section class="krt-sliderDrawer__section">
+                        <h3>Layout</h3>
+                        <label class="krt-sliderDrawer__toggle">
+                            <input type="checkbox" bind:checked={reverseOrder} />
+                            <span>Reverse order</span>
+                        </label>
+                    </section>
+
+                    <section class="krt-sliderDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-sliderDrawer__grid">
+                            <label class="krt-sliderDrawer__field">
+                                <span>Background</span>
+                                <input type="color" bind:value={backgroundColor} />
+                            </label>
+                            <label class="krt-sliderDrawer__field">
+                                <span>Card background</span>
+                                <input type="color" bind:value={cardBackgroundColor} />
+                            </label>
+                            <label class="krt-sliderDrawer__field">
+                                <span>Heading</span>
+                                <input type="color" bind:value={headingColor} />
+                            </label>
+                            <label class="krt-sliderDrawer__field">
+                                <span>Body</span>
+                                <input type="color" bind:value={contentColor} />
+                            </label>
+                            <label class="krt-sliderDrawer__field">
+                                <span>Button</span>
+                                <input type="color" bind:value={buttonColor} />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-sliderDrawer__section">
+                        <h3>Images</h3>
+                        <ImagePicker bind:selectedImages={images} mode="multiple" />
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
         <div class="krt-sliderLayout__inner" class:krt-sliderLayout__inner--reverse={reverseOrder}>
@@ -114,57 +160,6 @@
             </div>
         </div>
     </section>
-
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit card with slider settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-sliderDrawer">
-                <section class="krt-sliderDrawer__section">
-                    <h3>Layout</h3>
-                    <label class="krt-sliderDrawer__toggle">
-                        <input type="checkbox" bind:checked={reverseOrder} />
-                        <span>Reverse order</span>
-                    </label>
-                </section>
-
-                <section class="krt-sliderDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-sliderDrawer__grid">
-                        <label class="krt-sliderDrawer__field">
-                            <span>Background</span>
-                            <input type="color" bind:value={backgroundColor} />
-                        </label>
-                        <label class="krt-sliderDrawer__field">
-                            <span>Card background</span>
-                            <input type="color" bind:value={cardBackgroundColor} />
-                        </label>
-                        <label class="krt-sliderDrawer__field">
-                            <span>Heading</span>
-                            <input type="color" bind:value={headingColor} />
-                        </label>
-                        <label class="krt-sliderDrawer__field">
-                            <span>Body</span>
-                            <input type="color" bind:value={contentColor} />
-                        </label>
-                        <label class="krt-sliderDrawer__field">
-                            <span>Button</span>
-                            <input type="color" bind:value={buttonColor} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-sliderDrawer__section">
-                    <h3>Images</h3>
-                    <ImagePicker bind:selectedImages={images} mode="multiple" />
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 </div>
 {:else}
     <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
@@ -299,5 +294,9 @@
         border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
         padding: 0;
         cursor: pointer;
+    }
+
+    .krt-cardWithSlider__editor {
+        position: relative;
     }
 </style>

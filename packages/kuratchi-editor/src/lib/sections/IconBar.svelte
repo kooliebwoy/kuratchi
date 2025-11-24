@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from "../utils/index.js";
+    import { BlockActions } from "../utils/index.js";
     import { IconPicker } from "../plugins/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
@@ -84,9 +83,8 @@
 
     const radiusClass = $derived(() => radiusClassMap[roundedBorder] ?? radiusClassMap['rounded-md']);
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -94,9 +92,70 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-iconBar__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Icon bar settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-iconBar__drawer">
+                    <section class="krt-iconBar__drawerSection">
+                        <h3>Appearance</h3>
+                        <div class="krt-iconBar__drawerGrid">
+                            <label class="krt-iconBar__drawerField">
+                                <span>Component Background</span>
+                                <div class="krt-iconBar__colorControl">
+                                    <input type="color" bind:value={backgroundColor} />
+                                    <span>{backgroundColor}</span>
+                                </div>
+                            </label>
+                            <label class="krt-iconBar__drawerField">
+                                <span>Icon & Text Color</span>
+                                <div class="krt-iconBar__colorControl">
+                                    <input type="color" bind:value={iconColors} />
+                                    <span>{iconColors}</span>
+                                </div>
+                            </label>
+                            <label class="krt-iconBar__drawerField">
+                                <span>Border Radius</span>
+                                <select bind:value={roundedBorder}>
+                                    <option disabled>Select border radius</option>
+                                    {#each roundedBorderOptions as option}
+                                        <option value={option.value}>{option.name}</option>
+                                    {/each}
+                                </select>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-iconBar__drawerSection">
+                        <h3>Icons</h3>
+                        <p class="krt-iconBar__drawerHint">Toggle and rename the icon callouts shown to shoppers.</p>
+                        <IconPicker bind:selectedIcons={iconsState} />
+
+                        <div class="krt-iconBar__iconsGrid">
+                            {#each iconsState as icon, i}
+                                {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                                <label class="krt-iconBar__iconField">
+                                    <span class="krt-iconBar__iconLabel">
+                                        <Comp aria-hidden="true" />
+                                        {icon.name}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        bind:value={iconsState[i].name}
+                                        aria-label={`Label for ${icon.name}`}
+                                    />
+                                </label>
+                            {/each}
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -111,69 +170,6 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit icon bar settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-iconBar__drawer">
-                <section class="krt-iconBar__drawerSection">
-                    <h3>Appearance</h3>
-                    <div class="krt-iconBar__drawerGrid">
-                        <label class="krt-iconBar__drawerField">
-                            <span>Component Background</span>
-                            <div class="krt-iconBar__colorControl">
-                                <input type="color" bind:value={backgroundColor} />
-                                <span>{backgroundColor}</span>
-                            </div>
-                        </label>
-                        <label class="krt-iconBar__drawerField">
-                            <span>Icon & Text Color</span>
-                            <div class="krt-iconBar__colorControl">
-                                <input type="color" bind:value={iconColors} />
-                                <span>{iconColors}</span>
-                            </div>
-                        </label>
-                        <label class="krt-iconBar__drawerField">
-                            <span>Border Radius</span>
-                            <select bind:value={roundedBorder}>
-                                <option disabled>Select border radius</option>
-                                {#each roundedBorderOptions as option}
-                                    <option value={option.value}>{option.name}</option>
-                                {/each}
-                            </select>
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-iconBar__drawerSection">
-                    <h3>Icons</h3>
-                    <p class="krt-iconBar__drawerHint">Toggle and rename the icon callouts shown to shoppers.</p>
-                    <IconPicker bind:selectedIcons={iconsState} />
-
-                    <div class="krt-iconBar__iconsGrid">
-                        {#each iconsState as icon, i}
-                            {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                            <label class="krt-iconBar__iconField">
-                                <span class="krt-iconBar__iconLabel">
-                                    <Comp aria-hidden="true" />
-                                    {icon.name}
-                                </span>
-                                <input
-                                    type="text"
-                                    bind:value={iconsState[i].name}
-                                    aria-label={`Label for ${icon.name}`}
-                                />
-                            </label>
-                        {/each}
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 </div>
 {:else}
     <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
@@ -386,4 +382,8 @@
     .krt-iconBar__band--radius-2xl { border-radius: 1.5rem; }
     .krt-iconBar__band--radius-3xl { border-radius: 2rem; }
     .krt-iconBar__band--radius-full { border-radius: 999px; }
+
+    .krt-iconBar__editor {
+        position: relative;
+    }
 </style>

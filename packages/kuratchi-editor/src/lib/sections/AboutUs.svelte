@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface ButtonConfig {
         label: string;
@@ -59,9 +58,8 @@
         }
     });
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -69,9 +67,62 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-aboutHero__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="About section settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-aboutHeroDrawer">
+                    <section class="krt-aboutHeroDrawer__section">
+                        <h3>Content</h3>
+                        <div class="krt-aboutHeroDrawer__fields">
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Heading</span>
+                                <input type="text" bind:value={heading} placeholder="Heading" />
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Body</span>
+                                <textarea rows="4" bind:value={body} placeholder="Body copy"></textarea>
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Button label</span>
+                                <input type="text" bind:value={button.label} placeholder="Button label" />
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Button link</span>
+                                <input type="url" bind:value={button.link} placeholder="https://example.com" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-aboutHeroDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-aboutHeroDrawer__grid">
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Background</span>
+                                <input type="color" bind:value={layoutMetadata.backgroundColor} />
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Heading</span>
+                                <input type="color" bind:value={layoutMetadata.headingColor} />
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Copy</span>
+                                <input type="color" bind:value={layoutMetadata.textColor} />
+                            </label>
+                            <label class="krt-aboutHeroDrawer__field">
+                                <span>Button</span>
+                                <input type="color" bind:value={layoutMetadata.buttonColor} />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -90,61 +141,6 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit about us settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-aboutHeroDrawer">
-                <section class="krt-aboutHeroDrawer__section">
-                    <h3>Content</h3>
-                    <div class="krt-aboutHeroDrawer__fields">
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Heading</span>
-                            <input type="text" bind:value={heading} placeholder="Heading" />
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Body</span>
-                            <textarea rows="4" bind:value={body} placeholder="Body copy"></textarea>
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Button label</span>
-                            <input type="text" bind:value={button.label} placeholder="Button label" />
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Button link</span>
-                            <input type="url" bind:value={button.link} placeholder="https://example.com" />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-aboutHeroDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-aboutHeroDrawer__grid">
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Background</span>
-                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Heading</span>
-                            <input type="color" bind:value={layoutMetadata.headingColor} />
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Copy</span>
-                            <input type="color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                        <label class="krt-aboutHeroDrawer__field">
-                            <span>Button</span>
-                            <input type="color" bind:value={layoutMetadata.buttonColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 </div>
 {:else}
     <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
@@ -316,5 +312,9 @@
     .krt-aboutHero__body,
     .krt-aboutHero__cta span {
         outline: none;
+    }
+
+    .krt-aboutHero__editor {
+        position: relative;
     }
 </style>

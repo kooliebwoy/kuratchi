@@ -1,9 +1,8 @@
 <script lang="ts">
- import { Pencil } from '@lucide/svelte';
  import { onMount } from 'svelte';
  import { IconPicker } from '../plugins/index.js';
  import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
- import { BlockActions, SideActions } from '../utils/index.js';
+ import { BlockActions } from '../utils/index.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
   interface Props {
@@ -85,9 +84,8 @@
         icons,
     })
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -101,9 +99,74 @@
 </script>
 
 {#if editable}
-    <div class="editor-footer-item group relative" bind:this={component}>
+    <div class="editor-footer-item group relative krt-footer__editor" bind:this={component}>
         {#if mounted}
-            <BlockActions {id} {type} element={component} />
+            <BlockActions
+                {id}
+                {type}
+                element={component}
+                inspectorTitle="Footer settings"
+            >
+                {#snippet inspector()}
+                    <div class="krt-footerDrawer">
+                        <section class="krt-footerDrawer__section">
+                            <h3 class="krt-footerDrawer__title">Display Options</h3>
+                            <div class="krt-footerDrawer__cards">
+                                <label class="krt-footerDrawer__card">
+                                    <span>Swap Logo and Footer Menu</span>
+                                    <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
+                                </label>
+                            </div>
+                        </section>
+
+                        <section class="krt-footerDrawer__section">
+                            <h3 class="krt-footerDrawer__title">Colors</h3>
+                            <div class="krt-footerDrawer__cards">
+                                <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
+                                    <span>Component Background</span>
+                                    <div class="krt-footerDrawer__colorControl">
+                                        <input type="color" bind:value={backgroundColor} />
+                                        <span>{backgroundColor}</span>
+                                    </div>
+                                </label>
+                                <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
+                                    <span>Text Color</span>
+                                    <div class="krt-footerDrawer__colorControl">
+                                        <input type="color" bind:value={textColor} />
+                                        <span>{textColor}</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </section>
+
+                        <section class="krt-footerDrawer__section">
+                            <h3 class="krt-footerDrawer__title">Icons</h3>
+                            <div class="krt-footerDrawer__cards">
+                                <div class="krt-footerDrawer__card">
+                                    <IconPicker bind:selectedIcons={icons} />
+                                </div>
+
+                                {#each icons as icon}
+                                    {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                                    <label class="krt-footerDrawer__card krt-footerDrawer__card--icon">
+                                        <div class="krt-footerDrawer__iconHeading">
+                                            <Comp aria-hidden="true" />
+                                            <span>{icon.name}</span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            class="krt-footerDrawer__input"
+                                            placeholder="https://example.com"
+                                            value={icon.link}
+                                            onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
+                                        />
+                                    </label>
+                                {/each}
+                            </div>
+                        </section>
+                    </div>
+                {/snippet}
+            </BlockActions>
         {/if}
         <div
             id={id}
@@ -176,73 +239,7 @@
         </div>
     </div>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit footer settings" type="button">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-footerDrawer">
-                <section class="krt-footerDrawer__section">
-                    <h3 class="krt-footerDrawer__title">Display Options</h3>
-                    <div class="krt-footerDrawer__cards">
-                        <label class="krt-footerDrawer__card">
-                            <span>Swap Logo and Footer Menu</span>
-                            <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-footerDrawer__section">
-                    <h3 class="krt-footerDrawer__title">Colors</h3>
-                    <div class="krt-footerDrawer__cards">
-                        <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
-                            <span>Component Background</span>
-                            <div class="krt-footerDrawer__colorControl">
-                                <input type="color" bind:value={backgroundColor} />
-                                <span>{backgroundColor}</span>
-                            </div>
-                        </label>
-                        <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
-                            <span>Text Color</span>
-                            <div class="krt-footerDrawer__colorControl">
-                                <input type="color" bind:value={textColor} />
-                                <span>{textColor}</span>
-                            </div>
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-footerDrawer__section">
-                    <h3 class="krt-footerDrawer__title">Icons</h3>
-                    <div class="krt-footerDrawer__cards">
-                        <div class="krt-footerDrawer__card">
-                            <IconPicker bind:selectedIcons={icons} />
-                        </div>
-
-                        {#each icons as icon}
-                            {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                            <label class="krt-footerDrawer__card krt-footerDrawer__card--icon">
-                                <div class="krt-footerDrawer__iconHeading">
-                                    <Comp aria-hidden="true" />
-                                    <span>{icon.name}</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    class="krt-footerDrawer__input"
-                                    placeholder="https://example.com"
-                                    value={icon.link}
-                                    onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
-                                />
-                            </label>
-                        {/each}
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
+    
 {:else}
     <div
         id={id}
@@ -617,5 +614,10 @@
         width: 1rem;
         height: 1rem;
     }
+
+    .krt-footer__editor {
+        position: relative;
+    }
 </style>
   
+

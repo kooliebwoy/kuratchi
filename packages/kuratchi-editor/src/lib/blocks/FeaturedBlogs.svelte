@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { ArrowRight, Pencil } from '@lucide/svelte';
+    import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { blogStore } from '../stores/blog';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface LayoutMetadata {
         backgroundColor: string;
@@ -78,7 +78,6 @@
 
     let component: HTMLElement;
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -150,14 +149,13 @@
         </section>
     </div>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit featured blogs settings" type="button">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
+    <BlockActions
+        {id}
+        {type}
+        element={component}
+        inspectorTitle="Featured blogs settings"
+    >
+        {#snippet inspector()}
             <div class="krt-featuredBlogsDrawer">
                 <section class="krt-featuredBlogsDrawer__section">
                     <h3>Content</h3>
@@ -208,7 +206,7 @@
                 </section>
             </div>
         {/snippet}
-    </SideActions>
+    </BlockActions>
 {:else}
     <section id={id} data-type={type} class="krt-featuredBlogs" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>

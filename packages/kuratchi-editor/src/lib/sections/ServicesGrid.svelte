@@ -1,8 +1,7 @@
 <script lang="ts">
     import { Plus, ArrowUp, ArrowDown, Trash2 } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
 
     type ServicesSpacing = 'small' | 'medium' | 'large';
@@ -160,9 +159,8 @@
         services = next;
     }
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -170,9 +168,129 @@
 </script>
 
 {#if editable}
-<div class="editor-item" bind:this={component}>
+<div class="editor-item krt-servicesGrid__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Services grid settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-servicesGridDrawer">
+                    <section class="krt-servicesGridDrawer__section">
+                        <h3>Intro</h3>
+                        <div class="krt-servicesGridDrawer__fields">
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Title</span>
+                                <input type="text" bind:value={title} placeholder="Our services" />
+                            </label>
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Subtitle</span>
+                                <textarea rows="3" bind:value={subtitle} placeholder="Add an optional supporting line"></textarea>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-servicesGridDrawer__section">
+                        <div class="krt-servicesGridDrawer__sectionHeader">
+                            <h3>Services</h3>
+                            <button type="button" class="krt-servicesGridDrawer__action" onclick={addService}>
+                                <Plus aria-hidden="true" />
+                                <span>Add service</span>
+                            </button>
+                        </div>
+
+                        <div class="krt-servicesGridDrawer__list">
+                            {#each services as service, index (index)}
+                                <article class="krt-servicesGridDrawer__card">
+                                    <header class="krt-servicesGridDrawer__cardHeader">
+                                        <span>Service {index + 1}</span>
+                                        <div class="krt-servicesGridDrawer__cardControls">
+                                            <button type="button" onclick={() => moveService(index, 'up')} disabled={index === 0}>
+                                                <ArrowUp aria-hidden="true" />
+                                                <span class="krt-servicesGridDrawer__sr">Move up</span>
+                                            </button>
+                                            <button type="button" onclick={() => moveService(index, 'down')} disabled={index === services.length - 1}>
+                                                <ArrowDown aria-hidden="true" />
+                                                <span class="krt-servicesGridDrawer__sr">Move down</span>
+                                            </button>
+                                            <button type="button" class="krt-servicesGridDrawer__danger" onclick={() => removeService(index)}>
+                                                <Trash2 aria-hidden="true" />
+                                                <span class="krt-servicesGridDrawer__sr">Remove service</span>
+                                            </button>
+                                        </div>
+                                    </header>
+
+                                    <div class="krt-servicesGridDrawer__fields">
+                                        <label class="krt-servicesGridDrawer__field">
+                                            <span>Service title</span>
+                                            <input
+                                                type="text"
+                                                value={service.title}
+                                                oninput={(event) => updateService(index, 'title', event.currentTarget.value)}
+                                                placeholder="Brand strategy"
+                                            />
+                                        </label>
+
+                                        <label class="krt-servicesGridDrawer__field">
+                                            <span>Description</span>
+                                            <textarea
+                                                rows="2"
+                                                value={service.description}
+                                                oninput={(event) => updateService(index, 'description', event.currentTarget.value)}
+                                                placeholder="Describe the service offering"
+                                            ></textarea>
+                                        </label>
+
+                                        <label class="krt-servicesGridDrawer__field">
+                                            <span>Icon (Lucide key)</span>
+                                            <input
+                                                type="text"
+                                                value={service.icon ?? ''}
+                                                oninput={(event) => updateService(index, 'icon', event.currentTarget.value)}
+                                                placeholder="star"
+                                            />
+                                        </label>
+                                    </div>
+                                </article>
+                            {/each}
+                        </div>
+                    </section>
+
+                    <section class="krt-servicesGridDrawer__section">
+                        <h3>Layout</h3>
+                        <div class="krt-servicesGridDrawer__grid">
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Columns</span>
+                                <select bind:value={columns}>
+                                    <option value={1}>Single column</option>
+                                    <option value={2}>Two columns</option>
+                                    <option value={3}>Three columns</option>
+                                    <option value={4}>Four columns</option>
+                                </select>
+                            </label>
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Spacing</span>
+                                <select bind:value={spacing}>
+                                    <option value="small">Compact</option>
+                                    <option value="medium">Comfortable</option>
+                                    <option value="large">Roomy</option>
+                                </select>
+                            </label>
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Background</span>
+                                <input type="color" bind:value={backgroundColor} />
+                            </label>
+                            <label class="krt-servicesGridDrawer__field">
+                                <span>Text</span>
+                                <input type="color" bind:value={textColor} />
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <section {id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
@@ -205,128 +323,6 @@
         </div>
     </section>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit services grid settings">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-servicesGridDrawer">
-                <section class="krt-servicesGridDrawer__section">
-                    <h3>Intro</h3>
-                    <div class="krt-servicesGridDrawer__fields">
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Title</span>
-                            <input type="text" bind:value={title} placeholder="Our services" />
-                        </label>
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Subtitle</span>
-                            <textarea rows="3" bind:value={subtitle} placeholder="Add an optional supporting line"></textarea>
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-servicesGridDrawer__section">
-                    <div class="krt-servicesGridDrawer__sectionHeader">
-                        <h3>Services</h3>
-                        <button type="button" class="krt-servicesGridDrawer__action" onclick={addService}>
-                            <Plus aria-hidden="true" />
-                            <span>Add service</span>
-                        </button>
-                    </div>
-
-                    <div class="krt-servicesGridDrawer__list">
-                        {#each services as service, index (index)}
-                            <article class="krt-servicesGridDrawer__card">
-                                <header class="krt-servicesGridDrawer__cardHeader">
-                                    <span>Service {index + 1}</span>
-                                    <div class="krt-servicesGridDrawer__cardControls">
-                                        <button type="button" onclick={() => moveService(index, 'up')} disabled={index === 0}>
-                                            <ArrowUp aria-hidden="true" />
-                                            <span class="krt-servicesGridDrawer__sr">Move up</span>
-                                        </button>
-                                        <button type="button" onclick={() => moveService(index, 'down')} disabled={index === services.length - 1}>
-                                            <ArrowDown aria-hidden="true" />
-                                            <span class="krt-servicesGridDrawer__sr">Move down</span>
-                                        </button>
-                                        <button type="button" class="krt-servicesGridDrawer__danger" onclick={() => removeService(index)}>
-                                            <Trash2 aria-hidden="true" />
-                                            <span class="krt-servicesGridDrawer__sr">Remove service</span>
-                                        </button>
-                                    </div>
-                                </header>
-
-                                <div class="krt-servicesGridDrawer__fields">
-                                    <label class="krt-servicesGridDrawer__field">
-                                        <span>Service title</span>
-                                        <input
-                                            type="text"
-                                            value={service.title}
-                                            oninput={(event) => updateService(index, 'title', event.currentTarget.value)}
-                                            placeholder="Brand strategy"
-                                        />
-                                    </label>
-
-                                    <label class="krt-servicesGridDrawer__field">
-                                        <span>Description</span>
-                                        <textarea
-                                            rows="2"
-                                            value={service.description}
-                                            oninput={(event) => updateService(index, 'description', event.currentTarget.value)}
-                                            placeholder="Describe the service offering"
-                                        ></textarea>
-                                    </label>
-
-                                    <label class="krt-servicesGridDrawer__field">
-                                        <span>Icon (Lucide key)</span>
-                                        <input
-                                            type="text"
-                                            value={service.icon ?? ''}
-                                            oninput={(event) => updateService(index, 'icon', event.currentTarget.value)}
-                                            placeholder="star"
-                                        />
-                                    </label>
-                                </div>
-                            </article>
-                        {/each}
-                    </div>
-                </section>
-
-                <section class="krt-servicesGridDrawer__section">
-                    <h3>Layout</h3>
-                    <div class="krt-servicesGridDrawer__grid">
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Columns</span>
-                            <select bind:value={columns}>
-                                <option value={1}>Single column</option>
-                                <option value={2}>Two columns</option>
-                                <option value={3}>Three columns</option>
-                                <option value={4}>Four columns</option>
-                            </select>
-                        </label>
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Spacing</span>
-                            <select bind:value={spacing}>
-                                <option value="small">Compact</option>
-                                <option value="medium">Comfortable</option>
-                                <option value="large">Roomy</option>
-                            </select>
-                        </label>
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Background</span>
-                            <input type="color" bind:value={backgroundColor} />
-                        </label>
-                        <label class="krt-servicesGridDrawer__field">
-                            <span>Text</span>
-                            <input type="color" bind:value={textColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 </div>
 {:else}
     <section id={id} data-type={type} class="krt-servicesGrid" style={layoutStyle}>
@@ -648,5 +644,9 @@
         clip: rect(0, 0, 0, 0);
         white-space: nowrap;
         border: 0;
+    }
+
+    .krt-servicesGrid__editor {
+        position: relative;
     }
 </style>

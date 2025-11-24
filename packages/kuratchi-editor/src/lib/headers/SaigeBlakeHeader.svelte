@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { Pencil } from '@lucide/svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
     import { IconPicker, ImagePicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
@@ -24,10 +24,10 @@
 
     let {
         type = 'saige-blake-header',
-        backgroundColor = '#ffffff',
-        textColor = '#92c8c8',
-        reverseOrder = false,
-        icons = [
+        backgroundColor: initialBackgroundColor = '#ffffff',
+        textColor: initialTextColor = '#92c8c8',
+        reverseOrder: initialReverseOrder = false,
+        icons: initialIcons = [
             { icon: 'facebook', link: '#', name: "Facebook", enabled: true },
             { icon: 'x', link: '#', name: "X", enabled: true },
             { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
@@ -42,6 +42,14 @@
 
     // Use local state for logo so changes trigger reactivity
     let logo = $state<LogoData>(initialLogo);
+    
+    // Use local state for icons so changes trigger reactivity
+    let icons = $state<{ icon: LucideIconKey; link: string; name: string; enabled: boolean }[]>(initialIcons);
+    
+    // Use local state for other properties so changes trigger reactivity
+    let backgroundColor = $state(initialBackgroundColor);
+    let textColor = $state(initialTextColor);
+    let reverseOrder = $state(initialReverseOrder);
 
     if ( menu.length === 0 ) {
         menu = [
@@ -80,9 +88,8 @@
         return '#';
     }
 
-    let component: HTMLElement;
+    let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -90,9 +97,83 @@
 </script>
 
 {#if editable}
-<div class="editor-header-item" bind:this={component}>
+<div class="editor-header-item krt-header__editor" bind:this={component}>
     {#if mounted}
-        <BlockActions {id} {type} element={component} />
+        <BlockActions 
+            {id} 
+            {type} 
+            element={component}
+            inspectorTitle="Header settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-headerDrawer">
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Layout</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <label class="krt-headerDrawer__card">
+                                <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
+                                <span>Swap Icons and Nav Menu</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Styling</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                                <span>Background Color</span>
+                                <div class="krt-headerDrawer__colorControl">
+                                    <input type="color" bind:value={backgroundColor} />
+                                    <span>{backgroundColor}</span>
+                                </div>
+                            </label>
+                            <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                                <span>Text Color</span>
+                                <div class="krt-headerDrawer__colorControl">
+                                    <input type="color" bind:value={textColor} />
+                                    <span>{textColor}</span>
+                                </div>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Logo</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <div class="krt-headerDrawer__card krt-headerDrawer__card--media">
+                                <ImagePicker bind:selectedImage={logo} mode="single" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Social Icons</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <div class="krt-headerDrawer__card">
+                                <IconPicker bind:selectedIcons={icons} />
+                            </div>
+
+                            {#each icons as icon}
+                                {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
+                                <label class="krt-headerDrawer__card krt-headerDrawer__card--icon">
+                                    <div class="krt-headerDrawer__iconHeading">
+                                        <Comp aria-hidden="true" />
+                                        <span>{icon.name}</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        class="krt-headerDrawer__input"
+                                        placeholder="https://example.com"
+                                        value={icon.link}
+                                        onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
+                                    />
+                                </label>
+                            {/each}
+                        </div>
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
     {/if}
     <div
         {id}
@@ -232,82 +313,6 @@
     </div>
 </div>
 
-<SideActions triggerId={sideActionsId}>
-    {#snippet label()}
-        <button id={sideActionsId} class="krt-editButton" aria-label="Edit header settings">
-            <Pencil size={16} />
-            <span>Edit Settings</span>
-        </button>
-    {/snippet}
-    {#snippet content()}
-        <div class="krt-headerDrawer">
-            <section class="krt-headerDrawer__section">
-                <h3 class="krt-headerDrawer__title">Layout</h3>
-                <div class="krt-headerDrawer__cards">
-                    <label class="krt-headerDrawer__card">
-                        <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
-                        <span>Swap Icons and Nav Menu</span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-headerDrawer__section">
-                <h3 class="krt-headerDrawer__title">Styling</h3>
-                <div class="krt-headerDrawer__cards">
-                    <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                        <span>Background Color</span>
-                        <div class="krt-headerDrawer__colorControl">
-                            <input type="color" bind:value={backgroundColor} />
-                            <span>{backgroundColor}</span>
-                        </div>
-                    </label>
-                    <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                        <span>Text Color</span>
-                        <div class="krt-headerDrawer__colorControl">
-                            <input type="color" bind:value={textColor} />
-                            <span>{textColor}</span>
-                        </div>
-                    </label>
-                </div>
-            </section>
-
-            <section class="krt-headerDrawer__section">
-                <h3 class="krt-headerDrawer__title">Logo</h3>
-                <div class="krt-headerDrawer__cards">
-                    <div class="krt-headerDrawer__card krt-headerDrawer__card--media">
-                        <ImagePicker bind:selectedImage={logo} mode="single" />
-                    </div>
-                </div>
-            </section>
-
-            <section class="krt-headerDrawer__section">
-                <h3 class="krt-headerDrawer__title">Social Icons</h3>
-                <div class="krt-headerDrawer__cards">
-                    <div class="krt-headerDrawer__card">
-                        <IconPicker bind:selectedIcons={icons} />
-                    </div>
-
-                    {#each icons as icon}
-                        {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                        <label class="krt-headerDrawer__card krt-headerDrawer__card--icon">
-                            <div class="krt-headerDrawer__iconHeading">
-                                <Comp aria-hidden="true" />
-                                <span>{icon.name}</span>
-                            </div>
-                            <input
-                                type="text"
-                                class="krt-headerDrawer__input"
-                                placeholder="https://example.com"
-                                value={icon.link}
-                                onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
-                            />
-                        </label>
-                    {/each}
-                </div>
-            </section>
-        </div>
-    {/snippet}
-</SideActions>
 {:else}
     <div
         {id}
@@ -868,5 +873,9 @@
     .krt-header__iconButton :global(svg) {
         width: 1.1rem;
         height: 1.1rem;
+    }
+
+    .krt-header__editor {
+        position: relative;
     }
 </style>

@@ -1,8 +1,7 @@
 <script lang="ts">
-    import { Pencil } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface CarouselImage {
         src?: string;
@@ -63,7 +62,6 @@
 
     let component: HTMLElement;
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -73,7 +71,46 @@
 {#if editable}
     <div class="editor-item group relative" bind:this={component}>
         {#if mounted}
-            <BlockActions {id} {type} element={component} />
+            <BlockActions
+                {id}
+                {type}
+                element={component}
+                inspectorTitle="Carousel settings"
+            >
+                {#snippet inspector()}
+                    <div class="krt-basicCarouselDrawer">
+                        <section class="krt-basicCarouselDrawer__section">
+                            <div>
+                                <p class="krt-basicCarouselDrawer__eyebrow">Gallery</p>
+                                <h3>Carousel images</h3>
+                            </div>
+                            <ImagePicker bind:selectedImages={images} mode="multiple" />
+                        </section>
+
+                        <section class="krt-basicCarouselDrawer__section">
+                            <h3>Colors</h3>
+                            <div class="krt-basicCarouselDrawer__grid">
+                                <label class="krt-basicCarouselDrawer__field">
+                                    <span>Background</span>
+                                    <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                                </label>
+                                <label class="krt-basicCarouselDrawer__field">
+                                    <span>Accent</span>
+                                    <input type="color" aria-label="Accent color" bind:value={layoutMetadata.accentColor} />
+                                </label>
+                                <label class="krt-basicCarouselDrawer__field">
+                                    <span>Border</span>
+                                    <input type="color" aria-label="Border color" bind:value={layoutMetadata.borderColor} />
+                                </label>
+                                <label class="krt-basicCarouselDrawer__field">
+                                    <span>Text</span>
+                                    <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
+                                </label>
+                            </div>
+                        </section>
+                    </div>
+                {/snippet}
+            </BlockActions>
         {/if}
         <section {id} data-type={type} class="krt-basicCarousel" style={layoutStyle}>
             <div class="krt-basicCarousel__metadata">{JSON.stringify(content)}</div>
@@ -95,47 +132,6 @@
         </section>
     </div>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit carousel settings" type="button">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-basicCarouselDrawer">
-                <section class="krt-basicCarouselDrawer__section">
-                    <div>
-                        <p class="krt-basicCarouselDrawer__eyebrow">Gallery</p>
-                        <h3>Carousel images</h3>
-                    </div>
-                    <ImagePicker bind:selectedImages={images} mode="multiple" />
-                </section>
-
-                <section class="krt-basicCarouselDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-basicCarouselDrawer__grid">
-                        <label class="krt-basicCarouselDrawer__field">
-                            <span>Background</span>
-                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-basicCarouselDrawer__field">
-                            <span>Accent</span>
-                            <input type="color" aria-label="Accent color" bind:value={layoutMetadata.accentColor} />
-                        </label>
-                        <label class="krt-basicCarouselDrawer__field">
-                            <span>Border</span>
-                            <input type="color" aria-label="Border color" bind:value={layoutMetadata.borderColor} />
-                        </label>
-                        <label class="krt-basicCarouselDrawer__field">
-                            <span>Text</span>
-                            <input type="color" aria-label="Text color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                    </div>
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 {:else}
     <section id={id} data-type={type} class="krt-basicCarousel" style={layoutStyle}>
         <div class="krt-basicCarousel__metadata" data-type={type}>{JSON.stringify(content)}</div>

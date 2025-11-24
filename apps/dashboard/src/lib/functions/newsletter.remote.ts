@@ -504,3 +504,176 @@ await listDripCampaigns().refresh();
 return { processed: result.data?.processed || 0 };
 }
 );
+
+// ============================================================================
+// AUDIENCE MANAGEMENT
+// ============================================================================
+
+export type AudienceContact = {
+id: string;
+email: string;
+first_name?: string;
+last_name?: string;
+unsubscribed: boolean;
+unsubscribedAt?: string;
+segments: string[];
+segmentCount: number;
+created_at: string;
+updated_at: string;
+};
+
+export const listAudienceContacts = guardedQuery(async (): Promise<{ contacts: AudienceContact[]; total: number; hasMore: boolean }> => {
+try {
+const { event } = ensureSession();
+// Default values if not provided
+const result = await newsletter.listAudienceContacts(event, 50, 0, undefined);
+return result;
+} catch (err) {
+console.error('[newsletter.listAudienceContacts] error:', err);
+return { contacts: [], total: 0, hasMore: false };
+}
+});
+
+export const loadAudienceContacts = guardedCommand(
+v.object({
+limit: v.optional(v.number()),
+offset: v.optional(v.number()),
+search: v.optional(v.string())
+}),
+async ({ limit = 50, offset = 0, search }) => {
+const { event } = ensureSession();
+const result = await newsletter.listAudienceContacts(event, limit, offset, search);
+return result;
+}
+);
+
+export const addAudienceContact = guardedCommand(
+v.object({
+email: v.pipe(v.string(), v.nonEmpty()),
+firstName: v.optional(v.string()),
+lastName: v.optional(v.string()),
+segmentIds: v.optional(v.array(v.string()))
+}),
+async ({ email, firstName, lastName, segmentIds = [] }) => {
+const { event } = ensureSession();
+const result = await newsletter.addAudienceContact(event, {
+email,
+firstName,
+lastName,
+segmentIds
+});
+if (!result.success) {
+error(500, result.error || 'Failed to add contact');
+}
+return { success: true, id: result.id };
+}
+);
+
+export const updateAudienceContact = guardedCommand(
+v.object({
+contactId: v.pipe(v.string(), v.nonEmpty()),
+firstName: v.optional(v.string()),
+lastName: v.optional(v.string()),
+unsubscribed: v.optional(v.boolean())
+}),
+async ({ contactId, firstName, lastName, unsubscribed }) => {
+const { event } = ensureSession();
+const result = await newsletter.updateAudienceContact(event, {
+contactId,
+firstName,
+lastName,
+unsubscribed
+});
+if (!result.success) {
+error(500, result.error || 'Failed to update contact');
+}
+return { success: true };
+}
+);
+
+export const deleteAudienceContact = guardedCommand(
+v.object({
+contactId: v.pipe(v.string(), v.nonEmpty())
+}),
+async ({ contactId }) => {
+const { event } = ensureSession();
+const result = await newsletter.deleteAudienceContact(event, contactId);
+if (!result.success) {
+error(500, result.error || 'Failed to delete contact');
+}
+return { success: true };
+}
+);
+
+export const addContactToSegments = guardedCommand(
+v.object({
+contactId: v.pipe(v.string(), v.nonEmpty()),
+segmentIds: v.array(v.string())
+}),
+async ({ contactId, segmentIds }) => {
+const { event } = ensureSession();
+const results = await Promise.all(
+segmentIds.map(segmentId => 
+newsletter.addContactToSegment(event, { contactId, segmentId })
+)
+);
+const failed = results.filter(r => !r.success);
+if (failed.length > 0) {
+error(500, `Failed to add contact to ${failed.length} segments`);
+}
+return { success: true };
+}
+);
+
+export const removeContactFromSegments = guardedCommand(
+v.object({
+contactId: v.pipe(v.string(), v.nonEmpty()),
+segmentIds: v.array(v.string())
+}),
+async ({ contactId, segmentIds }) => {
+const { event } = ensureSession();
+const results = await Promise.all(
+segmentIds.map(segmentId => 
+newsletter.removeContactFromSegment(event, segmentId, contactId)
+)
+);
+const failed = results.filter(r => !r.success);
+if (failed.length > 0) {
+error(500, `Failed to remove contact from ${failed.length} segments`);
+}
+return { success: true };
+}
+);
+
+export type AudienceStats = {
+totalContacts: number;
+activeContacts: number;
+unsubscribedContacts: number;
+segmentsCount: number;
+avgContactsPerSegment: number;
+recentGrowth: {
+newThisWeek: number;
+newThisMonth: number;
+};
+};
+
+export const getAudienceStats = guardedQuery(async (): Promise<AudienceStats> => {
+try {
+const { event } = ensureSession();
+const result = await newsletter.getAudienceStats(event);
+return result;
+} catch (err) {
+console.error('[newsletter.getAudienceStats] error:', err);
+return {
+totalContacts: 0,
+activeContacts: 0,
+unsubscribedContacts: 0,
+segmentsCount: 0,
+avgContactsPerSegment: 0,
+recentGrowth: {
+newThisWeek: 0,
+newThisMonth: 0
+}
+};
+}
+});

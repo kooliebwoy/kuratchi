@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { GripVertical, Plus, Trash2 } from '@lucide/svelte';
+    import { GripVertical, Pencil, Plus, Trash2 } from '@lucide/svelte';
     import type { Snippet } from 'svelte';
+    import { closeRightPanel, openRightPanel } from '../stores/right-panel.js';
     import { deleteElement } from './editor.svelte.js';
 
     interface Props {
@@ -9,6 +10,8 @@
         element?: HTMLElement;
         component?: HTMLElement;
         children?: Snippet;
+        inspector?: Snippet;
+        inspectorTitle?: string;
     }
 
     let {
@@ -16,15 +19,27 @@
         type = 'block',
         element,
         component,
-        children
+        children,
+        inspector,
+        inspectorTitle
     }: Props = $props();
 
     const targetElement = $derived(element ?? component);
     const popoverId = $derived(`block-actions-${id}`);
     const anchorName = $derived(`--sizePopover-${id}`);
+    const inspectorHeading = $derived(
+        inspectorTitle ?? `Edit ${(type ?? 'block').replace(/-/g, ' ')}`
+    );
+
+    const openInspector = (event?: Event) => {
+        event?.preventDefault();
+        if (!inspector) return;
+        openRightPanel(inspector, inspectorHeading);
+    };
 
     const handleDelete = () => {
         if (!targetElement) return;
+        closeRightPanel();
         deleteElement(targetElement);
     };
 </script>
@@ -38,6 +53,16 @@
     >
         <GripVertical aria-hidden="true" />
     </button>
+    {#if inspector}
+        <button
+            class="krt-blockActions__button krt-blockActions__button--edit"
+            type="button"
+            onclick={openInspector}
+            title={inspectorHeading}
+        >
+            <Pencil aria-hidden="true" />
+        </button>
+    {/if}
     <button
         class="krt-blockActions__button"
         type="button"
@@ -86,6 +111,10 @@
 
     :global(.editor-item:hover) .krt-blockActions,
     :global(.editor-item:focus-within) .krt-blockActions,
+    :global(.editor-header-item:hover) .krt-blockActions,
+    :global(.editor-header-item:focus-within) .krt-blockActions,
+    :global(.editor-footer-item:hover) .krt-blockActions,
+    :global(.editor-footer-item:focus-within) .krt-blockActions,
     :global(.krt-shellBlock:hover) .krt-blockActions,
     :global(.krt-shellBlock:focus-within) .krt-blockActions {
         opacity: 1;
@@ -123,6 +152,14 @@
 
     .krt-blockActions__button--drag:active {
         cursor: grabbing;
+    }
+
+    .krt-blockActions__button--edit {
+        background: rgba(15, 23, 42, 0.04);
+    }
+
+    .krt-blockActions__button--edit:hover {
+        background: rgba(99, 102, 241, 0.08);
     }
 
     .krt-blockActions__button :global(svg) {

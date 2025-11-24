@@ -71,6 +71,9 @@
     onMount(() => {
         mounted = true;
     });
+
+    // Explicit export for TypeScript compatibility
+    export {};
 </script>
 
 {#if editable}

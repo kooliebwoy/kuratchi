@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { ArrowRight, Pencil } from '@lucide/svelte';
+    import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface HeroButton {
         label?: string;
@@ -72,7 +72,6 @@
     });
     let component = $state<HTMLElement>();
     let mounted = $state(false);
-    const sideActionsId = $derived(`hero-figure-side-actions-${id}`);
 
     onMount(() => {
         if (!editable) return;
@@ -82,75 +81,71 @@
 {#if editable}
 <div class="editor-item group relative krt-heroFigure__wrapper" bind:this={component}>
     {#if mounted}
-        <BlockActions {component}>
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Hero figure settings"
+        >
             <small>Layout</small>
             <li>
                 <button class="btn btn-ghost btn-sm" onclick={() => (layoutMetadata.reverseOrder = !layoutMetadata.reverseOrder)}>
                     {layoutMetadata.reverseOrder ? 'Normal order' : 'Swap layout'}
                 </button>
             </li>
+            {#snippet inspector()}
+                <div class="krt-heroFigureDrawer">
+                    <section class="krt-heroFigureDrawer__section">
+                        <div class="krt-heroFigureDrawer__toggle">
+                            <label>
+                                <span>Swap hero and media</span>
+                                <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-heroFigureDrawer__section">
+                        <h3>Colors</h3>
+                        <div class="krt-heroFigureDrawer__grid">
+                            <label class="krt-heroFigureDrawer__field">
+                                <span>Background</span>
+                                <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
+                            </label>
+                            <label class="krt-heroFigureDrawer__field">
+                                <span>Heading</span>
+                                <input type="color" aria-label="Heading color" bind:value={layoutMetadata.headingColor} />
+                            </label>
+                            <label class="krt-heroFigureDrawer__field">
+                                <span>Body text</span>
+                                <input type="color" aria-label="Body text color" bind:value={layoutMetadata.textColor} />
+                            </label>
+                            <label class="krt-heroFigureDrawer__field">
+                                <span>Button</span>
+                                <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-heroFigureDrawer__section">
+                        <h3>Button</h3>
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Label</span>
+                            <input type="text" placeholder="Read more" bind:value={button.label} />
+                        </label>
+                        <label class="krt-heroFigureDrawer__field">
+                            <span>Link</span>
+                            <input type="url" placeholder="https://" bind:value={button.link} />
+                        </label>
+                    </section>
+
+                    <section class="krt-heroFigureDrawer__section">
+                        <h3>Image</h3>
+                        <ImagePicker bind:selectedImage={image} mode="single" />
+                    </section>
+                </div>
+            {/snippet}
         </BlockActions>
     {/if}
-
-    <SideActions id={sideActionsId}>
-        {#snippet label()}
-            <button class="krt-heroFigure__editButton" type="button">
-                <Pencil aria-hidden="true" />
-                <span>Edit section</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-heroFigureDrawer">
-                <section class="krt-heroFigureDrawer__section">
-                    <div class="krt-heroFigureDrawer__toggle">
-                        <label>
-                            <span>Swap hero and media</span>
-                            <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-heroFigureDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-heroFigureDrawer__grid">
-                        <label class="krt-heroFigureDrawer__field">
-                            <span>Background</span>
-                            <input type="color" aria-label="Background color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-heroFigureDrawer__field">
-                            <span>Heading</span>
-                            <input type="color" aria-label="Heading color" bind:value={layoutMetadata.headingColor} />
-                        </label>
-                        <label class="krt-heroFigureDrawer__field">
-                            <span>Body text</span>
-                            <input type="color" aria-label="Body text color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                        <label class="krt-heroFigureDrawer__field">
-                            <span>Button</span>
-                            <input type="color" aria-label="Button color" bind:value={layoutMetadata.buttonColor} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-heroFigureDrawer__section">
-                    <h3>Button</h3>
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Label</span>
-                        <input type="text" placeholder="Read more" bind:value={button.label} />
-                    </label>
-                    <label class="krt-heroFigureDrawer__field">
-                        <span>Link</span>
-                        <input type="url" placeholder="https://" bind:value={button.link} />
-                    </label>
-                </section>
-
-                <section class="krt-heroFigureDrawer__section">
-                    <h3>Image</h3>
-                    <ImagePicker bind:selectedImage={image} mode="single" />
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
 
     <section class={`krt-heroFigure ${layoutMetadata.reverseOrder ? 'krt-heroFigure--reverse' : ''}`} style={layoutStyle} data-type={type}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>

@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { ArrowRight, Pencil, Plus } from '@lucide/svelte';
+    import { ArrowRight, Plus } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface ProductItem {
         id?: string;
@@ -83,7 +83,6 @@
 
     let component: HTMLElement;
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;

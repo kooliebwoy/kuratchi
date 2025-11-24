@@ -770,36 +770,35 @@ let {
                         {/key}
                     </div>
                 </div>
-
-                <!-- Right Sidebar -->
-                <div class="krt-editor__inspector" data-open={$rightPanel.open}>
-                    {#if $rightPanel.open}
-                        <div class="krt-editor__inspectorHeader">
-                            <div>
-                                <div></div>
-                                <h2>{$rightPanel.title}</h2>
-                            </div>
-                            <button 
-                                class="krt-editor__inspectorClose"
-                                onclick={closeRightPanel}
-                            >
-                                <ChevronRight />
-                            </button>
-                        </div>
-                        <div class="krt-editor__inspectorBody">
-                            {#if $rightPanel.content}
-                                {@render $rightPanel.content()}
-                            {/if}
-                        </div>
-                        <div class="krt-editor__inspectorFooter">
-                            <div>Auto-saving...</div>
-                        </div>
-                    {/if}
-                </div>
             </div>
         </div>
-    </div>
 
+        <!-- Right Sidebar -->
+        <div class="krt-editor__inspector" data-open={$rightPanel.open}>
+            {#if $rightPanel.open}
+                <div class="krt-editor__inspectorHeader">
+                    <div>
+                        <div></div>
+                        <h2>{$rightPanel.title}</h2>
+                    </div>
+                    <button 
+                        class="krt-editor__inspectorClose"
+                        onclick={closeRightPanel}
+                    >
+                        <ChevronRight />
+                    </button>
+                </div>
+                <div class="krt-editor__inspectorBody">
+                    {#if $rightPanel.content}
+                        {@render $rightPanel.content()}
+                    {/if}
+                </div>
+                <div class="krt-editor__inspectorFooter">
+                    <div>Auto-saving...</div>
+                </div>
+            {/if}
+        </div>
+    </div>
 {/if}
 
 <style>
@@ -807,46 +806,86 @@ let {
         --krt-editor-rail-width: 4.25rem;
         --krt-editor-sidebar-width: 24rem;
         --krt-editor-inspector-width: 20rem;
+        
+        /* Unified color palette */
+        --krt-editor-bg: #ffffff;
+        --krt-editor-surface: #f8fafc;
+        --krt-editor-surface-hover: #f1f5f9;
+        --krt-editor-border: #e2e8f0;
+        --krt-editor-border-subtle: #f1f5f9;
+        --krt-editor-text-primary: #0f172a;
+        --krt-editor-text-secondary: #64748b;
+        --krt-editor-text-muted: #94a3b8;
+        --krt-editor-accent: #3b82f6;
+        --krt-editor-accent-hover: #2563eb;
+        --krt-editor-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --krt-editor-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        --krt-editor-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        --krt-editor-radius-sm: 0.375rem;
+        --krt-editor-radius-md: 0.5rem;
+        --krt-editor-radius-lg: 0.75rem;
+        --krt-editor-divider: #d1d5db;
+        
         display: flex;
-        min-height: 100vh;
-        background: var(--krt-color-bg);
-        color: var(--krt-color-text);
+        height: 100vh;
+        overflow: hidden;
+        background: var(--krt-editor-bg);
+        color: var(--krt-editor-text-primary);
+        border: 1px solid var(--krt-editor-divider);
     }
 
     .krt-editor__rail {
         width: var(--krt-editor-rail-width);
-        background: #ffffff;
-        border-right: 1px solid var(--krt-color-border-subtle);
+        background: var(--krt-editor-bg);
+        border-right: 2px solid var(--krt-editor-divider);
+        box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.5rem;
         padding: 1rem 0.5rem;
+        position: relative;
+        z-index: 10;
     }
 
     .krt-editor__railButton {
         width: 2.75rem;
         height: 2.75rem;
-        border-radius: var(--krt-radius-md);
+        border-radius: var(--krt-editor-radius-md);
         border: 1px solid transparent;
         background: transparent;
-        color: rgba(15, 23, 42, 0.55);
+        color: var(--krt-editor-text-secondary);
         display: grid;
         place-items: center;
         cursor: pointer;
-        transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+        transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
     }
 
     .krt-editor__railButton:is(:hover, :focus-visible) {
-        background: rgba(15, 23, 42, 0.05);
-        color: rgba(15, 23, 42, 0.85);
-        border-color: rgba(15, 23, 42, 0.1);
+        background: var(--krt-editor-surface-hover);
+        color: var(--krt-editor-text-primary);
+        border-color: var(--krt-editor-border);
+        transform: translateY(-1px);
+        box-shadow: var(--krt-editor-shadow-sm);
     }
 
     .krt-editor__railButton.is-active {
-        background: rgba(15, 23, 42, 0.92);
-        color: #f8fafc;
-        border-color: rgba(15, 23, 42, 0.92);
+        background: var(--krt-editor-accent);
+        color: #ffffff;
+        border-color: var(--krt-editor-accent);
+        box-shadow: var(--krt-editor-shadow-md);
+        transform: translateY(-1px);
+    }
+
+    .krt-editor__railButton.is-active::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        border-radius: var(--krt-editor-radius-lg);
+        background: linear-gradient(135deg, var(--krt-editor-accent), var(--krt-editor-accent-hover));
+        opacity: 0.1;
+        z-index: -1;
     }
 
     .krt-editor__railButton :global(svg) {
@@ -856,12 +895,15 @@ let {
 
     .krt-editor__sidebar {
         width: 0;
-        background: #f8f9fb;
-        border-right: 1px solid var(--krt-color-border-subtle);
+        background: var(--krt-editor-bg);
+        border-right: 2px solid var(--krt-editor-divider);
+        box-shadow: 2px 0 4px rgba(0, 0, 0, 0.03);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transition: width 220ms ease;
+        transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        z-index: 5;
     }
 
     .krt-editor__sidebar[data-open="true"] {
@@ -872,38 +914,57 @@ let {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--krt-color-border-subtle);
-        background: #fff;
+        padding: 1rem 1.5rem;
+        border-bottom: 2px solid var(--krt-editor-divider);
+        background: #ffffff;
         flex-shrink: 0;
+        backdrop-filter: none;
+        height: 64px;
+        box-sizing: border-box;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+        position: relative;
+        z-index: 6;
+    }
+
+    .krt-editor__sidebarHeader::before {
+        display: none;
     }
 
     .krt-editor__sidebarHeader h2 {
-        font-size: 0.9rem;
+        font-size: 1rem;
+        font-weight: 700;
         margin: 0;
+        color: var(--krt-editor-text-primary);
+        letter-spacing: -0.025em;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
     }
 
     .krt-editor__sidebarClose {
         border: none;
-        border-radius: var(--krt-radius-sm);
+        border-radius: var(--krt-editor-radius-sm);
         background: transparent;
-        color: rgba(17, 24, 39, 0.6);
-        padding: 0.35rem;
+        color: var(--krt-editor-text-secondary);
+        padding: 0.5rem;
         cursor: pointer;
         transition: all 160ms ease;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        flex-shrink: 0;
     }
 
     .krt-editor__sidebarClose:is(:hover, :focus-visible) {
-        background: rgba(99, 102, 241, 0.1);
-        color: var(--krt-color-primary);
+        background: var(--krt-editor-accent);
+        color: #ffffff;
+        transform: scale(1.05);
+        box-shadow: var(--krt-editor-shadow-sm);
     }
 
     .krt-editor__sidebarClose :global(svg) {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
     }
 
     .krt-editor__sidebarBody {
@@ -1461,30 +1522,37 @@ let {
         flex: 1;
         display: flex;
         min-height: 0;
+        background: var(--krt-editor-surface);
+        border-right: 2px solid var(--krt-editor-divider);
     }
 
     .krt-editor__canvasShell {
         flex: 1;
-        background: #eef1f6;
+        background: var(--krt-editor-surface);
         overflow: auto;
-        padding: 1.5rem;
+        padding: 2rem;
+        position: relative;
     }
 
     .krt-editor__canvasFrame {
         margin: 0 auto;
         width: 100%;
-        transition: max-width 200ms ease;
+        transition: max-width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        border-radius: var(--krt-editor-radius-lg);
+        box-shadow: var(--krt-editor-shadow-lg);
     }
 
     .krt-editor__inspector {
         width: 0;
-        background: #f8f9fb;
-        border-left: 1px solid var(--krt-color-border-subtle);
+        background: var(--krt-editor-bg);
+        border-left: 2px solid var(--krt-editor-divider);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transition: width 220ms ease;
-        box-shadow: inset 1px 0 0 rgba(15, 23, 42, 0.05);
+        transition: all 220ms cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: -2px 0 4px rgba(0, 0, 0, 0.03);
+        position: relative;
+        z-index: 5;
     }
 
     .krt-editor__inspector[data-open="true"] {
@@ -1495,17 +1563,32 @@ let {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.85rem 1rem;
-        border-bottom: 1px solid var(--krt-color-border-subtle);
-        background: #fff;
+        padding: 1rem 1.5rem;
+        border-bottom: 2px solid var(--krt-editor-divider);
+        background: #ffffff;
         flex-shrink: 0;
         gap: 0.75rem;
+        backdrop-filter: none;
+        height: 64px;
+        box-sizing: border-box;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+        position: relative;
+        z-index: 6;
+    }
+
+    .krt-editor__inspectorHeader::before {
+        display: none;
     }
 
     .krt-editor__inspectorHeader > div {
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--krt-editor-text-primary);
+        letter-spacing: -0.025em;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
     }
 
     .krt-editor__inspectorHeader > div div {
@@ -1514,53 +1597,149 @@ let {
         border-radius: 999px;
         background: #10b981;
         animation: pulse 1.5s ease infinite;
+        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
     }
 
     .krt-editor__inspectorClose {
         border: none;
         background: transparent;
-        border-radius: var(--krt-radius-sm);
-        padding: 0.35rem;
+        border-radius: var(--krt-editor-radius-sm);
+        padding: 0.5rem;
         cursor: pointer;
-        color: rgba(17, 24, 39, 0.6);
+        color: var(--krt-editor-text-secondary);
         transition: all 160ms ease;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        flex-shrink: 0;
     }
 
     .krt-editor__inspectorClose:is(:hover, :focus-visible) {
-        background: rgba(99, 102, 241, 0.1);
-        color: var(--krt-color-primary);
+        background: var(--krt-editor-accent);
+        color: #ffffff;
+        transform: scale(1.05);
+        box-shadow: var(--krt-editor-shadow-sm);
     }
 
     .krt-editor__inspectorClose :global(svg) {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
     }
 
     .krt-editor__inspectorBody {
         flex: 1;
         overflow-y: auto;
-        padding: 1rem;
+        padding: 1.5rem;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 1.5rem;
+    }
+
+    .krt-editor__sidebarItem {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--krt-editor-border);
+        border-radius: var(--krt-editor-radius-md);
+        background: var(--krt-editor-bg);
+        color: var(--krt-editor-text-primary);
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 160ms ease;
+        width: 100%;
+        text-align: left;
+    }
+
+    .krt-editor__sidebarItem:is(:hover, :focus-visible) {
+        background: var(--krt-editor-surface-hover);
+        border-color: var(--krt-editor-accent);
+        transform: translateY(-1px);
+        box-shadow: var(--krt-editor-shadow-sm);
+    }
+
+    .krt-editor__sidebarItem :global(svg) {
+        width: 18px;
+        height: 18px;
+        color: var(--krt-editor-text-secondary);
+        transition: color 160ms ease;
+    }
+
+    .krt-editor__sidebarItem:is(:hover, :focus-visible) :global(svg) {
+        color: var(--krt-editor-accent);
     }
 
     .krt-editor__inspectorFooter {
-        padding: 0.75rem;
-        border-top: 1px solid var(--krt-color-border-subtle);
-        background: #fff;
-        text-align: center;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--krt-editor-border);
+        background: var(--krt-editor-surface);
+        flex-shrink: 0;
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
         font-size: 0.8rem;
-        color: rgba(17, 24, 39, 0.6);
+        color: var(--krt-editor-text-muted);
     }
 
     @keyframes pulse {
         0% { opacity: 0.4; }
         50% { opacity: 1; }
         100% { opacity: 0.4; }
+    }
+
+    /* Additional cohesive styling for sidebar sections */
+    .krt-editor__sidebarSection {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .krt-editor__sectionTitle {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-secondary);
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .krt-editor__themeButton {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--krt-editor-border);
+        border-radius: var(--krt-editor-radius-md);
+        background: var(--krt-editor-bg);
+        cursor: pointer;
+        transition: all 160ms ease;
+        width: 100%;
+        text-align: left;
+    }
+
+    .krt-editor__themeButton:is(:hover, :focus-visible) {
+        background: var(--krt-editor-surface-hover);
+        border-color: var(--krt-editor-accent);
+        transform: translateY(-1px);
+        box-shadow: var(--krt-editor-shadow-sm);
+    }
+
+    .krt-editor__themeButton.is-active {
+        border-color: var(--krt-editor-accent);
+        background: rgba(59, 130, 246, 0.05);
+        box-shadow: 0 0 0 1px var(--krt-editor-accent);
+    }
+
+    .krt-editor__loadingMessage {
+        text-align: center;
+        color: var(--krt-editor-text-muted);
+        font-size: 0.9rem;
+        padding: 2rem;
     }
 
     /* ===== FORM CONTROLS ===== */

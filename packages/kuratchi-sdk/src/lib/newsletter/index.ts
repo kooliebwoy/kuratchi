@@ -1113,3 +1113,320 @@ export async function processCampaignBranches(
 		return { success: false, error: error.message };
 	}
 }
+
+// ============================================================================
+// AUDIENCE MANAGEMENT
+// ============================================================================
+
+/**
+ * List all contacts in the organization with segment information
+ */
+export async function listAudienceContacts(
+	event: RequestEvent,
+	limit: number = 50,
+	offset: number = 0,
+	search?: string
+): Promise<{ contacts: any[]; total: number; hasMore: boolean }> {
+	try {
+		const orgId = getOrgId(event);
+		const db = await getDb(event, orgId);
+		if (!db?.newsletter_contacts || !db?.newsletter_segments || !db?.newsletter_segment_contacts) {
+			return { contacts: [], total: 0, hasMore: false };
+		}
+
+		// Build query
+		let query = db.newsletter_contacts
+			.where({ organizationId: orgId, deleted_at: { is: null } });
+
+		// Add search filter
+		if (search) {
+			query = query.where({
+				email: { contains: search, mode: 'insensitive' }
+			});
+		}
+
+		// Get total count
+		const countResult = await query.count();
+		const total = countResult?.data || 0;
+
+		// Get contacts with pagination
+		const contactsResult = await query
+			.limit(limit + 1)
+			.offset(offset)
+			.orderBy({ created_at: 'desc' })
+			.many();
+
+		const contacts = contactsResult?.data || [];
+		const hasMore = contacts.length > limit;
+		const paginatedContacts = contacts.slice(0, limit);
+
+		// Get segment information for each contact
+		for (const contact of paginatedContacts) {
+			const segmentContactsResult = await db.newsletter_segment_contacts
+				.where({ contactId: contact.id })
+				.many();
+
+			const segmentContacts = segmentContactsResult?.data || [];
+			const segmentIds = segmentContacts.map((sc: any) => sc.segmentId);
+
+			// Get segment names
+			if (segmentIds.length > 0) {
+				const segmentsResult = await db.newsletter_segments
+					.where({ id: { in: segmentIds } })
+					.many();
+				const segments = segmentsResult?.data || [];
+				contact.segments = segments.map((s: any) => s.name);
+			} else {
+				contact.segments = [];
+			}
+
+			contact.segmentCount = contact.segments.length;
+		}
+
+		return { contacts: paginatedContacts, total, hasMore };
+	} catch (error) {
+		console.error('[Newsletter] Error listing audience contacts:', error);
+		return { contacts: [], total: 0, hasMore: false };
+	}
+}
+
+/**
+ * Add a new contact to the audience
+ */
+export async function addAudienceContact(
+	event: RequestEvent,
+	input: {
+		email: string;
+		firstName?: string;
+		lastName?: string;
+		segmentIds?: string[];
+	}
+): Promise<NewsletterResult> {
+	try {
+		const orgId = getOrgId(event);
+		const db = await getDb(event, orgId);
+		if (!db?.newsletter_contacts) {
+			return { success: false, error: 'Newsletter contacts table not found' };
+		}
+
+		// Check if contact already exists
+		const existingResult = await db.newsletter_contacts
+			.where({ organizationId: orgId, email: input.email, deleted_at: { is: null } })
+			.first();
+
+		let contactId: string;
+		if (existingResult?.data) {
+			contactId = existingResult.data.id;
+		} else {
+			// Create new contact
+			const contact: NewsletterContact = {
+				id: crypto.randomUUID(),
+				organizationId: orgId,
+				email: input.email,
+				firstName: input.firstName,
+				lastName: input.lastName,
+				unsubscribed: false,
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+			};
+			await db.newsletter_contacts.insert(contact);
+			contactId = contact.id;
+		}
+
+		// Add to segments if provided
+		if (input.segmentIds && input.segmentIds.length > 0 && db.newsletter_segment_contacts) {
+			for (const segmentId of input.segmentIds) {
+				// Check if already in segment
+				const existingLink = await db.newsletter_segment_contacts
+					.where({ segmentId, contactId })
+					.first();
+
+				if (!existingLink?.data) {
+					await db.newsletter_segment_contacts.insert({
+						segmentId,
+						contactId,
+						added_at: new Date().toISOString(),
+					});
+				}
+			}
+		}
+
+		return { success: true, id: contactId };
+	} catch (error: any) {
+		console.error('[Newsletter] Error adding audience contact:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * Update an existing contact
+ */
+export async function updateAudienceContact(
+	event: RequestEvent,
+	input: {
+		contactId: string;
+		firstName?: string;
+		lastName?: string;
+		unsubscribed?: boolean;
+	}
+): Promise<NewsletterResult> {
+	try {
+		const orgId = getOrgId(event);
+		const db = await getDb(event, orgId);
+		if (!db?.newsletter_contacts) {
+			return { success: false, error: 'Newsletter contacts table not found' };
+		}
+
+		const updateData: any = {
+			updated_at: new Date().toISOString(),
+		};
+
+		if (input.firstName !== undefined) updateData.firstName = input.firstName;
+		if (input.lastName !== undefined) updateData.lastName = input.lastName;
+		if (input.unsubscribed !== undefined) {
+			updateData.unsubscribed = input.unsubscribed;
+			if (input.unsubscribed) {
+				updateData.unsubscribedAt = new Date().toISOString();
+			}
+		}
+
+		await db.newsletter_contacts
+			.where({ id: input.contactId, organizationId: orgId })
+			.update(updateData);
+
+		return { success: true };
+	} catch (error: any) {
+		console.error('[Newsletter] Error updating audience contact:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * Delete a contact (soft delete)
+ */
+export async function deleteAudienceContact(
+	event: RequestEvent,
+	contactId: string
+): Promise<NewsletterResult> {
+	try {
+		const orgId = getOrgId(event);
+		const db = await getDb(event, orgId);
+		if (!db?.newsletter_contacts) {
+			return { success: false, error: 'Newsletter contacts table not found' };
+		}
+
+		await db.newsletter_contacts
+			.where({ id: contactId, organizationId: orgId })
+			.update({ deleted_at: new Date().toISOString() });
+
+		// Remove from all segments
+		if (db.newsletter_segment_contacts) {
+			await db.newsletter_segment_contacts
+				.where({ contactId })
+				.delete();
+		}
+
+		return { success: true };
+	} catch (error: any) {
+		console.error('[Newsletter] Error deleting audience contact:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * Get audience statistics
+ */
+export async function getAudienceStats(
+	event: RequestEvent
+): Promise<any> {
+	try {
+		const orgId = getOrgId(event);
+		const db = await getDb(event, orgId);
+		if (!db?.newsletter_contacts || !db?.newsletter_segments) {
+			return {
+				totalContacts: 0,
+				activeContacts: 0,
+				unsubscribedContacts: 0,
+				segmentsCount: 0,
+				avgContactsPerSegment: 0,
+				recentGrowth: {
+					newThisWeek: 0,
+					newThisMonth: 0
+				}
+			};
+		}
+
+		// Get total contacts
+		const totalResult = await db.newsletter_contacts
+			.where({ organizationId: orgId, deleted_at: { is: null } })
+			.count();
+		const totalContacts = totalResult?.data || 0;
+
+		// Get active contacts
+		const activeResult = await db.newsletter_contacts
+			.where({ organizationId: orgId, deleted_at: { is: null }, unsubscribed: false })
+			.count();
+		const activeContacts = activeResult?.data || 0;
+
+		// Get unsubscribed contacts
+		const unsubscribedContacts = totalContacts - activeContacts;
+
+		// Get segments count
+		const segmentsResult = await db.newsletter_segments
+			.where({ organizationId: orgId, deleted_at: { is: null } })
+			.count();
+		const segmentsCount = segmentsResult?.data || 0;
+
+		// Calculate average contacts per segment
+		const avgContactsPerSegment = segmentsCount > 0 ? Math.round(activeContacts / segmentsCount) : 0;
+
+		// Get recent growth
+		const oneWeekAgo = new Date();
+		oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+		const oneMonthAgo = new Date();
+		oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+		const newThisWeekResult = await db.newsletter_contacts
+			.where({ 
+				organizationId: orgId, 
+				deleted_at: { is: null },
+				created_at: { gte: oneWeekAgo.toISOString() }
+			})
+			.count();
+		const newThisWeek = newThisWeekResult?.data || 0;
+
+		const newThisMonthResult = await db.newsletter_contacts
+			.where({ 
+				organizationId: orgId, 
+				deleted_at: { is: null },
+				created_at: { gte: oneMonthAgo.toISOString() }
+			})
+			.count();
+		const newThisMonth = newThisMonthResult?.data || 0;
+
+		return {
+			totalContacts,
+			activeContacts,
+			unsubscribedContacts,
+			segmentsCount,
+			avgContactsPerSegment,
+			recentGrowth: {
+				newThisWeek,
+				newThisMonth
+			}
+		};
+	} catch (error) {
+		console.error('[Newsletter] Error getting audience stats:', error);
+		return {
+			totalContacts: 0,
+			activeContacts: 0,
+			unsubscribedContacts: 0,
+			segmentsCount: 0,
+			avgContactsPerSegment: 0,
+			recentGrowth: {
+				newThisWeek: 0,
+				newThisMonth: 0
+			}
+		};
+	}
+}

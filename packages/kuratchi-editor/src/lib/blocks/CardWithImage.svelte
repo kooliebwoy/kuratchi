@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { ArrowRight, Pencil } from '@lucide/svelte';
+    import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
-    import { BlockActions, SideActions } from '../utils/index.js';
+    import { BlockActions } from '../utils/index.js';
 
     interface CardImage {
         url: string;
@@ -48,7 +48,6 @@
 
     let component: HTMLElement;
     let mounted = $state(false);
-    const sideActionsId = `side-actions-${id}`;
 
     onMount(() => {
         mounted = true;
@@ -56,10 +55,72 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
-        {#if mounted}
-            <BlockActions {id} {type} element={component} />
-        {/if}
+<div class="editor-item group relative" bind:this={component}>
+    {#if mounted}
+        <BlockActions
+            {id}
+            {type}
+            element={component}
+            inspectorTitle="Card settings"
+        >
+            {#snippet inspector()}
+                <div class="krt-cardWithImageDrawer">
+                    <section class="krt-cardWithImageDrawer__section">
+                        <h3>Content</h3>
+                        <div class="krt-cardWithImageDrawer__fields">
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Heading</span>
+                                <input type="text" bind:value={heading} placeholder="Enter heading" />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Body</span>
+                                <textarea rows="3" bind:value={body} placeholder="Enter body"></textarea>
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Button text</span>
+                                <input type="text" bind:value={button} placeholder="Button text" />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Link</span>
+                                <input type="url" bind:value={link} placeholder="Enter link" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-cardWithImageDrawer__section">
+                        <h3>Styles</h3>
+                        <div class="krt-cardWithImageDrawer__grid">
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Background</span>
+                                <input type="color" bind:value={backgroundColor} />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Button</span>
+                                <input type="color" bind:value={buttonColor} />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Heading</span>
+                                <input type="color" bind:value={headingColor} />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Content</span>
+                                <input type="color" bind:value={contentColor} />
+                            </label>
+                            <label class="krt-cardWithImageDrawer__field">
+                                <span>Card body</span>
+                                <input type="color" bind:value={cardContentColor} />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-cardWithImageDrawer__section">
+                        <h3>Image</h3>
+                        <ImagePicker bind:selectedImage={image} mode="single" />
+                    </section>
+                </div>
+            {/snippet}
+        </BlockActions>
+    {/if}
         <section {id} data-type={type} class="krt-card krt-card--horizontal">
             <div class="krt-card__metadata">{JSON.stringify(content)}</div>
             <figure class="krt-card__media">
@@ -78,44 +139,7 @@
         </section>
     </div>
 
-    <SideActions triggerId={sideActionsId}>
-        {#snippet label()}
-            <button id={sideActionsId} class="krt-editButton" aria-label="Edit card settings" type="button">
-                <Pencil size={16} />
-                <span>Edit Settings</span>
-            </button>
-        {/snippet}
-        {#snippet content()}
-            <div class="krt-cardDrawer">
-                <section class="krt-cardDrawer__section">
-                    <h3>Content</h3>
-                    <div class="krt-cardDrawer__fields">
-                        <label class="krt-cardDrawer__field">
-                            <span>Heading</span>
-                            <input type="text" bind:value={heading} />
-                        </label>
-                        <label class="krt-cardDrawer__field">
-                            <span>Body text</span>
-                            <textarea rows="4" bind:value={body}></textarea>
-                        </label>
-                        <label class="krt-cardDrawer__field">
-                            <span>Button text</span>
-                            <input type="text" bind:value={button} />
-                        </label>
-                        <label class="krt-cardDrawer__field">
-                            <span>Link URL</span>
-                            <input type="url" bind:value={link} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-cardDrawer__section">
-                    <h3>Image</h3>
-                    <ImagePicker bind:selectedImage={image} mode="single" />
-                </section>
-            </div>
-        {/snippet}
-    </SideActions>
+    
 {:else}
     <section id={id} data-type={type} class="krt-card krt-card--horizontal">
         <div class="krt-card__metadata">{JSON.stringify(content)}</div>
@@ -289,3 +313,4 @@
         min-height: 6rem;
     }
 </style>
+

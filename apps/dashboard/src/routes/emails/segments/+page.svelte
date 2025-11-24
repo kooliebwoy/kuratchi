@@ -163,7 +163,7 @@
             <p class="kui-segment-item__count">{segment.subscriberCount || 0} contacts</p>
           </div>
           <div class="kui-segment-item__actions">
-            <Button variant="outline" size="sm" onclick={() => openContactsModal(segment)}>
+            <Button variant="neutral" size="sm" onclick={() => openContactsModal(segment)}>
               <Mail class="kui-icon" />
             </Button>
             <Button variant="ghost" size="sm" onclick={() => handleDeleteSegment(segment.id)} disabled={deletingId === segment.id}>
