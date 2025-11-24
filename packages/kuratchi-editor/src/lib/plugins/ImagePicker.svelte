@@ -22,12 +22,13 @@
         mode = 'single'
     }: Props = $props();
 
-    let imageDialog: HTMLDialogElement;
+    let imageDialog: HTMLDialogElement; // @ts-ignore - DOM ref, not reactive state
     let imageUrl = $state('');
     let imageAlt = $state('');
     let isUploading = $state(false);
     let uploadError = $state('');
     let activeTab = $state($imageConfig.uploadHandler || $imageConfig.uploadEndpoint ? 'upload' : 'url');
+    let isDialogOpen = $state(false);
 
     async function handleImageUpload(event: Event) {
         const input = event.target as HTMLInputElement;
@@ -141,7 +142,10 @@
 </script>
 
 <div class="flex flex-col gap-4">
-    <button class="btn btn-neutral btn-sm" type="button" onclick={() => imageDialog.showModal()}>
+    <button class="btn btn-neutral btn-sm" type="button" onclick={() => {
+        isDialogOpen = true;
+        imageDialog?.showModal();
+    }}>
         {mode === 'multiple' 
             ? (selectedImages.length > 0 ? `Change Images (${selectedImages.length})` : 'Select Images')
             : (selectedImage.url ? 'Change Image' : 'Select Image')
@@ -149,28 +153,32 @@
         <Plus class="text-xl" />
     </button>
 
-    <dialog bind:this={imageDialog} class="modal">
-        <div class="modal-box w-11/12 max-w-2xl">
-            <form method="dialog">
-                <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-            </form>
-    
-            <div class="card-body p-0">
-                <h3 class="text-lg font-bold mb-4">
-                    {mode === 'multiple' ? 'Add Images' : 'Add Image'}
-                </h3>
+    {#if isDialogOpen}
+        <dialog bind:this={imageDialog} class="krt-imagePicker-dialog" onclose={() => isDialogOpen = false}>
+            <div class="krt-imagePicker-content">
+                <div class="krt-imagePicker-header">
+                    <h3>{mode === 'multiple' ? 'Add Images' : 'Add Image'}</h3>
+                    <button 
+                        type="button" 
+                        class="krt-imagePicker-close" 
+                        onclick={() => imageDialog?.close()}
+                        aria-label="Close dialog"
+                    >
+                        ✕
+                    </button>
+                </div>
 
                 <!-- Tabs -->
                 {#if $imageConfig.uploadHandler || $imageConfig.uploadEndpoint}
-                    <div class="tabs tabs-boxed mb-4">
+                    <div class="krt-imagePicker-tabs">
                         <button 
-                            class="tab {activeTab === 'url' ? 'tab-active' : ''}" 
+                            class="krt-imagePicker-tab {activeTab === 'url' ? 'krt-imagePicker-tab--active' : ''}" 
                             onclick={() => activeTab = 'url'}
                         >
                             Image URL
                         </button>
                         <button 
-                            class="tab {activeTab === 'upload' ? 'tab-active' : ''}" 
+                            class="krt-imagePicker-tab {activeTab === 'upload' ? 'krt-imagePicker-tab--active' : ''}" 
                             onclick={() => activeTab = 'upload'}
                         >
                             Upload Image
@@ -178,35 +186,31 @@
                     </div>
                 {/if}
 
-                <div class="flex flex-col gap-4">
+                <div class="krt-imagePicker-body">
                     {#if activeTab === 'url'}
                         <!-- Direct URL Input -->
-                        <div class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">Image URL</span>
-                            </div>
+                        <div class="krt-imagePicker-field">
+                            <label for="image-url">Image URL</label>
                             <input 
+                                id="image-url"
                                 type="url" 
-                                class="input input-bordered w-full" 
                                 placeholder="https://example.com/image.jpg" 
                                 bind:value={imageUrl}
                             />
                         </div>
-                        <div class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">Alt Text</span>
-                            </div>
+                        <div class="krt-imagePicker-field">
+                            <label for="image-alt">Alt Text</label>
                             <input 
+                                id="image-alt"
                                 type="text" 
-                                class="input input-bordered w-full" 
                                 placeholder="Image description..." 
                                 bind:value={imageAlt}
                             />
                         </div>
-                        <div class="flex justify-end mt-2">
+                        <div class="krt-imagePicker-actions">
                             <button 
                                 type="button" 
-                                class="btn btn-primary" 
+                                class="krt-imagePicker-submit" 
                                 disabled={!imageUrl || !imageAlt}
                                 onclick={handleUrlSubmit}
                             >
@@ -215,44 +219,40 @@
                         </div>
                     {:else}
                         <!-- File Upload -->
-                        <div class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">Upload Image</span>
-                            </div>
+                        <div class="krt-imagePicker-field">
+                            <label for="image-file">Upload Image</label>
                             <input 
+                                id="image-file"
                                 type="file" 
-                                class="file-input file-input-bordered w-full" 
                                 accept="image/*"
                                 onchange={handleImageUpload}
                                 disabled={isUploading}
                             />
                         </div>
-                        <div class="form-control w-full">
-                            <div class="label">
-                                <span class="label-text">Alt Text</span>
-                            </div>
+                        <div class="krt-imagePicker-field">
+                            <label for="image-alt-upload">Alt Text</label>
                             <input 
+                                id="image-alt-upload"
                                 type="text" 
-                                class="input input-bordered w-full" 
                                 placeholder="Image description..." 
                                 bind:value={imageAlt}
                             />
                         </div>
                         {#if isUploading}
-                            <div class="flex justify-center">
-                                <div class="loading loading-spinner loading-md"></div>
+                            <div class="krt-imagePicker-loading">
+                                <div class="krt-imagePicker-spinner"></div>
                             </div>
                         {/if}
                         {#if uploadError}
-                            <div class="alert alert-error">
-                                <span class="text-sm">{uploadError}</span>
+                            <div class="krt-imagePicker-error">
+                                {uploadError}
                             </div>
                         {/if}
                     {/if}
                 </div>
             </div>
-        </div>
-    </dialog>
+        </dialog>
+    {/if}
 
     <!-- Selected Image(s) Preview -->
     {#if mode === 'multiple'}
@@ -303,3 +303,198 @@
         {/if}
     {/if}
 </div>
+
+<style>
+    .krt-imagePicker-dialog {
+        border: none;
+        border-radius: 1rem;
+        padding: 0;
+        max-width: 600px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(4px);
+    }
+
+    .krt-imagePicker-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    .krt-imagePicker-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding: 0;
+        background: var(--krt-color-surface, #fff);
+        border-radius: 1rem;
+        overflow: hidden;
+    }
+
+    .krt-imagePicker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+        background: var(--krt-color-surface, #fff);
+    }
+
+    .krt-imagePicker-header h3 {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--krt-color-text, #0f172a);
+    }
+
+    .krt-imagePicker-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        background: transparent;
+        color: var(--krt-color-text-secondary, #64748b);
+        cursor: pointer;
+        border-radius: 0.5rem;
+        font-size: 1.25rem;
+        transition: all 0.2s ease;
+    }
+
+    .krt-imagePicker-close:hover {
+        background: var(--krt-color-bg-hover, #f1f5f9);
+        color: var(--krt-color-text, #0f172a);
+    }
+
+    .krt-imagePicker-tabs {
+        display: flex;
+        gap: 0;
+        padding: 0 1.5rem;
+        border-bottom: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+        background: var(--krt-color-surface, #fff);
+    }
+
+    .krt-imagePicker-tab {
+        flex: 1;
+        padding: 1rem;
+        border: none;
+        background: transparent;
+        color: var(--krt-color-text-secondary, #64748b);
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 0.95rem;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+    }
+
+    .krt-imagePicker-tab:hover {
+        color: var(--krt-color-text, #0f172a);
+    }
+
+    .krt-imagePicker-tab--active {
+        color: var(--krt-color-primary, #3b82f6);
+        border-bottom-color: var(--krt-color-primary, #3b82f6);
+    }
+
+    .krt-imagePicker-body {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1.5rem;
+    }
+
+    .krt-imagePicker-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .krt-imagePicker-field label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--krt-color-text, #0f172a);
+    }
+
+    .krt-imagePicker-field input[type='url'],
+    .krt-imagePicker-field input[type='text'],
+    .krt-imagePicker-field input[type='file'] {
+        padding: 0.75rem;
+        border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+        border-radius: 0.5rem;
+        font-size: 0.95rem;
+        font-family: inherit;
+        background: var(--krt-color-surface, #fff);
+        color: var(--krt-color-text, #0f172a);
+        transition: all 0.2s ease;
+    }
+
+    .krt-imagePicker-field input[type='url']:focus,
+    .krt-imagePicker-field input[type='text']:focus,
+    .krt-imagePicker-field input[type='file']:focus {
+        outline: none;
+        border-color: var(--krt-color-primary, #3b82f6);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .krt-imagePicker-field input[type='file'] {
+        padding: 0.5rem;
+    }
+
+    .krt-imagePicker-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+    }
+
+    .krt-imagePicker-submit {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.5rem;
+        background: var(--krt-color-primary, #3b82f6);
+        color: #fff;
+        font-weight: 500;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .krt-imagePicker-submit:hover:not(:disabled) {
+        background: var(--krt-color-primary-dark, #2563eb);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .krt-imagePicker-submit:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .krt-imagePicker-loading {
+        display: flex;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .krt-imagePicker-spinner {
+        width: 2rem;
+        height: 2rem;
+        border: 3px solid var(--krt-color-border-subtle, #e2e8f0);
+        border-top-color: var(--krt-color-primary, #3b82f6);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    .krt-imagePicker-error {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+        font-size: 0.875rem;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
