@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import type { EditorOptions, PageData, SiteRegionState } from "./types.js";
     import type { PluginContext } from "./plugins/types";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
@@ -7,7 +7,7 @@
     import { sections } from "./registry/sections.svelte";
     import { headers } from "./registry/headers.svelte";
     import { footers } from "./registry/footers.svelte";
-    import { addComponentToEditor, replaceRegionComponent } from "./utils/editor.svelte";
+    import { addComponentToEditor, replaceRegionComponent, saveEditorHeaderBlocks, saveEditorFooterBlocks } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
     import { MenuWidget } from "./plugins";
@@ -63,6 +63,12 @@ let {
         onCreatePage,
         enabledPlugins
     }: Props = $props();
+
+    console.log('[Editor] Component initialized with callbacks:', {
+        onSiteHeaderUpdate: !!onSiteHeaderUpdate,
+        onSiteFooterUpdate: !!onSiteFooterUpdate,
+        onSiteMetadataUpdate: !!onSiteMetadataUpdate
+    });
 
     const getPageList = () => Array.isArray(pages) ? pages : [];
     
@@ -127,6 +133,8 @@ let {
 
     // Autosave timeout
     let saveTimeout: ReturnType<typeof setTimeout> | undefined;
+    let headerSaveTimeout: ReturnType<typeof setTimeout> | undefined;
+    let footerSaveTimeout: ReturnType<typeof setTimeout> | undefined;
 
     // Debounced save function
     const triggerSave = () => {
@@ -138,26 +146,110 @@ let {
         }, autoSaveDelay);
     };
 
+    // Debounced header save
+    const triggerHeaderSave = () => {
+        console.log('[Editor] triggerHeaderSave: debouncing save for', autoSaveDelay, 'ms');
+        if (headerSaveTimeout) clearTimeout(headerSaveTimeout);
+        headerSaveTimeout = setTimeout(async () => {
+            console.log('[Editor] triggerHeaderSave: executing save with siteHeader:', siteHeader);
+            if (onSiteHeaderUpdate) {
+                console.log('[Editor] triggerHeaderSave: calling onSiteHeaderUpdate');
+                await onSiteHeaderUpdate(siteHeader);
+                console.log('[Editor] triggerHeaderSave: onSiteHeaderUpdate completed');
+            } else {
+                console.log('[Editor] triggerHeaderSave: no onSiteHeaderUpdate callback');
+            }
+        }, autoSaveDelay);
+    };
+
+    // Debounced footer save
+    const triggerFooterSave = () => {
+        console.log('[Editor] triggerFooterSave: debouncing save for', autoSaveDelay, 'ms');
+        if (footerSaveTimeout) clearTimeout(footerSaveTimeout);
+        footerSaveTimeout = setTimeout(async () => {
+            console.log('[Editor] triggerFooterSave: executing save with siteFooter:', siteFooter);
+            if (onSiteFooterUpdate) {
+                console.log('[Editor] triggerFooterSave: calling onSiteFooterUpdate');
+                await onSiteFooterUpdate(siteFooter);
+                console.log('[Editor] triggerFooterSave: onSiteFooterUpdate completed');
+            } else {
+                console.log('[Editor] triggerFooterSave: no onSiteFooterUpdate callback');
+            }
+        }, autoSaveDelay);
+    };
+
     // Handle changes from EditorCanvas
     const handleContentChange = (content: Array<Record<string, unknown>>) => {
         localPageData.content = content;
         triggerSave();
     };
 
-    const handleHeaderChange = async (next: SiteRegionState | null) => {
+    const handleHeaderChange = (next: SiteRegionState | null) => {
+        console.log('[Editor] handleHeaderChange called with:', next);
         siteHeader = next;
-        if (onSiteHeaderUpdate) {
-            await onSiteHeaderUpdate(siteHeader);
-        }
+        console.log('[Editor] handleHeaderChange: updated siteHeader, triggering save');
+        triggerHeaderSave();
     };
 
-    const handleFooterChange = async (next: SiteRegionState | null) => {
+    const handleFooterChange = (next: SiteRegionState | null) => {
+        console.log('[Editor] handleFooterChange called with:', next);
         siteFooter = next;
-        if (onSiteFooterUpdate) {
-            await onSiteFooterUpdate(siteFooter);
-        }
+        console.log('[Editor] handleFooterChange: updated siteFooter, triggering save');
+        triggerFooterSave();
     };
 
+
+    const syncHeaderRegion = async () => {
+        console.log('[Editor] syncHeaderRegion called');
+        if (!headerElement) {
+            console.log('[Editor] syncHeaderRegion: no headerElement');
+            return;
+        }
+        // Wait for component to mount and render its metadata div
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const blocks = await saveEditorHeaderBlocks(headerElement);
+        console.log('[Editor] syncHeaderRegion: extracted blocks:', blocks);
+        const next = blocks.length > 0 ? ({ blocks: blocks as any } satisfies SiteRegionState) : null;
+        console.log('[Editor] syncHeaderRegion: calling handleHeaderChange with:', next);
+        handleHeaderChange(next);
+    };
+
+    const syncFooterRegion = async () => {
+        console.log('[Editor] syncFooterRegion called');
+        if (!footerElement) {
+            console.log('[Editor] syncFooterRegion: no footerElement');
+            return;
+        }
+        // Wait for component to mount and render its metadata div
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const blocks = await saveEditorFooterBlocks(footerElement);
+        console.log('[Editor] syncFooterRegion: extracted blocks:', blocks);
+        const next = blocks.length > 0 ? ({ blocks: blocks as any } satisfies SiteRegionState) : null;
+        console.log('[Editor] syncFooterRegion: calling handleFooterChange with:', next);
+        handleFooterChange(next);
+    };
+
+    const mountHeaderComponent = async (component: any, props: Record<string, unknown> = {}) => {
+        console.log('[Editor] mountHeaderComponent called with props:', props);
+        if (!headerElement) {
+            console.log('[Editor] mountHeaderComponent: no headerElement');
+            return;
+        }
+        replaceRegionComponent(headerElement, component, { editable: true, ...props });
+        await syncHeaderRegion();
+    };
+
+    const mountFooterComponent = async (component: any, props: Record<string, unknown> = {}) => {
+        console.log('[Editor] mountFooterComponent called with props:', props);
+        if (!footerElement) {
+            console.log('[Editor] mountFooterComponent: no footerElement');
+            return;
+        }
+        replaceRegionComponent(footerElement, component, { editable: true, ...props });
+        await syncFooterRegion();
+    };
 
     const applyTheme = async (themeId: string) => {
         const template = getThemeTemplate(themeId);
@@ -165,13 +257,13 @@ let {
         const homepage = template.defaultHomepage;
         
         // Clear and mount header component directly
-        if (headerElement && template.header) {
-            replaceRegionComponent(headerElement, template.header, { editable: true });
+        if (template.header) {
+            await mountHeaderComponent(template.header);
         }
         
         // Clear and mount footer component directly
-        if (footerElement && template.footer) {
-            replaceRegionComponent(footerElement, template.footer, { editable: true });
+        if (template.footer) {
+            await mountFooterComponent(template.footer);
         }
         
         // Clear editor and mount content components directly
@@ -230,6 +322,8 @@ let {
     onDestroy(() => {
         $sideBarStore = true;
         if (saveTimeout) clearTimeout(saveTimeout);
+        if (headerSaveTimeout) clearTimeout(headerSaveTimeout);
+        if (footerSaveTimeout) clearTimeout(footerSaveTimeout);
     });
 
     // ----- Site-wide Navigation State Helpers -----
@@ -470,11 +564,7 @@ let {
                                 {#each headers as header}
                                     <button
                                         class="krt-editor__presetButton"
-                                        onclick={() => {
-                                            if (headerElement) {
-                                                replaceRegionComponent(headerElement, header.component, { type: header.type });
-                                            }
-                                        }}
+                                        onclick={() => mountHeaderComponent(header.component, { type: header.type })}
                                     >
                                         <HeaderPreview {header} scale={0.25} />
                                         <div class="krt-editor__presetLabel">{header.name}</div>
@@ -487,11 +577,7 @@ let {
                                 {#each footers as footer}
                                     <button
                                         class="krt-editor__presetButton"
-                                        onclick={() => {
-                                            if (footerElement) {
-                                                replaceRegionComponent(footerElement, footer.component, { type: footer.type });
-                                            }
-                                        }}
+                                        onclick={() => mountFooterComponent(footer.component, { type: footer.type })}
                                     >
                                         <FooterPreview {footer} scale={0.25} />
                                         <div class="krt-editor__presetLabel">{footer.name}</div>

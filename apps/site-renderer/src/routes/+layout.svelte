@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { getBlock, blogStore } from '@kuratchi/editor';
+	import { getBlock, getHeader, getFooter, blogStore } from '@kuratchi/editor';
 	
 	let { children, data } = $props();
 	
@@ -53,7 +53,7 @@
 			{#each siteHeader.blocks as headerBlock}
 				{@const headerType = typeof headerBlock.type === 'string' ? headerBlock.type : null}
 				{#if headerType}
-					{@const headerEntry = getBlock(headerType)}
+					{@const headerEntry = getHeader(headerType)}
 					{#if headerEntry?.component}
 						{@const HeaderComponent = headerEntry.component}
 						{@const headerProps = { ...headerBlock, editable: false } satisfies Record<string, unknown>}
@@ -71,7 +71,7 @@
 			{#each siteFooter.blocks as footerBlock}
 				{@const footerType = typeof footerBlock.type === 'string' ? footerBlock.type : null}
 				{#if footerType}
-					{@const footerEntry = getBlock(footerType)}
+					{@const footerEntry = getFooter(footerType)}
 					{#if footerEntry?.component}
 						{@const FooterComponent = footerEntry.component}
 						{@const footerProps = { ...footerBlock, editable: false } satisfies Record<string, unknown>}

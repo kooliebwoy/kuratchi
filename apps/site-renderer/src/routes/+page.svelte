@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBlock } from '@kuratchi/editor';
+  import { getBlock, getSection } from '@kuratchi/editor';
 
   interface PagePayload {
     content?: Array<Record<string, unknown>>;
@@ -23,6 +23,11 @@
     if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
     return `block-${index}`;
   };
+
+  const renderComponent = (blockType: string) => {
+    // Try to get block first, then section
+    return getBlock(blockType) || getSection(blockType);
+  }
 </script>
 
 {#if page && pageData}
@@ -32,15 +37,16 @@
         {#each contentBlocks as block, index (blockKey(block, index))}
           {@const blockType = typeof block.type === 'string' ? block.type : null}
           {#if blockType}
-            {@const blockEntry = getBlock(blockType)}
-            {#if blockEntry?.component}
-              {@const Component = blockEntry.component}
+            {@const sectionEntry = renderComponent(blockType)}
+            {#if sectionEntry?.component}
+              {@const Component = sectionEntry.component}
               {@const props = { ...block, editable: false } satisfies Record<string, unknown>}
               <Component {...props} />
             {:else}
-              <script>
-                console.warn('[site-renderer] Unknown block type', blockType, block);
-              </script>
+              <div class="p-4 bg-yellow-100 border border-yellow-400 rounded">
+                <p class="text-sm text-yellow-800">[DEBUG] Unknown section type: <code>{blockType}</code></p>
+                <p class="text-xs text-yellow-700 mt-1">Block data: {JSON.stringify(block)}</p>
+              </div>
             {/if}
           {/if}
         {/each}

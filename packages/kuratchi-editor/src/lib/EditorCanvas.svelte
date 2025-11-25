@@ -5,7 +5,7 @@
     import { getHeader } from "./registry/headers.svelte";
     import { getFooter } from "./registry/footers.svelte";
     import { getSection } from "./registry/sections.svelte";
-    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop } from "./utils/editor.svelte";
+    import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop, setupEditorObserver } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
     import type { SiteRegionState } from "./types.js";
@@ -75,22 +75,38 @@
     }
 
     const updateHeaderData = async () => {
-        if (!headerElement) return;
+        console.log('[EditorCanvas] updateHeaderData called');
+        if (!headerElement) {
+            console.log('[EditorCanvas] updateHeaderData: no headerElement');
+            return;
+        }
         const blocks = await saveEditorHeaderBlocks(headerElement);
+        console.log('[EditorCanvas] updateHeaderData: extracted blocks:', blocks);
         if (JSON.stringify(blocks) !== JSON.stringify(header?.blocks)) {
             const next: SiteRegionState = { blocks: blocks as any };
+            console.log('[EditorCanvas] updateHeaderData: blocks changed, calling onHeaderChange with:', next);
             header = next;
             onHeaderChange?.(next);
+        } else {
+            console.log('[EditorCanvas] updateHeaderData: blocks unchanged, skipping onHeaderChange');
         }
     };
 
     const updateFooterData = async () => {
-        if (!footerElement) return;
+        console.log('[EditorCanvas] updateFooterData called');
+        if (!footerElement) {
+            console.log('[EditorCanvas] updateFooterData: no footerElement');
+            return;
+        }
         const blocks = await saveEditorFooterBlocks(footerElement);
+        console.log('[EditorCanvas] updateFooterData: extracted blocks:', blocks);
         if (JSON.stringify(blocks) !== JSON.stringify(footer?.blocks)) {
             const next: SiteRegionState = { blocks: blocks as any };
+            console.log('[EditorCanvas] updateFooterData: blocks changed, calling onFooterChange with:', next);
             footer = next;
             onFooterChange?.(next);
+        } else {
+            console.log('[EditorCanvas] updateFooterData: blocks unchanged, skipping onFooterChange');
         }
     };
 
@@ -147,6 +163,41 @@
     let contentUpdateTimeout: ReturnType<typeof setTimeout>;
     let cleanupEditorDragAndDrop: (() => void) | null = null;
 
+interface RegionObserverParams {
+    enabled: boolean;
+    onUpdate: () => void;
+    debounceMs?: number;
+}
+
+function regionObserver(node: HTMLElement, params: RegionObserverParams) {
+    let teardown = () => {};
+
+    const init = (current: RegionObserverParams) => {
+        teardown();
+        if (!current?.enabled) {
+            teardown = () => {};
+            return;
+        }
+
+        teardown = setupEditorObserver({
+            element: node,
+            onUpdate: current.onUpdate,
+            debounceMs: current.debounceMs ?? 600
+        });
+    };
+
+    init(params);
+
+    return {
+        update(next: RegionObserverParams) {
+            init(next);
+        },
+        destroy() {
+            teardown();
+        }
+    };
+}
+
     const initEditorDragAndDrop = async () => {
         cleanupEditorDragAndDrop?.();
         if (!editable) return;
@@ -193,7 +244,11 @@
 
 <div class="krt-editorCanvas" style:background-color={backgroundColor}>
     {#if isWebpage}
-        <div bind:this={headerElement} class="krt-editorCanvas__header">
+        <div
+            bind:this={headerElement}
+            class="krt-editorCanvas__header"
+            use:regionObserver={{ enabled: editable, onUpdate: updateHeaderData }}
+        >
             {#if headerBlocksState.length === 0 && (!headerElement || headerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState">Select a header preset to get started</div>
             {/if}
@@ -281,7 +336,11 @@
     
 
     {#if isWebpage}
-        <div bind:this={footerElement} class="krt-editorCanvas__footer"> 
+        <div
+            bind:this={footerElement}
+            class="krt-editorCanvas__footer"
+            use:regionObserver={{ enabled: editable, onUpdate: updateFooterData }}
+        > 
             {#if footerBlocksState.length === 0 && (!footerElement || footerElement.children.length === 0)}
                 <div class="krt-editorCanvas__emptyState krt-editorCanvas__emptyState--footer">Select a footer preset to get started</div>
             {/if}

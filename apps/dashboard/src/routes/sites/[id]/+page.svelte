@@ -56,8 +56,13 @@
   // Extract site-level data from site.metadata
   if (site?.metadata) {
     const meta = site.metadata as Record<string, unknown>;
+    console.log('[Dashboard] Loading site.metadata:', meta);
+    console.log('[Dashboard] Loading header from metadata:', meta.header);
+    console.log('[Dashboard] Loading footer from metadata:', meta.footer);
     siteHeader = (meta.header as Record<string, unknown>) ?? null;
     siteFooter = (meta.footer as Record<string, unknown>) ?? null;
+    console.log('[Dashboard] Initialized siteHeader:', siteHeader);
+    console.log('[Dashboard] Initialized siteFooter:', siteFooter);
     siteMetadata = { ...meta };
     delete siteMetadata.header;
     delete siteMetadata.footer;
@@ -208,28 +213,52 @@
   }
 
   async function handleSiteHeaderUpdate(header: Record<string, unknown> | null) {
-    if (!site?.id) return;
+    console.log('[Dashboard] handleSiteHeaderUpdate called with:', header);
+    if (!site?.id) {
+      console.log('[Dashboard] handleSiteHeaderUpdate: no site.id');
+      return;
+    }
     
     const updatedMetadata = { ...siteMetadata, header, footer: siteFooter };
+    console.log('[Dashboard] handleSiteHeaderUpdate: updatedMetadata:', updatedMetadata);
     
     try {
+      console.log('[Dashboard] handleSiteHeaderUpdate: calling saveSiteMetadata');
       await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
+      console.log('[Dashboard] handleSiteHeaderUpdate: saveSiteMetadata completed');
       siteHeader = header;
+      // Update site.metadata to reflect the change
+      if (site) {
+        site.metadata = { ...site.metadata, ...updatedMetadata };
+        console.log('[Dashboard] handleSiteHeaderUpdate: updated site.metadata');
+      }
     } catch (err) {
-      console.error('Failed to save site header', err);
+      console.error('[Dashboard] Failed to save site header', err);
     }
   }
 
   async function handleSiteFooterUpdate(footer: Record<string, unknown> | null) {
-    if (!site?.id) return;
+    console.log('[Dashboard] handleSiteFooterUpdate called with:', footer);
+    if (!site?.id) {
+      console.log('[Dashboard] handleSiteFooterUpdate: no site.id');
+      return;
+    }
     
     const updatedMetadata = { ...siteMetadata, header: siteHeader, footer };
+    console.log('[Dashboard] handleSiteFooterUpdate: updatedMetadata:', updatedMetadata);
     
     try {
+      console.log('[Dashboard] handleSiteFooterUpdate: calling saveSiteMetadata');
       await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
+      console.log('[Dashboard] handleSiteFooterUpdate: saveSiteMetadata completed');
       siteFooter = footer;
+      // Update site.metadata to reflect the change
+      if (site) {
+        site.metadata = { ...site.metadata, ...updatedMetadata };
+        console.log('[Dashboard] handleSiteFooterUpdate: updated site.metadata');
+      }
     } catch (err) {
-      console.error('Failed to save site footer', err);
+      console.error('[Dashboard] Failed to save site footer', err);
     }
   }
 

@@ -4,5 +4,8 @@ export type { PageData, EditorOptions, BlogData, BlogPost, BlogSettings, BlockSn
 export { themes, getTheme, getAllThemes, getThemeMetadata, getThemeHomepage, getThemeTemplate, DEFAULT_THEME_ID } from './themes';
 export type { ThemeMetadata, ThemeTemplate } from './themes';
 export { getBlock, blocks } from './registry/blocks.svelte';
+export { getSection, sections } from './registry/sections.svelte';
+export { getHeader, headers } from './registry/headers.svelte';
+export { getFooter, footers } from './registry/footers.svelte';
 export { resolveBlockRender } from './render/index';
 export { blogStore } from './stores/blog';
