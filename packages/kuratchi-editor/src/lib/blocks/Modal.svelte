@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { Pencil, X } from '@lucide/svelte';
     import { getContext } from 'svelte';
     import { onMount } from 'svelte';
@@ -112,6 +113,7 @@
     };
 
     let component: HTMLElement;
+    const componentRef = {};
     let mounted = $state(false);
     const sideActionsId = `side-actions-${id}`;
 
@@ -129,6 +131,12 @@
 
     onMount(() => {
         mounted = true;
+    });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

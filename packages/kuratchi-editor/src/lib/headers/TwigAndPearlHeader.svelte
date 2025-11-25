@@ -5,6 +5,7 @@
     import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Home, Search, Menu } from '@lucide/svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
 
@@ -72,15 +73,22 @@
         searchEnabled: searchEnabled,
         type: type,
         icons,
-    })
+        menu,
+        useMobileMenuOnDesktop,
+        menuHidden
+    });
+    const serializeContent = () => JSON.stringify(content);
 
     const showDesktopMenu = $derived(!useMobileMenuOnDesktop);
+    const componentRef = {};
 
     let component = $state<HTMLElement>();
     let mounted = $state(false);
 
     onMount(() => {
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'header' }), 'header', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 
     function hrefFrom(item: any): string {
@@ -91,7 +99,11 @@
 </script>
 
 {#if editable}
-    <div class="editor-header-item group relative krt-header__editor" bind:this={component}>
+    <div
+        class="editor-header-item group relative krt-header__editor"
+        bind:this={component}
+        data-krt-serialized={serializeContent()}
+    >
         {#if mounted}
             <BlockActions 
                 {id} 
@@ -178,6 +190,7 @@
             style:background-color={backgroundColor}
             style:color={textColor}
         >
+            <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
             <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
                 <div class="krt-header__segment">
                     {#if reverseOrder}
@@ -317,7 +330,10 @@
         class="krt-header krt-header--twig"
         style:background-color={backgroundColor}
         style:color={textColor}
+        data-krt-serialized={serializeContent()}
     >
+        <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

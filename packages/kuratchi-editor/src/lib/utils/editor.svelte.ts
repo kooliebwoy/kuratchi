@@ -1,6 +1,7 @@
 import { browser } from "$app/environment";
 import { mount, unmount, onMount } from "svelte";
 import type { SiteRegionState } from "../types.js";
+import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
 const wrapSelection = (tag: string, attributes: Record<string, string> = {}) => {
     if (!browser) return;
@@ -174,6 +175,7 @@ export const makeStrikethrough = (component: HTMLElement, selectedText: string) 
 };
 
 export const deleteElement = (component: HTMLElement) => {
+    blockRegistry.unregisterByElement(component);
     component?.remove();
 };
 
@@ -219,30 +221,99 @@ const collectSerializedBlocks = (root: HTMLElement | null | undefined, selector:
     const results: Array<Record<string, unknown>> = [];
     const elements = root.querySelectorAll(selector);
     for (const element of elements) {
-        const jsonDataElement = element.querySelector('[id^="metadata-"]');
-        if (!jsonDataElement?.textContent) continue;
+        // Prefer explicit data attribute, then fall back to JSON script/div nodes
+        const serializedAttr = element.getAttribute('data-krt-serialized');
+        const metadataNode =
+            element.querySelector('[data-region-metadata]') ??
+            element.querySelector('script[type="application/json"][data-region-metadata]') ??
+            element.querySelector('[id^="metadata-"]');
+
+        const raw = serializedAttr ?? metadataNode?.textContent;
+        if (!raw) continue;
+
         try {
-            const dataToSaveToDB = JSON.parse(jsonDataElement.textContent);
+            const dataToSaveToDB = JSON.parse(raw);
             results.push(dataToSaveToDB);
         } catch (error) {
             console.error('Error parsing JSON data:', error);
-            console.error('Invalid JSON content:', jsonDataElement.textContent);
+            console.error('Invalid JSON content:', raw);
             console.error('Element:', element);
         }
     }
     return results;
 };
 
+const cloneForSave = <T>(value: T): T => {
+    try {
+        return structuredClone(value);
+    } catch {
+        try {
+            return JSON.parse(JSON.stringify(value)) as T;
+        } catch {
+            return value;
+        }
+    }
+};
+
 export const saveEditorBlocks = async (editor: HTMLElement) => {
-    return collectSerializedBlocks(editor, '.editor-item');
+    blockRegistry.pruneRegion('content', editor);
+    const registered = blockRegistry.all('content');
+    const domBlocks = collectSerializedBlocks(editor, '.editor-item');
+
+    // Helper to deduplicate blocks by ID, keeping the first occurrence
+    const deduplicateById = (blocks: any[]) => {
+        const seen = new Set<string>();
+        return blocks.filter((block: any) => {
+            const key = typeof block?.id === 'string' ? block.id : null;
+            if (!key) return true; // Keep blocks without IDs
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+
+    // If nothing in the DOM, fall back to registry
+    if (domBlocks.length === 0) {
+        return deduplicateById(registered);
+    }
+
+    // If no registered entries, return DOM order (deduplicated)
+    if (registered.length === 0) {
+        return deduplicateById(domBlocks);
+    }
+
+    // Build a map of registered blocks by ID for quick lookup
+    const registryById = new Map<string, any>();
+    registered.forEach((block) => {
+        if (typeof block?.id === 'string' && block.id.length > 0) {
+            registryById.set(block.id, block);
+        }
+    });
+
+    // Merge: prefer registry data (has live state) when ID matches, preserve DOM order
+    const merged = domBlocks.map((block) => {
+        if (typeof block?.id === 'string' && registryById.has(block.id)) {
+            return registryById.get(block.id);
+        }
+        return block;
+    });
+
+    // Deduplicate the final result to prevent duplicate key errors
+    return deduplicateById(merged).map(cloneForSave);
 };
 
 export const saveEditorHeaderBlocks = async (editorHeader: HTMLElement) => {
-    return collectSerializedBlocks(editorHeader, '.editor-header-item');
+    blockRegistry.pruneRegion('header', editorHeader);
+    const registered = blockRegistry.all('header');
+    if (registered.length > 0) return [cloneForSave(registered[registered.length - 1])];
+    return collectSerializedBlocks(editorHeader, '.editor-header-item').map(cloneForSave);
 };
 
 export const saveEditorFooterBlocks = async (editorFooter: HTMLElement) => {
-    return collectSerializedBlocks(editorFooter, '.editor-footer-item');
+    blockRegistry.pruneRegion('footer', editorFooter);
+    const registered = blockRegistry.all('footer');
+    if (registered.length > 0) return [cloneForSave(registered[registered.length - 1])];
+    return collectSerializedBlocks(editorFooter, '.editor-footer-item').map(cloneForSave);
 };
 
 // Form Validation Classes

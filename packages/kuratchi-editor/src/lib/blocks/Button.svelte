@@ -1,6 +1,7 @@
 <script lang="ts">
     import { BlockActions } from "../utils/index.js";
     import { onMount } from "svelte";
+    import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
     interface Props {
         id?: string;
@@ -29,6 +30,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let style = $state(metadata?.style ?? 'primary');
     let size = $state(metadata?.size ?? 'md');
     let target = $state(metadata?.target ?? '_self');
@@ -49,6 +51,8 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

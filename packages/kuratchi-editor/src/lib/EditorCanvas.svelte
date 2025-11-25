@@ -54,6 +54,8 @@
     let inlineBlockSearch = $state('');
     let inlineFilteredBlocks = $state([]);
     let inlineDropdown = $state({ open: false });
+    // Flag to prevent observer feedback loop during programmatic updates
+    let isProgrammaticUpdate = false;
     const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
 
     const filteredBlocks = $derived(
@@ -64,8 +66,23 @@
         )
     );
 
+    // Deduplicate content by ID to prevent "each_key_duplicate" errors
+    // This handles race conditions where the same block might appear twice
+    const deduplicatedContent = $derived.by(() => {
+        const seen = new Set<string>();
+        return content.filter((block) => {
+            const key = block.id as string | undefined;
+            if (!key) return true; // Allow blocks without IDs (will use fallback key)
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    });
+
 
     const updateEditorData = async () => {
+        // Skip if we're in the middle of a programmatic update to prevent feedback loops
+        if (isProgrammaticUpdate) return;
         if (!editor) return;
         const blocks = await saveEditorBlocks(editor);
         if (JSON.stringify(blocks) !== JSON.stringify(content)) {
@@ -111,8 +128,13 @@
     };
 
     const addComponent = async (definition: BlockDefinition, initialProps?: Record<string, unknown>) => {
+        // Set flag to prevent observer feedback loop
+        isProgrammaticUpdate = true;
+        
         // Add directly to content array instead of mounting to DOM
+        // Generate a stable unique ID for the block to prevent remounting
         const newBlock = {
+            id: crypto.randomUUID(),
             type: definition.type,
             ...initialProps
         };
@@ -123,7 +145,15 @@
         blockSearchTerm = '';
         inlineDropdown.open = false;
         inlineBlockSearch = '';
+        
         await tick();
+        
+        // Clear the flag after DOM has settled
+        // Use a small delay to ensure MutationObserver callbacks have fired
+        setTimeout(() => {
+            isProgrammaticUpdate = false;
+        }, 100);
+        
         inlineBlockSearchInput?.focus();
     }
 
@@ -271,8 +301,9 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
             <article 
                 bind:this={editor} 
                 role="application" class="krt-editorCanvas__article"
+                use:regionObserver={{ enabled: editable, onUpdate: updateEditorData }}
             >
-                {#each content as block, index (block.type ? `editor-${block.type}-${index}` : `editor-${index}`)}
+                {#each deduplicatedContent as block, index (block.id ?? `fallback-${block.type}-${index}`)}
                     {@const editorBlock = loadEditorBlock(block.type)}
                     {#if editorBlock}
                         <div class="krt-editorCanvas__block editor-block">

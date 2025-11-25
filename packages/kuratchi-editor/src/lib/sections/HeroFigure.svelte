@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { ImagePicker } from '../plugins/index.js';
@@ -71,11 +72,18 @@
         metadata: { ...layoutMetadata }
     });
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let mounted = $state(false);
 
     onMount(() => {
         if (!editable) return;
         mounted = true;
+    });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 {#if editable}

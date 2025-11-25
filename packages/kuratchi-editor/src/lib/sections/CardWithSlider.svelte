@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from "../utils/index.js";
     import { ImagePicker } from "../plugins/index.js";
@@ -32,19 +33,19 @@
 
     let {
         id = crypto.randomUUID(),
-        heading = 'Noteworthy technology acquisitions 2021',
-        body = 'Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.',
+        heading = $bindable('Noteworthy technology acquisitions 2021'),
+        body = $bindable('Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.'),
         button = $bindable({ label: 'Read more', link: '#' }),
         images = $bindable<CarouselImage[]>([]),
-        type = 'hero-with-slider',
-        metadata = {
+        type = 'card-with-slider',
+        metadata = $bindable({
             backgroundColor: '#f4f4f5',
             cardBackgroundColor: '#ffffff',
             reverseOrder: false,
             buttonColor: '#111827',
             headingColor: '#111827',
             contentColor: '#4b5563'
-        },
+        }),
         editable = true
     }: Props = $props();
 
@@ -57,19 +58,20 @@
     let headingColor = $state(metadata.headingColor);
     let contentColor = $state(metadata.contentColor);
 
-    // extract card body from the content and the card title
+    // Keep original images format for saving, normalized for display
     const normalizedImages = $derived(images.map((image) => ({
         url: image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '',
         alt: image?.alt ?? ''
     })));
 
+    // Save the original images array (not normalized) so it can be reloaded properly
     let content = $derived({
         id,
         type,
         heading,
         body,
         button,
-        images: normalizedImages,
+        images, // Save original images, not normalizedImages
         metadata : {
             backgroundColor,
             cardBackgroundColor,
@@ -81,15 +83,22 @@
     });
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let mounted = $state(false);
 
     onMount(() => {
         mounted = true;
     });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 </script>
 
 {#if editable}
-<div class="editor-item krt-cardWithSlider__editor" bind:this={component}>
+<div class="editor-item krt-cardWithSlider__editor" bind:this={component} data-krt-serialized={JSON.stringify(content)}>
     {#if mounted}
         <BlockActions
             {id}
@@ -153,10 +162,11 @@
                     buttonColor={buttonColor}
                     {headingColor}
                     {contentColor}
+                    editable={false}
                 />
             </div>
             <div class="krt-sliderLayout__carousel">
-                <NoMarginCarousel bind:images={images} />
+                <NoMarginCarousel bind:images={images} editable={false} />
             </div>
         </div>
     </section>

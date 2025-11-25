@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
     import { ImagePicker } from '../plugins/index.js';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     interface CardImage {
         url?: string;
@@ -67,9 +68,13 @@
 
     let component = $state<HTMLElement>();
     let mounted = $state(false);
+    const componentRef = {};
 
     onMount(() => {
+        if (!editable) return;
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

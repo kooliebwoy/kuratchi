@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { deserialize } from "$app/forms";
     import { Upload } from "@lucide/svelte";
     import type { ActionResult } from "@sveltejs/kit";
@@ -21,6 +22,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let componentEditor = $state<HTMLElement>();
 
     let profilePhotoFile: HTMLInputElement | null = $state(null);
@@ -121,6 +123,12 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
+    });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

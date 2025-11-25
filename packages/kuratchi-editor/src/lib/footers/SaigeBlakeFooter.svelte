@@ -4,6 +4,7 @@
     import { BlockActions } from '../utils/index.js';
     import { IconPicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
 
@@ -60,6 +61,7 @@
     });
 
     const poweredBy = 'Powered by Clutch CMS';
+    const componentRef = {};
 
     let content = $derived({
         id,
@@ -72,7 +74,8 @@
         // Do not include menu here to avoid excessive JSON churn
         subscribeText,
         copyrightText,
-    })
+    });
+    const serializeContent = () => JSON.stringify(content);
 
     function hrefFrom(item: any): string {
         if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
@@ -85,11 +88,17 @@
 
     onMount(() => {
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'footer' }), 'footer', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
 {#if editable}
-<div class="editor-footer-item krt-footer__editor" bind:this={component}>
+<div
+    class="editor-footer-item krt-footer__editor"
+    bind:this={component}
+    data-krt-serialized={serializeContent()}
+>
     {#if mounted}
         <BlockActions 
             {id} 
@@ -165,6 +174,7 @@
         style:color={textColor}
         data-type={type}
     >
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading" contenteditable bind:innerHTML={subscribeText}></h2>
             <div class="krt-footer__form">
@@ -235,8 +245,10 @@
         style:background-color={backgroundColor}
         style:color={textColor}
         data-type={type}
+        data-krt-serialized={serializeContent()}
     >
-        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
+        <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading">{subscribeText}</h2>
             <div class="krt-footer__form">

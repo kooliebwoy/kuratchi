@@ -27,6 +27,13 @@ export interface SiteRegionState {
 	blocks: BlockSnapshot[];
 }
 
+export interface EditorState {
+  page: PageData;
+  header: SiteRegionState | null;
+  footer: SiteRegionState | null;
+  metadata: Record<string, unknown>;
+}
+
 /**
  * Single source of truth for all page data
  */
@@ -356,6 +363,10 @@ export interface EditorOptions {
    * Callback when any page data changes (debounced autosave)
    */
   onUpdate?: (pageData: PageData) => void | Promise<void>;
+  /**
+   * Callback that receives the full editor state (page + header/footer + metadata)
+   */
+  onStateUpdate?: (state: EditorState) => void | Promise<void>;
   /**
    * Autosave delay in milliseconds (default: 1000)
    */

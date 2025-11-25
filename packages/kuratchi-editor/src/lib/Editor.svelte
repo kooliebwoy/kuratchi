@@ -1,10 +1,10 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
-    import type { EditorOptions, PageData, SiteRegionState } from "./types.js";
+    import type { EditorOptions, EditorState, PageData, SiteRegionState } from "./types.js";
     import type { PluginContext } from "./plugins/types";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
     import { blocks, getBlock, getEnabledPlugins } from "./registry";
-    import { sections } from "./registry/sections.svelte";
+    import { sections, getSection } from "./registry/sections.svelte";
     import { headers } from "./registry/headers.svelte";
     import { footers } from "./registry/footers.svelte";
     import { addComponentToEditor, replaceRegionComponent, saveEditorHeaderBlocks, saveEditorFooterBlocks } from "./utils/editor.svelte";
@@ -35,10 +35,11 @@
         Palette,
         PanelsTopLeft
     } from "@lucide/svelte";
+    import { blockRegistry } from "./stores/editorSignals.svelte.js";
 
     type Props = EditorOptions;
 
-let { 
+let {
         editor = $bindable(defaultEditorOptions.editor),
         pageData = $bindable(defaultPageData),
         editable = defaultEditorOptions.editable,
@@ -50,6 +51,7 @@ let {
         pages = defaultEditorOptions.pages,
         reservedPages = defaultEditorOptions.reservedPages,
         onUpdate = defaultEditorOptions.onUpdate,
+        onStateUpdate,
         autoSaveDelay = defaultEditorOptions.autoSaveDelay,
         siteHeader = $bindable<SiteRegionState | null>(null),
         siteFooter = $bindable<SiteRegionState | null>(null),
@@ -67,14 +69,15 @@ let {
     console.log('[Editor] Component initialized with callbacks:', {
         onSiteHeaderUpdate: !!onSiteHeaderUpdate,
         onSiteFooterUpdate: !!onSiteFooterUpdate,
-        onSiteMetadataUpdate: !!onSiteMetadataUpdate
+        onSiteMetadataUpdate: !!onSiteMetadataUpdate,
+        onStateUpdate: !!onStateUpdate
     });
 
     const getPageList = () => Array.isArray(pages) ? pages : [];
-    
+
     // Local mutable state for the page data
     let localPageData = $state<PageData>({ ...defaultPageData, ...pageData });
-    
+
     // UI state
     let sidebarOpen = $state(false);
     let activeTab = $state('blocks');
@@ -88,7 +91,7 @@ let {
 
     // Plugin system
     const activePlugins = getEnabledPlugins(enabledPlugins);
-    
+
     // Plugin context - provides plugins with editor interaction capabilities
     const pluginContext: PluginContext = {
         siteMetadata,
@@ -97,6 +100,7 @@ let {
             if (onSiteMetadataUpdate) {
                 await onSiteMetadataUpdate(siteMetadata);
             }
+            triggerStateSave();
         },
         pages: getPageList().map(p => ({
             id: (p as any).id ?? '',
@@ -106,10 +110,26 @@ let {
         reservedPages: (reservedPages ?? []).map(p => (p as any).slug ?? ''),
         editor
     };
-    
+
     const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2));
+
+    /**
+     * Add a block or section to the editor via the content array.
+     * This prevents the infinite loop bug that occurs when using addComponentToEditor
+     * which directly mounts to DOM and triggers observer -> content sync -> re-render loop.
+     */
+    const addBlockToContent = (type: string, props: Record<string, unknown> = {}) => {
+        const newBlock = {
+            id: randomId(),
+            type,
+            ...props
+        };
+        localPageData.content = [...localPageData.content, newBlock];
+        triggerSave();
+        triggerStateSave();
+    };
 
     const slugify = (value: string) =>
         value
@@ -135,6 +155,7 @@ let {
     let saveTimeout: ReturnType<typeof setTimeout> | undefined;
     let headerSaveTimeout: ReturnType<typeof setTimeout> | undefined;
     let footerSaveTimeout: ReturnType<typeof setTimeout> | undefined;
+    let stateSaveTimeout: ReturnType<typeof setTimeout> | undefined;
 
     // Debounced save function
     const triggerSave = () => {
@@ -146,35 +167,49 @@ let {
         }, autoSaveDelay);
     };
 
+    const triggerStateSave = () => {
+        if (!onStateUpdate) return;
+        if (stateSaveTimeout) clearTimeout(stateSaveTimeout);
+        stateSaveTimeout = setTimeout(async () => {
+            const snapshot: EditorState = {
+                page: localPageData,
+                header: siteHeader,
+                footer: siteFooter,
+                metadata: siteMetadata
+            };
+            await onStateUpdate(snapshot);
+        }, autoSaveDelay);
+    };
+
     // Debounced header save
     const triggerHeaderSave = () => {
         console.log('[Editor] triggerHeaderSave: debouncing save for', autoSaveDelay, 'ms');
+        if (!onSiteHeaderUpdate) {
+            console.log('[Editor] triggerHeaderSave: no onSiteHeaderUpdate callback');
+            return;
+        }
         if (headerSaveTimeout) clearTimeout(headerSaveTimeout);
         headerSaveTimeout = setTimeout(async () => {
             console.log('[Editor] triggerHeaderSave: executing save with siteHeader:', siteHeader);
-            if (onSiteHeaderUpdate) {
-                console.log('[Editor] triggerHeaderSave: calling onSiteHeaderUpdate');
-                await onSiteHeaderUpdate(siteHeader);
-                console.log('[Editor] triggerHeaderSave: onSiteHeaderUpdate completed');
-            } else {
-                console.log('[Editor] triggerHeaderSave: no onSiteHeaderUpdate callback');
-            }
+            console.log('[Editor] triggerHeaderSave: calling onSiteHeaderUpdate');
+            await onSiteHeaderUpdate(siteHeader);
+            console.log('[Editor] triggerHeaderSave: onSiteHeaderUpdate completed');
         }, autoSaveDelay);
     };
 
     // Debounced footer save
     const triggerFooterSave = () => {
         console.log('[Editor] triggerFooterSave: debouncing save for', autoSaveDelay, 'ms');
+        if (!onSiteFooterUpdate) {
+            console.log('[Editor] triggerFooterSave: no onSiteFooterUpdate callback');
+            return;
+        }
         if (footerSaveTimeout) clearTimeout(footerSaveTimeout);
         footerSaveTimeout = setTimeout(async () => {
             console.log('[Editor] triggerFooterSave: executing save with siteFooter:', siteFooter);
-            if (onSiteFooterUpdate) {
-                console.log('[Editor] triggerFooterSave: calling onSiteFooterUpdate');
-                await onSiteFooterUpdate(siteFooter);
-                console.log('[Editor] triggerFooterSave: onSiteFooterUpdate completed');
-            } else {
-                console.log('[Editor] triggerFooterSave: no onSiteFooterUpdate callback');
-            }
+            console.log('[Editor] triggerFooterSave: calling onSiteFooterUpdate');
+            await onSiteFooterUpdate(siteFooter);
+            console.log('[Editor] triggerFooterSave: onSiteFooterUpdate completed');
         }, autoSaveDelay);
     };
 
@@ -182,6 +217,7 @@ let {
     const handleContentChange = (content: Array<Record<string, unknown>>) => {
         localPageData.content = content;
         triggerSave();
+        triggerStateSave();
     };
 
     const handleHeaderChange = (next: SiteRegionState | null) => {
@@ -189,6 +225,7 @@ let {
         siteHeader = next;
         console.log('[Editor] handleHeaderChange: updated siteHeader, triggering save');
         triggerHeaderSave();
+        triggerStateSave();
     };
 
     const handleFooterChange = (next: SiteRegionState | null) => {
@@ -196,6 +233,7 @@ let {
         siteFooter = next;
         console.log('[Editor] handleFooterChange: updated siteFooter, triggering save');
         triggerFooterSave();
+        triggerStateSave();
     };
 
 
@@ -237,6 +275,7 @@ let {
             console.log('[Editor] mountHeaderComponent: no headerElement');
             return;
         }
+        blockRegistry.clearRegion('header');
         replaceRegionComponent(headerElement, component, { editable: true, ...props });
         await syncHeaderRegion();
     };
@@ -247,6 +286,7 @@ let {
             console.log('[Editor] mountFooterComponent: no footerElement');
             return;
         }
+        blockRegistry.clearRegion('footer');
         replaceRegionComponent(footerElement, component, { editable: true, ...props });
         await syncFooterRegion();
     };
@@ -255,40 +295,59 @@ let {
         const template = getThemeTemplate(themeId);
         selectedThemeId = themeId;
         const homepage = template.defaultHomepage;
-        
+
         // Clear and mount header component directly
         if (template.header) {
+            blockRegistry.clearRegion('header');
             await mountHeaderComponent(template.header);
         }
-        
+
         // Clear and mount footer component directly
         if (template.footer) {
             await mountFooterComponent(template.footer);
         }
-        
-        // Clear editor and mount content components directly
-        if (editor && homepage.content) {
-            editor.innerHTML = ''; // Clear existing content
-            homepage.content.forEach((component) => {
-                addComponentToEditor(editor, component, { editable: true });
-            });
+
+        // Convert theme components to content blocks
+        // Theme templates store component references, so we need to map them to type strings
+        if (homepage.content) {
+            blockRegistry.clearRegion('content');
+            const newContent: Array<Record<string, unknown>> = [];
+            
+            for (const component of homepage.content) {
+                // Try to find the type from sections registry first, then blocks
+                const sectionDef = sections.find(s => s.component === component);
+                const blockDef = blocks.find(b => b.component === component);
+                const type = sectionDef?.type ?? blockDef?.type;
+                
+                if (type) {
+                    newContent.push({
+                        id: randomId(),
+                        type,
+                        editable: true
+                    });
+                }
+            }
+            
+            localPageData.content = newContent;
         }
-        
-        // Update local page data with theme homepage info (but not content since we mounted it directly)
-        localPageData = { 
-            ...localPageData, 
+
+        // Update local page data with theme homepage info
+        localPageData = {
+            ...localPageData,
             title: homepage.title,
             seoTitle: homepage.seoTitle,
             seoDescription: homepage.seoDescription,
             slug: homepage.slug
         };
-        
+
         siteMetadata = { ...(template.siteMetadata || {}), themeId };
-        
+
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
         }
-        
+        triggerSave();
+        triggerStateSave();
+
         navState = ensureNavigation();
     };
 
@@ -300,30 +359,37 @@ let {
         if (onUpdate) {
             await onUpdate(localPageData);
         }
+        triggerStateSave();
     }
 
     const handleTitleEdit = async (title: string) => {
         localPageData.title = title;
         $headingStore = title || '';
         triggerSave();
+        triggerStateSave();
     }
 
     const handleSEOEdit = async (seo: { seoTitle: string; seoDescription: string; slug: string }) => {
         localPageData = { ...localPageData, ...seo };
         triggerSave();
+        triggerStateSave();
     }
 
     onMount(() => {
+        blockRegistry.clearRegion('header');
+        blockRegistry.clearRegion('footer');
+        blockRegistry.clearRegion('content');
         $sideBarStore = false;
         $headingStore = localPageData.title || '';
     });
-     
+
 
     onDestroy(() => {
         $sideBarStore = true;
         if (saveTimeout) clearTimeout(saveTimeout);
         if (headerSaveTimeout) clearTimeout(headerSaveTimeout);
         if (footerSaveTimeout) clearTimeout(footerSaveTimeout);
+        if (stateSaveTimeout) clearTimeout(stateSaveTimeout);
     });
 
     // ----- Site-wide Navigation State Helpers -----
@@ -362,6 +428,7 @@ let {
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
         }
+        triggerStateSave();
     }
 
     const handleHeaderMenuSave = async ({ items }: { location: string; items: any[] }) => {
@@ -418,7 +485,7 @@ let {
 
 {#if !showUI}
     <!-- Canvas-only mode for simple embedding -->
-    <EditorCanvas 
+    <EditorCanvas
         bind:editor
         bind:headerElement
         bind:footerElement
@@ -440,28 +507,28 @@ let {
     <div class="krt-editor">
         <!-- Left Icon Bar -->
         <div class="krt-editor__rail">
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'blocks' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('blocks')}
                 title="Blocks"
             >
                 <Box />
             </button>
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'sections' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('sections')}
                 title="Sections"
             >
                 <PanelsTopLeft />
             </button>
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'site' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('site')}
                 title="Site"
             >
                 <PanelTop />
             </button>
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'themes' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('themes')}
                 title="Themes"
@@ -469,7 +536,7 @@ let {
                 <Palette />
             </button>
             {#each activePlugins as plugin}
-                <button 
+                <button
                     class={`krt-editor__railButton ${activeTab === plugin.id ? 'is-active' : ''}`}
                     onclick={() => toggleSidebar(plugin.id)}
                     title={plugin.railButton?.title ?? plugin.name}
@@ -477,21 +544,21 @@ let {
                     <plugin.icon />
                 </button>
             {/each}
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'navigation' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('navigation')}
                 title="Navigation"
             >
                 <Navigation />
             </button>
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'settings' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('settings')}
                 title="Settings"
             >
                 <Settings />
             </button>
-            <button 
+            <button
                 class={`krt-editor__railButton ${activeTab === 'pages' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('pages')}
                 title="Pages"
@@ -504,16 +571,16 @@ let {
         <div class="krt-editor__sidebar" data-open={sidebarOpen}>
             <div class="krt-editor__sidebarHeader">
                 <h2>
-                    {activeTab === 'blocks' ? 'Blocks' : 
-                     activeTab === 'sections' ? 'Sections' : 
-                     activeTab === 'site' ? 'Site' : 
+                    {activeTab === 'blocks' ? 'Blocks' :
+                     activeTab === 'sections' ? 'Sections' :
+                     activeTab === 'site' ? 'Site' :
                      activeTab === 'themes' ? 'Themes' :
-                     activeTab === 'navigation' ? 'Navigation' : 
-                     activeTab === 'settings' ? 'Settings' : 
-                     activeTab === 'pages' ? 'Pages' : 
+                     activeTab === 'navigation' ? 'Navigation' :
+                     activeTab === 'settings' ? 'Settings' :
+                     activeTab === 'pages' ? 'Pages' :
                      activePlugins.find(p => p.id === activeTab)?.name ?? 'Page Builder'}
                 </h2>
-                <button 
+                <button
                     class="krt-editor__sidebarClose"
                     onclick={() => sidebarOpen = false}
                 >
@@ -528,7 +595,7 @@ let {
                                 {#each paletteBlocks as block}
                                     <button
                                         class="krt-editor__sidebarItem"
-                                        onclick={() => addComponentToEditor(editor, block.component)}
+                                        onclick={() => addBlockToContent(block.type)}
                                     >
                                         <block.icon />
                                         <span>{block.name}</span>
@@ -544,7 +611,7 @@ let {
                                 {#each sections as section}
                                     <button
                                         class="krt-editor__themeButton"
-                                        onclick={() => addComponentToEditor(editor, section.component, { editable: true })}
+                                        onclick={() => addBlockToContent(section.type, { editable: true })}
                                     >
                                         <SectionPreview component={section.component} scale={0.18} />
                                         <div class="krt-editor__themeDetails">
@@ -571,7 +638,7 @@ let {
                                     </button>
                                 {/each}
                             </div>
-                            
+
                             <h3 class="krt-editor__sectionTitle">Footers</h3>
                             <div class="krt-editor__presetGrid">
                                 {#each footers as footer}
@@ -608,7 +675,7 @@ let {
                             {/if}
                         {/each}
                     {/if}
-                    
+
                     {#if activeTab === 'navigation'}
                         <div class="krt-editor__sidebarSection">
                             <!-- Header Menu Section -->
@@ -629,7 +696,7 @@ let {
                                         <span>Mobile menu on desktop</span>
                                     </label>
                                     <div>
-                                        <MenuWidget 
+                                        <MenuWidget
                                             menuItems={navState.header.items}
                                             pages={pages || []}
                                             reservedPages={reservedPages || []}
@@ -653,7 +720,7 @@ let {
                                     </label>
                                 </div>
                                 <div class="krt-editor__navCardBody">
-                                    <MenuWidget 
+                                    <MenuWidget
                                         menuItems={navState.footer.items}
                                         pages={pages || []}
                                         reservedPages={reservedPages || []}
@@ -669,9 +736,9 @@ let {
                                 <h3>Page Information</h3>
                                 <label>
                                     <span>Page Title</span>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Page title here.." 
+                                    <input
+                                        type="text"
+                                        placeholder="Page title here.."
                                         bind:value={localPageData.title}
                                         onchange={() => handleTitleEdit(localPageData.title)}
                                     />
@@ -685,10 +752,10 @@ let {
                                 <div class="krt-editor__formStack">
                                     <label>
                                         <span>Meta Title</span>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             bind:value={localPageData.seoTitle}
-                                            placeholder="Meta title here.." 
+                                            placeholder="Meta title here.."
                                             onchange={() => handleSEOEdit({
                                                 seoTitle: localPageData.seoTitle,
                                                 seoDescription: localPageData.seoDescription,
@@ -699,7 +766,7 @@ let {
 
                                     <label>
                                         <span>Meta Description</span>
-                                        <textarea 
+                                        <textarea
                                             bind:value={localPageData.seoDescription}
                                             placeholder="Meta Description here..."
                                             rows="3"
@@ -713,10 +780,10 @@ let {
 
                                     <label>
                                         <span>Page Slug</span>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             bind:value={localPageData.slug}
-                                            placeholder="page-slug-here" 
+                                            placeholder="page-slug-here"
                                             onchange={() => handleSEOEdit({
                                                 seoTitle: localPageData.seoTitle,
                                                 seoDescription: localPageData.seoDescription,
@@ -740,7 +807,7 @@ let {
                                     <span>New</span>
                                 </button>
                             </div>
-                            
+
                             {#if pages && pages.length > 0}
                                 <div class="krt-editor__pageList">
                                     {#each pages as page (page.id)}
@@ -794,21 +861,21 @@ let {
 
                 <!-- Center: Device Size Toggle -->
                 <div class="krt-editor__deviceToggle">
-                    <button 
+                    <button
                         class={`krt-editor__deviceToggleButton ${activeSize==='phone' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('phone')}
                         title="Mobile (390px)"
                     >
                         <Smartphone />
                     </button>
-                    <button 
+                    <button
                         class={`krt-editor__deviceToggleButton ${activeSize==='tablet' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('tablet')}
                         title="Tablet (768px)"
                     >
                         <Tablet />
                     </button>
-                    <button 
+                    <button
                         class={`krt-editor__deviceToggleButton ${activeSize==='desktop' ? 'is-active' : ''}`}
                         onclick={() => adjustBrowserSize('desktop')}
                         title="Desktop (1440px)"
@@ -836,7 +903,7 @@ let {
                         bind:this={browserMockup}
                     >
                         {#key `${(pageData?.id || pageData?.slug || 'noid')}-${siteHeader?.type || 'none'}-${siteFooter?.type || 'none'}`}
-                            <EditorCanvas 
+                            <EditorCanvas
                                 bind:editor
                                 bind:headerElement
                                 bind:footerElement
@@ -867,7 +934,7 @@ let {
                         <div></div>
                         <h2>{$rightPanel.title}</h2>
                     </div>
-                    <button 
+                    <button
                         class="krt-editor__inspectorClose"
                         onclick={closeRightPanel}
                     >
@@ -892,7 +959,7 @@ let {
         --krt-editor-rail-width: 4.25rem;
         --krt-editor-sidebar-width: 24rem;
         --krt-editor-inspector-width: 20rem;
-        
+
         /* Unified color palette */
         --krt-editor-bg: #ffffff;
         --krt-editor-surface: #f8fafc;
@@ -911,7 +978,7 @@ let {
         --krt-editor-radius-md: 0.5rem;
         --krt-editor-radius-lg: 0.75rem;
         --krt-editor-divider: #d1d5db;
-        
+
         display: flex;
         height: 100vh;
         overflow: hidden;

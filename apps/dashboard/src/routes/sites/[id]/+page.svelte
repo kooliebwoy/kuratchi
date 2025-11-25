@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Editor, type PageData, defaultPageData } from '@kuratchi/editor';
+  import { Editor, type EditorState, type PageData, defaultPageData } from '@kuratchi/editor';
   import { Button, Loading } from '@kuratchi/ui';
   import { loadSiteEditor, saveSitePage, saveSiteMetadata, listSitePages, createSitePage, loadSitePage, type PageListItem } from '$lib/functions/editor.remote';
   import { uploadSiteMedia } from '$lib/functions/storage.remote';
@@ -40,7 +40,7 @@
   let saveError = $state<string | null>(null);
   let saveMessage = $state<string | null>(null);
   let saveMessageTimeout: ReturnType<typeof setTimeout> | null = null;
-  
+
   // Page management
   let pages = $state<PageListItem[]>([]);
   let currentPageId = $state<string | null>(null);
@@ -52,7 +52,7 @@
 
   site = initialData.site;
   pageData = clone(initialData.page);
-  
+
   // Extract site-level data from site.metadata
   if (site?.metadata) {
     const meta = site.metadata as Record<string, unknown>;
@@ -69,15 +69,15 @@
   }
 
   loaded = true;
-  
+
   // Load pages list
   loadPagesList();
-  
+
   // Set current page ID
   if (pageData.id) {
     currentPageId = pageData.id;
   }
-  
+
   async function loadPagesList() {
     try {
       const pagesQuery = listSitePages();
@@ -87,10 +87,10 @@
       console.error('Failed to load pages', err);
     }
   }
-  
+
   async function switchToPage(pageId: string) {
     if (!site?.id || pageId === currentPageId) return;
-    
+
     try {
       const loadPageQuery = loadSitePage({ siteId: site.id, pageId });
       const loadedPage = await loadPageQuery;
@@ -101,43 +101,43 @@
       saveError = 'Failed to load page';
     }
   }
-  
+
   function openCreatePageModal() {
     newPageTitle = '';
     newPageSlug = '';
     showCreatePageModal = true;
   }
-  
+
   function closeCreatePageModal() {
     showCreatePageModal = false;
     newPageTitle = '';
     newPageSlug = '';
   }
-  
+
   function generateSlug(title: string) {
     return title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
-  
+
   $effect(() => {
     if (newPageTitle && !newPageSlug) {
       newPageSlug = generateSlug(newPageTitle);
     }
   });
-  
+
   async function handleCreatePage() {
     if (!site?.id || !newPageTitle || !newPageSlug) return;
-    
+
     creatingPage = true;
-    
+
     try {
       const result = await createSitePage({ siteId: site.id, title: newPageTitle, slug: newPageSlug });
-      
+
       // Reload pages list
       await loadPagesList();
-      
+
       // Auto-add to header menu if not present
       try {
         const link = `/${newPageSlug}`;
@@ -158,7 +158,7 @@
 
       // Switch to the new page
       await switchToPage(result.id);
-      
+
       closeCreatePageModal();
       setSaveMessage('Page created successfully');
     } catch (err) {
@@ -185,94 +185,49 @@
     }
   }
 
-  async function handleEditorUpdate(updatedPageData: PageData) {
+  async function handleEditorStateUpdate(state: EditorState) {
     if (!site?.id) return;
 
     saving = true;
     saveError = null;
 
-    const payload = clone(updatedPageData);
+    const pagePayload = clone(state.page);
+    const metadataPayload = {
+      ...(state.metadata || {}),
+      header: state.header,
+      footer: state.footer
+    } as Record<string, unknown>;
 
     try {
-      const result = await saveSitePage({ siteId: site.id, page: payload }).updates(
-        editorQuery.withOverride((current) => (current ? { ...current, page: payload } : current))
+      const pageSave = saveSitePage({ siteId: site.id, page: pagePayload }).updates(
+        editorQuery.withOverride((current) => (current ? { ...current, page: pagePayload } : current))
       );
 
-      if (result?.id) {
-        payload.id = result.id;
+      const [pageResult] = await Promise.all([
+        pageSave,
+        saveSiteMetadata({ siteId: site.id, metadata: metadataPayload })
+      ]);
+
+      if (pageResult?.id) {
+        pagePayload.id = pageResult.id;
       }
 
-      pageData = payload;
+      pageData = pagePayload;
+      currentPageId = pagePayload.id ?? currentPageId;
+      siteHeader = state.header;
+      siteFooter = state.footer;
+      siteMetadata = { ...(state.metadata || {}) };
+
+      if (site) {
+        site.metadata = { ...metadataPayload };
+      }
+
       setSaveMessage('Changes saved');
     } catch (err) {
-      console.error('Failed to save page', err);
+      console.error('Failed to save editor state', err);
       saveError = 'Failed to save changes. Please try again.';
     } finally {
       saving = false;
-    }
-  }
-
-  async function handleSiteHeaderUpdate(header: Record<string, unknown> | null) {
-    console.log('[Dashboard] handleSiteHeaderUpdate called with:', header);
-    if (!site?.id) {
-      console.log('[Dashboard] handleSiteHeaderUpdate: no site.id');
-      return;
-    }
-    
-    const updatedMetadata = { ...siteMetadata, header, footer: siteFooter };
-    console.log('[Dashboard] handleSiteHeaderUpdate: updatedMetadata:', updatedMetadata);
-    
-    try {
-      console.log('[Dashboard] handleSiteHeaderUpdate: calling saveSiteMetadata');
-      await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
-      console.log('[Dashboard] handleSiteHeaderUpdate: saveSiteMetadata completed');
-      siteHeader = header;
-      // Update site.metadata to reflect the change
-      if (site) {
-        site.metadata = { ...site.metadata, ...updatedMetadata };
-        console.log('[Dashboard] handleSiteHeaderUpdate: updated site.metadata');
-      }
-    } catch (err) {
-      console.error('[Dashboard] Failed to save site header', err);
-    }
-  }
-
-  async function handleSiteFooterUpdate(footer: Record<string, unknown> | null) {
-    console.log('[Dashboard] handleSiteFooterUpdate called with:', footer);
-    if (!site?.id) {
-      console.log('[Dashboard] handleSiteFooterUpdate: no site.id');
-      return;
-    }
-    
-    const updatedMetadata = { ...siteMetadata, header: siteHeader, footer };
-    console.log('[Dashboard] handleSiteFooterUpdate: updatedMetadata:', updatedMetadata);
-    
-    try {
-      console.log('[Dashboard] handleSiteFooterUpdate: calling saveSiteMetadata');
-      await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
-      console.log('[Dashboard] handleSiteFooterUpdate: saveSiteMetadata completed');
-      siteFooter = footer;
-      // Update site.metadata to reflect the change
-      if (site) {
-        site.metadata = { ...site.metadata, ...updatedMetadata };
-        console.log('[Dashboard] handleSiteFooterUpdate: updated site.metadata');
-      }
-    } catch (err) {
-      console.error('[Dashboard] Failed to save site footer', err);
-    }
-  }
-
-  async function handleSiteMetadataUpdate(metadata: Record<string, unknown>) {
-    if (!site?.id) return;
-
-    // Editor passes metadata without header/footer. Reattach them for persistence.
-    const updatedMetadata = { ...metadata, header: siteHeader, footer: siteFooter };
-
-    try {
-      await saveSiteMetadata({ siteId: site.id, metadata: updatedMetadata });
-      siteMetadata = { ...metadata };
-    } catch (err) {
-      console.error('Failed to save site metadata', err);
     }
   }
 </script>
@@ -320,7 +275,7 @@
               <h3>Create New Page</h3>
               <Button variant="ghost" size="xs" onclick={closeCreatePageModal} aria-label="Close">✕</Button>
             </div>
-            
+
             <div class="kui-stack">
               <label class="kui-form-control">
                 <span class="kui-label">Page Title</span>
@@ -368,17 +323,14 @@
       {/if}
 
       {#key currentPageId || pageData.id || pageData.slug}
-        <Editor 
+        <Editor
           bind:pageData={pageData}
           bind:siteHeader={siteHeader}
           bind:siteFooter={siteFooter}
           bind:siteMetadata={siteMetadata}
           editable={true}
           showUI={true}
-          onUpdate={handleEditorUpdate}
-          onSiteHeaderUpdate={handleSiteHeaderUpdate}
-          onSiteFooterUpdate={handleSiteFooterUpdate}
-          onSiteMetadataUpdate={handleSiteMetadataUpdate}
+          onStateUpdate={handleEditorStateUpdate}
           autoSaveDelay={2000}
           {pages}
           {currentPageId}
@@ -387,10 +339,10 @@
           imageConfig={{
             uploadHandler: async (file, folder) => {
               if (!site?.id) throw new Error('Site not loaded');
-              
+
               // Convert File to ArrayBuffer for command serialization
               const fileData = await file.arrayBuffer();
-              
+
               const result = await uploadSiteMedia({
                 siteId: site.id,
                 fileData,
@@ -398,7 +350,7 @@
                 fileType: file.type,
                 folder: folder || 'images'
               });
-              
+
               return result;
             }
           }}

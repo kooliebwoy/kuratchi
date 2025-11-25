@@ -3,6 +3,7 @@
 	import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
 	import EditorToolbar from "../plugins/EditorToolbar.svelte";
 	import { BlockActions } from "../utils/index.js";
+    import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
     interface Props {
         id?: string;
@@ -25,6 +26,7 @@
     }: Props = $props();
 
     let component: HTMLElement;
+    const componentRef = {};
     let color = metadata.color;
 
     // Selection state
@@ -61,6 +63,8 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

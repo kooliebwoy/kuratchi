@@ -5,6 +5,7 @@
     import { IconPicker, ImagePicker } from '../plugins/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     interface LogoData {
         url: string;
@@ -80,7 +81,9 @@
         icons,
         menu: localMenu,
         logo,
-    })
+    });
+    const serializeContent = () => JSON.stringify(content);
+    const componentRef = {};
 
     function hrefFrom(item: any): string {
         if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
@@ -93,11 +96,17 @@
 
     onMount(() => {
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'header' }), 'header', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
 {#if editable}
-<div class="editor-header-item krt-header__editor" bind:this={component}>
+<div
+        class="editor-header-item krt-header__editor"
+        bind:this={component}
+        data-krt-serialized={serializeContent()}
+    >
     {#if mounted}
         <BlockActions 
             {id} 
@@ -182,6 +191,7 @@
         style:color={textColor}
         data-type={type}
     >
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}
@@ -320,8 +330,10 @@
         style:background-color={backgroundColor}
         style:color={textColor}
         data-type={type}
+        data-krt-serialized={serializeContent()}
     >
-        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
+        <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}

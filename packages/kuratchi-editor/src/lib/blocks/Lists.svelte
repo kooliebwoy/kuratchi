@@ -1,6 +1,7 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from "../utils/index.js";
-    import { tick } from "svelte";
+    import { tick, onMount } from "svelte";
 
     type ListKind = 'ul' | 'ol';
 
@@ -25,6 +26,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let listContainer = $state<HTMLElement>();
 
     let listType = $state((metadata.listType ?? 'ul') as ListKind);
@@ -99,6 +101,12 @@
     };
 
     ensureItem();
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 </script>
 
 {#if editable}

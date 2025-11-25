@@ -3,6 +3,7 @@
  import { IconPicker } from '../plugins/index.js';
  import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
  import { BlockActions } from '../utils/index.js';
+ import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
   interface Props {
@@ -68,6 +69,7 @@
     ];
 
     const poweredBy = 'Powered by Clutch CMS';
+    const componentRef = {};
 
     // Compute menu once per prop change to avoid inline re-evaluation
     const footerMenu = $derived.by(() => {
@@ -82,14 +84,19 @@
         poweredBy: poweredBy,
         type: type,
         icons,
-    })
+        menu: footerMenu,
+        menuHidden
+    });
+    const serializeContent = () => JSON.stringify(content);
 
     let component = $state<HTMLElement>();
     let mounted = $state(false);
 
-    onMount(() => {
-        mounted = true;
-    });
+  onMount(() => {
+    mounted = true;
+    blockRegistry.register(componentRef, () => ({ ...content, region: 'footer' }), 'footer', component);
+    return () => blockRegistry.unregister(componentRef);
+  });
 
     function hrefFrom(item: any): string {
         if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
@@ -99,7 +106,11 @@
 </script>
 
 {#if editable}
-    <div class="editor-footer-item group relative krt-footer__editor" bind:this={component}>
+    <div
+        class="editor-footer-item group relative krt-footer__editor"
+        bind:this={component}
+        data-krt-serialized={serializeContent()}
+    >
         {#if mounted}
             <BlockActions
                 {id}
@@ -175,7 +186,8 @@
             style:background-color={backgroundColor}
             style:color={textColor}
         >
-            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
+            <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
+            <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
             <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
                 {#if reverseOrder}
                     <div class="krt-footer__columns">
@@ -247,8 +259,10 @@
         class="krt-footer krt-footer--twig"
         style:background-color={backgroundColor}
         style:color={textColor}
+        data-krt-serialized={serializeContent()}
     >
-        <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
+        <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
+        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
             {#if reverseOrder}
                 <div class="krt-footer__columns">
@@ -620,4 +634,3 @@
     }
 </style>
   
-

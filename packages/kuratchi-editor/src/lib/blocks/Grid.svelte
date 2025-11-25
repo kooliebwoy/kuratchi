@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { onMount } from "svelte";
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { GripVertical, Trash2 } from "@lucide/svelte";
     import { deleteElement } from "../utils/editor.svelte.js";
 
@@ -17,6 +19,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let componentEditor = $state<HTMLElement>();
 
     // extract body from the content and the card title
@@ -25,6 +28,12 @@
         type,
         metadata
     })
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 </script>
 
 {#if editable}

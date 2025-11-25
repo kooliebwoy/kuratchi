@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { Plus, ArrowUp, ArrowDown, Trash2 } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
@@ -160,10 +161,17 @@
     }
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let mounted = $state(false);
 
     onMount(() => {
         mounted = true;
+    });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 

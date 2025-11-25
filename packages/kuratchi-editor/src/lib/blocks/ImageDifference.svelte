@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
 
@@ -40,6 +41,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let mounted = $state(false);
     onMount(() => {
         if (!editable) return;
@@ -57,6 +59,12 @@
         const target = event.currentTarget as HTMLInputElement;
         split = Number(target.value);
     };
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 </script>
 
 {#if editable}

@@ -5,6 +5,8 @@
 	import { invalidateAll } from "$app/navigation";
 	import type { ActionResult } from "@sveltejs/kit";
   	import { deleteElement, validation, validationMessage } from '../utils/editor.svelte.js';
+    import { onMount } from 'svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
 	interface Props {
 		id?: string;
@@ -24,6 +26,7 @@
 
 	let component = $state<HTMLElement>();
 	let componentEditor = $state<HTMLElement>();
+    const componentRef = {};
 
 	// extract body from the content and the card title
 	let content = $derived({
@@ -33,6 +36,11 @@
 	})
 
 	let formLoading: boolean = $state(false);
+    onMount(() => {
+        if (!editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 
 	async function handleSubmit(event: Event) {
 		event.preventDefault();

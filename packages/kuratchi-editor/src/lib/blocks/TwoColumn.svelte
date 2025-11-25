@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from "../utils/index.js";
     import { onMount } from "svelte";
 
@@ -29,6 +30,7 @@
     }: Props = $props();
 
     let component = $state<HTMLElement>();
+    const componentRef = {};
     let leftWidth = $state(metadata.leftWidth);
     let gap = $state(metadata.gap);
     let verticalAlign = $state(metadata.verticalAlign);
@@ -96,6 +98,12 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
+    });
+
+    onMount(() => {
+        if (typeof editable !== 'undefined' && !editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
