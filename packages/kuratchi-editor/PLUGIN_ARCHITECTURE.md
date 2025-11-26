@@ -148,9 +148,15 @@ context.updateSiteMetadata({
 
 - ✅ Plugin system infrastructure
 - ✅ Forms plugin extracted
-- ⏳ Editor.svelte refactor (next step)
+- ✅ Pages plugin extracted
+- ✅ Navigation plugin extracted
+- ⏳ Editor.svelte refactor (ongoing)
 - ⏳ Blog plugin extraction
-- ⏳ Navigation plugin extraction
+- ⏳ Settings plugin extraction
+- ⏳ Blocks plugin extraction
+- ⏳ Sections plugin extraction
+- ⏳ Themes plugin extraction
+- ⏳ Site plugin extraction
 
 ## Example: Forms Plugin
 

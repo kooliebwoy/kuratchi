@@ -1,5 +1,10 @@
 // Plugin types
-export type { EditorPlugin, PluginContext } from './types';
+export type { EditorPlugin, PluginContext, PageItem, NavMenuItem, NavRegionState, NavigationState } from './types';
+
+// Plugins
+export { pagesPlugin } from './pages';
+export { navigationPlugin } from './navigation';
+export { formsPlugin } from './forms';
 
 // Plugin components (legacy - these will eventually move to their own plugins)
 export { default as EditorToolbar } from './EditorToolbar.svelte';

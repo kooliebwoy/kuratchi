@@ -232,33 +232,37 @@
   }
 </script>
 
-<div class="card border border-base-200 bg-base-200/30 p-5">
-  <div class="card-body p-0">
+<div class="editor-container">
     {#if queryError}
-      <div class="kui-callout error m-6">Failed to load site editor</div>
+      <div class="kui-callout error">Failed to load site editor</div>
     {:else if !loaded || loading}
-      <div class="flex justify-center py-12">
+      <div class="loading-container">
         <Loading />
       </div>
     {:else}
-      <div class="flex items-center justify-between border-b border-base-200 bg-base-100 px-4 py-2 text-sm">
-          <div class="kui-inline">
-          <div class="font-medium">{site?.name ?? 'Site'}</div>
-          <Button variant="ghost" size="xs" href="/sites">Back to Sites</Button>
+      <div class="header-bar">
+        <div class="header-left">
+          <Button variant="ghost" size="xs" href="/sites">← Back to Sites</Button>
+          <div class="site-info">
+            <h2>{site?.name ?? 'Site'}</h2>
+            {#if site?.subdomain}
+              <p class="subdomain">{site.subdomain}.kuratchi.site</p>
+            {/if}
+          </div>
+        </div>
+
+        <div class="header-right">
           {#if saving}
-            <div class="kui-inline">
+            <div class="status-indicator">
               <Loading size="sm" />
-              <span class="kui-subtext">Saving…</span>
+              <span>Saving…</span>
             </div>
           {:else if saveMessage}
-            <span class="kui-subtext success">{saveMessage}</span>
+            <span class="status-message success">{saveMessage}</span>
           {:else}
-            <span class="kui-subtext">All changes saved</span>
+            <span class="status-message">All changes saved</span>
           {/if}
         </div>
-        {#if site?.subdomain}
-          <span class="kui-pill">{site.subdomain}.kuratchi.com</span>
-        {/if}
       </div>
 
       {#if saveError}
@@ -358,14 +362,31 @@
       {/key}
     {/if}
   </div>
-</div>
 
 <style>
+  .editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 48px 20px;
+  }
+
   .kui-callout {
     border-radius: 12px;
     padding: 12px;
     border: 1px solid #e5e7eb;
     background: #f8fafc;
+    margin: 16px;
   }
 
   .kui-callout.error {
@@ -374,36 +395,71 @@
     color: #b91c1c;
   }
 
-  .kui-inline {
-    display: inline-flex;
+  .header-bar {
+    display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    padding: 12px 20px;
+    gap: 20px;
   }
 
-  .kui-subtext {
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+  }
+
+  .site-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .site-info h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .site-info .subdomain {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    white-space: nowrap;
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
     color: #6b7280;
   }
 
-  .kui-subtext.success {
-    color: #16a34a;
+  .status-message {
+    font-size: 13px;
+    color: #6b7280;
   }
 
-  .kui-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: #f4f4f5;
-    color: #3f3f46;
-    font-size: 12px;
-    font-weight: 600;
+  .status-message.success {
+    color: #16a34a;
   }
 
   .kui-modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.3);
+    background: rgba(0, 0, 0, 0.3);
     display: grid;
     place-items: center;
     z-index: 40;

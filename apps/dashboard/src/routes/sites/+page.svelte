@@ -258,7 +258,7 @@
     padding: 0.65rem;
     border-bottom: 1px solid var(--kui-color-border);
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
   }
 
   .kui-table thead th {

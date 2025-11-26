@@ -1,4 +1,6 @@
 import type { EditorPlugin } from '../plugins/types';
+import { pagesPlugin } from '../plugins/pages';
+import { navigationPlugin } from '../plugins/navigation';
 import { formsPlugin } from '../plugins/forms';
 import { blogPlugin } from '../plugins/blog';
 
@@ -62,8 +64,10 @@ class PluginRegistry {
 const registry = new PluginRegistry();
 
 // Register all available plugins
+registry.register(pagesPlugin);
+registry.register(navigationPlugin);
 registry.register(formsPlugin);
-registry.register(blogPlugin);
+// registry.register(blogPlugin);
 
 // Future plugins:
 // registry.register(navigationPlugin);

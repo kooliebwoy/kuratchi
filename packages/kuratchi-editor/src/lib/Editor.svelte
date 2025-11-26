@@ -21,10 +21,8 @@
         Box,
         ChevronLeft,
         ChevronRight,
-        Eye,
         Monitor,
         Navigation,
-        Pencil,
         Settings,
         Smartphone,
         Tablet,
@@ -104,11 +102,22 @@ let {
         },
         pages: getPageList().map(p => ({
             id: (p as any).id ?? '',
-            name: (p as any).name ?? '',
+            name: (p as any).name ?? (p as any).title ?? '',
             slug: (p as any).slug ?? ''
         })),
         reservedPages: (reservedPages ?? []).map(p => (p as any).slug ?? ''),
-        editor
+        editor,
+        currentPageId,
+        onPageSwitch,
+        onCreatePage,
+        addPageToMenu: (location, page) => addPageToMenu(location, page),
+        // Navigation context - use getters to defer access
+        get navigation() { return navState; },
+        onHeaderMenuSave: (data) => handleHeaderMenuSave({ location: 'header', items: data.items }),
+        onFooterMenuSave: (data) => handleFooterMenuSave({ location: 'footer', items: data.items }),
+        onToggleHeaderVisible: (visible) => toggleHeaderVisible(visible),
+        onToggleFooterVisible: (visible) => toggleFooterVisible(visible),
+        onToggleHeaderMobileOnDesktop: (enabled) => toggleHeaderMobileOnDesktop(enabled)
     };
 
     const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -545,25 +554,11 @@ let {
                 </button>
             {/each}
             <button
-                class={`krt-editor__railButton ${activeTab === 'navigation' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('navigation')}
-                title="Navigation"
-            >
-                <Navigation />
-            </button>
-            <button
                 class={`krt-editor__railButton ${activeTab === 'settings' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('settings')}
                 title="Settings"
             >
                 <Settings />
-            </button>
-            <button
-                class={`krt-editor__railButton ${activeTab === 'pages' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('pages')}
-                title="Pages"
-            >
-                <FileText />
             </button>
         </div>
 
@@ -575,9 +570,7 @@ let {
                      activeTab === 'sections' ? 'Sections' :
                      activeTab === 'site' ? 'Site' :
                      activeTab === 'themes' ? 'Themes' :
-                     activeTab === 'navigation' ? 'Navigation' :
                      activeTab === 'settings' ? 'Settings' :
-                     activeTab === 'pages' ? 'Pages' :
                      activePlugins.find(p => p.id === activeTab)?.name ?? 'Page Builder'}
                 </h2>
                 <button
@@ -676,61 +669,7 @@ let {
                         {/each}
                     {/if}
 
-                    {#if activeTab === 'navigation'}
-                        <div class="krt-editor__sidebarSection">
-                            <!-- Header Menu Section -->
-                            <div class="krt-editor__navCard">
-                                <div class="krt-editor__navCardHeader">
-                                    <div class="krt-editor__navCardTitle">
-                                        <PanelTop />
-                                        <span>Header</span>
-                                    </div>
-                                    <label>
-                                        <input type="checkbox" checked={navState.header.visible} onchange={(e) => toggleHeaderVisible((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span>Show</span>
-                                    </label>
-                                </div>
-                                <div class="krt-editor__navCardBody">
-                                    <label>
-                                        <input type="checkbox" checked={navState.header.useMobileMenuOnDesktop} onchange={(e) => toggleHeaderMobileOnDesktop((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span>Mobile menu on desktop</span>
-                                    </label>
-                                    <div>
-                                        <MenuWidget
-                                            menuItems={navState.header.items}
-                                            pages={pages || []}
-                                            reservedPages={reservedPages || []}
-                                            menuLocation="header"
-                                            onSave={handleHeaderMenuSave}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Footer Menu Section -->
-                            <div class="krt-editor__navCard">
-                                <div class="krt-editor__navCardHeader">
-                                    <div class="krt-editor__navCardTitle">
-                                        <PanelBottom />
-                                        <span>Footer</span>
-                                    </div>
-                                    <label>
-                                        <input type="checkbox" checked={navState.footer.visible} onchange={(e) => toggleFooterVisible((e.currentTarget as HTMLInputElement).checked)} />
-                                        <span>Show</span>
-                                    </label>
-                                </div>
-                                <div class="krt-editor__navCardBody">
-                                    <MenuWidget
-                                        menuItems={navState.footer.items}
-                                        pages={pages || []}
-                                        reservedPages={reservedPages || []}
-                                        menuLocation="footer"
-                                        onSave={handleFooterMenuSave}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    {:else if activeTab === 'settings'}
+                    {#if activeTab === 'settings'}
                         <div class="krt-editor__settingsPanel">
                             <div>
                                 <h3>Page Information</h3>
@@ -793,55 +732,6 @@ let {
                                     </label>
                                 </div>
                             </div>
-                        </div>
-                    {:else if activeTab === 'pages'}
-                        <div class="krt-editor__sidebarSection">
-                            <div class="krt-editor__sidebarSectionHeader">
-                                <h3>Pages</h3>
-                                <button
-                                    class="krt-editor__ghostButton"
-                                    onclick={onCreatePage}
-                                    title="Create a new page"
-                                >
-                                    <Plus />
-                                    <span>New</span>
-                                </button>
-                            </div>
-
-                            {#if pages && pages.length > 0}
-                                <div class="krt-editor__pageList">
-                                    {#each pages as page (page.id)}
-                                        <div class={`krt-editor__pageListItem ${currentPageId === page.id ? 'is-active' : ''}`}>
-                                            <div class="krt-editor__pageListItemInner">
-                                                <button onclick={() => onPageSwitch?.(page.id)} title={page.title}>
-                                                    <div>
-                                                        <span>{page.title}</span>
-                                                        {#if page.isSpecialPage}
-                                                            <span>🏠</span>
-                                                        {/if}
-                                                    </div>
-                                                    <span>/{page.slug}</span>
-                                                </button>
-                                                <div>
-                                                    <button onclick={() => addPageToMenu('header', page)}>+ Header</button>
-                                                    <button onclick={() => addPageToMenu('footer', page)}>+ Footer</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    {/each}
-                                </div>
-                            {:else}
-                                <div class="krt-editor__emptyState">
-                                    <p>No pages yet</p>
-                                    <button
-                                        class="krt-editor__primaryButton"
-                                        onclick={onCreatePage}
-                                    >
-                                        <Plus />
-                                        Create First Page
-                                    </button>
-                                </div>
-                            {/if}
                         </div>
                     {/if}
             </div>
@@ -1352,75 +1242,6 @@ let {
         box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
     }
 
-    .krt-editor__navCard {
-        border: 1px solid var(--krt-color-border-subtle);
-        border-radius: var(--krt-radius-md);
-        background: #fff;
-        overflow: hidden;
-    }
-
-    .krt-editor__navCardHeader {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--krt-color-border-subtle);
-        background: #f4f6fb;
-    }
-
-    .krt-editor__navCardTitle {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-
-    .krt-editor__navCardTitle :global(svg) {
-        width: 18px;
-        height: 18px;
-        color: var(--krt-color-primary);
-    }
-
-    .krt-editor__navCardHeader label {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-        font-size: 0.8rem;
-        color: rgba(17, 24, 39, 0.65);
-        cursor: pointer;
-    }
-
-    .krt-editor__navCardHeader input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
-        cursor: pointer;
-        accent-color: var(--krt-color-primary);
-    }
-
-    .krt-editor__navCardBody {
-        padding: 0.75rem 1rem 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .krt-editor__navCardBody label {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        font-size: 0.8rem;
-        color: rgba(17, 24, 39, 0.7);
-        cursor: pointer;
-    }
-
-    .krt-editor__navCardBody input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
-        cursor: pointer;
-        accent-color: var(--krt-color-primary);
-    }
-
     .krt-editor__divider {
         height: 1px;
         background: var(--krt-color-border-subtle);
@@ -1436,8 +1257,7 @@ let {
     }
 
     .krt-editor__formStack input,
-    .krt-editor__formStack textarea,
-    .krt-editor__sidebarSection input[type="text"] {
+    .krt-editor__formStack textarea {
         border-radius: var(--krt-radius-sm);
         border: 1px solid var(--krt-color-border-subtle);
         padding: 0.4rem 0.6rem;
@@ -1475,91 +1295,6 @@ let {
     .krt-editor__ghostButton :global(svg) {
         width: 14px;
         height: 14px;
-    }
-
-    .krt-editor__pageList {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .krt-editor__pageListItem {
-        background: #f2f4f8;
-        border: 1px solid var(--krt-color-border-subtle);
-        border-radius: var(--krt-radius-md);
-        padding: 0.6rem;
-        transition: all 160ms ease;
-    }
-
-    .krt-editor__pageListItem:is(:hover, :focus-within) {
-        border-color: var(--krt-color-primary);
-        background: rgba(99, 102, 241, 0.05);
-    }
-
-    .krt-editor__pageListItem.is-active {
-        background: var(--krt-color-primary);
-        border-color: var(--krt-color-primary);
-        color: #fff;
-        box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
-    }
-
-    .krt-editor__pageListItemInner {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-    }
-
-    .krt-editor__pageListItemInner button {
-        border: none;
-        background: transparent;
-        text-align: left;
-        flex: 1;
-        cursor: pointer;
-        color: inherit;
-        font-family: inherit;
-    }
-
-    .krt-editor__pageListItemInner button:focus {
-        outline: 2px solid currentColor;
-        outline-offset: 2px;
-    }
-
-    .krt-editor__pageListItemInner button > div {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-    }
-
-    .krt-editor__pageListItemInner button span {
-        font-size: 0.9rem;
-        font-weight: 600;
-    }
-
-    .krt-editor__pageListItemInner button span:last-child {
-        display: block;
-        font-size: 0.75rem;
-        opacity: 0.65;
-        font-weight: 400;
-    }
-
-    .krt-editor__pageListItemInner > div:last-child {
-        display: flex;
-        gap: 0.25rem;
-    }
-
-    .krt-editor__pageListItemInner > div:last-child button {
-        border: 1px solid currentColor;
-        opacity: 0.6;
-        border-radius: var(--krt-radius-pill);
-        padding: 0.25rem 0.6rem;
-        font-size: 0.75rem;
-        color: inherit;
-        transition: opacity 160ms ease;
-    }
-
-    .krt-editor__pageListItemInner > div:last-child button:is(:hover, :focus-visible) {
-        opacity: 1;
     }
 
     .krt-editor__emptyState {
@@ -1646,29 +1381,35 @@ let {
 
     .krt-editor__deviceToggle {
         display: inline-flex;
-        background: #f2f4f8;
-        border-radius: var(--krt-radius-pill);
-        padding: 0.25rem;
-        border: 1px solid var(--krt-color-border-subtle);
-        gap: 0.25rem;
+        background: transparent;
+        border-radius: 6px;
+        padding: 0;
+        border: none;
+        gap: 8px;
     }
 
     .krt-editor__deviceToggleButton {
-        border: none;
-        background: transparent;
-        border-radius: var(--krt-radius-pill);
-        width: 2.5rem;
-        height: 2rem;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
         display: grid;
         place-items: center;
         cursor: pointer;
-        color: rgba(17, 24, 39, 0.6);
+        color: #6b7280;
+        transition: all 0.2s ease;
+    }
+
+    .krt-editor__deviceToggleButton:hover {
+        border-color: #d1d5db;
+        background: #f9fafb;
     }
 
     .krt-editor__deviceToggleButton.is-active {
-        background: var(--krt-color-primary);
-        color: #fff;
-        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+        background: #3b82f6;
+        color: #ffffff;
+        border-color: #3b82f6;
     }
 
     .krt-editor__mainPanel {
