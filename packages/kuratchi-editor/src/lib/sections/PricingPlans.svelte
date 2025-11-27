@@ -19,6 +19,7 @@
     interface Props {
         id?: string;
         type?: string;
+        eyebrow?: string;
         heading?: string;
         subheading?: string;
         plans?: PlanItem[];
@@ -89,7 +90,7 @@
         `--krt-pricing-bg: ${metadata.backgroundColor}; --krt-pricing-card: ${metadata.cardColor}; --krt-pricing-accent: ${metadata.accentColor}; --krt-pricing-text: ${metadata.textColor};`
     );
 
-    const content = $derived({ id, type, heading, subheading, plans, metadata: { ...metadata } });
+    const content = $derived({ id, type, eyebrow, heading, subheading, plans, metadata: { ...metadata } });
 
     onMount(() => {
         if (!editable) return;
@@ -133,7 +134,7 @@
         <div id={`metadata-${id}`} style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-pricing__inner">
             <div class="krt-pricing__header">
-                <p class="krt-pricing__eyebrow">Pricing</p>
+                <p class="krt-pricing__eyebrow" contenteditable bind:innerHTML={eyebrow}></p>
                 <h2 class="krt-pricing__title" contenteditable bind:innerHTML={heading}></h2>
                 <p class="krt-pricing__subtitle" contenteditable bind:innerHTML={subheading}></p>
             </div>
@@ -163,7 +164,7 @@
     <section class="krt-pricing" id={id} data-type={type} style={layoutStyle}>
         <div class="krt-pricing__inner">
             <div class="krt-pricing__header">
-                <p class="krt-pricing__eyebrow">Pricing</p>
+                <p class="krt-pricing__eyebrow">{@html eyebrow}</p>
                 <h2 class="krt-pricing__title">{@html heading}</h2>
                 <p class="krt-pricing__subtitle">{@html subheading}</p>
             </div>

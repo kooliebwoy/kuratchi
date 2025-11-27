@@ -12,6 +12,7 @@
     interface Props {
         id?: string;
         type?: string;
+        eyebrow?: string;
         heading?: string;
         testimonials?: TestimonialItem[];
         metadata?: {
@@ -26,6 +27,7 @@
     let {
         id = crypto.randomUUID(),
         type = 'testimonials-grid',
+        eyebrow = $bindable('Social proof'),
         heading = $bindable('Loved by product teams everywhere'),
         testimonials = $bindable<TestimonialItem[]>([
             {

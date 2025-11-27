@@ -6,12 +6,14 @@ import CardWithSlider from '../sections/CardWithSlider.svelte';
 import IconBar from '../sections/IconBar.svelte';
 import GridCTAs from '../sections/GridCTAs.svelte';
 import ServicesGrid from '../sections/ServicesGrid.svelte';
+import FAQ from '../sections/FAQ.svelte';
+import Stats from '../sections/Stats.svelte';
 import FeatureShowcase from '../sections/FeatureShowcase.svelte';
 import TestimonialsGrid from '../sections/TestimonialsGrid.svelte';
 import PricingPlans from '../sections/PricingPlans.svelte';
 import ContactCTA from '../sections/ContactCTA.svelte';
 import type { Component } from 'svelte';
-import { LayoutGrid } from '@lucide/svelte';
+import { BarChart3, HelpCircle, LayoutGrid } from '@lucide/svelte';
 
 export interface SectionDefinition {
 	name: string;
@@ -79,11 +81,25 @@ export const sections: SectionDefinition[] = [
                 component: ServicesGrid
         },
         {
+                name: 'Stats',
+                type: 'stats',
+                icon: BarChart3,
+                description: 'Summarize key metrics with short descriptions',
+                component: Stats
+        },
+        {
                 name: 'Feature Showcase',
                 type: 'feature-showcase',
                 icon: LayoutGrid,
                 description: 'Four-up feature layout with badges',
                 component: FeatureShowcase
+        },
+        {
+                name: 'FAQs',
+                type: 'faq',
+                icon: HelpCircle,
+                description: 'Accordion for common questions and answers',
+                component: FAQ
         },
         {
                 name: 'Testimonials',

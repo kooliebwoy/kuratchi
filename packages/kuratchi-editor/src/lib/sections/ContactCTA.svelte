@@ -6,10 +6,18 @@
     interface Props {
         id?: string;
         type?: string;
+        eyebrow?: string;
         heading?: string;
         body?: string;
         buttonLabel?: string;
         secondaryLabel?: string;
+        nameLabel?: string;
+        namePlaceholder?: string;
+        emailLabel?: string;
+        emailPlaceholder?: string;
+        projectLabel?: string;
+        projectPlaceholder?: string;
+        submitLabel?: string;
         metadata?: {
             backgroundColor?: string;
             textColor?: string;
@@ -21,10 +29,18 @@
     let {
         id = crypto.randomUUID(),
         type = 'contact-cta',
+        eyebrow = $bindable('Let’s build together'),
         heading = $bindable('Ready to launch?'),
         body = $bindable('Tell us about your next page and we’ll help you build it in minutes with our editor.'),
         buttonLabel = $bindable('Book a demo'),
         secondaryLabel = $bindable('Talk to sales'),
+        nameLabel = $bindable('Name'),
+        namePlaceholder = $bindable('Your name'),
+        emailLabel = $bindable('Email'),
+        emailPlaceholder = $bindable('you@example.com'),
+        projectLabel = $bindable('Project'),
+        projectPlaceholder = $bindable('What are you building?'),
+        submitLabel = $bindable('Send message'),
         metadata = $bindable({
             backgroundColor: '#0b1224',
             textColor: '#e2e8f0',
@@ -41,7 +57,23 @@
         `--krt-contact-bg: ${metadata.backgroundColor}; --krt-contact-text: ${metadata.textColor}; --krt-contact-accent: ${metadata.accentColor};`
     );
 
-    const content = $derived({ id, type, heading, body, buttonLabel, secondaryLabel, metadata: { ...metadata } });
+    const content = $derived({
+        id,
+        type,
+        eyebrow,
+        heading,
+        body,
+        buttonLabel,
+        secondaryLabel,
+        nameLabel,
+        namePlaceholder,
+        emailLabel,
+        emailPlaceholder,
+        projectLabel,
+        projectPlaceholder,
+        submitLabel,
+        metadata: { ...metadata }
+    });
 
     onMount(() => {
         if (!editable) return;
@@ -74,6 +106,43 @@
                                 </label>
                             </div>
                         </section>
+                        <section class="krt-contact__section">
+                            <h3>Form labels</h3>
+                            <div class="krt-contact__grid krt-contact__grid--stacked">
+                                <label class="krt-contact__field">
+                                    <span>Eyebrow</span>
+                                    <input type="text" bind:value={eyebrow} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Name label</span>
+                                    <input type="text" bind:value={nameLabel} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Name placeholder</span>
+                                    <input type="text" bind:value={namePlaceholder} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Email label</span>
+                                    <input type="text" bind:value={emailLabel} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Email placeholder</span>
+                                    <input type="text" bind:value={emailPlaceholder} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Project label</span>
+                                    <input type="text" bind:value={projectLabel} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Project placeholder</span>
+                                    <input type="text" bind:value={projectPlaceholder} />
+                                </label>
+                                <label class="krt-contact__field">
+                                    <span>Submit label</span>
+                                    <input type="text" bind:value={submitLabel} />
+                                </label>
+                            </div>
+                        </section>
                     </div>
                 {/snippet}
             </BlockActions>
@@ -81,7 +150,7 @@
         <div id={`metadata-${id}`} style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-contact__inner">
             <div class="krt-contact__copy">
-                <p class="krt-contact__eyebrow">Let’s build together</p>
+                <p class="krt-contact__eyebrow" contenteditable bind:innerHTML={eyebrow}></p>
                 <h2 class="krt-contact__title" contenteditable bind:innerHTML={heading}></h2>
                 <p class="krt-contact__body" contenteditable bind:innerHTML={body}></p>
                 <div class="krt-contact__actions">
@@ -95,18 +164,20 @@
             </div>
             <form class="krt-contact__form" aria-label="Contact form">
                 <label>
-                    <span>Name</span>
-                    <input type="text" placeholder="Your name" />
+                    <span contenteditable bind:innerHTML={nameLabel}></span>
+                    <input type="text" bind:placeholder={namePlaceholder} />
                 </label>
                 <label>
-                    <span>Email</span>
-                    <input type="email" placeholder="you@example.com" />
+                    <span contenteditable bind:innerHTML={emailLabel}></span>
+                    <input type="email" bind:placeholder={emailPlaceholder} />
                 </label>
                 <label>
-                    <span>Project</span>
-                    <textarea rows="3" placeholder="What are you building?"></textarea>
+                    <span contenteditable bind:innerHTML={projectLabel}></span>
+                    <textarea rows="3" bind:placeholder={projectPlaceholder}></textarea>
                 </label>
-                <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>Send message</button>
+                <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>
+                    <span contenteditable bind:innerHTML={submitLabel}></span>
+                </button>
             </form>
         </div>
     </div>
@@ -114,7 +185,7 @@
     <section class="krt-contact" id={id} data-type={type} style={layoutStyle}>
         <div class="krt-contact__inner">
             <div class="krt-contact__copy">
-                <p class="krt-contact__eyebrow">Let’s build together</p>
+                <p class="krt-contact__eyebrow">{@html eyebrow}</p>
                 <h2 class="krt-contact__title">{@html heading}</h2>
                 <p class="krt-contact__body">{@html body}</p>
                 <div class="krt-contact__actions">
@@ -124,18 +195,18 @@
             </div>
             <form class="krt-contact__form" aria-label="Contact form">
                 <label>
-                    <span>Name</span>
-                    <input type="text" placeholder="Your name" />
+                    <span>{@html nameLabel}</span>
+                    <input type="text" placeholder={namePlaceholder} />
                 </label>
                 <label>
-                    <span>Email</span>
-                    <input type="email" placeholder="you@example.com" />
+                    <span>{@html emailLabel}</span>
+                    <input type="email" placeholder={emailPlaceholder} />
                 </label>
                 <label>
-                    <span>Project</span>
-                    <textarea rows="3" placeholder="What are you building?"></textarea>
+                    <span>{@html projectLabel}</span>
+                    <textarea rows="3" placeholder={projectPlaceholder}></textarea>
                 </label>
-                <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>Send message</button>
+                <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>{@html submitLabel}</button>
             </form>
         </div>
     </section>
@@ -251,6 +322,10 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 10px;
+    }
+
+    .krt-contact__grid--stacked {
+        grid-template-columns: 1fr;
     }
 
     .krt-contact__field {

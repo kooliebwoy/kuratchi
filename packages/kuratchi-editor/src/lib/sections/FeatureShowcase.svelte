@@ -12,6 +12,7 @@
     interface Props {
         id?: string;
         type?: string;
+        eyebrow?: string;
         heading?: string;
         subheading?: string;
         features?: FeatureItem[];
@@ -27,6 +28,7 @@
     let {
         id = crypto.randomUUID(),
         type = 'feature-showcase',
+        eyebrow = $bindable('Features'),
         heading = $bindable('Everything you need to move faster'),
         subheading = $bindable('Launch memorable pages with modular blocks, built-in content controls, and flexible styling.'),
         features = $bindable<FeatureItem[]>([
@@ -52,7 +54,7 @@
         `--krt-features-bg: ${metadata.backgroundColor}; --krt-features-card: ${metadata.cardColor}; --krt-features-accent: ${metadata.accentColor}; --krt-features-text: ${metadata.textColor};`
     );
 
-    const content = $derived({ id, type, heading, subheading, features, metadata: { ...metadata } });
+    const content = $derived({ id, type, eyebrow, heading, subheading, features, metadata: { ...metadata } });
 
     onMount(() => {
         if (!editable) return;
@@ -96,7 +98,7 @@
         <div id={`metadata-${id}`} style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-featureShowcase__inner">
             <div class="krt-featureShowcase__header">
-                <p class="krt-featureShowcase__eyebrow">Features</p>
+                <p class="krt-featureShowcase__eyebrow" contenteditable bind:innerHTML={eyebrow}></p>
                 <h2 class="krt-featureShowcase__title" contenteditable bind:innerHTML={heading}></h2>
                 <p class="krt-featureShowcase__subtitle" contenteditable bind:innerHTML={subheading}></p>
             </div>
@@ -120,7 +122,7 @@
     <section class="krt-featureShowcase" id={id} data-type={type} style={layoutStyle}>
         <div class="krt-featureShowcase__inner">
             <div class="krt-featureShowcase__header">
-                <p class="krt-featureShowcase__eyebrow">Features</p>
+                <p class="krt-featureShowcase__eyebrow">{@html eyebrow}</p>
                 <h2 class="krt-featureShowcase__title">{@html heading}</h2>
                 <p class="krt-featureShowcase__subtitle">{@html subheading}</p>
             </div>
