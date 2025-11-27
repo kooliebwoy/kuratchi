@@ -6,6 +6,10 @@ import CardWithSlider from '../sections/CardWithSlider.svelte';
 import IconBar from '../sections/IconBar.svelte';
 import GridCTAs from '../sections/GridCTAs.svelte';
 import ServicesGrid from '../sections/ServicesGrid.svelte';
+import FeatureShowcase from '../sections/FeatureShowcase.svelte';
+import TestimonialsGrid from '../sections/TestimonialsGrid.svelte';
+import PricingPlans from '../sections/PricingPlans.svelte';
+import ContactCTA from '../sections/ContactCTA.svelte';
 import type { Component } from 'svelte';
 import { LayoutGrid } from '@lucide/svelte';
 
@@ -67,13 +71,41 @@ export const sections: SectionDefinition[] = [
 		description: 'Grid of call-to-action cards',
 		component: GridCTAs
 	},
-	{
-		name: 'Services Grid',
-		type: 'services-grid',
-		icon: LayoutGrid,
-		description: 'Grid layout for services',
-		component: ServicesGrid
-	}
+        {
+                name: 'Services Grid',
+                type: 'services-grid',
+                icon: LayoutGrid,
+                description: 'Grid layout for services',
+                component: ServicesGrid
+        },
+        {
+                name: 'Feature Showcase',
+                type: 'feature-showcase',
+                icon: LayoutGrid,
+                description: 'Four-up feature layout with badges',
+                component: FeatureShowcase
+        },
+        {
+                name: 'Testimonials',
+                type: 'testimonials-grid',
+                icon: LayoutGrid,
+                description: 'Grid of testimonial cards',
+                component: TestimonialsGrid
+        },
+        {
+                name: 'Pricing Plans',
+                type: 'pricing-plans',
+                icon: LayoutGrid,
+                description: 'Three-tier pricing comparison',
+                component: PricingPlans
+        },
+        {
+                name: 'Contact CTA',
+                type: 'contact-cta',
+                icon: LayoutGrid,
+                description: 'Contact and lead capture section',
+                component: ContactCTA
+        }
 ];
 
 export const sectionMap = new Map(sections.map((def) => [def.type, def]));
