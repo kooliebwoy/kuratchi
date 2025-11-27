@@ -1,4 +1,4 @@
-import type { EditorPlugin } from '../types';
+import type { EditorPlugin } from '../context';
 import { FileInput } from '@lucide/svelte';
 import FormsPluginSidebar from './FormsPluginSidebar.svelte';
 

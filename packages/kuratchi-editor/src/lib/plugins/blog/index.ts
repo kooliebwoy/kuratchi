@@ -1,4 +1,4 @@
-import type { EditorPlugin } from '../types';
+import type { EditorPlugin } from '../context';
 import { BookOpen } from '@lucide/svelte';
 import BlogPluginSidebar from './BlogPluginSidebar.svelte';
 

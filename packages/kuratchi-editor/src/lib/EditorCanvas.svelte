@@ -313,33 +313,6 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
                 {/each}
             </article>
             <div class="krt-editorCanvas__addBlock">
-                <!-- <div class="krt-editorCanvas__addBlock__buttons">
-                    {#if layoutsEnabled}
-                        <button class="krt-editorCanvas__iconButton" aria-label="Add section" title="Section presets coming soon">
-                            <PanelsTopLeft />
-                        </button>
-                    {/if}     
-                    <button class="krt-editorCanvas__iconButton" popovertarget="searchBlocksPopover" style="anchor-name:--searchBlocksPopover" aria-label="Add block">
-                        <Plus />
-                    </button>
-                    <ul popover="auto" id="searchBlocksPopover" style="position-anchor:--searchBlocksPopover" class="krt-editorCanvas__blockMenu">
-                        <li>
-                            <label class="krt-editorCanvas__searchLabel">
-                                <input type="text" class="krt-editorCanvas__searchInput" placeholder="Search" bind:value={blockSearchTerm} />
-                            </label>
-                        </li>
-                        {#if filteredBlocks.length > 0}
-                            {#each filteredBlocks as component}
-                                <li>
-                                    <button class="krt-editorCanvas__menuButton" onclick={() => addComponent(component)}>
-                                        <component.icon />
-                                        <span>{component.name}</span>
-                                    </button> 
-                                </li>
-                            {/each}
-                        {/if}
-                    </ul>
-                </div> -->
                 <div class="krt-editorCanvas__inlineSearch">
                     <input 
                         class="krt-editorCanvas__inlineInput" 
@@ -363,8 +336,6 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
             </div>
         </div>
     </div>
-
-    
 
     {#if isWebpage}
         <div

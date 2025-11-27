@@ -1,15 +1,35 @@
-// Plugin types
-export type { EditorPlugin, PluginContext, PageItem, NavMenuItem, NavRegionState, NavigationState } from './types';
+// Plugin types and context
+export type {
+    PluginContext,
+    EditorPlugin,
+    EditorEvent,
+    PageItem,
+    CurrentPageData,
+    SEOUpdate,
+    NavMenuItem,
+    NavRegionState,
+    NavigationState,
+    NavigationExtension,
+    SitePresetItem,
+    SiteLayoutExtension,
+    ThemeOption,
+    ThemesExtension,
+} from './context';
+
+export { EXT } from './context';
+
+// Plugin manager
+export { createPluginManager, type PluginManager, type PluginManagerOptions } from './manager';
 
 // Plugins
 export { pagesPlugin } from './pages';
 export { navigationPlugin } from './navigation';
+export { sitePlugin } from './site';
+export { themesPlugin } from './themes';
 export { formsPlugin } from './forms';
 
-// Plugin components (legacy - these will eventually move to their own plugins)
-export { default as EditorToolbar } from './EditorToolbar.svelte';
+// Shared components
+export { default as MenuWidget } from './MenuWidget.svelte';
 export { default as ImagePicker } from './ImagePicker.svelte';
 export { default as IconPicker } from './IconPicker.svelte';
-export { default as MenuWidget } from './MenuWidget.svelte';
-export { default as BlogManager } from './BlogManager.svelte';
 export { default as FormBuilder } from './FormBuilder.svelte';

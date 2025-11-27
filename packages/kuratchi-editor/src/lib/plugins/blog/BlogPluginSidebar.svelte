@@ -1,37 +1,30 @@
 <script lang="ts">
-    import type { PluginContext } from '../types';
+    import type { PluginContext } from '../context';
     import type { BlogData } from '../../types';
     import { createDefaultBlogData } from '../../types';
     import BlogManager from '../BlogManager.svelte';
     import { blogStore } from '../../stores/blog';
-	import { getAllBlogThemes, getBlogTheme } from './blogThemes';
+    import { getAllBlogThemes, getBlogTheme } from './blogThemes';
 
-
-    interface Props {
-        context: PluginContext;
-    }
-
-    let { context }: Props = $props();
+    let { ctx }: { ctx: PluginContext } = $props();
 
     // Plugin-owned blog state
-    let blogData = $state<BlogData>((context.siteMetadata.blog as BlogData) ?? createDefaultBlogData());
+    let blogData = $state<BlogData>((ctx.siteMetadata.blog as BlogData) ?? createDefaultBlogData());
     let blogSnapshot = JSON.stringify(blogData);
     blogStore.set(blogData);
     
     let selectedPostId = $state<string | null>(null);
     let selectedPageForBlog = $state<string | null>(null);
     
-    // Initialize selected post
     $effect(() => {
         if (!selectedPostId && blogData.posts.length > 0) {
             selectedPostId = blogData.posts[0].id;
         }
     });
     
-    // Initialize selected page
     $effect(() => {
-        if (!selectedPageForBlog && context.pages.length > 0) {
-            selectedPageForBlog = context.pages[0].id;
+        if (!selectedPageForBlog && ctx.pages.length > 0) {
+            selectedPageForBlog = ctx.pages[0].id;
         }
     });
 
@@ -50,13 +43,13 @@
 
     const toDateInputValue = (value?: string) => value ?? new Date().toISOString().slice(0, 10);
 
-    const getPageList = () => context.pages;
+    const getPageList = () => ctx.pages;
 
     const persistBlog = async (next: BlogData) => {
         blogData = next;
         blogSnapshot = JSON.stringify(blogData);
         blogStore.set(blogData);
-        await context.updateSiteMetadata({ blog: blogData });
+        await ctx.updateSiteMetadata({ blog: blogData });
     };
 
     const updateBlog = async (updater: (blog: BlogData) => BlogData) => {
@@ -116,7 +109,7 @@
     };
 
     const addPostFromPageId = async (pageId: string) => {
-        const page = context.pages.find(p => p.id === pageId);
+        const page = ctx.pages.find(p => p.id === pageId);
         if (!page) return;
 
         await updateBlog((blog) => {
@@ -197,7 +190,6 @@
     };
 
     const addCustomNavItem = async () => {
-        // This would need navigation context - may need to be handled differently
         console.log('addCustomNavItem not yet implemented in plugin');
     };
 

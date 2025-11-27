@@ -1,8 +1,10 @@
-import type { EditorPlugin } from '../plugins/types';
+import type { EditorPlugin } from '../plugins/context';
 import { pagesPlugin } from '../plugins/pages';
 import { navigationPlugin } from '../plugins/navigation';
 import { formsPlugin } from '../plugins/forms';
 import { blogPlugin } from '../plugins/blog';
+import { sitePlugin } from '../plugins/site';
+import { themesPlugin } from '../plugins/themes';
 
 /**
  * Plugin registry - similar to blocks registry
@@ -66,6 +68,8 @@ const registry = new PluginRegistry();
 // Register all available plugins
 registry.register(pagesPlugin);
 registry.register(navigationPlugin);
+registry.register(sitePlugin);
+registry.register(themesPlugin);
 registry.register(formsPlugin);
 // registry.register(blogPlugin);
 

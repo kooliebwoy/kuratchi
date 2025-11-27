@@ -1,39 +1,29 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
     import type { EditorOptions, EditorState, PageData, SiteRegionState } from "./types.js";
-    import type { PluginContext } from "./plugins/types";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
     import { blocks, getBlock, getEnabledPlugins } from "./registry";
     import { sections, getSection } from "./registry/sections.svelte";
     import { headers } from "./registry/headers.svelte";
     import { footers } from "./registry/footers.svelte";
-    import { addComponentToEditor, replaceRegionComponent, saveEditorHeaderBlocks, saveEditorFooterBlocks } from "./utils/editor.svelte";
+    import { saveEditorHeaderBlocks, saveEditorFooterBlocks } from "./utils/editor.svelte";
     import { rightPanel, closeRightPanel } from "./stores/right-panel";
     import { headingStore, sideBarStore } from "./stores/ui";
-    import { MenuWidget } from "./plugins";
     import EditorCanvas from "./EditorCanvas.svelte";
-    import ThemePreview from "./themes/ThemePreview.svelte";
     import SectionPreview from "./sections/SectionPreview.svelte";
-    import HeaderPreview from "./headers/HeaderPreview.svelte";
-    import FooterPreview from "./footers/FooterPreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
     import {
         Box,
         ChevronLeft,
         ChevronRight,
         Monitor,
-        Navigation,
-        Settings,
         Smartphone,
         Tablet,
-        PanelTop,
-        PanelBottom,
-        FileText,
-        Plus,
-        Palette,
         PanelsTopLeft
     } from "@lucide/svelte";
     import { blockRegistry } from "./stores/editorSignals.svelte.js";
+    import { createPluginManager, type PluginManager } from "./plugins/manager";
+    import type { NavigationState } from "./plugins/context";
 
     type Props = EditorOptions;
 
@@ -83,42 +73,12 @@ let {
     let activeSize = $state(initialDeviceSize);
     let headerElement = $state<HTMLElement | undefined>(undefined);
     let footerElement = $state<HTMLElement | undefined>(undefined);
-    const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
+    const paletteBlocks = blocks.filter((block) => (block as any).showInPalette !== false);
     const themeOptions = getAllThemes();
     let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
 
     // Plugin system
     const activePlugins = getEnabledPlugins(enabledPlugins);
-
-    // Plugin context - provides plugins with editor interaction capabilities
-    const pluginContext: PluginContext = {
-        siteMetadata,
-        updateSiteMetadata: async (updates: Record<string, unknown>) => {
-            siteMetadata = { ...siteMetadata, ...updates };
-            if (onSiteMetadataUpdate) {
-                await onSiteMetadataUpdate(siteMetadata);
-            }
-            triggerStateSave();
-        },
-        pages: getPageList().map(p => ({
-            id: (p as any).id ?? '',
-            name: (p as any).name ?? (p as any).title ?? '',
-            slug: (p as any).slug ?? ''
-        })),
-        reservedPages: (reservedPages ?? []).map(p => (p as any).slug ?? ''),
-        editor,
-        currentPageId,
-        onPageSwitch,
-        onCreatePage,
-        addPageToMenu: (location, page) => addPageToMenu(location, page),
-        // Navigation context - use getters to defer access
-        get navigation() { return navState; },
-        onHeaderMenuSave: (data) => handleHeaderMenuSave({ location: 'header', items: data.items }),
-        onFooterMenuSave: (data) => handleFooterMenuSave({ location: 'footer', items: data.items }),
-        onToggleHeaderVisible: (visible) => toggleHeaderVisible(visible),
-        onToggleFooterVisible: (visible) => toggleFooterVisible(visible),
-        onToggleHeaderMobileOnDesktop: (enabled) => toggleHeaderMobileOnDesktop(enabled)
-    };
 
     const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
@@ -284,9 +244,20 @@ let {
             console.log('[Editor] mountHeaderComponent: no headerElement');
             return;
         }
+        
+        // Find the header type from registry
+        const headerDef = headers.find(h => h.component === component);
+        const type = (headerDef?.type ?? props.type ?? 'unknown') as string;
+        
+        // Update siteHeader state directly - let EditorCanvas #each loop render it
+        // This prevents DOM conflicts between replaceRegionComponent and Svelte's rendering
         blockRegistry.clearRegion('header');
-        replaceRegionComponent(headerElement, component, { editable: true, ...props });
-        await syncHeaderRegion();
+        const headerBlock = { type, ...props, editable: true };
+        siteHeader = { blocks: [headerBlock as any] };
+        
+        // Trigger save callbacks
+        triggerHeaderSave();
+        triggerStateSave();
     };
 
     const mountFooterComponent = async (component: any, props: Record<string, unknown> = {}) => {
@@ -295,9 +266,20 @@ let {
             console.log('[Editor] mountFooterComponent: no footerElement');
             return;
         }
+        
+        // Find the footer type from registry
+        const footerDef = footers.find(f => f.component === component);
+        const type = (footerDef?.type ?? props.type ?? 'unknown') as string;
+        
+        // Update siteFooter state directly - let EditorCanvas #each loop render it
+        // This prevents DOM conflicts between replaceRegionComponent and Svelte's rendering
         blockRegistry.clearRegion('footer');
-        replaceRegionComponent(footerElement, component, { editable: true, ...props });
-        await syncFooterRegion();
+        const footerBlock = { type, ...props, editable: true };
+        siteFooter = { blocks: [footerBlock as any] };
+        
+        // Trigger save callbacks
+        triggerFooterSave();
+        triggerStateSave();
     };
 
     const applyTheme = async (themeId: string) => {
@@ -305,13 +287,12 @@ let {
         selectedThemeId = themeId;
         const homepage = template.defaultHomepage;
 
-        // Clear and mount header component directly
+        // Mount header component (this clears the registry internally)
         if (template.header) {
-            blockRegistry.clearRegion('header');
             await mountHeaderComponent(template.header);
         }
 
-        // Clear and mount footer component directly
+        // Mount footer component (this clears the registry internally)
         if (template.footer) {
             await mountFooterComponent(template.footer);
         }
@@ -390,6 +371,9 @@ let {
         blockRegistry.clearRegion('content');
         $sideBarStore = false;
         $headingStore = localPageData.title || '';
+        
+        // Initialize plugins with the plugin manager
+        pluginManager.init(activePlugins as any);
     });
 
 
@@ -399,9 +383,13 @@ let {
         if (headerSaveTimeout) clearTimeout(headerSaveTimeout);
         if (footerSaveTimeout) clearTimeout(footerSaveTimeout);
         if (stateSaveTimeout) clearTimeout(stateSaveTimeout);
+        
+        // Cleanup plugins
+        pluginManager.destroy(activePlugins as any);
     });
 
-    // ----- Site-wide Navigation State Helpers -----
+    // ----- Navigation State -----
+    // Navigation state is used by EditorCanvas for rendering
     const navDefaults = {
         header: { visible: true, useMobileMenuOnDesktop: false, items: [] as any[] },
         footer: { visible: true, items: [] as any[] },
@@ -414,7 +402,7 @@ let {
         return Array.isArray(menu) ? menu : [];
     };
 
-    function ensureNavigation() {
+    function ensureNavigation(): NavigationState {
         const nav = (siteMetadata as any)?.navigation || {};
         const seededHeaderItems = (nav.header?.items && nav.header.items.length > 0)
             ? nav.header.items
@@ -422,17 +410,17 @@ let {
         const seededFooterItems = (nav.footer?.items && nav.footer.items.length > 0)
             ? nav.footer.items
             : extractMenu(siteFooter);
-        const next = {
+        return {
             header: { ...navDefaults.header, ...(nav.header || {}), items: seededHeaderItems },
             footer: { ...navDefaults.footer, ...(nav.footer || {}), items: seededFooterItems },
             custom: { ...(nav.custom || {}) }
         };
-        return next;
     }
 
-    let navState = $state(ensureNavigation());
+    let navState = $state<NavigationState>(ensureNavigation());
 
-    async function saveNavigation(nextNav: any) {
+    async function saveNavigation(nextNav: NavigationState) {
+        navState = nextNav;
         siteMetadata = { ...(siteMetadata || {}), navigation: nextNav };
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
@@ -440,54 +428,72 @@ let {
         triggerStateSave();
     }
 
-    const handleHeaderMenuSave = async ({ items }: { location: string; items: any[] }) => {
-        navState.header.items = items;
-        await saveNavigation(navState);
-    };
+    // ----- Plugin Manager Setup -----
+    // Create the plugin manager with all editor capabilities
+    const pluginManager: PluginManager = createPluginManager({
+        // Core state getters
+        getCurrentPage: () => ({
+            title: localPageData.title ?? '',
+            slug: localPageData.slug ?? '',
+            seoTitle: localPageData.seoTitle,
+            seoDescription: localPageData.seoDescription,
+            content: localPageData.content ?? []
+        }),
+        getPages: () => getPageList().map(p => ({
+            id: (p as any).id ?? '',
+            name: (p as any).name ?? (p as any).title ?? '',
+            slug: (p as any).slug ?? ''
+        })),
+        getReservedPages: () => (reservedPages ?? []).map(p => (p as any).slug ?? ''),
+        getCurrentPageId: () => currentPageId ?? null,
+        getSiteMetadata: () => siteMetadata ?? {},
+        getEditor: () => editor ?? null,
+        
+        // Core actions
+        updatePageTitle: handleTitleEdit,
+        updatePageSEO: (seo) => handleSEOEdit({
+            seoTitle: seo.seoTitle ?? localPageData.seoTitle ?? '',
+            seoDescription: seo.seoDescription ?? localPageData.seoDescription ?? '',
+            slug: seo.slug ?? localPageData.slug ?? ''
+        }),
+        updateSiteMetadata: async (updates: Record<string, unknown>) => {
+            siteMetadata = { ...siteMetadata, ...updates };
+            if (onSiteMetadataUpdate) {
+                await onSiteMetadataUpdate(siteMetadata);
+            }
+            triggerStateSave();
+        },
+        switchPage: (pageId: string) => onPageSwitch?.(pageId),
+        createPage: () => onCreatePage?.(),
+        addBlock: addBlockToContent,
+        
+        // Navigation extension
+        navigation: {
+            getState: () => navState,
+            save: saveNavigation,
+            genId: randomId
+        },
+        
+        // Site layout extension  
+        siteLayout: {
+            headerPresets: headers.map(h => ({ type: h.type, name: h.name, component: h.component })),
+            footerPresets: footers.map(f => ({ type: f.type, name: f.name, component: f.component })),
+            getHeaderType: () => (siteHeader?.blocks?.[0] as any)?.type ?? null,
+            getFooterType: () => (siteFooter?.blocks?.[0] as any)?.type ?? null,
+            mountHeader: mountHeaderComponent,
+            mountFooter: mountFooterComponent
+        },
+        
+        // Themes extension
+        themes: {
+            list: themeOptions,
+            getSelectedId: () => selectedThemeId,
+            apply: applyTheme
+        }
+    });
 
-    const handleFooterMenuSave = async ({ items }: { location: string; items: any[] }) => {
-        navState.footer.items = items;
-        await saveNavigation(navState);
-    };
-
-    const toggleHeaderVisible = async (value: boolean) => {
-        navState.header.visible = value;
-        await saveNavigation(navState);
-    };
-
-    const toggleFooterVisible = async (value: boolean) => {
-        navState.footer.visible = value;
-        await saveNavigation(navState);
-    };
-
-    const toggleHeaderMobileOnDesktop = async (value: boolean) => {
-        navState.header.useMobileMenuOnDesktop = value;
-        await saveNavigation(navState);
-    };
-
-    // Quick-add a page into a menu location (header/footer)
-    const addPageToMenu = async (location: 'header' | 'footer', page: any) => {
-        const item = {
-            id: randomId(),
-            label: page.title,
-            slug: page.slug,
-            pageId: page.id
-        };
-        if (location === 'header') navState.header.items = [...(navState.header.items || []), item];
-        else navState.footer.items = [...(navState.footer.items || []), item];
-        await saveNavigation(navState);
-    };
-
-    const addCustomNavItem = async (location: 'header' | 'footer', label: string, slug: string) => {
-        const item = {
-            id: randomId(),
-            label,
-            slug: withLeadingSlash(slug)
-        };
-        if (location === 'header') navState.header.items = [...(navState.header.items || []), item];
-        else navState.footer.items = [...(navState.footer.items || []), item];
-        await saveNavigation(navState);
-    };
+    // Get the plugin context for plugins
+    const getPluginContext = () => pluginManager.ctx;
 
 
 </script>
@@ -499,7 +505,7 @@ let {
         bind:headerElement
         bind:footerElement
         content={localPageData.content}
-        backgroundColor={siteMetadata?.backgroundColor || '#000000'}
+        backgroundColor={(siteMetadata?.backgroundColor as string) || '#000000'}
         header={siteHeader}
         footer={siteFooter}
         {editable}
@@ -530,20 +536,6 @@ let {
             >
                 <PanelsTopLeft />
             </button>
-            <button
-                class={`krt-editor__railButton ${activeTab === 'site' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('site')}
-                title="Site"
-            >
-                <PanelTop />
-            </button>
-            <button
-                class={`krt-editor__railButton ${activeTab === 'themes' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('themes')}
-                title="Themes"
-            >
-                <Palette />
-            </button>
             {#each activePlugins as plugin}
                 <button
                     class={`krt-editor__railButton ${activeTab === plugin.id ? 'is-active' : ''}`}
@@ -553,13 +545,6 @@ let {
                     <plugin.icon />
                 </button>
             {/each}
-            <button
-                class={`krt-editor__railButton ${activeTab === 'settings' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('settings')}
-                title="Settings"
-            >
-                <Settings />
-            </button>
         </div>
 
         <!-- Collapsible Sidebar -->
@@ -568,9 +553,6 @@ let {
                 <h2>
                     {activeTab === 'blocks' ? 'Blocks' :
                      activeTab === 'sections' ? 'Sections' :
-                     activeTab === 'site' ? 'Site' :
-                     activeTab === 'themes' ? 'Themes' :
-                     activeTab === 'settings' ? 'Settings' :
                      activePlugins.find(p => p.id === activeTab)?.name ?? 'Page Builder'}
                 </h2>
                 <button
@@ -617,122 +599,13 @@ let {
                         {:else}
                             <div class="krt-editor__loadingMessage">Editor loading...</div>
                         {/if}
-                    {:else if activeTab === 'site'}
-                        <div class="krt-editor__sidebarSection">
-                            <h3 class="krt-editor__sectionTitle">Headers</h3>
-                            <div class="krt-editor__presetGrid">
-                                {#each headers as header}
-                                    <button
-                                        class="krt-editor__presetButton"
-                                        onclick={() => mountHeaderComponent(header.component, { type: header.type })}
-                                    >
-                                        <HeaderPreview {header} scale={0.25} />
-                                        <div class="krt-editor__presetLabel">{header.name}</div>
-                                    </button>
-                                {/each}
-                            </div>
-
-                            <h3 class="krt-editor__sectionTitle">Footers</h3>
-                            <div class="krt-editor__presetGrid">
-                                {#each footers as footer}
-                                    <button
-                                        class="krt-editor__presetButton"
-                                        onclick={() => mountFooterComponent(footer.component, { type: footer.type })}
-                                    >
-                                        <FooterPreview {footer} scale={0.25} />
-                                        <div class="krt-editor__presetLabel">{footer.name}</div>
-                                    </button>
-                                {/each}
-                            </div>
-                        </div>
-                    {:else if activeTab === 'themes'}
-                        <div class="krt-editor__sidebarSection">
-                            {#each themeOptions as theme}
-                                <button
-                                    class={`krt-editor__themeButton ${selectedThemeId === theme.metadata.id ? 'is-active' : ''}`}
-                                    onclick={() => applyTheme(theme.metadata.id)}
-                                >
-                                    <ThemePreview theme={theme} scale={0.35} />
-                                    <div class="krt-editor__themeDetails">
-                                        <div>{theme.metadata.name}</div>
-                                        <p>{theme.metadata.description}</p>
-                                    </div>
-                                </button>
-                            {/each}
-                        </div>
                     {:else}
                         <!-- Dynamic plugin rendering -->
                         {#each activePlugins as plugin}
                             {#if activeTab === plugin.id}
-                                <plugin.sidebar context={pluginContext} />
+                                <plugin.sidebar ctx={getPluginContext()} />
                             {/if}
                         {/each}
-                    {/if}
-
-                    {#if activeTab === 'settings'}
-                        <div class="krt-editor__settingsPanel">
-                            <div>
-                                <h3>Page Information</h3>
-                                <label>
-                                    <span>Page Title</span>
-                                    <input
-                                        type="text"
-                                        placeholder="Page title here.."
-                                        bind:value={localPageData.title}
-                                        onchange={() => handleTitleEdit(localPageData.title)}
-                                    />
-                                </label>
-                            </div>
-
-                            <div class="krt-editor__divider"></div>
-
-                            <div>
-                                <h3>SEO Settings</h3>
-                                <div class="krt-editor__formStack">
-                                    <label>
-                                        <span>Meta Title</span>
-                                        <input
-                                            type="text"
-                                            bind:value={localPageData.seoTitle}
-                                            placeholder="Meta title here.."
-                                            onchange={() => handleSEOEdit({
-                                                seoTitle: localPageData.seoTitle,
-                                                seoDescription: localPageData.seoDescription,
-                                                slug: localPageData.slug
-                                            })}
-                                        />
-                                    </label>
-
-                                    <label>
-                                        <span>Meta Description</span>
-                                        <textarea
-                                            bind:value={localPageData.seoDescription}
-                                            placeholder="Meta Description here..."
-                                            rows="3"
-                                            onchange={() => handleSEOEdit({
-                                                seoTitle: localPageData.seoTitle,
-                                                seoDescription: localPageData.seoDescription,
-                                                slug: localPageData.slug
-                                            })}
-                                        ></textarea>
-                                    </label>
-
-                                    <label>
-                                        <span>Page Slug</span>
-                                        <input
-                                            type="text"
-                                            bind:value={localPageData.slug}
-                                            placeholder="page-slug-here"
-                                            onchange={() => handleSEOEdit({
-                                                seoTitle: localPageData.seoTitle,
-                                                seoDescription: localPageData.seoDescription,
-                                                slug: localPageData.slug
-                                            })}
-                                        />
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
                     {/if}
             </div>
         </div>
@@ -792,13 +665,13 @@ let {
                         style:max-width={activeSize === 'phone' ? '390px' : activeSize === 'tablet' ? '768px' : '1440px'}
                         bind:this={browserMockup}
                     >
-                        {#key `${(pageData?.id || pageData?.slug || 'noid')}-${siteHeader?.type || 'none'}-${siteFooter?.type || 'none'}`}
+                        {#key `${(pageData?.id || pageData?.slug || 'noid')}-${(siteHeader?.blocks?.[0] as any)?.type || 'none'}-${(siteFooter?.blocks?.[0] as any)?.type || 'none'}`}
                             <EditorCanvas
                                 bind:editor
                                 bind:headerElement
                                 bind:footerElement
                                 content={localPageData.content}
-                                backgroundColor={siteMetadata?.backgroundColor || '#000000'}
+                                backgroundColor={(siteMetadata?.backgroundColor as string) || '#000000'}
                                 header={siteHeader}
                                 footer={siteFooter}
                                 {editable}

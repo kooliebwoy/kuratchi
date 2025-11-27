@@ -1,4 +1,4 @@
-import type { EditorPlugin } from '../types';
+import type { EditorPlugin } from '../context';
 import { FileText } from '@lucide/svelte';
 import PagesPluginSidebar from './PagesPluginSidebar.svelte';
 

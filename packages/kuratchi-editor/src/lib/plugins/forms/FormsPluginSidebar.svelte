@@ -1,21 +1,16 @@
 <script lang="ts">
-    import type { PluginContext } from '../types';
+    import type { PluginContext } from '../context';
     import type { FormData } from '../../types';
     import { createDefaultFormData } from '../../types';
     import FormBuilder from '../FormBuilder.svelte';
     import { Plus } from '@lucide/svelte';
 
-    interface Props {
-        context: PluginContext;
-    }
-
-    let { context }: Props = $props();
+    let { ctx }: { ctx: PluginContext } = $props();
 
     // Plugin-owned state
-    let formsData = $state<FormData[]>((context.siteMetadata.forms as FormData[]) ?? []);
+    let formsData = $state<FormData[]>((ctx.siteMetadata.forms as FormData[]) ?? []);
     let selectedFormId = $state<string | null>(null);
     
-    // Initialize selectedFormId reactively
     $effect(() => {
         if (!selectedFormId && formsData.length > 0) {
             selectedFormId = formsData[0].id;
@@ -53,17 +48,14 @@
     };
 
     const syncToMetadata = () => {
-        context.updateSiteMetadata({ forms: formsData });
+        ctx.updateSiteMetadata({ forms: formsData });
     };
 </script>
 
 <div class="krt-editor__sidebarSection">
     <div class="krt-editor__sidebarSectionHeader">
         <h3>Your Forms</h3>
-        <button 
-            class="krt-editor__ghostButton"
-            onclick={addNewForm}
-        >
+        <button class="krt-editor__ghostButton" onclick={addNewForm}>
             <Plus />
             <span>New</span>
         </button>
@@ -72,10 +64,7 @@
     {#if formsData.length === 0}
         <div class="krt-editor__emptyState">
             <p>No forms yet</p>
-            <button 
-                class="krt-editor__primaryButton"
-                onclick={addNewForm}
-            >
+            <button class="krt-editor__primaryButton" onclick={addNewForm}>
                 <Plus />
                 Create First Form
             </button>
@@ -84,10 +73,7 @@
         <div class="krt-editor__formControls">
             <label class="krt-editor__formLabel">
                 <span>Select Form</span>
-                <select 
-                    class="krt-editor__select"
-                    bind:value={selectedFormId}
-                >
+                <select class="krt-editor__select" bind:value={selectedFormId}>
                     {#each formsData as form}
                         <option value={form.id}>{form.settings.formName}</option>
                     {/each}
