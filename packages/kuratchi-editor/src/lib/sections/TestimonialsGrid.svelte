@@ -63,7 +63,7 @@
         `--krt-testimonial-bg: ${metadata.backgroundColor}; --krt-testimonial-card: ${metadata.cardColor}; --krt-testimonial-text: ${metadata.textColor}; --krt-testimonial-accent: ${metadata.accentColor};`
     );
 
-    const content = $derived({ id, type, eyebrow, heading, testimonials, metadata: { ...metadata } });
+    const content = $derived({ id, type, heading, testimonials, metadata: { ...metadata } });
 
     onMount(() => {
         if (!editable) return;
@@ -107,7 +107,7 @@
         <div id={`metadata-${id}`} style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-testimonials__inner">
             <div class="krt-testimonials__header">
-                <p class="krt-testimonials__eyebrow" contenteditable bind:innerHTML={eyebrow}></p>
+                <p class="krt-testimonials__eyebrow">Social proof</p>
                 <h2 class="krt-testimonials__heading" contenteditable bind:innerHTML={heading}></h2>
             </div>
             <div class="krt-testimonials__gridCards">
@@ -130,7 +130,7 @@
     <section class="krt-testimonials" id={id} data-type={type} style={layoutStyle}>
         <div class="krt-testimonials__inner">
             <div class="krt-testimonials__header">
-                <p class="krt-testimonials__eyebrow">{@html eyebrow}</p>
+                <p class="krt-testimonials__eyebrow">Social proof</p>
                 <h2 class="krt-testimonials__heading">{@html heading}</h2>
             </div>
             <div class="krt-testimonials__gridCards">

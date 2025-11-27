@@ -35,7 +35,6 @@
     let {
         id = crypto.randomUUID(),
         type = 'pricing-plans',
-        eyebrow = $bindable('Pricing'),
         heading = $bindable('Simple plans for every team'),
         subheading = $bindable('Choose the plan that fits your workflow. Upgrade or downgrade anytime.'),
         plans = $bindable<PlanItem[]>([

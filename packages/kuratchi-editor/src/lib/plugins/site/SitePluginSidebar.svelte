@@ -46,12 +46,64 @@
 </div>
 
 <style>
-    .site-plugin { display: flex; flex-direction: column; gap: 24px; }
-    .site-plugin__section { display: flex; flex-direction: column; gap: 12px; }
-    .site-plugin__sectionTitle { margin: 0; padding: 0 4px; font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.05em; }
-    .site-plugin__presetGrid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    .site-plugin__presetButton { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 8px; background: #ffffff; cursor: pointer; transition: all 0.15s ease; text-align: left; }
-    .site-plugin__presetButton:hover { border-color: #d1d5db; background: #f9fafb; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); }
-    .site-plugin__presetButton:active { background: #f3f4f6; }
-    .site-plugin__presetLabel { font-size: 13px; font-weight: 500; color: #374151; padding: 0 4px; }
+    .site-plugin {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 1rem;
+    }
+
+    .site-plugin__section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .site-plugin__sectionTitle {
+        margin: 0;
+        padding: 0 0.25rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-primary, #0f172a);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .site-plugin__presetGrid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .site-plugin__presetButton {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-md, 0.5rem);
+        background: var(--krt-editor-bg, #ffffff);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: left;
+    }
+
+    .site-plugin__presetButton:hover {
+        border-color: var(--krt-editor-accent, #3b82f6);
+        background: var(--krt-editor-surface, #f8fafc);
+        box-shadow: var(--krt-editor-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+        transform: translateY(-1px);
+    }
+
+    .site-plugin__presetButton:active {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+        transform: translateY(0);
+    }
+
+    .site-plugin__presetLabel {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--krt-editor-text-primary, #0f172a);
+        padding: 0 0.25rem;
+    }
 </style>

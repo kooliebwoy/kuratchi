@@ -1,7 +1,5 @@
 <script lang="ts">
-    import { enhance } from '$app/forms';
-    import { Plus, Check, GripVertical, Pencil, CornerDownRight, Trash2 } from '@lucide/svelte';
-    import type { SubmitFunction } from '@sveltejs/kit';
+    import { Plus, Check, GripVertical, Pencil, CornerDownRight, Trash2, X } from '@lucide/svelte';
 
     interface Props {
         menuItems: any[];
@@ -25,14 +23,6 @@
     let showPageSelector = $state(false);
     let activeTab = $state('pages');
     let draggingMenuItemId = $state<string | null>(null);
-
-    const submitHandler: SubmitFunction = () => {
-        formLoading = true;
-        return async ({ update }) => {
-            formLoading = false;
-            await update();
-        }
-    }
 
     function addMenuItem(page: any, isReservedPage: boolean = false) {
         menuItems = [...menuItems, {
@@ -170,193 +160,591 @@
     }
 </script>
 
-<div class="flex items-center justify-between gap-2 mb-2">
-    <button type="button" class="btn btn-xs btn-ghost gap-1" onclick={() => showPageSelector = true}>
-        <Plus class="w-3 h-3" />
-        <span class="text-xs">Add</span>
-    </button>
-    {#if onSave}
-        <button type="button" class="btn btn-xs btn-primary gap-1" disabled={formLoading} onclick={() => onSave({ location: menuLocation, items: menuItems })}>
-            <Check class="w-3 h-3" />
-            <span class="text-xs">Save</span>
+<div class="menu-widget">
+    <div class="menu-widget__header">
+        <button type="button" class="menu-widget__addBtn" onclick={() => showPageSelector = true}>
+            <Plus />
+            <span>Add</span>
         </button>
-    {:else}
-        <form method="POST" action="?/updateSiteMenu" use:enhance={submitHandler} class="contents">
-            <input type="hidden" name="menuLocation" value={menuLocation} />
-            <input type="hidden" name="menuData" value={JSON.stringify(menuItems)} />
-            <button type="submit" class="btn btn-xs btn-primary gap-1" disabled={formLoading}>
-                {#if formLoading}
-                    <span class="loading loading-spinner loading-xs"></span>
-                {:else}
-                    <Check class="w-3 h-3" />
-                {/if}
-                <span class="text-xs">Save</span>
+        {#if onSave}
+            <button type="button" class="menu-widget__saveBtn" disabled={formLoading} onclick={() => onSave({ location: menuLocation, items: menuItems })}>
+                <Check />
+                <span>Save</span>
             </button>
-        </form>
+        {/if}
+    </div>
+
+    <!-- Menu Items -->
+    <div class="menu-widget__list">
+        <ul class="menu-widget__items" ondragover={handleMenuListDragOver} ondrop={handleMenuListDrop}>
+            {#each menuItems as item, i (item.id || item.slug || item.label || i)}
+                <li 
+                    class="menu-widget__item"
+                    class:is-dragging={draggingMenuItemId === item.id}
+                    ondragover={handleMenuItemDragOver}
+                    ondrop={(event) => handleMenuItemDrop(event, item.id)}
+                >
+                    <div class="menu-widget__itemContent">
+                        <div class="menu-widget__itemRow">
+                            <div class="menu-widget__itemMain">
+                                <button 
+                                    type="button" 
+                                    class="menu-widget__dragHandle"
+                                    draggable="true"
+                                    ondragstart={(event) => handleMenuDragStart(event, item.id)}
+                                    ondragend={concludeMenuDrag}
+                                >
+                                    <GripVertical />
+                                </button>
+                                {#if editingItem?.kind === 'item' && editingItem?.id === item.id}
+                                    <input 
+                                        class="menu-widget__input"
+                                        value={item.label}
+                                        onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                        onblur={(e) => updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })}
+                                    />
+                                    <input 
+                                        class="menu-widget__input"
+                                        value={item.slug}
+                                        onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                        onblur={(e) => updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })}
+                                    />
+                                {:else}
+                                    <div class="menu-widget__itemInfo">
+                                        <div class="menu-widget__itemLabel">{item.label}</div>
+                                        <div class="menu-widget__itemSlug">{item.slug}</div>
+                                    </div>
+                                {/if}
+                            </div>
+                            <div class="menu-widget__itemActions">
+                                <button type="button" class="menu-widget__iconBtn" onclick={() => startEditItem(item)} title="Edit">
+                                    <Pencil />
+                                </button>
+                                <button type="button" class="menu-widget__iconBtn" onclick={() => addingSubmenuTo = item} title="Add submenu">
+                                    <CornerDownRight />
+                                </button>
+                                <button type="button" class="menu-widget__iconBtn menu-widget__iconBtn--danger" onclick={() => removeMenuItem(item.id)} title="Delete">
+                                    <Trash2 />
+                                </button>
+                            </div>
+                        </div>
+
+                        {#if item.items?.length > 0}
+                            <ul class="menu-widget__subItems">
+                                {#each item.items as subItem, j (subItem.id || subItem.slug || subItem.label || `${i}-${j}`)}
+                                    <li class="menu-widget__subItem">
+                                        <div class="menu-widget__subItemInfo">
+                                            {#if editingItem?.kind === 'sub' && editingItem?.id === subItem.id}
+                                                <input 
+                                                    class="menu-widget__input menu-widget__input--small"
+                                                    value={subItem.label}
+                                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                                    onblur={(e) => updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })}
+                                                />
+                                                <input 
+                                                    class="menu-widget__input menu-widget__input--small"
+                                                    value={subItem.slug}
+                                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
+                                                    onblur={(e) => updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })}
+                                                />
+                                            {:else}
+                                                <div class="menu-widget__subItemLabel">{subItem.label}</div>
+                                                <div class="menu-widget__subItemSlug">{subItem.slug}</div>
+                                            {/if}
+                                        </div>
+                                        <div class="menu-widget__subItemActions">
+                                            <button type="button" class="menu-widget__iconBtn menu-widget__iconBtn--small" onclick={() => startEditSubItem(item.id, subItem)} title="Edit">
+                                                <Pencil />
+                                            </button>
+                                            <button type="button" class="menu-widget__iconBtn menu-widget__iconBtn--small menu-widget__iconBtn--danger" onclick={() => removeSubMenuItem(item.id, subItem.id)} title="Delete">
+                                                <Trash2 />
+                                            </button>
+                                        </div>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                </li>
+            {/each}
+        </ul>
+    </div>
+
+    <!-- Page Selector Modal -->
+    {#if showPageSelector || addingSubmenuTo}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="menu-widget__modalBackdrop" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="menu-widget__modal" onclick={(e) => e.stopPropagation()}>
+                <div class="menu-widget__modalHeader">
+                    <h3>{addingSubmenuTo ? `Add to ${addingSubmenuTo.label}` : 'Add Page'}</h3>
+                    <button class="menu-widget__iconBtn" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}>
+                        <X />
+                    </button>
+                </div>
+                
+                <div class="menu-widget__tabs">
+                    <button 
+                        class="menu-widget__tab"
+                        class:is-active={activeTab === 'pages'}
+                        onclick={() => activeTab = 'pages'}
+                    >
+                        Pages
+                    </button>
+                    <button 
+                        class="menu-widget__tab"
+                        class:is-active={activeTab === 'reserved'}
+                        onclick={() => activeTab = 'reserved'}
+                    >
+                        Reserved
+                    </button>
+                </div>
+
+                <div class="menu-widget__pageList">
+                    {#if activeTab === 'pages'}
+                        {#each pages as page}
+                            <div class="menu-widget__pageItem">
+                                <div class="menu-widget__pageInfo">
+                                    <div class="menu-widget__pageTitle">{page.title}</div>
+                                    <div class="menu-widget__pageSlug">{page.slug}</div>
+                                </div>
+                                <button 
+                                    type="button" 
+                                    class="menu-widget__addPageBtn" 
+                                    onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page) : addMenuItem(page)}
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        {/each}
+                    {:else}
+                        {#each reservedPages as page}
+                            <div class="menu-widget__pageItem">
+                                <div class="menu-widget__pageInfo">
+                                    <div class="menu-widget__pageTitle">{page.name}</div>
+                                    <div class="menu-widget__pageSlug">{page.path}</div>
+                                </div>
+                                <button 
+                                    type="button" 
+                                    class="menu-widget__addPageBtn" 
+                                    onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page, true) : addMenuItem(page, true)}
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        {/each}
+                    {/if}
+                </div>
+            </div>
+        </div>
     {/if}
 </div>
 
-<!-- Menu Items -->
-<div class="space-y-1">
-    <ul class="space-y-1" ondragover={handleMenuListDragOver} ondrop={handleMenuListDrop}>
-        {#each menuItems as item, i (item.id || item.slug || item.label || i)}
-            <li 
-                class="menu-item rounded-lg border border-base-300 bg-base-100 hover:bg-base-100/80 transition-colors overflow-hidden"
-                class:opacity-60={draggingMenuItemId === item.id}
-                ondragover={handleMenuItemDragOver}
-                ondrop={(event) => handleMenuItemDrop(event, item.id)}
-            >
-                <div class="p-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                            <button 
-                                type="button" 
-                                class="drag-handle btn btn-xs btn-ghost btn-square touch-none flex-shrink-0"
-                                draggable="true"
-                                ondragstart={(event) => handleMenuDragStart(event, item.id)}
-                                ondragend={concludeMenuDrag}
-                            >
-                                <GripVertical class="w-3 h-3" />
-                            </button>
-                            {#if editingItem?.kind === 'item' && editingItem?.id === item.id}
-                                <input 
-                                    class="input input-xs input-bordered flex-1 min-w-0"
-                                    value={item.label}
-                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
-                                    onblur={(e) => updateMenuItem(item, { label: (e.currentTarget as HTMLInputElement).value })}
-                                />
-                                <input 
-                                    class="input input-xs input-bordered flex-1 min-w-0"
-                                    value={item.slug}
-                                    onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
-                                    onblur={(e) => updateMenuItem(item, { slug: (e.currentTarget as HTMLInputElement).value })}
-                                />
-                            {:else}
-                                <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-medium truncate">{item.label}</div>
-                                    <div class="text-xs text-base-content/50 truncate">{item.slug}</div>
-                                </div>
-                            {/if}
-                        </div>
-                        <div class="flex gap-0.5 flex-shrink-0">
-                            <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => startEditItem(item)} title="Edit">
-                                <Pencil class="w-3 h-3" />
-                            </button>
-                            <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => addingSubmenuTo = item} title="Add submenu">
-                                <CornerDownRight class="w-3 h-3" />
-                            </button>
-                            <button type="button" class="btn btn-xs btn-ghost btn-square text-error" onclick={() => removeMenuItem(item.id)} title="Delete">
-                                <Trash2 class="w-3 h-3" />
-                            </button>
-                        </div>
-                    </div>
+<style>
+    .menu-widget {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
 
-                    {#if item.items?.length > 0}
-                        <ul class="mt-1 space-y-0.5 pl-5 border-l border-base-300">
-                            {#each item.items as subItem, j (subItem.id || subItem.slug || subItem.label || `${i}-${j}`)}
-                                <li class="flex items-center justify-between gap-2 p-1.5 rounded bg-base-200/50 hover:bg-base-200 transition-colors text-xs">
-                                    <div class="flex-1 min-w-0">
-                                        {#if editingItem?.kind === 'sub' && editingItem?.id === subItem.id}
-                                            <input 
-                                                class="input input-xs input-bordered w-full mb-1"
-                                                value={subItem.label}
-                                                onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })) : null)}
-                                                onblur={(e) => updateSubMenuItem(item.id, subItem, { label: (e.currentTarget as HTMLInputElement).value })}
-                                            />
-                                            <input 
-                                                class="input input-xs input-bordered w-full"
-                                                value={subItem.slug}
-                                                onkeydown={(e) => e.key === 'Escape' ? stopEditing() : (e.key === 'Enter' ? (updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })) : null)}
-                                                onblur={(e) => updateSubMenuItem(item.id, subItem, { slug: (e.currentTarget as HTMLInputElement).value })}
-                                            />
-                                        {:else}
-                                            <div class="font-medium truncate">{subItem.label}</div>
-                                            <div class="text-base-content/50 truncate">{subItem.slug}</div>
-                                        {/if}
-                                    </div>
-                                    <div class="flex gap-0.5 flex-shrink-0">
-                                        <button type="button" class="btn btn-xs btn-ghost btn-square" onclick={() => startEditSubItem(item.id, subItem)} title="Edit">
-                                            <Pencil class="w-2.5 h-2.5" />
-                                        </button>
-                                        <button type="button" class="btn btn-xs btn-ghost btn-square text-error" onclick={() => removeSubMenuItem(item.id, subItem.id)} title="Delete">
-                                            <Trash2 class="w-2.5 h-2.5" />
-                                        </button>
-                                    </div>
-                                </li>
-                            {/each}
-                        </ul>
-                    {/if}
-                </div>
-            </li>
-        {/each}
-    </ul>
-</div>
+    .menu-widget__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
 
-<!-- Page Selector Modal -->
-{#if showPageSelector || addingSubmenuTo}
-    <div class="modal modal-open">
-        <div class="modal-box max-w-sm">
-            <h3 class="font-semibold text-base mb-3">
-                {addingSubmenuTo ? `Add to ${addingSubmenuTo.label}` : 'Add Page'}
-            </h3>
-            
-            <div class="tabs tabs-boxed tabs-sm mb-3">
-                <button 
-                    class="tab {activeTab === 'pages' ? 'tab-active' : ''}" 
-                    onclick={() => activeTab = 'pages'}
-                >
-                    Pages
-                </button>
-                <button 
-                    class="tab {activeTab === 'reserved' ? 'tab-active' : ''}" 
-                    onclick={() => activeTab = 'reserved'}
-                >
-                    Reserved
-                </button>
-            </div>
+    .menu-widget__addBtn,
+    .menu-widget__saveBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.375rem 0.625rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: inherit;
+    }
 
-            <div class="space-y-1 max-h-72 overflow-y-auto pr-2">
-                {#if activeTab === 'pages'}
-                    {#each pages as page}
-                        <div class="flex justify-between items-center p-2 rounded hover:bg-base-200 transition-colors text-sm">
-                            <div class="flex-1 min-w-0">
-                                <div class="font-medium truncate">{page.title}</div>
-                                <div class="text-xs text-base-content/50 truncate">{page.slug}</div>
-                            </div>
-                            <button 
-                                type="button" 
-                                class="btn btn-xs btn-primary ml-2 flex-shrink-0" 
-                                onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page) : addMenuItem(page)}
-                            >
-                                Add
-                            </button>
-                        </div>
-                    {/each}
-                {:else}
-                    {#each reservedPages as page}
-                        <div class="flex justify-between items-center p-2 rounded hover:bg-base-200 transition-colors text-sm">
-                            <div class="flex-1 min-w-0">
-                                <div class="font-medium truncate">{page.name}</div>
-                                <div class="text-xs text-base-content/50 truncate">{page.path}</div>
-                            </div>
-                            <button 
-                                type="button" 
-                                class="btn btn-xs btn-primary ml-2 flex-shrink-0" 
-                                onclick={() => addingSubmenuTo ? addSubMenuItem(addingSubmenuTo.id, page, true) : addMenuItem(page, true)}
-                            >
-                                Add
-                            </button>
-                        </div>
-                    {/each}
-                {/if}
-            </div>
+    .menu-widget__addBtn {
+        background: transparent;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        color: var(--krt-editor-text-secondary, #64748b);
+    }
 
-            <div class="modal-action mt-4">
-                <button type="button" class="btn btn-sm" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}>
-                    Close
-                </button>
-            </div>
-        </div>
-        <div class="modal-backdrop" onclick={() => { showPageSelector = false; addingSubmenuTo = null; }}></div>
-    </div>
-{/if}
+    .menu-widget__addBtn:hover {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+        color: var(--krt-editor-text-primary, #0f172a);
+        border-color: var(--krt-editor-accent, #3b82f6);
+    }
+
+    .menu-widget__saveBtn {
+        background: var(--krt-editor-accent, #3b82f6);
+        border: 1px solid var(--krt-editor-accent, #3b82f6);
+        color: #ffffff;
+    }
+
+    .menu-widget__saveBtn:hover:not(:disabled) {
+        background: var(--krt-editor-accent-hover, #2563eb);
+        border-color: var(--krt-editor-accent-hover, #2563eb);
+    }
+
+    .menu-widget__saveBtn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .menu-widget__addBtn :global(svg),
+    .menu-widget__saveBtn :global(svg) {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    .menu-widget__list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .menu-widget__items {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .menu-widget__item {
+        background: var(--krt-editor-bg, #ffffff);
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-md, 0.5rem);
+        overflow: hidden;
+        transition: all 0.15s ease;
+    }
+
+    .menu-widget__item:hover {
+        border-color: var(--krt-editor-accent, #3b82f6);
+        box-shadow: var(--krt-editor-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+    }
+
+    .menu-widget__item.is-dragging {
+        opacity: 0.5;
+    }
+
+    .menu-widget__itemContent {
+        padding: 0.5rem;
+    }
+
+    .menu-widget__itemRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .menu-widget__itemMain {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .menu-widget__dragHandle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem;
+        background: transparent;
+        border: none;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        cursor: grab;
+        touch-action: none;
+        flex-shrink: 0;
+    }
+
+    .menu-widget__dragHandle :global(svg) {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    .menu-widget__input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.375rem 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--krt-editor-text-primary, #0f172a);
+        background: var(--krt-editor-bg, #ffffff);
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        font-family: inherit;
+    }
+
+    .menu-widget__input:focus {
+        outline: none;
+        border-color: var(--krt-editor-accent, #3b82f6);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .menu-widget__input--small {
+        padding: 0.25rem 0.375rem;
+        font-size: 0.75rem;
+    }
+
+    .menu-widget__itemInfo {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .menu-widget__itemLabel {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--krt-editor-text-primary, #0f172a);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__itemSlug {
+        font-size: 0.75rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__itemActions {
+        display: flex;
+        gap: 0.125rem;
+        flex-shrink: 0;
+    }
+
+    .menu-widget__iconBtn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.25rem;
+        background: transparent;
+        border: none;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        color: var(--krt-editor-text-secondary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .menu-widget__iconBtn:hover {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .menu-widget__iconBtn--danger {
+        color: #dc2626;
+    }
+
+    .menu-widget__iconBtn--danger:hover {
+        background: rgba(220, 38, 38, 0.1);
+        color: #dc2626;
+    }
+
+    .menu-widget__iconBtn :global(svg) {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    .menu-widget__iconBtn--small :global(svg) {
+        width: 0.625rem;
+        height: 0.625rem;
+    }
+
+    .menu-widget__subItems {
+        list-style: none;
+        margin: 0.25rem 0 0 0;
+        padding: 0 0 0 1.25rem;
+        border-left: 1px solid var(--krt-editor-border, #e2e8f0);
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+
+    .menu-widget__subItem {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.375rem 0.5rem;
+        background: var(--krt-editor-surface, #f8fafc);
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        transition: background 0.15s ease;
+    }
+
+    .menu-widget__subItem:hover {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+    }
+
+    .menu-widget__subItemInfo {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.0625rem;
+    }
+
+    .menu-widget__subItemLabel {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--krt-editor-text-primary, #0f172a);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__subItemSlug {
+        font-size: 0.6875rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__subItemActions {
+        display: flex;
+        gap: 0.0625rem;
+        flex-shrink: 0;
+    }
+
+    /* Modal Styles */
+    .menu-widget__modalBackdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .menu-widget__modal {
+        background: var(--krt-editor-bg, #ffffff);
+        border-radius: var(--krt-editor-radius-lg, 0.75rem);
+        box-shadow: var(--krt-editor-shadow-lg, 0 10px 15px -3px rgb(0 0 0 / 0.1));
+        max-width: 24rem;
+        width: 100%;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .menu-widget__modalHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1rem 0.75rem;
+        border-bottom: 1px solid var(--krt-editor-border, #e2e8f0);
+    }
+
+    .menu-widget__modalHeader h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .menu-widget__tabs {
+        display: flex;
+        gap: 0.25rem;
+        padding: 0.75rem 1rem 0;
+        background: var(--krt-editor-surface, #f8fafc);
+    }
+
+    .menu-widget__tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--krt-editor-text-secondary, #64748b);
+        background: transparent;
+        border: none;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: inherit;
+    }
+
+    .menu-widget__tab:hover {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .menu-widget__tab.is-active {
+        background: var(--krt-editor-bg, #ffffff);
+        color: var(--krt-editor-accent, #3b82f6);
+        box-shadow: var(--krt-editor-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+    }
+
+    .menu-widget__pageList {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.75rem 1rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .menu-widget__pageItem {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        transition: background 0.15s ease;
+    }
+
+    .menu-widget__pageItem:hover {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+    }
+
+    .menu-widget__pageInfo {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .menu-widget__pageTitle {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--krt-editor-text-primary, #0f172a);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__pageSlug {
+        font-size: 0.75rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .menu-widget__addPageBtn {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #ffffff;
+        background: var(--krt-editor-accent, #3b82f6);
+        border: none;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+        font-family: inherit;
+    }
+
+    .menu-widget__addPageBtn:hover {
+        background: var(--krt-editor-accent-hover, #2563eb);
+    }
+</style>

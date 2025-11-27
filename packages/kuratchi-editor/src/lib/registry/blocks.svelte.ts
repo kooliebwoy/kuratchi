@@ -11,8 +11,10 @@ import ImageDifference from '../blocks/ImageDifference.svelte';
 import Carousel from '../blocks/Carousel.svelte';
 import HoverCard from '../blocks/HoverCard.svelte';
 import Modal from '../blocks/Modal.svelte';
+import FAQ from '../blocks/FAQ.svelte';
+import Stats from '../blocks/Stats.svelte';
 import type { Component } from 'svelte';
-import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, Images, ListChecks, Minus, MousePointerClick, PanelsTopLeft, Sparkles, Square } from '@lucide/svelte';
+import { AlignLeft, BarChart3, CheckSquare, Columns2, Grid2x2, Heading1, HelpCircle, Image as ImageIcon, Images, ListChecks, Minus, MousePointerClick, PanelsTopLeft, Sparkles, Square } from '@lucide/svelte';
 
 export interface BlockDefinition {
 	name: string;
@@ -101,6 +103,13 @@ export const blocks: BlockDefinition[] = [
                 component: Carousel
         },
         {
+                name: 'Stats',
+                type: 'stats',
+                icon: BarChart3,
+                description: 'Summarize key metrics with short descriptions',
+                component: Stats
+        },
+        {
                 name: '3D Hover Card',
                 type: 'hover-card',
                 icon: Sparkles,
@@ -113,6 +122,13 @@ export const blocks: BlockDefinition[] = [
                 icon: Square,
                 description: 'Popup modal with forms, images, or custom content',
                 component: Modal
+        },
+        {
+                name: 'FAQ',
+                type: 'faq',
+                icon: HelpCircle,
+                description: 'Accordion for common questions and answers',
+                component: FAQ
         }
 ];
 
