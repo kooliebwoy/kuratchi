@@ -7,14 +7,8 @@ import ImageBlock from '../blocks/Image.svelte';
 import ListsBlock from '../blocks/Lists.svelte';
 import GridBlock from '../blocks/Grid.svelte';
 import TwoColumnBlock from '../blocks/TwoColumn.svelte';
-import ImageDifference from '../blocks/ImageDifference.svelte';
-import Carousel from '../blocks/Carousel.svelte';
-import HoverCard from '../blocks/HoverCard.svelte';
-import Modal from '../blocks/Modal.svelte';
-import FAQ from '../blocks/FAQ.svelte';
-import Stats from '../blocks/Stats.svelte';
 import type { Component } from 'svelte';
-import { AlignLeft, BarChart3, CheckSquare, Columns2, Grid2x2, Heading1, HelpCircle, Image as ImageIcon, Images, ListChecks, Minus, MousePointerClick, PanelsTopLeft, Sparkles, Square } from '@lucide/svelte';
+import { AlignLeft, CheckSquare, Columns2, Grid2x2, Heading1, Image as ImageIcon, ListChecks, Minus, MousePointerClick } from '@lucide/svelte';
 
 export interface BlockDefinition {
 	name: string;
@@ -22,6 +16,7 @@ export interface BlockDefinition {
 	icon: Component<any>;
 	description: string;
 	component: Component<any>;
+	showInPalette?: boolean;
 }
 
 export const blocks: BlockDefinition[] = [
@@ -87,49 +82,7 @@ export const blocks: BlockDefinition[] = [
 		icon: Columns2,
 		description: 'Split content into two columns',
 		component: TwoColumnBlock
-	},
-	{
-		name: 'Image Difference',
-		type: 'image-difference',
-		icon: PanelsTopLeft,
-		description: 'Compare two images with a slider',
-		component: ImageDifference
-	},
-        {
-                name: 'Carousel',
-                type: 'carousel',
-                icon: Images,
-                description: 'Full-width carousel with navigation controls',
-                component: Carousel
-        },
-        {
-                name: 'Stats',
-                type: 'stats',
-                icon: BarChart3,
-                description: 'Summarize key metrics with short descriptions',
-                component: Stats
-        },
-        {
-                name: '3D Hover Card',
-                type: 'hover-card',
-                icon: Sparkles,
-                description: '3D hover image card with CTA',
-                component: HoverCard
-        },
-        {
-                name: 'Modal',
-                type: 'modal',
-                icon: Square,
-                description: 'Popup modal with forms, images, or custom content',
-                component: Modal
-        },
-        {
-                name: 'FAQ',
-                type: 'faq',
-                icon: HelpCircle,
-                description: 'Accordion for common questions and answers',
-                component: FAQ
-        }
+	}
 ];
 
 export const blockMap = new Map(blocks.map((definition) => [definition.type, definition]));

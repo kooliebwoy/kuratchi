@@ -2,7 +2,7 @@
     import { Pencil } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
-    import { IconPicker } from '../plugins/index.js';
+    import { IconPicker } from '../widgets/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Home, Search, Menu } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';

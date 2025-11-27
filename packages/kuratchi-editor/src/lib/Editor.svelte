@@ -2,7 +2,7 @@
     import { onMount, onDestroy, tick } from "svelte";
     import type { EditorOptions, EditorState, PageData, SiteRegionState } from "./types.js";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
-    import { blocks, getBlock, getEnabledPlugins } from "./registry";
+    import { blocks, getEnabledPlugins } from "./registry";
     import { sections, getSection } from "./registry/sections.svelte";
     import { headers } from "./registry/headers.svelte";
     import { footers } from "./registry/footers.svelte";
@@ -13,7 +13,6 @@
     import SectionPreview from "./sections/SectionPreview.svelte";
     import { getAllThemes, getThemeTemplate, DEFAULT_THEME_ID } from "./themes";
     import {
-        Box,
         ChevronLeft,
         ChevronRight,
         Monitor,
@@ -68,12 +67,11 @@ let {
 
     // UI state
     let sidebarOpen = $state(false);
-    let activeTab = $state('blocks');
+    let activeTab = $state('sections');
     let browserMockup: HTMLDivElement;
     let activeSize = $state(initialDeviceSize);
     let headerElement = $state<HTMLElement | undefined>(undefined);
     let footerElement = $state<HTMLElement | undefined>(undefined);
-    const paletteBlocks = blocks.filter((block) => (block as any).showInPalette !== false);
     const themeOptions = getAllThemes();
     let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
 
@@ -523,13 +521,6 @@ let {
         <!-- Left Icon Bar -->
         <div class="krt-editor__rail">
             <button
-                class={`krt-editor__railButton ${activeTab === 'blocks' ? 'is-active' : ''}`}
-                onclick={() => toggleSidebar('blocks')}
-                title="Blocks"
-            >
-                <Box />
-            </button>
-            <button
                 class={`krt-editor__railButton ${activeTab === 'sections' ? 'is-active' : ''}`}
                 onclick={() => toggleSidebar('sections')}
                 title="Sections"
@@ -551,8 +542,7 @@ let {
         <div class="krt-editor__sidebar" data-open={sidebarOpen}>
             <div class="krt-editor__sidebarHeader">
                 <h2>
-                    {activeTab === 'blocks' ? 'Blocks' :
-                     activeTab === 'sections' ? 'Sections' :
+                    {activeTab === 'sections' ? 'Sections' :
                      activePlugins.find(p => p.id === activeTab)?.name ?? 'Page Builder'}
                 </h2>
                 <button
@@ -564,23 +554,7 @@ let {
             </div>
 
             <div class="krt-editor__sidebarBody" data-open={sidebarOpen}>
-                {#if activeTab === 'blocks'}
-                        {#if editor}
-                            <div class="krt-editor__paletteList">
-                                {#each paletteBlocks as block}
-                                    <button
-                                        class="krt-editor__sidebarItem"
-                                        onclick={() => addBlockToContent(block.type)}
-                                    >
-                                        <block.icon />
-                                        <span>{block.name}</span>
-                                    </button>
-                                {/each}
-                            </div>
-                        {:else}
-                            <div class="krt-editor__loadingMessage">Editor loading...</div>
-                        {/if}
-                    {:else if activeTab === 'sections'}
+                {#if activeTab === 'sections'}
                         {#if editor}
                             <div class="krt-editor__sidebarSection">
                                 {#each sections as section}
@@ -721,7 +695,7 @@ let {
     .krt-editor {
         --krt-editor-rail-width: 4.25rem;
         --krt-editor-sidebar-width: 24rem;
-        --krt-editor-inspector-width: 20rem;
+        --krt-editor-inspector-width: 24rem;
 
         /* Unified color palette */
         --krt-editor-bg: #ffffff;
@@ -1032,10 +1006,9 @@ let {
     }
 
     .krt-editor__themeButton {
-        border: 1px solid var(--krt-color-border-subtle);
-        border-radius: var(--krt-radius-md);
-        background: #fff;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        border: 1px solid var(--krt-editor-border);
+        border-radius: var(--krt-editor-radius-md);
+        background: var(--krt-editor-surface);
         padding: 0.75rem;
         text-align: left;
         display: flex;
@@ -1046,15 +1019,16 @@ let {
     }
 
     .krt-editor__themeButton:is(:hover, :focus-visible) {
-        border-color: var(--krt-color-primary);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
+        border-color: var(--krt-editor-accent);
+        background: var(--krt-editor-surface-hover);
+        transform: translateY(-1px);
+        box-shadow: var(--krt-editor-shadow-sm);
     }
 
     .krt-editor__themeButton.is-active {
-        border: 2px solid var(--krt-color-primary);
-        box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
-        background: rgba(99, 102, 241, 0.02);
+        border-color: var(--krt-editor-accent);
+        background: rgba(59, 130, 246, 0.05);
+        box-shadow: 0 0 0 1px var(--krt-editor-accent);
     }
 
     .krt-editor__themeDetails {
@@ -1066,13 +1040,13 @@ let {
 
     .krt-editor__themeDetails > div {
         font-weight: 600;
-        color: rgba(17, 24, 39, 0.9);
+        color: var(--krt-editor-text-primary);
     }
 
     .krt-editor__themeButton p {
         margin: 0;
         font-size: 0.8rem;
-        color: rgba(17, 24, 39, 0.6);
+        color: var(--krt-editor-text-secondary);
     }
 
     .krt-editor__settingsPanel {
@@ -1351,11 +1325,14 @@ let {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        font-size: 1rem;
+        font-size: 0.875rem;
         font-weight: 700;
         color: var(--krt-editor-text-primary);
         letter-spacing: -0.025em;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .krt-editor__inspectorHeader > div div {

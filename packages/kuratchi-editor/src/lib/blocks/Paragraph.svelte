@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
 	import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
-	import EditorToolbar from "../plugins/EditorToolbar.svelte";
+	import EditorToolbar from "../widgets/EditorToolbar.svelte";
 	import { BlockActions } from "../utils/index.js";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
 

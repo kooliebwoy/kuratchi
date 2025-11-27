@@ -1,6 +1,6 @@
 <script lang="ts">
     import { handleEmojis } from "../utils/emojis.js";
-    import EditorToolbar from "../plugins/EditorToolbar.svelte";
+    import EditorToolbar from "../widgets/EditorToolbar.svelte";
     import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
     import { BlockActions } from "../utils/index.js";

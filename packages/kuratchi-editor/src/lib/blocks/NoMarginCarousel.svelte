@@ -2,7 +2,7 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { Pencil } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { ImagePicker } from '../plugins/index.js';
+    import { ImagePicker } from '../widgets/index.js';
     import { BlockActions, SideActions } from '../utils/index.js';
 
     interface CarouselImage {

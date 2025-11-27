@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
-    import { ImagePicker } from '../plugins/index.js';
+    import { ImagePicker } from '../widgets/index.js';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     interface CardImage {

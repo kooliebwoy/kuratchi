@@ -165,15 +165,15 @@
             <form class="krt-contact__form" aria-label="Contact form">
                 <label>
                     <span contenteditable bind:innerHTML={nameLabel}></span>
-                    <input type="text" bind:placeholder={namePlaceholder} />
+                    <input type="text" placeholder={namePlaceholder} oninput={(e) => namePlaceholder = e.currentTarget.placeholder} />
                 </label>
                 <label>
                     <span contenteditable bind:innerHTML={emailLabel}></span>
-                    <input type="email" bind:placeholder={emailPlaceholder} />
+                    <input type="email" placeholder={emailPlaceholder} oninput={(e) => emailPlaceholder = e.currentTarget.placeholder} />
                 </label>
                 <label>
                     <span contenteditable bind:innerHTML={projectLabel}></span>
-                    <textarea rows="3" bind:placeholder={projectPlaceholder}></textarea>
+                    <textarea rows="3" placeholder={projectPlaceholder}></textarea>
                 </label>
                 <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>
                     <span contenteditable bind:innerHTML={submitLabel}></span>

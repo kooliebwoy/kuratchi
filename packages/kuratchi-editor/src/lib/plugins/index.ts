@@ -30,6 +30,4 @@ export { formsPlugin } from './forms';
 
 // Shared components
 export { default as MenuWidget } from './MenuWidget.svelte';
-export { default as ImagePicker } from './ImagePicker.svelte';
-export { default as IconPicker } from './IconPicker.svelte';
 export { default as FormBuilder } from './FormBuilder.svelte';

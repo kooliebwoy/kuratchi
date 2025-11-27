@@ -2,7 +2,7 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from "../utils/index.js";
-    import { IconPicker } from "../plugins/index.js";
+    import { IconPicker } from "../widgets/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
 
     interface IconItem {

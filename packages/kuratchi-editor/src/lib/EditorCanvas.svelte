@@ -4,7 +4,8 @@
     import type { BlockDefinition } from "./registry/blocks.svelte";
     import { getHeader } from "./registry/headers.svelte";
     import { getFooter } from "./registry/footers.svelte";
-    import { getSection } from "./registry/sections.svelte";
+    import { sections, getSection } from "./registry/sections.svelte";
+    import type { SectionDefinition } from "./registry/sections.svelte";
     import { addComponentToEditor, saveEditorBlocks, saveEditorFooterBlocks, saveEditorHeaderBlocks, setupEditorDragAndDrop, setupEditorObserver } from "./utils/editor.svelte";
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
@@ -49,22 +50,15 @@
         navigation
     }: Props = $props();
     
-    let blockSearchTerm = $state('');
     let inlineBlockSearchInput: HTMLInputElement;
     let inlineBlockSearch = $state('');
-    let inlineFilteredBlocks = $state([]);
+    let inlineFilteredItems = $state<Array<BlockDefinition>>([]);
     let inlineDropdown = $state({ open: false });
     // Flag to prevent observer feedback loop during programmatic updates
     let isProgrammaticUpdate = false;
-    const paletteBlocks = blocks.filter((block) => block.showInPalette !== false);
-
-    const filteredBlocks = $derived(
-        blockSearchTerm === ""
-        ? paletteBlocks
-        : paletteBlocks.filter((block) =>
-            block.name.toLowerCase().includes(blockSearchTerm.toLowerCase())
-        )
-    );
+    
+    // Only show blocks in the inline search (not sections)
+    const allBlocks: Array<BlockDefinition> = blocks.filter((block) => block.showInPalette !== false);
 
     // Deduplicate content by ID to prevent "each_key_duplicate" errors
     // This handles race conditions where the same block might appear twice
@@ -142,7 +136,6 @@
         content = [...content, newBlock];
         onContentChange?.(content);
         
-        blockSearchTerm = '';
         inlineDropdown.open = false;
         inlineBlockSearch = '';
         
@@ -162,30 +155,20 @@
         return getSection(type) || getBlock(type);
     };
 
-    const insertLayoutPreset = (presetId: string) => {
-        const preset = layoutPresets.find((candidate) => candidate.id === presetId);
-        if (!preset) return;
-        preset.create().forEach((snapshot) => {
-            const definition = getBlock(snapshot.type);
-            if (!definition) return;
-            addComponent(definition, { ...snapshot });
-        });
-    };
-
     const handleInlineSearch = () => {
         inlineDropdown.open = false;
         const inputText = inlineBlockSearch;
 
         if (inputText === '' || !inputText.startsWith('/')) {
             inlineBlockSearch = '';
-            inlineBlockSearchInput.placeholder = 'Type / to browse blocks';
+            inlineBlockSearchInput.placeholder = 'Type / to add blocks or sections';
         }
 
         if (inputText.startsWith('/')) {
             inlineDropdown.open = true;
-            const blockName = inputText.slice(1).trim();
-            inlineFilteredBlocks = filteredBlocks.filter((block) =>
-                block.name.toLowerCase().includes(blockName.toLowerCase())
+            const searchTerm = inputText.slice(1).trim().toLowerCase();
+            inlineFilteredItems = allBlocks.filter((item) =>
+                item.name.toLowerCase().includes(searchTerm)
             );
         }
     }
@@ -304,7 +287,7 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
                 use:regionObserver={{ enabled: editable, onUpdate: updateEditorData }}
             >
                 {#each deduplicatedContent as block, index (block.id ?? `fallback-${block.type}-${index}`)}
-                    {@const editorBlock = loadEditorBlock(block.type)}
+                    {@const editorBlock = loadEditorBlock(block.type as string)}
                     {#if editorBlock}
                         <div class="krt-editorCanvas__block editor-block">
                             <editorBlock.component {...block} editable={editable} />
@@ -320,14 +303,14 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
                         bind:value={inlineBlockSearch} 
                         bind:this={inlineBlockSearchInput} 
                         oninput={handleInlineSearch} 
-                        placeholder="Type / to browse blocks"
+                        placeholder="Type / to add blocks or sections"
                     />
-                    {#if inlineDropdown?.open && inlineFilteredBlocks.length > 0}
+                    {#if inlineDropdown?.open && inlineFilteredItems.length > 0}
                         <div class="krt-editorCanvas__inlineDropdown">
-                            {#each inlineFilteredBlocks as component}
-                                <button class="krt-editorCanvas__inlineButton" onclick={() => addComponent(component)}>
-                                    <component.icon />
-                                    <span>{component.name}</span>
+                            {#each inlineFilteredItems as item}
+                                <button class="krt-editorCanvas__inlineButton" onclick={() => addComponent(item)}>
+                                    <item.icon />
+                                    <span>{item.name}</span>
                                 </button>
                             {/each}
                         </div>
@@ -456,108 +439,6 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         position: relative;
     }
 
-    .krt-editorCanvas__addBlock:hover .krt-editorCanvas__addBlock__buttons {
-        opacity: 1;
-    }
-
-    .krt-editorCanvas__addBlock__buttons {
-        position: absolute;
-        left: -3.5rem;
-        top: 50%;
-        transform: translateY(-50%);
-        opacity: 0;
-        transition: opacity 150ms ease;
-        display: flex;
-        flex-direction: row;
-        gap: 0.25rem;
-        z-index: 10;
-    }
-
-    .krt-editorCanvas__iconButton {
-        width: 1.75rem;
-        height: 1.75rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 0.375rem;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        background: white;
-        cursor: pointer;
-        transition: all 150ms ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-    }
-
-    .krt-editorCanvas__iconButton:is(:hover, :focus-visible) {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.3);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-        transform: translateY(-2px);
-    }
-
-    .krt-editorCanvas__iconButton :global(svg) {
-        width: 1rem;
-        height: 1rem;
-    }
-
-    .krt-editorCanvas__blockMenu {
-        list-style: none;
-        padding: 0.5rem;
-        margin: 0;
-        display: none;
-        background: rgba(0, 0, 0, 0.05);
-        border-radius: 0.5rem;
-        min-width: 12.5rem;
-        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    }
-
-    .krt-editorCanvas__blockMenu:popover-open {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .krt-editorCanvas__searchLabel {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        width: 11rem;
-        height: 2rem;
-        border-radius: 0.375rem;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        padding: 0 0.5rem;
-        background: white;
-    }
-
-    .krt-editorCanvas__searchInput {
-        border: none;
-        outline: none;
-        background: transparent;
-        width: 100%;
-        font-size: 0.75rem;
-    }
-
-    .krt-editorCanvas__menuButton {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        width: 100%;
-        padding: 0.5rem;
-        background: transparent;
-        border: none;
-        border-radius: 0.375rem;
-        cursor: pointer;
-        transition: background 150ms ease;
-        text-align: left;
-    }
-
-    .krt-editorCanvas__menuButton:hover {
-        background: rgba(0, 0, 0, 0.05);
-    }
-
-    .krt-editorCanvas__menuButton :global(svg) {
-        width: 1.125rem;
-        height: 1.125rem;
-    }
-
     .krt-editorCanvas__inlineSearch {
         position: relative;
         width: 100%;
@@ -583,15 +464,17 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
 
     .krt-editorCanvas__inlineDropdown {
         position: absolute;
-        top: 100%;
+        bottom: 100%;
         left: 0;
-        margin-top: 0.75rem;
+        margin-bottom: 0.5rem;
         background: white;
         border-radius: 0.5rem;
         width: 14rem;
+        max-height: 20rem;
+        overflow-y: auto;
         padding: 0.5rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-        z-index: 50;
+        box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        z-index: 9999;
         border: 1px solid rgba(0, 0, 0, 0.1);
         display: flex;
         flex-direction: column;
@@ -624,102 +507,5 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         width: 1.125rem;
         height: 1.125rem;
         flex-shrink: 0;
-    }
-
-    .krt-editorCanvas__modal {
-        border: none;
-        padding: 0;
-        background: transparent;
-        max-width: 100vw;
-        max-height: 100vh;
-    }
-
-    .krt-editorCanvas__modal::backdrop {
-        background: rgba(0, 0, 0, 0.5);
-    }
-
-    .krt-editorCanvas__modalBox {
-        width: 91.666667%;
-        max-width: 64rem;
-        background: white;
-        border-radius: 0.5rem;
-        padding: 1.5rem;
-        position: relative;
-    }
-
-    .krt-editorCanvas__closeButton {
-        position: absolute;
-        right: 0.5rem;
-        top: 0.5rem;
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 150ms ease;
-    }
-
-    .krt-editorCanvas__closeButton:hover {
-        background: rgba(0, 0, 0, 0.05);
-    }
-
-    .krt-editorCanvas__modalTitle {
-        font-size: 1.5rem;
-        font-weight: bold;
-        margin-bottom: 1rem;
-    }
-
-    .krt-editorCanvas__layoutGrid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1rem;
-        width: 100%;
-        overflow-y: scroll;
-        max-height: 60vh;
-    }
-
-    .krt-editorCanvas__layoutCard {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        background: white;
-        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        text-align: left;
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        border: 2px solid transparent;
-        transition: all 150ms ease;
-    }
-
-    .krt-editorCanvas__layoutCard:hover {
-        border-color: #6366f1;
-    }
-
-    .krt-editorCanvas__layoutName {
-        width: 100%;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-
-    .krt-editorCanvas__modalBackdrop {
-        position: fixed;
-        inset: 0;
-        background: transparent;
-    }
-
-    .krt-editorCanvas__modalBackdrop button {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-        background: transparent;
-        cursor: default;
-        color: transparent;
     }
 </style>

@@ -141,20 +141,22 @@
     }
 </script>
 
-<div class="flex flex-col gap-4">
-    <button class="btn btn-neutral btn-sm" type="button" onclick={() => {
+<div class="krt-imagePicker">
+    <button class="krt-imagePicker__button" type="button" onclick={() => {
         isDialogOpen = true;
         imageDialog?.showModal();
     }}>
-        {mode === 'multiple' 
-            ? (selectedImages.length > 0 ? `Change Images (${selectedImages.length})` : 'Select Images')
-            : (selectedImage.url ? 'Change Image' : 'Select Image')
-        }
-        <Plus class="text-xl" />
+        <Plus class="krt-imagePicker__buttonIcon" />
+        <span>
+            {mode === 'multiple' 
+                ? (selectedImages.length > 0 ? `Change Images (${selectedImages.length})` : 'Select Images')
+                : (selectedImage.url ? 'Change Image' : 'Select Image')
+            }
+        </span>
     </button>
 
     {#if isDialogOpen}
-        <dialog bind:this={imageDialog} class="krt-imagePicker-dialog" onclose={() => isDialogOpen = false}>
+        <dialog bind:this={imageDialog} class="krt-imagePicker__dialog" onclose={() => isDialogOpen = false}>
             <div class="krt-imagePicker-content">
                 <div class="krt-imagePicker-header">
                     <h3>{mode === 'multiple' ? 'Add Images' : 'Add Image'}</h3>
@@ -257,49 +259,51 @@
     <!-- Selected Image(s) Preview -->
     {#if mode === 'multiple'}
         {#if selectedImages.length > 0}
-            <div class="flex flex-wrap gap-2">
+            <div class="krt-imagePicker__preview">
                 {#each selectedImages as image, index}
                     {@const imageUrl = image.url || image.src || ''}
                     {#if imageUrl}
-                        <div class="relative w-32 aspect-square">
+                        <div class="krt-imagePicker__previewItem">
                             <img 
                                 src={imageUrl}
                                 alt={image.alt || ''} 
-                                class="w-full h-full object-cover rounded-lg"
+                                class="krt-imagePicker__previewImage"
                             />
                             <button 
                                 type="button" 
-                                class="btn btn-circle btn-sm absolute -right-2 -top-2"
+                                class="krt-imagePicker__removeButton"
                                 onclick={() => removeImage(index)}
+                                title="Remove image"
                             >
-                                <Trash2 class="text-lg text-error" />
+                                <Trash2 />
                             </button>
                         </div>
                     {/if}
                 {/each}
             </div>
         {:else}
-            <p class="text-sm opacity-70">No images selected</p>
+            <p class="krt-imagePicker__empty">No images selected</p>
         {/if}
     {:else}
         {@const imageUrl = selectedImage.url || selectedImage.src || ''}
         {#if imageUrl}
-            <div class="relative w-48 aspect-square">
+            <div class="krt-imagePicker__previewItem krt-imagePicker__previewItem--single">
                 <img 
                     src={imageUrl}
                     alt={selectedImage.alt || ''} 
-                    class="w-full h-full object-cover rounded-lg"
+                    class="krt-imagePicker__previewImage"
                 />
                 <button 
                     type="button" 
-                    class="btn btn-circle btn-sm absolute -right-2 -top-2"
+                    class="krt-imagePicker__removeButton"
                     onclick={() => removeImage()}
+                    title="Remove image"
                 >
-                    <Trash2 class="text-lg text-error" />
+                    <Trash2 />
                 </button>
             </div>
         {:else}
-            <p class="text-sm opacity-70">No image selected</p>
+            <p class="krt-imagePicker__empty">No image selected</p>
         {/if}
     {/if}
 </div>
@@ -496,5 +500,125 @@
         to {
             transform: rotate(360deg);
         }
+    }
+
+    .krt-imagePicker {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: 100%;
+    }
+
+    .krt-imagePicker__button {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        border-radius: 0.5rem;
+        background: #ffffff;
+        color: rgba(0, 0, 0, 0.8);
+        font-weight: 500;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 200ms ease;
+    }
+
+    .krt-imagePicker__button:hover {
+        border-color: rgba(59, 130, 246, 0.5);
+        background: rgba(59, 130, 246, 0.05);
+        color: rgba(59, 130, 246, 0.9);
+    }
+
+    .krt-imagePicker__buttonIcon {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
+    .krt-imagePicker__dialog {
+        border: none;
+        border-radius: 1rem;
+        padding: 0;
+        max-width: 600px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(4px);
+    }
+
+    .krt-imagePicker__dialog::backdrop {
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    .krt-imagePicker__preview {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+        gap: 0.75rem;
+    }
+
+    .krt-imagePicker__previewItem {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background: rgba(0, 0, 0, 0.02);
+        transition: all 200ms ease;
+    }
+
+    .krt-imagePicker__previewItem:hover {
+        border-color: rgba(59, 130, 246, 0.3);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .krt-imagePicker__previewItem--single {
+        grid-column: 1 / -1;
+        max-width: 15rem;
+        aspect-ratio: auto;
+        height: 12rem;
+    }
+
+    .krt-imagePicker__previewImage {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .krt-imagePicker__removeButton {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        border-radius: 0.375rem;
+        background: rgba(239, 68, 68, 0.9);
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: all 150ms ease;
+    }
+
+    .krt-imagePicker__previewItem:hover .krt-imagePicker__removeButton {
+        opacity: 1;
+    }
+
+    .krt-imagePicker__removeButton:hover {
+        background: rgba(220, 38, 38, 1);
+        transform: scale(1.1);
+    }
+
+    .krt-imagePicker__removeButton :global(svg) {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .krt-imagePicker__empty {
+        padding: 1rem;
+        text-align: center;
+        color: rgba(0, 0, 0, 0.4);
+        font-size: 0.9rem;
+        font-style: italic;
     }
 </style>

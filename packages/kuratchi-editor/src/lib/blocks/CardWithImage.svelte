@@ -2,7 +2,7 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { ArrowRight } from '@lucide/svelte';
     import { onMount } from 'svelte';
-    import { ImagePicker } from '../plugins/index.js';
+    import { ImagePicker } from '../widgets/index.js';
     import { BlockActions } from '../utils/index.js';
 
     interface CardImage {
@@ -21,6 +21,11 @@
         body?: string;
         button?: string;
         link?: string;
+        backgroundColor?: string;
+        buttonColor?: string;
+        headingColor?: string;
+        contentColor?: string;
+        cardContentColor?: string;
         editable?: boolean;
     }
 
@@ -28,10 +33,15 @@
         id = crypto.randomUUID(),
         type = 'card-with-image',
         image = $bindable<CardImage>({ url: 'https://fakeimg.pl/500x500', alt: 'Noteworthy technology acquisitions 2021', title: 'Card Image' }),
-        heading = 'Noteworthy technology acquisitions 2021',
-        body = 'Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.',
-        button = 'Read more',
-        link = '#',
+        heading = $bindable('Noteworthy technology acquisitions 2021'),
+        body = $bindable('Here are the biggest enterprise technology acquisitions of 2021 so far, in reverse chronological order.'),
+        button = $bindable('Read more'),
+        link = $bindable('#'),
+        backgroundColor = $bindable('#ffffff'),
+        buttonColor = $bindable('#111827'),
+        headingColor = $bindable('#111827'),
+        contentColor = $bindable('#6b7280'),
+        cardContentColor = $bindable('#ffffff'),
         editable = true
     }: Props = $props();
 

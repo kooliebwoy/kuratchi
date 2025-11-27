@@ -12,8 +12,13 @@ import FeatureShowcase from '../sections/FeatureShowcase.svelte';
 import TestimonialsGrid from '../sections/TestimonialsGrid.svelte';
 import PricingPlans from '../sections/PricingPlans.svelte';
 import ContactCTA from '../sections/ContactCTA.svelte';
+// Blocks promoted to sections
+import Carousel from '../blocks/Carousel.svelte';
+import HoverCard from '../blocks/HoverCard.svelte';
+import Modal from '../blocks/Modal.svelte';
+import ImageDifference from '../blocks/ImageDifference.svelte';
 import type { Component } from 'svelte';
-import { BarChart3, HelpCircle, LayoutGrid } from '@lucide/svelte';
+import { BarChart3, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders } from '@lucide/svelte';
 
 export interface SectionDefinition {
 	name: string;
@@ -121,6 +126,34 @@ export const sections: SectionDefinition[] = [
                 icon: LayoutGrid,
                 description: 'Contact and lead capture section',
                 component: ContactCTA
+        },
+        {
+                name: 'Carousel',
+                type: 'carousel',
+                icon: Images,
+                description: 'Full-width carousel with navigation controls',
+                component: Carousel
+        },
+        {
+                name: '3D Hover Card',
+                type: 'hover-card',
+                icon: Sparkles,
+                description: '3D hover image card with CTA',
+                component: HoverCard
+        },
+        {
+                name: 'Modal',
+                type: 'modal',
+                icon: Square,
+                description: 'Popup modal with forms, images, or custom content',
+                component: Modal
+        },
+        {
+                name: 'Image Difference',
+                type: 'image-difference',
+                icon: Sliders,
+                description: 'Compare two images with a slider',
+                component: ImageDifference
         }
 ];
 
