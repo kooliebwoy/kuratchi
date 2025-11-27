@@ -130,7 +130,7 @@
         <p class="kui-subtext">Monitor system and user activity</p>
       </div>
     </div>
-    <Button variant="error" outline onclick={handleClearOld}>
+    <Button variant="error" size="xs" onclick={handleClearOld}>
       <Trash2 class="kui-icon" />
       Clear old
     </Button>
@@ -333,9 +333,27 @@
 
   .kui-filters {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: minmax(200px, 300px) auto auto auto auto;
     gap: var(--kui-spacing-sm);
     align-items: center;
+  }
+
+  @media (max-width: 1200px) {
+    .kui-filters {
+      grid-template-columns: minmax(180px, 250px) auto auto auto;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    .kui-filters {
+      grid-template-columns: minmax(160px, 200px) auto auto;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .kui-filters {
+      grid-template-columns: 1fr;
+    }
   }
 
   .kui-input-group {
@@ -344,12 +362,12 @@
     gap: 0.45rem;
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-md);
-    padding: 0.35rem 0.6rem;
     background: var(--kui-color-surface);
   }
 
   .kui-input-group .kui-icon {
     color: var(--kui-color-muted);
+    flex-shrink: 0;
   }
 
   .kui-input {
@@ -358,15 +376,28 @@
     outline: none;
     background: transparent;
     color: var(--kui-color-text);
+    font-size: 0.9rem;
   }
 
   .kui-select {
     appearance: none;
-    padding: 0.55rem 0.75rem;
+    padding: 0.5rem 0.75rem;
     border-radius: var(--kui-radius-md);
     border: 1px solid var(--kui-color-border);
     background: var(--kui-color-surface);
     color: var(--kui-color-text);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .kui-select:hover {
+    border-color: color-mix(in srgb, var(--kui-color-primary) 20%, var(--kui-color-border) 80%);
+  }
+
+  .kui-select:focus {
+    outline: none;
+    border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
   .kui-icon {
@@ -388,18 +419,18 @@
   .kui-activity__item {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: var(--kui-spacing-sm);
-    padding: 0.85rem;
+    gap: var(--kui-spacing-md);
+    padding: 1rem;
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-lg);
     background: var(--kui-color-surface-muted);
-    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease, transform var(--kui-duration-base) ease;
+    transition: border-color var(--kui-duration-base) ease, box-shadow var(--kui-duration-base) ease, background-color var(--kui-duration-base) ease;
   }
 
   .kui-activity__item:hover {
     border-color: color-mix(in srgb, var(--kui-color-primary) 35%, var(--kui-color-border) 65%);
-    box-shadow: var(--kui-shadow-xs);
-    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    background: var(--kui-color-surface);
   }
 
   .kui-activity__status {

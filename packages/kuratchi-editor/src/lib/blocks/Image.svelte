@@ -167,7 +167,7 @@
         
             <div class="krt-image-preview-wrapper">
                 {#if !photoError && uploadedImage?.id}
-                    <img class="krt-image-preview" src={'/api/bucket/' + uploadedImage?.key} alt={uploadedImage?.alt ?? 'Uploaded image'} />
+                    <img class="krt-image-preview" src={uploadedImage?.url ?? uploadedImage?.src ?? ''} alt={uploadedImage?.alt ?? 'Uploaded image'} />
                 {/if}
             </div>
         </div>
@@ -176,7 +176,7 @@
     {#if uploadedImage?.id || uploadedImage?.src || uploadedImage?.url}
         <figure data-type={type} id={id} class="krt-image-figure">
             <img
-                src={uploadedImage?.key ? '/api/bucket/' + uploadedImage.key : uploadedImage?.src ?? uploadedImage?.url ?? ''}
+                src={uploadedImage?.url ?? uploadedImage?.src ?? ''}
                 alt={uploadedImage?.alt ?? 'Image'}
                 class="krt-image-figure-img"
             />

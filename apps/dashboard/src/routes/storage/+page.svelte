@@ -1,20 +1,12 @@
 <script lang="ts">
-  import { 
-    getAllBuckets, 
-    enableBucketPublicDomain, 
-    addBucketCustomDomain 
-  } from '$lib/functions/storage.remote';
-  import { HardDrive, Globe, ExternalLink, Settings, CheckCircle, XCircle, AlertCircle, X } from '@lucide/svelte';
-  import { Button, Dialog, Loading } from '@kuratchi/ui';
+  import { getAllBuckets } from '$lib/functions/storage.remote';
+  import { HardDrive } from '@lucide/svelte';
+  import { Button, Loading } from '@kuratchi/ui';
 
   let bucketsQuery = getAllBuckets(undefined);
   let data = $derived(bucketsQuery.current);
   
   let buckets = $derived<any[]>(data?.buckets ?? []);
-
-  let customDomainDialog: any;
-  let selectedBucket = $state<any>(null);
-  let dialogOpen = $state(false);
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -22,11 +14,6 @@
       month: 'short',
       day: 'numeric'
     });
-  }
-  
-  function handleAddCustomDomain(bucket: any) {
-    selectedBucket = bucket;
-    customDomainDialog.showModal();
   }
 </script>
 
@@ -38,7 +25,7 @@
   <div class="kui-storage__header">
     <div>
       <h2>Storage</h2>
-      <p class="kui-storage__subtitle">Manage R2 buckets and configure domains</p>
+      <p class="kui-storage__subtitle">Browse and manage site storage buckets</p>
     </div>
   </div>
 
@@ -52,8 +39,7 @@
         <thead>
           <tr>
             <th>Bucket / Site</th>
-            <th>Public Domain</th>
-            <th>Custom Domain</th>
+            <th>Storage Domain</th>
             <th>Created</th>
             <th class="text-right">Actions</th>
           </tr>
@@ -70,7 +56,7 @@
                       <p class="kui-bucket-meta">
                         {bucket.metadata.name}
                         {#if bucket.metadata.subdomain}
-                          · <code>{bucket.metadata.subdomain}.kuratchi.com</code>
+                          · <code>{bucket.metadata.subdomain}.kuratchi.site</code>
                         {/if}
                       </p>
                     {/if}
@@ -78,58 +64,18 @@
                 </div>
               </td>
               <td>
-                {#if bucket.publicDomain?.enabled}
-                  <div class="kui-status success">
-                    <CheckCircle class="kui-icon" />
-                    Enabled
-                  </div>
-                {:else}
-                  <div class="kui-status disabled">
-                    <XCircle class="kui-icon" />
-                    Disabled
-                  </div>
-                {/if}
-              </td>
-              <td>
                 {#if bucket.customDomain}
                   <code class="kui-domain-code">{bucket.customDomain}</code>
                 {:else}
-                  <div class="kui-status warning">
-                    <AlertCircle class="kui-icon" />
-                    Not configured
-                  </div>
+                  <span class="kui-muted">—</span>
                 {/if}
               </td>
               <td class="kui-date">{formatDate(bucket.creation_date)}</td>
               <td class="text-right">
-                <div class="kui-actions">
-                  <Button variant="ghost" size="xs" href={`/storage/${bucket.name}`} title="Browse files">
-                    <HardDrive class="kui-icon" />
-                  </Button>
-
-                  {#if !bucket.publicDomain?.enabled}
-                    <form {...enableBucketPublicDomain}>
-                      <input type="hidden" name="bucketName" value={bucket.name} />
-                      <Button type="submit" variant="ghost" size="xs" disabled={enableBucketPublicDomain.pending > 0} title="Enable public domain">
-                        {#if enableBucketPublicDomain.pending > 0}
-                          <Loading size="xs" />
-                        {:else}
-                          <Globe class="kui-icon" />
-                        {/if}
-                      </Button>
-                    </form>
-                  {/if}
-
-                  {#if !bucket.customDomain && bucket.metadata?.subdomain}
-                    <Button variant="ghost" size="xs" onclick={() => handleAddCustomDomain(bucket)} title="Add custom domain">
-                      <ExternalLink class="kui-icon" />
-                    </Button>
-                  {/if}
-
-                  <Button variant="ghost" size="xs" aria-label="Settings">
-                    <Settings class="kui-icon" />
-                  </Button>
-                </div>
+                <Button variant="ghost" size="xs" href={`/storage/${bucket.name}`} title="Browse files">
+                  <HardDrive class="kui-icon" />
+                  Browse
+                </Button>
               </td>
             </tr>
           {/each}
@@ -137,211 +83,13 @@
       </table>
     {:else}
       <div class="kui-empty">
-        <HardDrive class="kui-empty__icon" />
+        <HardDrive class="kui-icon" />
         <p class="kui-empty__text">No storage buckets found</p>
         <p class="kui-empty__subtext">Buckets are created automatically when you create a site</p>
       </div>
     {/if}
   </div>
 </div>
-
-<Dialog bind:open={dialogOpen} bind:this={customDomainDialog} size="md">
-  {#snippet header()}
-    <div class="kui-modal-header">
-      <h3>Add Custom Domain</h3>
-      <Button variant="ghost" size="xs" onclick={() => customDomainDialog.close()} aria-label="Close">
-        <X class="kui-icon" />
-      </Button>
-    </div>
-  {/snippet}
-  {#snippet children()}
-    {#if selectedBucket}
-      <div class="kui-stack">
-        <div class="kui-callout info">
-          <p class="kui-strong">Suggested Domain</p>
-          <p class="kui-subtext">{selectedBucket.suggestedCustomDomain}</p>
-        </div>
-
-        {#if addBucketCustomDomain.result?.success}
-          <div class="kui-callout success">Custom domain added successfully!</div>
-        {/if}
-
-        {#if addBucketCustomDomain.pending > 0}
-          <div class="kui-callout warning">
-            <Loading size="sm" />
-            Adding custom domain...
-          </div>
-        {/if}
-
-        <form {...addBucketCustomDomain} class="kui-stack" onsubmit={() => setTimeout(() => customDomainDialog.close(), 1000)}>
-          <input type="hidden" name="bucketName" value={selectedBucket.name} />
-
-          <FormField label="Custom Domain">
-            <FormInput
-              field={{
-                name: 'customDomain',
-                value: selectedBucket.suggestedCustomDomain
-              } as any}
-              placeholder="cdn.example.com"
-            />
-            <span class="kui-subtext">This will be your public storage URL</span>
-          </FormField>
-
-          <div class="kui-callout warning">
-            <AlertCircle class="kui-icon" />
-            <div>
-              <p class="kui-strong">DNS Configuration Required</p>
-              <p class="kui-subtext">Add a CNAME record pointing to your R2 bucket.</p>
-            </div>
-          </div>
-
-          <div class="kui-modal-actions">
-            <Button variant="ghost" type="button" onclick={() => customDomainDialog.close()}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={addBucketCustomDomain.pending > 0}>
-              {#if addBucketCustomDomain.pending > 0}
-                <Loading size="sm" /> Adding...
-              {:else}
-                Add Domain
-              {/if}
-            </Button>
-          </div>
-        </form>
-      </div>
-    {/if}
-  {/snippet}
-</Dialog>
-
-<Dialog bind:open={dialogOpen} bind:this={customDomainDialog} size="md">
-  {#snippet header()}
-    <div class="kui-modal-header">
-      <h3>Add Custom Domain</h3>
-      <Button variant="ghost" size="xs" onclick={() => customDomainDialog.close()} aria-label="Close">
-        <X class="kui-icon" />
-      </Button>
-    </div>
-  {/snippet}
-  {#snippet children()}
-    {#if selectedBucket}
-      <div class="kui-stack">
-        <div class="kui-callout info">
-          <p class="kui-strong">Suggested Domain</p>
-          <p class="kui-subtext">{selectedBucket.suggestedCustomDomain}</p>
-        </div>
-
-        {#if addBucketCustomDomain.result?.success}
-          <div class="kui-callout success">Custom domain added successfully!</div>
-        {/if}
-
-        {#if addBucketCustomDomain.pending > 0}
-          <div class="kui-callout warning">
-            <Loading size="sm" />
-            Adding custom domain...
-          </div>
-        {/if}
-
-        <form {...addBucketCustomDomain} class="kui-stack" onsubmit={() => setTimeout(() => customDomainDialog.close(), 1000)}>
-          <input type="hidden" name="bucketName" value={selectedBucket.name} />
-
-          <FormField label="Custom Domain">
-            <FormInput
-              field={{
-                name: 'customDomain',
-                value: selectedBucket.suggestedCustomDomain
-              } as any}
-              placeholder="cdn.example.com"
-            />
-            <span class="kui-subtext">This will be your public storage URL</span>
-          </FormField>
-
-          <div class="kui-callout warning">
-            <AlertCircle class="kui-icon" />
-            <div>
-              <p class="kui-strong">DNS Configuration Required</p>
-              <p class="kui-subtext">Add a CNAME record pointing to your R2 bucket.</p>
-            </div>
-          </div>
-
-          <div class="kui-modal-actions">
-            <Button variant="ghost" type="button" onclick={() => customDomainDialog.close()}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={addBucketCustomDomain.pending > 0}>
-              {#if addBucketCustomDomain.pending > 0}
-                <Loading size="sm" /> Adding...
-              {:else}
-                Add Domain
-              {/if}
-            </Button>
-          </div>
-        </form>
-      </div>
-    {/if}
-  {/snippet}
-</Dialog>
-
-<Dialog bind:open={dialogOpen} bind:this={customDomainDialog} size="md">
-  {#snippet header()}
-    <div class="kui-modal-header">
-      <h3>Add Custom Domain</h3>
-      <Button variant="ghost" size="xs" onclick={() => customDomainDialog.close()} aria-label="Close">
-        <X class="kui-icon" />
-      </Button>
-    </div>
-  {/snippet}
-  {#snippet children()}
-    {#if selectedBucket}
-      <div class="kui-stack">
-        <div class="kui-callout info">
-          <p class="kui-strong">Suggested Domain</p>
-          <p class="kui-subtext">{selectedBucket.suggestedCustomDomain}</p>
-        </div>
-
-        {#if addBucketCustomDomain.result?.success}
-          <div class="kui-callout success">Custom domain added successfully!</div>
-        {/if}
-
-        {#if addBucketCustomDomain.pending > 0}
-          <div class="kui-callout warning">
-            <Loading size="sm" />
-            Adding custom domain...
-          </div>
-        {/if}
-
-        <form {...addBucketCustomDomain} class="kui-stack" onsubmit={() => setTimeout(() => customDomainDialog.close(), 1000)}>
-          <input type="hidden" name="bucketName" value={selectedBucket.name} />
-
-          <FormField label="Custom Domain">
-            <FormInput
-              field={{
-                name: 'customDomain',
-                value: selectedBucket.suggestedCustomDomain
-              } as any}
-              placeholder="cdn.example.com"
-            />
-            <span class="kui-subtext">This will be your public storage URL</span>
-          </FormField>
-
-          <div class="kui-callout warning">
-            <AlertCircle class="kui-icon" />
-            <div>
-              <p class="kui-strong">DNS Configuration Required</p>
-              <p class="kui-subtext">Add a CNAME record pointing to your R2 bucket.</p>
-            </div>
-          </div>
-
-          <div class="kui-modal-actions">
-            <Button variant="ghost" type="button" onclick={() => customDomainDialog.close()}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={addBucketCustomDomain.pending > 0}>
-              {#if addBucketCustomDomain.pending > 0}
-                <Loading size="sm" /> Adding...
-              {:else}
-                Add Domain
-              {/if}
-            </Button>
-          </div>
-        </form>
-      </div>
-    {/if}
-  {/snippet}
-</Dialog>
 
 <style>
   .kui-storage {
@@ -432,26 +180,6 @@
     font-weight: 500;
   }
 
-  .kui-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
-  .kui-status.success {
-    color: var(--kui-color-success);
-  }
-
-  .kui-status.disabled {
-    color: var(--kui-color-muted);
-  }
-
-  .kui-status.warning {
-    color: var(--kui-color-warning);
-  }
-
   .kui-domain-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.85rem;
@@ -462,6 +190,16 @@
     border-radius: var(--kui-radius-sm);
   }
 
+  .kui-muted {
+    color: var(--kui-color-muted);
+  }
+
+  :global(.kui-icon) {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
   .kui-date {
     font-size: 0.85rem;
     color: var(--kui-color-muted);
@@ -470,17 +208,6 @@
 
   .text-right {
     text-align: right;
-  }
-
-  .kui-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    justify-content: flex-end;
-  }
-
-  .kui-actions form {
-    display: contents;
   }
 
   .kui-empty {
@@ -494,7 +221,7 @@
     border-radius: var(--kui-radius-lg);
   }
 
-  .kui-empty__icon {
+  .kui-empty :global(.kui-icon) {
     width: 3rem;
     height: 3rem;
     color: var(--kui-color-muted);
@@ -521,31 +248,6 @@
     padding: 3rem 1.5rem;
   }
 
-  .kui-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .kui-modal-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-  }
-
-  .kui-stack {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .kui-modal-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.75rem;
-  }
-
   .kui-callout {
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-md);
@@ -560,37 +262,6 @@
     background: rgba(239, 68, 68, 0.08);
   }
 
-  .kui-callout.info {
-    border-color: rgba(14, 165, 233, 0.3);
-    background: rgba(14, 165, 233, 0.08);
-  }
-
-  .kui-callout.success {
-    border-color: rgba(22, 163, 74, 0.3);
-    background: rgba(22, 163, 74, 0.08);
-  }
-
-  .kui-callout.warning {
-    border-color: rgba(245, 158, 11, 0.3);
-    background: rgba(245, 158, 11, 0.08);
-  }
-
-  .kui-icon {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-  }
-
-  .kui-strong {
-    font-weight: 600;
-  }
-
-  .kui-subtext {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--kui-color-muted);
-  }
-
   @media (max-width: 768px) {
     .kui-table {
       font-size: 0.85rem;
@@ -599,10 +270,6 @@
     .kui-table th,
     .kui-table td {
       padding: 0.5rem 0.75rem;
-    }
-
-    .kui-actions {
-      gap: 0.25rem;
     }
   }
 </style>

@@ -167,52 +167,44 @@ export const createUser = guardedForm(
   v.object({
     email: v.pipe(v.string(), v.email()),
     name: v.pipe(v.string(), v.nonEmpty()),
-    password: v.optional(v.pipe(v.string(), v.minLength(8))),
-    organizations: v.optional(v.string()), // JSON string of org IDs
-    roles: v.optional(v.string()), // JSON string of role assignments
-    isSuperAdmin: v.optional(v.boolean())
+    password: v.pipe(v.string(), v.minLength(8))
   }),
-  async ({ email, name, password, organizations, roles, isSuperAdmin }) => {
+  async ({ email, name, password }) => {
     try {
       const { locals } = getRequestEvent();
-      const db = await getDatabase(locals);
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
 
-      // Check if user already exists
-      const existingResult = await db.users
-        .where({ email })
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
+
+      // Check if user already exists in org
+      const existingResult = await orgDb.users
+        .where({ email, deleted_at: { isNullish: true } })
         .first();
       
       if (existingResult?.data) {
         error(400, 'User with this email already exists');
       }
 
-      // Create user in admin database
-      const userId = crypto.randomUUID();
-      const now = new Date().toISOString();
-      
+      // Hash password
+      const authHelper = (locals.kuratchi as any)?.authHelper;
       let password_hash: string | undefined;
-      if (password) {
-        const authHelper = locals.kuratchi?.authHelper;
-        if (authHelper) {
-          const hashedUser = await authHelper.createUser({ 
-            id: userId,
-            email, 
-            name,
-            password,
-            role: isSuperAdmin ? 'superadmin' : 'user',
-            created_at: now,
-            updated_at: now
-          }, false);
-          password_hash = hashedUser?.password_hash;
-        }
+      if (authHelper) {
+        const hashedUser = await authHelper.hashPassword(password);
+        password_hash = hashedUser;
       }
 
-      await db.users.insert({
+      // Create user in org database
+      const userId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      await orgDb.users.insert({
         id: userId,
         email,
         name,
         password_hash,
-        role: isSuperAdmin ? 'superadmin' : 'user',
+        role: 'member',
         status: true,
         emailVerified: null,
         created_at: now,
@@ -220,71 +212,12 @@ export const createUser = guardedForm(
         deleted_at: null
       });
 
-      // Parse organizations and roles
-      const orgIds = organizations ? JSON.parse(organizations) : [];
-      const roleAssignments = roles ? JSON.parse(roles) : {};
-
-      // Add user to organizations
-      for (const orgId of orgIds) {
-        // Add to organizationUsers mapping
-        await db.organizationUsers.insert({
-          id: crypto.randomUUID(),
-          organizationId: orgId,
-          email,
-          created_at: now,
-          updated_at: now,
-          deleted_at: null
-        });
-
-        // Add to organization database with role
-        try {
-          const orgDb = await getDatabase(locals, orgId);
-          const role = roleAssignments[orgId] || 'member';
-          await orgDb.users.insert({
-            id: crypto.randomUUID(),
-            email,
-            name,
-            password_hash,
-            role,
-            created_at: now,
-            updated_at: now,
-            deleted_at: null
-          });
-        } catch (err) {
-          console.error(`[createUser] Failed to add user to org ${orgId}:`, err);
-        }
-      }
-
       // Log activity
       if (locals.kuratchi?.activity?.log) {
         try {
           await locals.kuratchi.activity.log({
             action: 'user.created',
-            data: {
-              userId,
-              email,
-              name,
-              isSuperAdmin,
-              organizations: orgIds
-            }
-          });
-        } catch (activityErr) {
-          console.warn('[createUser] Failed to log activity:', activityErr);
-        }
-      }
-
-      // Log activity
-      if (locals.kuratchi?.activity?.log) {
-        try {
-          await locals.kuratchi.activity.log({
-            action: 'user.created',
-            data: {
-              userId,
-              email,
-              name,
-              isSuperAdmin,
-              organizations: orgIds
-            }
+            data: { userId, email, name }
           });
         } catch (activityErr) {
           console.warn('[createUser] Failed to log activity:', activityErr);
@@ -304,46 +237,31 @@ export const updateUser = guardedForm(
   v.object({
     id: v.pipe(v.string(), v.nonEmpty()),
     email: v.optional(v.pipe(v.string(), v.email())),
-    name: v.optional(v.pipe(v.string(), v.nonEmpty())),
-    isSuperAdmin: v.optional(v.boolean()),
-    status: v.optional(v.boolean())
+    name: v.optional(v.pipe(v.string(), v.nonEmpty()))
   }),
-  async ({ id, email, name, isSuperAdmin, status }) => {
+  async ({ id, email, name }) => {
     try {
       const { locals } = getRequestEvent();
-      const db = await getDatabase(locals);
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
+
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
 
       const updateData: any = { updated_at: new Date().toISOString() };
       if (email !== undefined) updateData.email = email;
       if (name !== undefined) updateData.name = name;
-      if (isSuperAdmin !== undefined) updateData.role = isSuperAdmin ? 'superadmin' : 'user';
-      if (status !== undefined) updateData.status = status;
 
-      await db.users
+      await orgDb.users
         .where({ id })
         .update(updateData);
-
-      // If email changed, update organizationUsers mappings
-      if (email) {
-        const oldUserResult = await db.users.where({ id }).first();
-        const oldEmail = oldUserResult?.data?.email;
-        
-        if (oldEmail && oldEmail !== email) {
-          await db.organizationUsers
-            .where({ email: oldEmail })
-            .updateMany({ email });
-        }
-      }
 
       // Log activity
       if (locals.kuratchi?.activity?.log) {
         try {
           await locals.kuratchi.activity.log({
             action: 'user.updated',
-            data: {
-              userId: id,
-              changes: updateData
-            }
+            data: { userId: id, changes: updateData }
           });
         } catch (activityErr) {
           console.warn('[updateUser] Failed to log activity:', activityErr);
@@ -364,12 +282,16 @@ export const suspendUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const db = await getDatabase(locals);
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
 
-      const userResult = await db.users.where({ id }).first();
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
+
+      const userResult = await orgDb.users.where({ id }).first();
       const user = userResult?.data;
 
-      await db.users
+      await orgDb.users
         .where({ id })
         .update({ 
           status: false,
@@ -381,11 +303,7 @@ export const suspendUser = guardedForm(
         try {
           await locals.kuratchi.activity.log({
             action: 'user.suspended',
-            data: {
-              userId: id,
-              email: user.email,
-              name: user.name
-            }
+            data: { userId: id, email: user.email, name: user.name }
           });
         } catch (activityErr) {
           console.warn('[suspendUser] Failed to log activity:', activityErr);
@@ -406,12 +324,16 @@ export const activateUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const db = await getDatabase(locals);
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
 
-      const userResult = await db.users.where({ id }).first();
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
+
+      const userResult = await orgDb.users.where({ id }).first();
       const user = userResult?.data;
 
-      await db.users
+      await orgDb.users
         .where({ id })
         .update({ 
           status: true,
@@ -423,11 +345,7 @@ export const activateUser = guardedForm(
         try {
           await locals.kuratchi.activity.log({
             action: 'user.unsuspended',
-            data: {
-              userId: id,
-              email: user.email,
-              name: user.name
-            }
+            data: { userId: id, email: user.email, name: user.name }
           });
         } catch (activityErr) {
           console.warn('[activateUser] Failed to log activity:', activityErr);
@@ -448,53 +366,29 @@ export const deleteUser = guardedForm(
   async ({ id }) => {
     try {
       const { locals } = getRequestEvent();
-      const db = await getDatabase(locals);
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
+
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
 
       const now = new Date().toISOString();
 
       // Get user email first
-      const userResult = await db.users.where({ id }).first();
+      const userResult = await orgDb.users.where({ id }).first();
       const email = userResult?.data?.email;
 
       // Soft delete user
-      await db.users
+      await orgDb.users
         .where({ id })
         .update({ deleted_at: now });
-
-      // Soft delete organization mappings
-      if (email) {
-        await db.organizationUsers
-          .where({ email })
-          .updateMany({ deleted_at: now });
-
-        // Also remove from organization databases
-        const orgUsersResult = await db.organizationUsers
-          .where({ email })
-          .many();
-        
-        const orgUsers = orgUsersResult?.data || [];
-        
-        for (const ou of orgUsers) {
-          try {
-            const orgDb = await getDatabase(locals, ou.organizationId);
-            await orgDb.users
-                .where({ email })
-                .update({ deleted_at: now });
-          } catch (err) {
-            console.error(`[deleteUser] Failed to remove user from org ${ou.organizationId}:`, err);
-          }
-        }
-      }
 
       // Log activity
       if (locals.kuratchi?.activity?.log && email) {
         try {
           await locals.kuratchi.activity.log({
             action: 'user.deleted',
-            data: {
-              userId: id,
-              email
-            }
+            data: { userId: id, email }
           });
         } catch (activityErr) {
           console.warn('[deleteUser] Failed to log activity:', activityErr);

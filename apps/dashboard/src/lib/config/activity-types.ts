@@ -345,6 +345,74 @@ export const activityTypes: Record<string, ActivityTypeDefinition> = {
   },
 
   // ============================================================================
+  // Forms & Leads
+  // ============================================================================
+  'forms.create': {
+    label: 'Form Created',
+    category: 'forms',
+    severity: 'info',
+    description: 'New form created',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'forms.update': {
+    label: 'Form Updated',
+    category: 'forms',
+    severity: 'info',
+    description: 'Form settings updated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'forms.delete': {
+    label: 'Form Deleted',
+    category: 'forms',
+    severity: 'warning',
+    description: 'Form removed',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'forms.attach': {
+    label: 'Form Attached',
+    category: 'forms',
+    severity: 'info',
+    description: 'Form attached to site',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'forms.detach': {
+    label: 'Form Detached',
+    category: 'forms',
+    severity: 'info',
+    description: 'Form detached from site',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'leads.created': {
+    label: 'Lead Created',
+    category: 'leads',
+    severity: 'info',
+    description: 'New form submission received',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'leads.update': {
+    label: 'Lead Updated',
+    category: 'leads',
+    severity: 'info',
+    description: 'Lead status updated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'leads.exported': {
+    label: 'Leads Exported',
+    category: 'leads',
+    severity: 'info',
+    description: 'Leads exported to CSV',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
   // Storage & Media
   // ============================================================================
   'storage.file_uploaded': {
@@ -450,6 +518,250 @@ export const activityTypes: Record<string, ActivityTypeDefinition> = {
     description: 'Email bounced back',
     isAdminAction: false,
     isHidden: true
+  },
+
+  // ============================================================================
+  // Editor & Pages
+  // ============================================================================
+  'editor.page_created': {
+    label: 'Page Created',
+    category: 'editor',
+    severity: 'info',
+    description: 'New page created',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'editor.page_updated': {
+    label: 'Page Updated',
+    category: 'editor',
+    severity: 'info',
+    description: 'Page content updated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'editor.page_deleted': {
+    label: 'Page Deleted',
+    category: 'editor',
+    severity: 'warning',
+    description: 'Page removed',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'editor.page_published': {
+    label: 'Page Published',
+    category: 'editor',
+    severity: 'info',
+    description: 'Page published live',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'editor.site_settings_updated': {
+    label: 'Site Settings Updated',
+    category: 'editor',
+    severity: 'info',
+    description: 'Site settings modified in editor',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // Newsletter & Subscribers
+  // ============================================================================
+  'newsletter.subscriber_added': {
+    label: 'Subscriber Added',
+    category: 'newsletter',
+    severity: 'info',
+    description: 'New subscriber added',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'newsletter.subscriber_removed': {
+    label: 'Subscriber Removed',
+    category: 'newsletter',
+    severity: 'info',
+    description: 'Subscriber removed',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'newsletter.subscriber_imported': {
+    label: 'Subscribers Imported',
+    category: 'newsletter',
+    severity: 'info',
+    description: 'Subscribers imported from file',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'newsletter.list_created': {
+    label: 'List Created',
+    category: 'newsletter',
+    severity: 'info',
+    description: 'New subscriber list created',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'newsletter.list_deleted': {
+    label: 'List Deleted',
+    category: 'newsletter',
+    severity: 'warning',
+    description: 'Subscriber list deleted',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // Broadcasts & Campaigns
+  // ============================================================================
+  'broadcast.created': {
+    label: 'Broadcast Created',
+    category: 'broadcasts',
+    severity: 'info',
+    description: 'New broadcast created',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'broadcast.updated': {
+    label: 'Broadcast Updated',
+    category: 'broadcasts',
+    severity: 'info',
+    description: 'Broadcast updated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'broadcast.sent': {
+    label: 'Broadcast Sent',
+    category: 'broadcasts',
+    severity: 'info',
+    description: 'Broadcast sent to subscribers',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'broadcast.scheduled': {
+    label: 'Broadcast Scheduled',
+    category: 'broadcasts',
+    severity: 'info',
+    description: 'Broadcast scheduled for future delivery',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'broadcast.deleted': {
+    label: 'Broadcast Deleted',
+    category: 'broadcasts',
+    severity: 'warning',
+    description: 'Broadcast deleted',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // API Keys
+  // ============================================================================
+  'apikey.created': {
+    label: 'API Key Created',
+    category: 'api',
+    severity: 'info',
+    description: 'New API key generated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'apikey.revoked': {
+    label: 'API Key Revoked',
+    category: 'api',
+    severity: 'warning',
+    description: 'API key revoked',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'apikey.deleted': {
+    label: 'API Key Deleted',
+    category: 'api',
+    severity: 'warning',
+    description: 'API key deleted',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // Roles & Permissions
+  // ============================================================================
+  'role.created': {
+    label: 'Role Created',
+    category: 'roles',
+    severity: 'info',
+    description: 'New role created',
+    isAdminAction: true,
+    isHidden: false
+  },
+  'role.updated': {
+    label: 'Role Updated',
+    category: 'roles',
+    severity: 'warning',
+    description: 'Role permissions updated',
+    isAdminAction: true,
+    isHidden: false
+  },
+  'role.deleted': {
+    label: 'Role Deleted',
+    category: 'roles',
+    severity: 'warning',
+    description: 'Role deleted',
+    isAdminAction: true,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // Custom Domains
+  // ============================================================================
+  'customdomain.added': {
+    label: 'Custom Domain Added',
+    category: 'domains',
+    severity: 'info',
+    description: 'Custom domain added to site',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'customdomain.removed': {
+    label: 'Custom Domain Removed',
+    category: 'domains',
+    severity: 'warning',
+    description: 'Custom domain removed from site',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'customdomain.verified': {
+    label: 'Custom Domain Verified',
+    category: 'domains',
+    severity: 'info',
+    description: 'Custom domain ownership verified',
+    isAdminAction: false,
+    isHidden: false
+  },
+
+  // ============================================================================
+  // Products
+  // ============================================================================
+  'product.created': {
+    label: 'Product Created',
+    category: 'products',
+    severity: 'info',
+    description: 'New product created',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'product.updated': {
+    label: 'Product Updated',
+    category: 'products',
+    severity: 'info',
+    description: 'Product updated',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'product.deleted': {
+    label: 'Product Deleted',
+    category: 'products',
+    severity: 'warning',
+    description: 'Product deleted',
+    isAdminAction: false,
+    isHidden: false
   },
 
   // ============================================================================

@@ -13,10 +13,10 @@ import TestimonialsGrid from '../sections/TestimonialsGrid.svelte';
 import PricingPlans from '../sections/PricingPlans.svelte';
 import ContactCTA from '../sections/ContactCTA.svelte';
 // Blocks promoted to sections
-import Carousel from '../blocks/Carousel.svelte';
-import HoverCard from '../blocks/HoverCard.svelte';
-import Modal from '../blocks/Modal.svelte';
-import ImageDifference from '../blocks/ImageDifference.svelte';
+import Carousel from '../sections/Carousel.svelte';
+import HoverCard from '../sections/HoverCard.svelte';
+import Modal from '../sections/Modal.svelte';
+import ImageDifference from '../sections/ImageDifference.svelte';
 import type { Component } from 'svelte';
 import { BarChart3, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders } from '@lucide/svelte';
 

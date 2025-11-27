@@ -1,107 +1,105 @@
 <script lang="ts">
     import type { PluginContext } from '../context';
-    import type { FormData } from '../../types';
-    import { createDefaultFormData } from '../../types';
-    import FormBuilder from '../FormBuilder.svelte';
-    import { Plus } from '@lucide/svelte';
+    import { FileText, ExternalLink, Copy, Check } from '@lucide/svelte';
 
     let { ctx }: { ctx: PluginContext } = $props();
 
-    // Plugin-owned state
-    let formsData = $state<FormData[]>((ctx.siteMetadata.forms as FormData[]) ?? []);
-    let selectedFormId = $state<string | null>(null);
+    interface AttachedForm {
+        id: string;
+        name: string;
+        description: string;
+        fields: any[];
+        settings: any;
+        styling: any;
+    }
+
+    // Get forms from site metadata (loaded from org database)
+    const forms = $derived<AttachedForm[]>((ctx.siteMetadata.forms as AttachedForm[]) ?? []);
     
-    $effect(() => {
-        if (!selectedFormId && formsData.length > 0) {
-            selectedFormId = formsData[0].id;
-        }
-    });
+    let copiedFormId = $state<string | null>(null);
 
-    const randomId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2));
-
-    const addNewForm = () => {
-        const newForm = createDefaultFormData();
-        newForm.id = randomId();
-        newForm.settings.formName = `Form ${formsData.length + 1}`;
-        formsData = [...formsData, newForm];
-        selectedFormId = newForm.id;
-        syncToMetadata();
+    const copyFormEmbed = (form: AttachedForm) => {
+        // Copy a simple embed code or form ID that can be used in sections
+        const embedCode = `{{form:${form.id}}}`;
+        navigator.clipboard.writeText(embedCode);
+        copiedFormId = form.id;
+        setTimeout(() => {
+            copiedFormId = null;
+        }, 2000);
     };
 
-    const deleteForm = (formId: string) => {
-        formsData = formsData.filter(f => f.id !== formId);
-        if (selectedFormId === formId) {
-            selectedFormId = formsData[0]?.id ?? null;
-        }
-        syncToMetadata();
-    };
-
-    const handleFormUpdate = (updatedForm: FormData) => {
-        const index = formsData.findIndex(f => f.id === updatedForm.id);
-        if (index !== -1) {
-            formsData[index] = updatedForm;
-            formsData = [...formsData];
-            syncToMetadata();
-        }
-    };
-
-    const syncToMetadata = () => {
-        ctx.updateSiteMetadata({ forms: formsData });
+    const insertFormSection = (form: AttachedForm) => {
+        // Add a form section to the page
+        ctx.addBlock('FormSection', {
+            formId: form.id,
+            formName: form.name,
+            fields: form.fields,
+            settings: form.settings,
+            styling: form.styling
+        });
     };
 </script>
 
 <div class="forms-plugin">
     <div class="forms-plugin__header">
-        <h3>Your Forms</h3>
-        <button class="forms-plugin__newButton" onclick={addNewForm}>
-            <Plus />
-            <span>New</span>
-        </button>
+        <h3>Site Forms</h3>
     </div>
 
-    {#if formsData.length === 0}
+    {#if forms.length === 0}
         <div class="forms-plugin__empty">
-            <p>No forms yet</p>
-            <button class="forms-plugin__createButton" onclick={addNewForm}>
-                <Plus />
-                Create First Form
-            </button>
+            <FileText size={32} strokeWidth={1.5} />
+            <p>No forms attached</p>
+            <p class="forms-plugin__hint">
+                Create and attach forms to this site from the 
+                <a href="/forms" target="_blank" rel="noopener">Forms Dashboard</a>
+            </p>
         </div>
     {:else}
-        <div class="forms-plugin__formControls">
-            <label class="forms-plugin__formLabel">
-                <span>Select Form</span>
-                <select class="forms-plugin__select" bind:value={selectedFormId}>
-                    {#each formsData as form}
-                        <option value={form.id}>{form.settings.formName}</option>
-                    {/each}
-                </select>
-            </label>
-        </div>
-
-        {#if selectedFormId}
-            {@const formIndex = formsData.findIndex(f => f.id === selectedFormId)}
-            {#if formIndex !== -1}
-                <div class="forms-plugin__formControls">
-                    <button 
-                        class="forms-plugin__dangerButton"
-                        onclick={() => {
-                            if (confirm(`Delete form "${formsData[formIndex].settings.formName}"?`)) {
-                                deleteForm(formsData[formIndex].id);
-                            }
-                        }}
-                    >
-                        Delete Form
-                    </button>
+        <div class="forms-plugin__list">
+            {#each forms as form}
+                <div class="forms-plugin__card">
+                    <div class="forms-plugin__cardHeader">
+                        <FileText size={16} />
+                        <span class="forms-plugin__cardTitle">{form.name}</span>
+                    </div>
+                    
+                    {#if form.description}
+                        <p class="forms-plugin__cardDesc">{form.description}</p>
+                    {/if}
+                    
+                    <div class="forms-plugin__cardMeta">
+                        {form.fields?.length || 0} fields
+                    </div>
+                    
+                    <div class="forms-plugin__cardActions">
+                        <button 
+                            class="forms-plugin__actionButton forms-plugin__actionButton--primary"
+                            onclick={() => insertFormSection(form)}
+                        >
+                            Add to Page
+                        </button>
+                        <button 
+                            class="forms-plugin__actionButton"
+                            onclick={() => copyFormEmbed(form)}
+                            title="Copy form ID"
+                        >
+                            {#if copiedFormId === form.id}
+                                <Check size={14} />
+                            {:else}
+                                <Copy size={14} />
+                            {/if}
+                        </button>
+                    </div>
                 </div>
-                <FormBuilder 
-                    bind:formData={formsData[formIndex]}
-                    onUpdateForm={handleFormUpdate}
-                />
-            {/if}
-        {/if}
+            {/each}
+        </div>
+        
+        <div class="forms-plugin__footer">
+            <a href="/forms" target="_blank" rel="noopener" class="forms-plugin__link">
+                <ExternalLink size={14} />
+                Manage Forms
+            </a>
+        </div>
     {/if}
 </div>
 
@@ -129,14 +127,91 @@
         letter-spacing: 0.05em;
     }
 
-    .forms-plugin__newButton {
+    .forms-plugin__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 2rem 1rem;
+        text-align: center;
+        color: var(--krt-editor-text-muted, #94a3b8);
+    }
+
+    .forms-plugin__empty p {
+        margin: 0;
+        font-size: 0.875rem;
+    }
+
+    .forms-plugin__hint {
+        font-size: 0.8125rem !important;
+        line-height: 1.5;
+    }
+
+    .forms-plugin__hint a {
+        color: var(--krt-editor-accent, #3b82f6);
+        text-decoration: none;
+    }
+
+    .forms-plugin__hint a:hover {
+        text-decoration: underline;
+    }
+
+    .forms-plugin__list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .forms-plugin__card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.875rem;
+        background: var(--krt-editor-surface, #f8fafc);
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-md, 0.5rem);
+    }
+
+    .forms-plugin__cardHeader {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--krt-editor-accent, #3b82f6);
+    }
+
+    .forms-plugin__cardTitle {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .forms-plugin__cardDesc {
+        margin: 0;
+        font-size: 0.8125rem;
+        color: var(--krt-editor-text-secondary, #64748b);
+        line-height: 1.4;
+    }
+
+    .forms-plugin__cardMeta {
+        font-size: 0.75rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+    }
+
+    .forms-plugin__cardActions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.25rem;
+    }
+
+    .forms-plugin__actionButton {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 0.25rem;
-        padding: 0.375rem 0.625rem;
-        border: none;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
         border-radius: var(--krt-editor-radius-sm, 0.375rem);
-        background: transparent;
+        background: var(--krt-editor-bg, #ffffff);
         color: var(--krt-editor-text-secondary, #64748b);
         font-size: 0.8125rem;
         font-weight: 500;
@@ -145,122 +220,38 @@
         font-family: inherit;
     }
 
-    .forms-plugin__newButton:hover {
+    .forms-plugin__actionButton:hover {
         background: var(--krt-editor-surface-hover, #f1f5f9);
-        color: var(--krt-editor-text-primary, #0f172a);
+        border-color: var(--krt-editor-border-hover, #cbd5e1);
     }
 
-    .forms-plugin__newButton :global(svg) {
-        width: 0.875rem;
-        height: 0.875rem;
+    .forms-plugin__actionButton--primary {
+        flex: 1;
+        background: var(--krt-editor-accent, #3b82f6);
+        border-color: var(--krt-editor-accent, #3b82f6);
+        color: #ffffff;
     }
 
-    .forms-plugin__empty {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 2rem 1rem;
-        text-align: center;
+    .forms-plugin__actionButton--primary:hover {
+        background: var(--krt-editor-accent-hover, #2563eb);
+        border-color: var(--krt-editor-accent-hover, #2563eb);
     }
 
-    .forms-plugin__empty p {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--krt-editor-text-muted, #94a3b8);
+    .forms-plugin__footer {
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--krt-editor-border, #e2e8f0);
     }
 
-    .forms-plugin__createButton {
+    .forms-plugin__link {
         display: inline-flex;
         align-items: center;
         gap: 0.375rem;
-        padding: 0.625rem 1rem;
-        border: none;
-        border-radius: var(--krt-editor-radius-md, 0.5rem);
-        background: var(--krt-editor-accent, #3b82f6);
-        color: #ffffff;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        box-shadow: var(--krt-editor-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
-        font-family: inherit;
-    }
-
-    .forms-plugin__createButton:hover {
-        background: var(--krt-editor-accent-hover, #2563eb);
-        transform: translateY(-1px);
-        box-shadow: var(--krt-editor-shadow-md, 0 4px 6px -1px rgb(0 0 0 / 0.1));
-    }
-
-    .forms-plugin__createButton:active {
-        transform: translateY(0);
-    }
-
-    .forms-plugin__createButton :global(svg) {
-        width: 1rem;
-        height: 1rem;
-    }
-
-    .forms-plugin__formControls {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .forms-plugin__formLabel {
-        display: flex;
-        flex-direction: column;
-        gap: 0.375rem;
-    }
-
-    .forms-plugin__formLabel span {
-        font-size: 0.75rem;
-        font-weight: 500;
+        font-size: 0.8125rem;
         color: var(--krt-editor-text-secondary, #64748b);
+        text-decoration: none;
     }
 
-    .forms-plugin__select {
-        width: 100%;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.875rem;
-        color: var(--krt-editor-text-primary, #0f172a);
-        background: var(--krt-editor-bg, #ffffff);
-        border: 1px solid var(--krt-editor-border, #e2e8f0);
-        border-radius: var(--krt-editor-radius-sm, 0.375rem);
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-family: inherit;
-    }
-
-    .forms-plugin__select:focus {
-        outline: none;
-        border-color: var(--krt-editor-accent, #3b82f6);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    }
-
-    .forms-plugin__dangerButton {
-        width: 100%;
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #dc2626;
-        background: transparent;
-        border: 1px solid rgba(220, 38, 38, 0.3);
-        border-radius: var(--krt-editor-radius-sm, 0.375rem);
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-family: inherit;
-    }
-
-    .forms-plugin__dangerButton:hover {
-        background: rgba(220, 38, 38, 0.1);
-        border-color: #dc2626;
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    .forms-plugin__dangerButton:active {
-        transform: translateY(0);
+    .forms-plugin__link:hover {
+        color: var(--krt-editor-accent, #3b82f6);
     }
 </style>

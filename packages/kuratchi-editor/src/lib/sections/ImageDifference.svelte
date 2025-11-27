@@ -53,7 +53,7 @@
     let split = $state(50);
     const viewportStyle = $derived(`--krt-diff-split: ${editable ? split : 50}%`);
 
-    const imageUrl = (image?: DifferenceImage) => (image?.key ? `/api/bucket/${image.key}` : image?.src ?? '');
+    const imageUrl = (image?: DifferenceImage) => image?.url ?? image?.src ?? '';
 
     const handleSliderInput = (event: Event) => {
         const target = event.currentTarget as HTMLInputElement;
@@ -217,4 +217,3 @@
         letter-spacing: 0.1em;
     }
 </style>
-

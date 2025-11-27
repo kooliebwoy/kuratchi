@@ -259,3 +259,142 @@
 	</section>
 {/if}
 
+<style>
+	.krt-carouselDrawer {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.krt-carouselDrawer__section {
+		border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+		border-radius: 1rem;
+		padding: 1.25rem;
+		background: var(--krt-color-surface, #fff);
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.krt-carouselDrawer__header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.krt-carouselDrawer__eyebrow {
+		text-transform: uppercase;
+		font-size: 0.7rem;
+		letter-spacing: 0.2em;
+		margin: 0;
+		color: var(--krt-color-muted, #475569);
+	}
+
+	.krt-carouselDrawer__header h3 {
+		margin: 0.1rem 0 0;
+		font-size: 1rem;
+	}
+
+	.krt-carouselDrawer__action {
+		padding: 0.5rem 1rem;
+		border-radius: 0.5rem;
+		border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+		background: var(--krt-color-surface, #fff);
+		font-size: 0.875rem;
+		font-weight: 500;
+		cursor: pointer;
+	}
+
+	.krt-carouselDrawer__action:hover {
+		background: var(--krt-color-surface-hover, #f8fafc);
+	}
+
+	.krt-carouselDrawer__list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		max-height: 400px;
+		overflow-y: auto;
+	}
+
+	.krt-carouselDrawer__card {
+		border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+		border-radius: 0.75rem;
+		padding: 1rem;
+		background: var(--krt-color-surface, #fff);
+	}
+
+	.krt-carouselDrawer__cardHeader {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+		font-weight: 600;
+	}
+
+	.krt-carouselDrawer__cardControls {
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.krt-carouselDrawer__cardControls button {
+		padding: 0.25rem 0.5rem;
+		border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+		background: var(--krt-color-surface, #fff);
+		border-radius: 0.25rem;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+
+	.krt-carouselDrawer__cardControls button:hover:not(:disabled) {
+		background: var(--krt-color-surface-hover, #f8fafc);
+	}
+
+	.krt-carouselDrawer__cardControls button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.krt-carouselDrawer__danger {
+		color: #ef4444 !important;
+		border-color: #ef4444 !important;
+	}
+
+	.krt-carouselDrawer__danger:hover:not(:disabled) {
+		background: #fef2f2 !important;
+	}
+
+	.krt-carouselDrawer__grid {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.krt-carouselDrawer__field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.krt-carouselDrawer__field span {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--krt-color-muted, #475569);
+	}
+
+	.krt-carouselDrawer__field input,
+	.krt-carouselDrawer__field textarea {
+		padding: 0.5rem;
+		border: 1px solid var(--krt-color-border-subtle, #e2e8f0);
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+	}
+
+	.krt-carouselDrawer__toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+</style>

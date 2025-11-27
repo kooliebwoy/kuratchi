@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy, tick } from "svelte";
+    import { onMount, onDestroy, tick, setContext } from "svelte";
     import type { EditorOptions, EditorState, PageData, SiteRegionState } from "./types.js";
     import { defaultEditorOptions, defaultPageData } from "./types.js";
     import { blocks, getEnabledPlugins } from "./registry";
@@ -74,6 +74,16 @@ let {
     let footerElement = $state<HTMLElement | undefined>(undefined);
     const themeOptions = getAllThemes();
     let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
+
+    // Provide siteMetadata context for sections that need it (ContactCTA, Modal, etc.)
+    // We need to use a reactive getter so sections always get the latest metadata
+    const siteMetadataContext = {
+        get forms() { return (siteMetadata as any)?.forms || []; },
+        get themeId() { return (siteMetadata as any)?.themeId; },
+        get backgroundColor() { return (siteMetadata as any)?.backgroundColor; },
+        get blog() { return (siteMetadata as any)?.blog; }
+    };
+    setContext('siteMetadata', siteMetadataContext);
 
     // Plugin system
     const activePlugins = getEnabledPlugins(enabledPlugins);

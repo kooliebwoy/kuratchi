@@ -127,7 +127,7 @@ export function storagePlugin(options: StoragePluginOptions = {}): AuthPlugin {
         if (source === 'admin') {
           return await ctx.locals.kuratchi?.getAdminDb?.();
         }
-        return await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+        return await ctx.locals.kuratchi?.orgDatabaseClient?.(ctx.locals.session?.organizationId);
       };
       
       // Helper to get R2 bucket

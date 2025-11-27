@@ -110,7 +110,7 @@
 					</div>
 				</div>
 			</div>
-	</div>
+		</div>
 
 {:else}
 	<section id={id} data-type={type}>

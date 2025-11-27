@@ -53,6 +53,10 @@ export const roles: RoleDefinitions = {
     { value: 'media.*', label: 'All Media Permissions' },
     { value: 'sites.*', label: 'All Site Permissions' },
     
+    // Forms & Leads
+    { value: 'forms.*', label: 'All Form Permissions', description: 'Full control over forms' },
+    { value: 'leads.*', label: 'All Lead Permissions', description: 'Full control over leads' },
+    
     // Databases
     { value: 'databases.*', label: 'All Database Permissions' },
     
@@ -80,6 +84,12 @@ export const roles: RoleDefinitions = {
     { value: 'sites.read', label: 'View Sites', description: 'View site configurations' },
     { value: 'sites.update', label: 'Update Sites', description: 'Modify site settings' },
     
+    // Forms & Leads
+    { value: 'forms.read', label: 'View Forms', description: 'View form configurations' },
+    { value: 'forms.write', label: 'Manage Forms', description: 'Create and edit forms' },
+    { value: 'leads.read', label: 'View Leads', description: 'View form submissions' },
+    { value: 'leads.write', label: 'Manage Leads', description: 'Update lead status' },
+    
     // Comments (moderation)
     { value: 'comments.read', label: 'Read Comments', description: 'View comments' },
     { value: 'comments.moderate', label: 'Moderate Comments', description: 'Approve/reject comments' },
@@ -104,6 +114,10 @@ export const roles: RoleDefinitions = {
     
     // Sites (read-only)
     { value: 'sites.read', label: 'View Sites', description: 'View site configurations' },
+    
+    // Forms & Leads (read-only)
+    { value: 'forms.read', label: 'View Forms', description: 'View form configurations' },
+    { value: 'leads.read', label: 'View Leads', description: 'View form submissions' },
     
     // Comments
     { value: 'comments.read', label: 'Read Comments', description: 'View comments' },
@@ -212,4 +226,6 @@ export const permissionCategories = {
   settings: 'Settings',
   activity: 'Activity & Logs',
   reports: 'Reports & Analytics',
+  forms: 'Forms Management',
+  leads: 'Leads & Submissions',
 };

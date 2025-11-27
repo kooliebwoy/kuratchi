@@ -5,7 +5,7 @@
     createSite,
     deleteSite
   } from '$lib/functions/sites.remote';
-  import { Layout, Plus, ExternalLink, Settings, Trash2, X } from '@lucide/svelte';
+  import { Layout, Plus, ExternalLink, Settings, Trash2, X, FileText } from '@lucide/svelte';
   import { Button, Card, Badge, Dialog, Loading, FormField, FormInput } from '@kuratchi/ui';
 
   let createDialog: HTMLDialogElement;
@@ -15,6 +15,13 @@
 
   logRouteActivity();
   const sites = getSites();
+
+  function handleCreateSiteSubmit() {
+    if (createSite.result?.success) {
+      createDialogOpen = false;
+      createDialog?.close();
+    }
+  }
 
   function handleDeleteClick(site: any) {
     deletingSite = site;
@@ -86,6 +93,9 @@
                     <Button variant="ghost" size="xs" href={`/sites/${site.id}`} aria-label="Edit site">
                       <Settings class="kui-icon" />
                     </Button>
+                    <Button variant="ghost" size="xs" href={`/sites/${site.id}/forms`} aria-label="Manage forms">
+                      <FileText class="kui-icon" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="xs"
@@ -143,7 +153,7 @@
         </div>
       {/if}
 
-      <form {...createSite} class="kui-stack" enctype="multipart/form-data">
+      <form {...createSite} class="kui-stack" enctype="multipart/form-data" onsubmit={handleCreateSiteSubmit}>
         <FormField label="Site Name" issues={createSite.fields.name.issues()}>
           <FormInput field={createSite.fields.name} placeholder="My Awesome Site" />
           <span class="kui-subtext">A friendly name for your site</span>

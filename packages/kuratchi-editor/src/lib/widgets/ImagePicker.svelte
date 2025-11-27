@@ -14,12 +14,15 @@
         selectedImage?: ImageData;
         selectedImages?: ImageData[];
         mode?: 'single' | 'multiple';
+        /** Folder/category for uploaded images (default: 'images') */
+        folder?: string;
     }
 
     let { 
         selectedImage = $bindable({ url: '', alt: '' }),
         selectedImages = $bindable([]),
-        mode = 'single'
+        mode = 'single',
+        folder = 'images'
     }: Props = $props();
 
     let imageDialog: HTMLDialogElement; // @ts-ignore - DOM ref, not reactive state
@@ -42,7 +45,7 @@
             // Use new uploadHandler if available
             if ($imageConfig.uploadHandler) {
                 console.log('[ImagePicker] Uploading file:', file.name, file.type, file.size);
-                const result = await $imageConfig.uploadHandler(file, mode === 'multiple' ? 'images' : 'logos');
+                const result = await $imageConfig.uploadHandler(file, folder);
                 console.log('[ImagePicker] Upload result:', result);
                 
                 if (result?.url) {

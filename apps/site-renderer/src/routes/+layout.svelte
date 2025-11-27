@@ -2,10 +2,18 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { getBlock, getHeader, getFooter, blogStore } from '@kuratchi/editor';
+	import { setContext } from 'svelte';
 	
 	let { children, data } = $props();
 	
 	const site = $derived(data?.site);
+	const forms = $derived(data?.forms || []);
+	
+	// Provide forms context for sections (ContactCTA, Modal, etc.)
+	const siteMetadataContext = {
+		get forms() { return forms; }
+	};
+	setContext('siteMetadata', siteMetadataContext);
 	
 	// Get header/footer/metadata from site.metadata (site-level)
 	const siteMetadata = $derived((site?.metadata ?? {}) as Record<string, unknown>);

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
+
     interface Props {
         id?: string;
         label?: string;

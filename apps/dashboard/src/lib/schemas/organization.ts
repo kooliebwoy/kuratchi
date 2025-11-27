@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 4,
+  version: 5,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -95,6 +95,7 @@ export const organizationSchema: SchemaDsl = {
       subdomain: 'text',
       description: 'text',
       status: 'boolean',
+      domain: 'text', // Site domain (e.g., subdomain.kuratchi.site)
       environment: 'enum(production,preview)',
       theme: 'text',
       databaseId: 'text',
@@ -102,6 +103,7 @@ export const organizationSchema: SchemaDsl = {
       workerName: 'text',
       r2BucketName: 'text',
       r2Binding: 'text',
+      r2StorageDomain: 'text', // Custom storage domain (e.g., subdomain.kuratchi.cloud)
       metadata: 'json',
       '...timestamps': true,
     },
@@ -170,6 +172,40 @@ export const organizationSchema: SchemaDsl = {
       openedCount: 'integer default 0',
       clickedCount: 'integer default 0',
       bouncedCount: 'integer default 0',
+      '...timestamps': true,
+    },
+    // Organization-level forms (reusable across sites)
+    forms: {
+      id: 'text primary key not null',
+      name: 'text not null',
+      description: 'text',
+      fields: 'json default (json_array())',
+      settings: 'json default (json_object())',
+      styling: 'json default (json_object())',
+      status: 'boolean default true',
+      '...timestamps': true,
+    },
+    // Junction table: which forms are attached to which sites
+    formSites: {
+      id: 'text primary key not null',
+      formId: 'text not null -> forms.id cascade',
+      siteId: 'text not null -> sites.id cascade',
+      // Site-specific overrides (optional)
+      overrides: 'json default (json_object())',
+      status: 'boolean default true',
+      '...timestamps': true,
+    },
+    // Leads from form submissions (with site attribution)
+    leads: {
+      id: 'text primary key not null',
+      formId: 'text not null -> forms.id cascade',
+      siteId: 'text -> sites.id',
+      data: 'json default (json_object())',
+      source: 'text',
+      ipAddress: 'text',
+      userAgent: 'text',
+      status: 'enum(new,contacted,qualified,converted,archived) default new',
+      notes: 'text',
       '...timestamps': true,
     },
   },

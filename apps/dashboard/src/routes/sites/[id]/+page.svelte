@@ -48,10 +48,15 @@
   let newPageTitle = $state('');
   let newPageSlug = $state('');
   let creatingPage = $state(false);
+  
+  // Forms attached to this site
+  let siteForms = $state<any[]>([]);
+  
   const initialData = await editorQuery;
 
   site = initialData.site;
   pageData = clone(initialData.page);
+  siteForms = initialData.forms || [];
 
   // Extract site-level data from site.metadata
   if (site?.metadata) {
@@ -63,7 +68,7 @@
     siteFooter = (meta.footer as Record<string, unknown>) ?? null;
     console.log('[Dashboard] Initialized siteHeader:', siteHeader);
     console.log('[Dashboard] Initialized siteFooter:', siteFooter);
-    siteMetadata = { ...meta };
+    siteMetadata = { ...meta, forms: siteForms };
     delete siteMetadata.header;
     delete siteMetadata.footer;
   }

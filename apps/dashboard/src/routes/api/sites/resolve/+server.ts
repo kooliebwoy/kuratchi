@@ -92,10 +92,40 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			})
 			.one();
 
+		// Step 4: Get forms attached to this site
+		let forms: any[] = [];
+		try {
+			const attachments = await orgDb.formSites
+				.where({ siteId: site.id, status: true, deleted_at: { isNullish: true } })
+				.many();
+			
+			if (attachments.success && attachments.data?.length) {
+				const formIds = attachments.data.map((a: any) => a.formId);
+				const formsResult = await orgDb.forms
+					.where({ deleted_at: { isNullish: true } })
+					.many();
+				
+				if (formsResult.success && formsResult.data) {
+					forms = formsResult.data
+						.filter((f: any) => formIds.includes(f.id))
+						.map((f: any) => ({
+							id: f.id,
+							name: f.name,
+							fields: typeof f.fields === 'string' ? JSON.parse(f.fields) : f.fields || [],
+							settings: typeof f.settings === 'string' ? JSON.parse(f.settings) : f.settings || {}
+						}));
+				}
+			}
+		} catch (err) {
+			console.error('[api/sites/resolve] Error loading forms:', err);
+			// Continue without forms
+		}
+
 		console.log('[api/sites/resolve] Site resolved:', {
 			id: site.id,
 			name: site.name,
-			subdomain: site.subdomain
+			subdomain: site.subdomain,
+			formsCount: forms.length
 		});
 
 		return json({
@@ -110,11 +140,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				theme: site.theme,
 				metadata: site.metadata
 			},
+			orgId: siteMapping.orgId,
 			siteDatabase: siteDbTokenResult.success && siteDbTokenResult.data ? {
 				dbuuid: siteMapping.dbuuid,
 				workerName: siteMapping.workerName,
 				token: siteDbTokenResult.data.token
-			} : null
+			} : null,
+			forms
 		});
 	} catch (err) {
 		console.error('[api/sites/resolve] Error:', err);

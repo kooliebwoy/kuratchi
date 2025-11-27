@@ -55,7 +55,8 @@
     if (!image.alt) image.alt = 'About us image';
     if (!image.title) image.title = image.alt ?? 'About us image';
 
-    const imageUrl = $derived(image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '');
+    // Use url directly (already contains full cloud URL from upload), fallback to src for legacy
+    const imageUrl = $derived(image?.url ?? image?.src ?? '');
 
     let content = $derived({
         id,

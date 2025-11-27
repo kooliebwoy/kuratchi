@@ -175,8 +175,7 @@
         {:else if searchResults.length > 0}
           <div class="kui-result-list">
             {#each searchResults as result}
-              <form class="kui-result-row" {...setActiveOrganization} onsubmit={handleSwitch}>
-                <input type="hidden" name="organizationId" value={result.id} />
+              <div class="kui-result-row">
                 <div class="kui-inline">
                   <Building2 class="kui-icon" />
                   <div>
@@ -184,10 +183,11 @@
                     <div class="kui-subtext">{result.slug}</div>
                   </div>
                 </div>
-                <Button type="submit" variant="primary" size="xs">
+                <!-- Switch organization functionality temporarily hidden for launch -->
+                <Button variant="ghost" size="xs" disabled title="Organization switching temporarily disabled">
                   Switch
                 </Button>
-              </form>
+              </div>
             {/each}
           </div>
         {:else}

@@ -3,8 +3,6 @@
     import { onMount } from 'svelte';
     import { BlockActions } from "../utils/index.js";
     import { ImagePicker } from "../widgets/index.js";
-	import CardNoImage from '../blocks/CardNoImage.svelte';
-	import NoMarginCarousel from '../blocks/NoMarginCarousel.svelte';
     
     interface CarouselImage {
         key?: string;
@@ -60,7 +58,7 @@
 
     // Keep original images format for saving, normalized for display
     const normalizedImages = $derived(images.map((image) => ({
-        url: image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '',
+        url: image?.url ?? image?.src ?? '',
         alt: image?.alt ?? ''
     })));
 
@@ -153,20 +151,48 @@
     <section {id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
         <div class="krt-sliderLayout__inner" class:krt-sliderLayout__inner--reverse={reverseOrder}>
             <div class="krt-sliderLayout__card">
-                <CardNoImage
-                    bind:heading={heading}
-                    bind:body={body}
-                    link={button.link}
-                    bind:button={button.label}
-                    backgroundColor={cardBackgroundColor}
-                    buttonColor={buttonColor}
-                    {headingColor}
-                    {contentColor}
-                    editable={false}
-                />
+                <div class="krt-card" style:background-color={cardBackgroundColor}>
+                    <div class="krt-card__body">
+                        <h2
+                            class="krt-card__title"
+                            style:color={headingColor}
+                            id="heading"
+                            bind:innerHTML={heading}
+                            contenteditable
+                        ></h2>
+                        <p class="krt-card__copy" style:color={contentColor} id="body" bind:innerHTML={body} contenteditable></p>
+                        <div class="krt-card__actions">
+                            <a
+                                class="krt-card__cta"
+                                href={button.link}
+                                style:background-color={buttonColor}
+                                style:color={contentColor}
+                                id="button"
+                            >
+                                {button.label}
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="krt-sliderLayout__carousel">
-                <NoMarginCarousel bind:images={images} editable={false} />
+                <div class="krt-nmCarousel" style="--krt-nmCarousel-bg: #020617; --krt-nmCarousel-accent: #0f172a; --krt-nmCarousel-border: rgba(148, 163, 184, 0.35); --krt-nmCarousel-text: #f8fafc;">
+                    <div class="krt-nmCarousel__scroller" aria-label="Carousel preview">
+                        {#if normalizedImages.length}
+                            {#each normalizedImages as image (image.url)}
+                                <figure class="krt-nmCarousel__item">
+                                    {#if image.url}
+                                        <img src={image.url} alt={image.alt} loading="lazy" />
+                                    {:else}
+                                        <div class="krt-nmCarousel__placeholder">Add image</div>
+                                    {/if}
+                                </figure>
+                            {/each}
+                        {:else}
+                            <p class="krt-nmCarousel__empty">No images yet. Use the picker to add content.</p>
+                        {/if}
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -176,20 +202,36 @@
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
             <div class="krt-sliderLayout__card">
-                <CardNoImage
-                    heading={heading}
-                    body={body}
-                    link={button.link}
-                    button={button.label}
-                    backgroundColor={cardBackgroundColor}
-                    buttonColor={buttonColor}
-                    {headingColor}
-                    {contentColor}
-                    editable={false}
-                />
+                <div class="krt-card" style:background-color={cardBackgroundColor}>
+                    <div class="krt-card__body">
+                        <h2 class="krt-card__title" style:color={headingColor}>{heading}</h2>
+                        <p class="krt-card__copy" style:color={contentColor}>{body}</p>
+                        <div class="krt-card__actions">
+                            <a class="krt-card__cta" href={button.link} style:background-color={buttonColor} style:color={contentColor}>
+                                {button.label}
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="krt-sliderLayout__carousel">
-                <NoMarginCarousel images={normalizedImages} editable={false} />
+                <div class="krt-nmCarousel" style="--krt-nmCarousel-bg: #020617; --krt-nmCarousel-accent: #0f172a; --krt-nmCarousel-border: rgba(148, 163, 184, 0.35); --krt-nmCarousel-text: #f8fafc;">
+                    <div class="krt-nmCarousel__scroller" aria-label="Carousel preview">
+                        {#if normalizedImages.length}
+                            {#each normalizedImages as image (image.url)}
+                                <figure class="krt-nmCarousel__item">
+                                    {#if image.url}
+                                        <img src={image.url} alt={image.alt} loading="lazy" />
+                                    {:else}
+                                        <div class="krt-nmCarousel__placeholder">Add image</div>
+                                    {/if}
+                                </figure>
+                            {/each}
+                        {:else}
+                            <p class="krt-nmCarousel__empty">No images yet. Add content in the editor.</p>
+                        {/if}
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -308,5 +350,134 @@
 
     .krt-cardWithSlider__editor {
         position: relative;
+    }
+
+    /* Inlined CardNoImage styles */
+    .krt-card {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-lg, 1rem);
+        border-radius: var(--krt-radius-xl, 1rem);
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+        background: var(--krt-color-surface, #ffffff);
+        color: var(--krt-color-text, #111827);
+        height: 100%;
+    }
+
+    .krt-card__body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--krt-space-md, 0.75rem);
+        padding: var(--krt-space-2xl, 2rem);
+        min-height: 100%;
+    }
+
+    .krt-card__title {
+        margin: 0;
+        font-size: clamp(1.8rem, 2.5vw + 1rem, 2.6rem);
+        font-weight: 800;
+        letter-spacing: -0.015em;
+    }
+
+    .krt-card__copy {
+        margin: 0;
+        font-size: 1rem;
+        line-height: 1.7;
+    }
+
+    .krt-card__actions {
+        margin-top: auto;
+    }
+
+    .krt-card__cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.65rem 1.4rem;
+        border-radius: var(--krt-radius-pill, 999px);
+        border: none;
+        font-weight: 600;
+        text-decoration: none;
+        transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    }
+
+    .krt-card__cta:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 18px 30px rgba(17, 24, 39, 0.2);
+    }
+
+    .krt-card__cta:focus-visible {
+        outline: 2px solid var(--krt-color-accent, #4f46e5);
+        outline-offset: 2px;
+    }
+
+    /* Inlined NoMarginCarousel styles */
+    .krt-nmCarousel {
+        position: relative;
+        background: var(--krt-nmCarousel-bg, #040617);
+        color: var(--krt-nmCarousel-text, #f8fafc);
+        padding: clamp(1.5rem, 4vw, 3rem);
+        border-radius: 1.5rem;
+        overflow: hidden;
+        border: 1px solid var(--krt-nmCarousel-accent, #0f172a);
+        height: 100%;
+    }
+
+    .krt-nmCarousel__scroller {
+        display: flex;
+        gap: 1rem;
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+        scrollbar-width: thin;
+        scrollbar-color: var(--krt-nmCarousel-accent, #0f172a) transparent;
+    }
+
+    .krt-nmCarousel__scroller::-webkit-scrollbar {
+        height: 8px;
+    }
+
+    .krt-nmCarousel__scroller::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .krt-nmCarousel__scroller::-webkit-scrollbar-thumb {
+        background: var(--krt-nmCarousel-accent, #0f172a);
+        border-radius: 999px;
+    }
+
+    .krt-nmCarousel__item {
+        min-width: clamp(220px, 30vw, 360px);
+        border-radius: 1rem;
+        overflow: hidden;
+        border: 1px solid var(--krt-nmCarousel-border, rgba(148, 163, 184, 0.35));
+        margin: 0;
+        position: relative;
+    }
+
+    .krt-nmCarousel__item img,
+    .krt-nmCarousel__placeholder {
+        display: block;
+        width: 100%;
+        height: clamp(280px, 50vh, 520px);
+        object-fit: cover;
+    }
+
+    .krt-nmCarousel__placeholder {
+        display: grid;
+        place-items: center;
+        font-size: 0.9rem;
+        color: var(--krt-nmCarousel-text, #f8fafc);
+        background: repeating-linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.08),
+            rgba(255, 255, 255, 0.08) 10px,
+            rgba(255, 255, 255, 0.16) 10px,
+            rgba(255, 255, 255, 0.16) 20px
+        );
+    }
+
+    .krt-nmCarousel__empty {
+        color: var(--krt-nmCarousel-text, #f8fafc);
+        opacity: 0.8;
     }
 </style>

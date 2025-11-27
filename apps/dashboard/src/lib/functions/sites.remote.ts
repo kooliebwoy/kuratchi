@@ -284,6 +284,7 @@ export const createSite = guardedForm(
 			});
 
 			// Step 1.5: If R2 bucket was created, bind it to the worker and redeploy
+			let r2StorageDomain: string | null = null;
 			if (r2Created && created.workerName && created.databaseId) {
 				try {
 					console.log('[createSite] Binding R2 bucket to worker:', {
@@ -313,6 +314,37 @@ export const createSite = guardedForm(
 						} else {
 							console.warn('[createSite] Failed to bind R2 bucket to worker:', bindResult);
 						}
+						
+						// Step 1.6: Add custom domain from kuratchi.cloud zone for storage
+						// This allows serving media directly via {subdomain}.kuratchi.cloud
+						const bucketOriginHost = env.KURATCHI_BUCKET_ORIGIN_HOST;
+						const bucketZoneId = env.KURATCHI_BUCKET_ZONE_ID;
+						if (bucketOriginHost && bucketZoneId) {
+							const storageDomain = `${subdomain}.${bucketOriginHost}`;
+							console.log('[createSite] Adding custom storage domain:', storageDomain);
+							
+							try {
+								const domainResult = await r2.addCustomDomain(r2BucketName, storageDomain, { 
+									apiToken, 
+									accountId,
+									zoneId: bucketZoneId,
+									enabled: true
+								});
+								
+								if (domainResult?.success) {
+									console.log('[createSite] ✓ Custom storage domain added:', storageDomain);
+									r2StorageDomain = storageDomain;
+								} else {
+									console.warn('[createSite] Failed to add custom storage domain:', domainResult?.errors);
+									// Non-fatal: bucket works, just without custom domain
+								}
+							} catch (domainError) {
+								console.error('[createSite] Error adding custom storage domain:', domainError);
+								// Non-fatal: bucket works, just without custom domain
+							}
+						} else {
+							console.warn('[createSite] KURATCHI_BUCKET_ORIGIN_HOST or KURATCHI_BUCKET_ZONE_ID not configured, skipping custom storage domain');
+						}
 					} else {
 						console.warn('[createSite] Missing credentials for R2 binding:', {
 							hasApiToken: !!apiToken,
@@ -335,6 +367,7 @@ export const createSite = guardedForm(
 				workerName: created.workerName,
 				r2BucketName: r2Created ? r2BucketName : null,
 				r2Binding: r2Created ? r2Binding : null,
+				r2StorageDomain: r2StorageDomain, // Custom storage domain (e.g., subdomain.kuratchi.cloud)
 				organizationId: activeOrgId,
 				siteId: siteId,
 				isArchived: false,
@@ -384,6 +417,7 @@ export const createSite = guardedForm(
 				workerName: created.workerName,
 				r2BucketName: r2Created ? r2BucketName : null,
 				r2Binding: r2Created ? r2Binding : null,
+				r2StorageDomain: r2StorageDomain, // Custom domain for storage (e.g., subdomain.kuratchi.cloud)
 				metadata: { themeId },
 				created_at: now,
 				updated_at: now,

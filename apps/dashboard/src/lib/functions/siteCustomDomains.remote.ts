@@ -20,6 +20,24 @@ const ensureSession = () => {
   return { event, session };
 };
 
+// Helper to log activity
+const logActivity = async (action: string, data?: any) => {
+  const { locals } = getRequestEvent();
+  const kur = locals.kuratchi as any;
+  const session = locals.session;
+  const organizationId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
+
+  try {
+    await kur?.activity?.log?.({
+      action,
+      data,
+      organizationId
+    });
+  } catch (err) {
+    console.error('[logActivity] Failed to log activity:', err);
+  }
+};
+
 const guardedQuery = <R>(fn: () => Promise<R>) => {
   return query(async () => {
     ensureSession();
@@ -121,6 +139,8 @@ export const addSiteCustomDomain = guardedCommand(addDomainSchema, async (data) 
       return { success: false, error: 'Failed to add domain' };
     }
 
+    await logActivity('customdomain.added', { siteId: data.siteId, domain: normalizedDomain });
+
     return { 
       success: true, 
       domain: result.results,
@@ -196,6 +216,8 @@ export const verifySiteCustomDomain = guardedCommand(verifyDomainSchema, async (
         }
       }
 
+      await logActivity('customdomain.verified', { domainId: data.domainId, domain: domain.domain, siteId: domain.siteId });
+
       return { success: true, verified: true };
     }
 
@@ -239,6 +261,8 @@ export const deleteSiteCustomDomain = guardedCommand(deleteDomainSchema, async (
     if (domain && domain.verified) {
       await removeCustomDomainFromKV(event.locals, domain.domain);
     }
+
+    await logActivity('customdomain.removed', { domainId: data.domainId, domain: domain?.domain });
 
     return { success: true };
   } catch (err) {

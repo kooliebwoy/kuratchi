@@ -181,9 +181,8 @@ export const getAllBuckets = query('unchecked', async () => {
 		// Fetch domain status for each bucket
 		for (const site of siteRecords.data || []) {
 			if (site.r2BucketName) {
-				// Try to get public domain status
+				// Try to get public domain status (R2.dev managed domain)
 				let publicDomain = null;
-				let customDomain = null;
 				
 				try {
 					const domainStatus = await r2.getPublicDomain(site.r2BucketName);
@@ -197,11 +196,8 @@ export const getAllBuckets = query('unchecked', async () => {
 					console.warn(`[getAllBuckets] Failed to get domain status for ${site.r2BucketName}:`, err);
 				}
 				
-				// Check if custom domain is configured (would be sitename-storage.kuratchi.dev)
-				if (site.subdomain) {
-					customDomain = `${site.subdomain}-storage.kuratchi.dev`;
-					// TODO: Verify if custom domain is actually configured via API
-				}
+				// Use actual custom storage domain from site record (e.g., subdomain.kuratchi.cloud)
+				const customDomain = site.r2StorageDomain || null;
 				
 				buckets.push({
 					name: site.r2BucketName,
@@ -216,8 +212,8 @@ export const getAllBuckets = query('unchecked', async () => {
 						databaseId: site.databaseId
 					},
 					publicDomain,
-					customDomain: null, // Will be set when actually configured
-					suggestedCustomDomain: customDomain,
+					customDomain, // Actual configured custom domain from kuratchi.cloud zone
+					suggestedCustomDomain: site.subdomain ? `${site.subdomain}.kuratchi.cloud` : null,
 					isManaged: true,
 					organizationId: activeOrgId,
 					creation_date: site.created_at
@@ -322,15 +318,20 @@ async function getBucketInfo(bucketName: string) {
 		console.warn(`[getBucketInfo] No worker config available for bucket ${bucketName}. R2 operations will fail. Site may need worker deployment.`);
 	}
 	
-	// Get public domain info
+	// Get storage URL - prefer custom storage domain
 	let publicUrl = null;
-	try {
-		const domainStatus = await r2.getPublicDomain(bucketName);
-		if (domainStatus?.success && domainStatus?.result?.enabled) {
-			publicUrl = `https://${domainStatus.result.domain}`;
+	if (site.r2StorageDomain) {
+		publicUrl = `https://${site.r2StorageDomain}`;
+	} else {
+		// Fallback to R2.dev public domain
+		try {
+			const domainStatus = await r2.getPublicDomain(bucketName);
+			if (domainStatus?.success && domainStatus?.result?.enabled) {
+				publicUrl = `https://${domainStatus.result.domain}`;
+			}
+		} catch (err) {
+			console.warn(`[getBucketInfo] Failed to get domain status for ${bucketName}:`, err);
 		}
-	} catch (err) {
-		console.warn(`[getBucketInfo] Failed to get domain status for ${bucketName}:`, err);
 	}
 	
 	return { bucketName, binding, site, publicUrl, workerConfig };
@@ -876,22 +877,30 @@ export const uploadSiteMedia = command(UploadSiteMediaSchema, async ({ siteId, f
 		error(500, 'Failed to upload file to R2. Check worker logs for details.');
 	}
 
-	// Get public domain info to generate URL
+	// Get storage URL - prefer custom storage domain (e.g., subdomain.kuratchi.cloud)
 	let publicUrl = null;
-	try {
-		const domainStatus = await r2.getPublicDomain(site.r2BucketName);
-		console.log('[uploadSiteMedia] Domain status:', domainStatus);
-		
-		if (domainStatus?.success && domainStatus?.result?.enabled && domainStatus?.result?.domain) {
-			publicUrl = `https://${domainStatus.result.domain}/${key}`;
+	
+	// First check if site has a custom storage domain configured
+	if (site.r2StorageDomain) {
+		publicUrl = `https://${site.r2StorageDomain}/${key}`;
+		console.log('[uploadSiteMedia] Using custom storage domain:', site.r2StorageDomain);
+	} else {
+		// Fallback to R2.dev public domain if no custom domain
+		try {
+			const domainStatus = await r2.getPublicDomain(site.r2BucketName);
+			console.log('[uploadSiteMedia] Domain status:', domainStatus);
+			
+			if (domainStatus?.success && domainStatus?.result?.enabled && domainStatus?.result?.domain) {
+				publicUrl = `https://${domainStatus.result.domain}/${key}`;
+			}
+		} catch (err) {
+			console.warn('[uploadSiteMedia] Failed to get domain status:', err);
 		}
-	} catch (err) {
-		console.warn('[uploadSiteMedia] Failed to get domain status:', err);
 	}
 	
-	// No fallback - public domain must be enabled
+	// No fallback - a storage domain must be configured
 	if (!publicUrl) {
-		error(500, 'Public domain not enabled for this bucket. Please enable public access in bucket settings.');
+		error(500, 'No storage domain configured for this bucket. Please configure a custom domain or enable public access.');
 	}
 
 	const fileSize = fileData instanceof ArrayBuffer ? fileData.byteLength : 0;

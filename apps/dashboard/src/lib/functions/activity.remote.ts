@@ -77,11 +77,9 @@ export const getActivities = guardedQuery(async () => {
         error(500, 'Organization database not configured');
       }
       
+      // Note: org schema doesn't have isHidden field - hidden activities are only logged to admin DB
       const activitiesResult = await db.activity
-        .where({ 
-          deleted_at: { isNullish: true },
-          isHidden: false  // Filter out hidden activities for non-superadmins
-        })
+        .where({ deleted_at: { isNullish: true } })
         .many();
       
       activities = activitiesResult?.data || [];

@@ -64,7 +64,7 @@ export function activityPlugin(options: ActivityPluginOptions = {}): AuthPlugin 
 				try {
 					const db = options.db.source === 'admin' 
 						? await ctx.locals.kuratchi?.getAdminDb?.()
-						: await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+						: await ctx.locals.kuratchi?.orgDatabaseClient?.(ctx.locals.session?.organizationId);
 					
 					if (db) {
 						const table = db[options.db.table as keyof typeof db] as any;
@@ -188,7 +188,8 @@ export function activityPlugin(options: ActivityPluginOptions = {}): AuthPlugin 
 				// 2. Log to org if NOT hidden and org specified
 				if (!effectiveOptions.isHidden && effectiveOptions.organizationId) {
 					try {
-						const orgDb = await ctx.locals.kuratchi?.getOrgDb?.(effectiveOptions.organizationId);
+						// Use orgDatabaseClient (the actual method name exposed by the SDK)
+						const orgDb = await ctx.locals.kuratchi?.orgDatabaseClient?.(effectiveOptions.organizationId);
 						if (orgDb) {
 							// Org schema doesn't have 'isHidden' field
 							const { isHidden, organizationId, ...orgData } = baseData as any;

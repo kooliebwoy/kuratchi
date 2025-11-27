@@ -127,7 +127,7 @@ export function rolesPlugin(options: RolesPluginOptions = {}): AuthPlugin {
           const src = options.db.source || 'admin';
           const db = src === 'admin'
             ? await ctx.locals.kuratchi?.getAdminDb?.()
-            : await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+            : await ctx.locals.kuratchi?.orgDatabaseClient?.(ctx.locals.session?.organizationId);
 
           const tableName = options.db.table;
           const nameCol = options.db.nameColumn || 'name';
@@ -165,7 +165,7 @@ export function rolesPlugin(options: RolesPluginOptions = {}): AuthPlugin {
           const src = j.source || 'admin';
           const db = src === 'admin'
             ? await ctx.locals.kuratchi?.getAdminDb?.()
-            : await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+            : await ctx.locals.kuratchi?.orgDatabaseClient?.(ctx.locals.session?.organizationId);
 
           if (db) {
             const rt = j.rolesTable;
@@ -303,7 +303,7 @@ export function rolesPlugin(options: RolesPluginOptions = {}): AuthPlugin {
         if (source === 'admin') {
           return await ctx.locals.kuratchi?.getAdminDb?.();
         }
-        return await ctx.locals.kuratchi?.getOrgDb?.(ctx.locals.session?.organizationId);
+        return await ctx.locals.kuratchi?.orgDatabaseClient?.(ctx.locals.session?.organizationId);
       };
 
       ctx.locals.kuratchi.roles = {

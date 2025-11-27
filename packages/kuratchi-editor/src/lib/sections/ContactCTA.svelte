@@ -1,22 +1,38 @@
 <script lang="ts">
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
-    import { onMount } from 'svelte';
+    import { onMount, getContext } from 'svelte';
+
+    interface FormField {
+        id: string;
+        type: string;
+        label: string;
+        name: string;
+        placeholder?: string;
+        required?: boolean;
+    }
+
+    interface AttachedForm {
+        id: string;
+        name: string;
+        fields: FormField[];
+        settings: {
+            formName?: string;
+            submitButtonText?: string;
+            successMessage?: string;
+        };
+        styling?: any;
+    }
 
     interface Props {
         id?: string;
         type?: string;
+        formId?: string;
         eyebrow?: string;
         heading?: string;
         body?: string;
         buttonLabel?: string;
         secondaryLabel?: string;
-        nameLabel?: string;
-        namePlaceholder?: string;
-        emailLabel?: string;
-        emailPlaceholder?: string;
-        projectLabel?: string;
-        projectPlaceholder?: string;
         submitLabel?: string;
         metadata?: {
             backgroundColor?: string;
@@ -29,17 +45,12 @@
     let {
         id = crypto.randomUUID(),
         type = 'contact-cta',
-        eyebrow = $bindable('Let’s build together'),
+        formId = $bindable(''),
+        eyebrow = $bindable('Let\'s build together'),
         heading = $bindable('Ready to launch?'),
-        body = $bindable('Tell us about your next page and we’ll help you build it in minutes with our editor.'),
+        body = $bindable('Tell us about your next page and we\'ll help you build it in minutes with our editor.'),
         buttonLabel = $bindable('Book a demo'),
         secondaryLabel = $bindable('Talk to sales'),
-        nameLabel = $bindable('Name'),
-        namePlaceholder = $bindable('Your name'),
-        emailLabel = $bindable('Email'),
-        emailPlaceholder = $bindable('you@example.com'),
-        projectLabel = $bindable('Project'),
-        projectPlaceholder = $bindable('What are you building?'),
         submitLabel = $bindable('Send message'),
         metadata = $bindable({
             backgroundColor: '#0b1224',
@@ -49,31 +60,77 @@
         editable = true
     }: Props = $props();
 
+    // Get forms from site metadata context (works in both editor and site-renderer)
+    const siteMetadata = getContext<any>('siteMetadata');
+    const availableForms = $derived<AttachedForm[]>(siteMetadata?.forms || []);
+    
+    // Get selected form data from context
+    const selectedForm = $derived(() => {
+        if (!formId) return null;
+        return availableForms.find(f => f.id === formId) || null;
+    });
+
     let component = $state<HTMLElement>();
     const componentRef = {};
     let mounted = $state(false);
+    let formSubmitting = $state(false);
+    let formSuccess = $state(false);
+    let formError = $state<string | null>(null);
 
     const layoutStyle = $derived(
         `--krt-contact-bg: ${metadata.backgroundColor}; --krt-contact-text: ${metadata.textColor}; --krt-contact-accent: ${metadata.accentColor};`
     );
 
+    // Only save formId - form data comes from context at runtime
     const content = $derived({
         id,
         type,
+        formId,
         eyebrow,
         heading,
         body,
         buttonLabel,
         secondaryLabel,
-        nameLabel,
-        namePlaceholder,
-        emailLabel,
-        emailPlaceholder,
-        projectLabel,
-        projectPlaceholder,
         submitLabel,
         metadata: { ...metadata }
     });
+
+    // Handle form submission (for non-editable mode)
+    const handleSubmit = async (e: SubmitEvent) => {
+        e.preventDefault();
+        if (!formId || !selectedForm()) return;
+        
+        formSubmitting = true;
+        formError = null;
+        
+        const formElement = e.target as HTMLFormElement;
+        const formData = new FormData(formElement);
+        const data: Record<string, string> = {};
+        
+        formData.forEach((value, key) => {
+            data[key] = value.toString();
+        });
+        
+        try {
+            const response = await fetch('/api/forms/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ formId, data })
+            });
+            
+            if (response.ok) {
+                formSuccess = true;
+                formElement.reset();
+            } else {
+                const result = await response.json();
+                formError = result.message || 'Submission failed';
+            }
+        } catch (err) {
+            formError = 'Network error. Please try again.';
+        } finally {
+            formSubmitting = false;
+        }
+    };
 
     onMount(() => {
         if (!editable) return;
@@ -107,38 +164,41 @@
                             </div>
                         </section>
                         <section class="krt-contact__section">
-                            <h3>Form labels</h3>
+                            <h3>Form</h3>
+                            <div class="krt-contact__grid krt-contact__grid--stacked">
+                                {#if availableForms.length > 0}
+                                    <label class="krt-contact__field">
+                                        <span>Select Form</span>
+                                        <select bind:value={formId} class="krt-contact__select">
+                                            <option value="">Choose a form...</option>
+                                            {#each availableForms as form}
+                                                <option value={form.id}>{form.name}</option>
+                                            {/each}
+                                        </select>
+                                    </label>
+                                    {#if formId && selectedForm()}
+                                        <div class="krt-contact__formInfo">
+                                            <span class="krt-contact__formInfoLabel">✓ Using "{selectedForm()?.name}"</span>
+                                            <span class="krt-contact__formInfoMeta">{selectedForm()?.fields?.length || 0} fields</span>
+                                        </div>
+                                    {/if}
+                                {:else}
+                                    <div class="krt-contact__noForms">
+                                        <p>No forms attached to this site.</p>
+                                        <a href="/forms" target="_blank" rel="noopener">Create & attach forms →</a>
+                                    </div>
+                                {/if}
+                            </div>
+                        </section>
+                        <section class="krt-contact__section">
+                            <h3>Content</h3>
                             <div class="krt-contact__grid krt-contact__grid--stacked">
                                 <label class="krt-contact__field">
                                     <span>Eyebrow</span>
                                     <input type="text" bind:value={eyebrow} />
                                 </label>
                                 <label class="krt-contact__field">
-                                    <span>Name label</span>
-                                    <input type="text" bind:value={nameLabel} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Name placeholder</span>
-                                    <input type="text" bind:value={namePlaceholder} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Email label</span>
-                                    <input type="text" bind:value={emailLabel} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Email placeholder</span>
-                                    <input type="text" bind:value={emailPlaceholder} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Project label</span>
-                                    <input type="text" bind:value={projectLabel} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Project placeholder</span>
-                                    <input type="text" bind:value={projectPlaceholder} />
-                                </label>
-                                <label class="krt-contact__field">
-                                    <span>Submit label</span>
+                                    <span>Submit button</span>
                                     <input type="text" bind:value={submitLabel} />
                                 </label>
                             </div>
@@ -163,18 +223,26 @@
                 </div>
             </div>
             <form class="krt-contact__form" aria-label="Contact form">
-                <label>
-                    <span contenteditable bind:innerHTML={nameLabel}></span>
-                    <input type="text" placeholder={namePlaceholder} oninput={(e) => namePlaceholder = e.currentTarget.placeholder} />
-                </label>
-                <label>
-                    <span contenteditable bind:innerHTML={emailLabel}></span>
-                    <input type="email" placeholder={emailPlaceholder} oninput={(e) => emailPlaceholder = e.currentTarget.placeholder} />
-                </label>
-                <label>
-                    <span contenteditable bind:innerHTML={projectLabel}></span>
-                    <textarea rows="3" placeholder={projectPlaceholder}></textarea>
-                </label>
+                {#if formId && selectedForm()}
+                    {#each selectedForm()?.fields || [] as field}
+                        <label>
+                            <span>{field.label}{field.required ? ' *' : ''}</span>
+                            {#if field.type === 'textarea'}
+                                <textarea name={field.name} rows="3" placeholder={field.placeholder || ''} required={field.required}></textarea>
+                            {:else if field.type === 'email'}
+                                <input type="email" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {:else if field.type === 'tel'}
+                                <input type="tel" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {:else}
+                                <input type="text" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {/if}
+                        </label>
+                    {/each}
+                {:else}
+                    <div class="krt-contact__placeholder">
+                        <p>Select a form in the settings panel</p>
+                    </div>
+                {/if}
                 <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>
                     <span contenteditable bind:innerHTML={submitLabel}></span>
                 </button>
@@ -193,20 +261,37 @@
                     <button class="krt-contact__secondary" type="button">{@html secondaryLabel}</button>
                 </div>
             </div>
-            <form class="krt-contact__form" aria-label="Contact form">
-                <label>
-                    <span>{@html nameLabel}</span>
-                    <input type="text" placeholder={namePlaceholder} />
-                </label>
-                <label>
-                    <span>{@html emailLabel}</span>
-                    <input type="email" placeholder={emailPlaceholder} />
-                </label>
-                <label>
-                    <span>{@html projectLabel}</span>
-                    <textarea rows="3" placeholder={projectPlaceholder}></textarea>
-                </label>
-                <button class="krt-contact__primary" type="button" style:background={metadata.accentColor}>{@html submitLabel}</button>
+            <form class="krt-contact__form" aria-label="Contact form" onsubmit={handleSubmit}>
+                {#if formSuccess}
+                    <div class="krt-contact__success">
+                        <p>{selectedForm()?.settings?.successMessage || 'Thank you for your submission!'}</p>
+                    </div>
+                {:else if formId && selectedForm()}
+                    {#each selectedForm()?.fields || [] as field}
+                        <label>
+                            <span>{field.label}{field.required ? ' *' : ''}</span>
+                            {#if field.type === 'textarea'}
+                                <textarea name={field.name} rows="3" placeholder={field.placeholder || ''} required={field.required}></textarea>
+                            {:else if field.type === 'email'}
+                                <input type="email" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {:else if field.type === 'tel'}
+                                <input type="tel" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {:else}
+                                <input type="text" name={field.name} placeholder={field.placeholder || ''} required={field.required} />
+                            {/if}
+                        </label>
+                    {/each}
+                    {#if formError}
+                        <div class="krt-contact__error">{formError}</div>
+                    {/if}
+                    <button class="krt-contact__primary" type="submit" style:background={metadata.accentColor} disabled={formSubmitting}>
+                        {formSubmitting ? 'Sending...' : (selectedForm()?.settings?.submitButtonText || submitLabel)}
+                    </button>
+                {:else}
+                    <div class="krt-contact__placeholder">
+                        <p>No form configured</p>
+                    </div>
+                {/if}
             </form>
         </div>
     </section>
@@ -339,5 +424,89 @@
         height: 36px;
         border-radius: 10px;
         border: 1px solid #e2e8f0;
+    }
+
+    .krt-contact__select {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.375rem;
+        background: white;
+        cursor: pointer;
+    }
+
+    .krt-contact__formInfo {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.75rem;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 0.5rem;
+    }
+
+    .krt-contact__formInfoLabel {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #15803d;
+    }
+
+    .krt-contact__formInfoMeta {
+        font-size: 0.75rem;
+        color: #16a34a;
+    }
+
+    .krt-contact__noForms {
+        padding: 1rem;
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        border-radius: 0.5rem;
+        text-align: center;
+    }
+
+    .krt-contact__noForms p {
+        margin: 0 0 0.5rem;
+        font-size: 0.875rem;
+        color: #92400e;
+    }
+
+    .krt-contact__noForms a {
+        font-size: 0.8125rem;
+        color: #b45309;
+    }
+
+    .krt-contact__placeholder {
+        padding: 2rem;
+        text-align: center;
+        color: color-mix(in srgb, var(--krt-contact-text) 50%, transparent);
+        border: 1px dashed color-mix(in srgb, var(--krt-contact-text) 20%, transparent);
+        border-radius: 0.5rem;
+    }
+
+    .krt-contact__placeholder p {
+        margin: 0;
+        font-size: 0.875rem;
+    }
+
+    .krt-contact__success {
+        padding: 2rem;
+        text-align: center;
+        background: color-mix(in srgb, #22c55e 15%, transparent);
+        border-radius: 0.5rem;
+    }
+
+    .krt-contact__success p {
+        margin: 0;
+        color: var(--krt-contact-text);
+        font-weight: 500;
+    }
+
+    .krt-contact__error {
+        padding: 0.75rem;
+        background: color-mix(in srgb, #ef4444 15%, transparent);
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        color: #fecaca;
     }
 </style>

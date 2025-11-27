@@ -97,9 +97,7 @@
             buttonLabel: card?.buttonLabel?.trim() ?? '',
             buttonLink: card?.buttonLink?.trim() ?? '#',
             image: {
-                url: card?.image?.key
-                    ? `/api/bucket/${card.image.key}`
-                    : card?.image?.url ?? card?.image?.src ?? '',
+                url: card?.image?.url ?? card?.image?.src ?? '',
                 alt: card?.image?.alt ?? card?.image?.title ?? card?.title ?? 'CTA image',
                 title: card?.image?.title ?? card?.image?.alt ?? card?.title ?? 'CTA image',
                 key: card?.image?.key
@@ -126,7 +124,7 @@
     });
 
     const resolveImageUrl = (image?: CardImage) =>
-        image?.key ? `/api/bucket/${image.key}` : image?.url ?? image?.src ?? '';
+        image?.url ?? image?.src ?? '';
 
     let images = $state(cards.map((card) => card.image).filter(Boolean));
 

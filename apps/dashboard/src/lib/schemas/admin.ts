@@ -143,6 +143,7 @@ export const adminSchema: SchemaDsl = {
       workerName: 'text',
       r2BucketName: 'text',
       r2Binding: 'text',
+      r2StorageDomain: 'text', // Custom storage domain (e.g., subdomain.kuratchi.cloud)
       isArchived: 'boolean',
       isActive: 'boolean',
       isPrimary: 'boolean default 0',

@@ -5,6 +5,24 @@ import { getThemeHomepage } from '@kuratchi/editor';
 
 import { getSiteDatabase, getDatabase, type SiteDatabaseContext } from '$lib/server/db-context';
 
+// Helper to log activity
+const logActivity = async (action: string, data?: any) => {
+	const { locals } = getRequestEvent();
+	const kur = locals.kuratchi as any;
+	const session = locals.session;
+	const organizationId = locals?.kuratchi?.superadmin?.getActiveOrgId?.() || session?.organizationId;
+
+	try {
+		await kur?.activity?.log?.({
+			action,
+			data,
+			organizationId
+		});
+	} catch (err) {
+		console.error('[logActivity] Failed to log activity:', err);
+	}
+};
+
 const JsonRecordSchema = v.record(v.string(), v.unknown());
 
 const PageDataSchema = v.object({
@@ -30,9 +48,19 @@ export interface SiteSummary {
 	metadata: Record<string, unknown> | null;
 }
 
+export interface AttachedForm {
+	id: string;
+	name: string;
+	description: string;
+	fields: any[];
+	settings: any;
+	styling: any;
+}
+
 export interface SiteEditorResult {
 	site: SiteSummary;
 	page: PageData;
+	forms: AttachedForm[];
 }
 
 export interface SaveSitePageResult {
@@ -140,7 +168,7 @@ async function getOrCreateHomepage(siteDb: SiteContext['siteDb'], site: SiteCont
 }
 
 export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
-	const { params } = getRequestEvent();
+	const { params, locals } = getRequestEvent();
 	const siteId = params.id;
 
 	if (!siteId) {
@@ -154,6 +182,42 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 	
 	const pageRow = await getOrCreateHomepage(siteDb, site, themeId);
 
+	// Load forms attached to this site from org database
+	let forms: AttachedForm[] = [];
+	try {
+		const orgDb = await getDatabase(locals);
+		
+		// Get form attachments for this site
+		const attachments = await orgDb.formSites
+			.where({ siteId, status: true, deleted_at: { isNullish: true } })
+			.many();
+		
+		if (attachments.success && attachments.data?.length) {
+			const formIds = attachments.data.map((a: any) => a.formId);
+			
+			// Get the actual forms
+			const formsResult = await orgDb.forms
+				.where({ deleted_at: { isNullish: true } })
+				.many();
+			
+			if (formsResult.success && formsResult.data) {
+				forms = formsResult.data
+					.filter((f: any) => formIds.includes(f.id))
+					.map((f: any) => ({
+						id: f.id,
+						name: f.name,
+						description: f.description || '',
+						fields: typeof f.fields === 'string' ? JSON.parse(f.fields) : f.fields || [],
+						settings: typeof f.settings === 'string' ? JSON.parse(f.settings) : f.settings || {},
+						styling: typeof f.styling === 'string' ? JSON.parse(f.styling) : f.styling || {}
+					}));
+			}
+		}
+	} catch (err) {
+		console.error('[loadSiteEditor] Failed to load forms:', err);
+		// Continue without forms - they may not exist yet
+	}
+
 	return {
 		site: {
 			id: site.id,
@@ -165,7 +229,8 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 			workerName: site.workerName,
 			metadata: siteMetadata
 		},
-		page: toPageData(pageRow, site)
+		page: toPageData(pageRow, site),
+		forms
 	};
 });
 
@@ -223,6 +288,8 @@ export const saveSitePage = command(SavePayloadSchema, async ({ siteId, page }: 
 			error(500, `Failed to update page: ${updateResult.error ?? 'unknown error'}`);
 		}
 
+		await logActivity('editor.page_updated', { siteId, pageId, title: plainPage.title, slug: normalizedSlug });
+
 		return { id: pageId, updated_at: now } satisfies SaveSitePageResult;
 	}
 
@@ -254,6 +321,8 @@ export const saveSitePage = command(SavePayloadSchema, async ({ siteId, page }: 
 		error(500, `Failed to create page: ${insertResult.error ?? 'unknown error'}`);
 	}
 
+	await logActivity('editor.page_created', { siteId, pageId: insertResult.data.id, title: plainPage.title, slug: normalizedSlug });
+
 	return { id: insertResult.data.id as string, updated_at: now } satisfies SaveSitePageResult;
 });
 
@@ -269,6 +338,8 @@ export const saveSiteMetadata = command(SaveSiteMetadataSchema, async ({ siteId,
 	if (!updateResult.success) {
 		error(500, `Failed to update site metadata: ${updateResult.error ?? 'unknown error'}`);
 	}
+
+	await logActivity('editor.site_settings_updated', { siteId });
 
 	return { updated_at: now };
 });
@@ -387,6 +458,8 @@ export const createSitePage = command(CreatePageSchema, async ({ siteId, title, 
 		error(500, `Failed to create page: ${insertResult.error ?? 'unknown error'}`);
 	}
 
+	await logActivity('editor.page_created', { siteId, pageId, title, slug: normalizedSlug });
+
 	return { id: pageId, updated_at: now };
 });
 
@@ -414,6 +487,8 @@ export const deleteSitePage = command(DeletePageSchema, async ({ siteId, pageId 
 	if (!deleteResult.success) {
 		error(500, `Failed to delete page: ${deleteResult.error ?? 'unknown error'}`);
 	}
+
+	await logActivity('editor.page_deleted', { siteId, pageId, title: page.data.title, slug: page.data.slug });
 
 	return { success: true };
 });

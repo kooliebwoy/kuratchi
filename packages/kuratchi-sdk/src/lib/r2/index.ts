@@ -689,28 +689,39 @@ export async function getPublicDomain(bucketName: string, config?: CreateBucketC
   return await response.json();
 }
 
+export interface AddCustomDomainOptions extends CreateBucketConfig {
+  /** Zone ID where the custom domain is registered (required by Cloudflare API) */
+  zoneId: string;
+  /** Whether the domain should be enabled (defaults to true) */
+  enabled?: boolean;
+}
+
 /**
  * Add custom domain to R2 bucket (e.g., sitename-storage.kuratchi.dev)
  * @param bucketName - Name of the R2 bucket
- * @param customDomain - Custom domain to add
- * @param config - Optional config with apiToken and accountId
+ * @param customDomain - Custom domain to add (e.g., "files.example.com")
+ * @param options - Config with apiToken, accountId, and required zoneId
  */
-export async function addCustomDomain(bucketName: string, customDomain: string, config?: CreateBucketConfig): Promise<any> {
+export async function addCustomDomain(bucketName: string, customDomain: string, options: AddCustomDomainOptions): Promise<any> {
   const platform = getCurrentPlatform() as any;
   const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
 
-  const apiToken = config?.apiToken || 
+  const apiToken = options?.apiToken || 
     env.CF_API_TOKEN || 
     env.CLOUDFLARE_API_TOKEN || 
     env.KURATCHI_CF_API_TOKEN;
   
-  const accountId = config?.accountId || 
+  const accountId = options?.accountId || 
     env.CF_ACCOUNT_ID || 
     env.CLOUDFLARE_ACCOUNT_ID || 
     env.KURATCHI_CF_ACCOUNT_ID;
 
   if (!apiToken || !accountId) {
     throw new Error('[Kuratchi R2] API token and account ID required');
+  }
+
+  if (!options?.zoneId) {
+    throw new Error('[Kuratchi R2] zoneId is required for adding custom domain');
   }
 
   const response = await fetch(
@@ -721,7 +732,11 @@ export async function addCustomDomain(bucketName: string, customDomain: string, 
         'Authorization': `Bearer ${apiToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ domain: customDomain })
+      body: JSON.stringify({ 
+        domain: customDomain,
+        zoneId: options.zoneId,
+        enabled: options.enabled ?? true
+      })
     }
   );
 
