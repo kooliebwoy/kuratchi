@@ -648,16 +648,64 @@ export const deleteSite = guardedForm(
 				error(500, 'Failed to delete site');
 			}
 
-			// Step 3: Delete database from Cloudflare using SDK
-			if (databaseId && site.name) {
+			// Step 3: Delete database and worker from Cloudflare using SDK
+			if (site.dbuuid || site.workerName) {
 				try {
-					// Note: database.delete returns void in current SDK
-					// Use the site name as the database name
-					await database.delete({ name: site.dbuuid || site.name });
-					console.log('[deleteSite] Deleted database from Cloudflare');
+					const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+					const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+					
+					if (apiToken && accountId) {
+						const deleteResult = await database.delete({ 
+							databaseId: site.dbuuid,
+							workerName: site.workerName,
+							apiToken,
+							accountId
+						});
+						
+						if (deleteResult.success) {
+							console.log('[deleteSite] ✓ Deleted database and worker from Cloudflare');
+						} else {
+							console.warn('[deleteSite] Database deletion returned error:', deleteResult.error);
+						}
+					} else {
+						console.warn('[deleteSite] Missing Cloudflare credentials, skipping database deletion');
+					}
 				} catch (deleteDbError) {
 					console.error('[deleteSite] Failed to delete database from Cloudflare:', deleteDbError);
 					// Continue anyway - site is already deleted from org DB
+				}
+			}
+			
+			// Step 3.5: Delete R2 bucket from Cloudflare
+			if (site.r2BucketName) {
+				try {
+					const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+					const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+					
+					if (apiToken && accountId) {
+						// Remove custom domain first if it exists
+						if (site.r2StorageDomain) {
+							try {
+								await r2.removeCustomDomain(site.r2BucketName, site.r2StorageDomain, { apiToken, accountId });
+								console.log('[deleteSite] ✓ Removed custom storage domain:', site.r2StorageDomain);
+							} catch (domainErr) {
+								console.warn('[deleteSite] Failed to remove custom domain:', domainErr);
+							}
+						}
+						
+						const deleteR2Result = await r2.deleteBucket(site.r2BucketName, { apiToken, accountId });
+						
+						if (deleteR2Result.success) {
+							console.log('[deleteSite] ✓ Deleted R2 bucket:', site.r2BucketName);
+						} else {
+							console.warn('[deleteSite] R2 bucket deletion returned error:', deleteR2Result.error);
+						}
+					} else {
+						console.warn('[deleteSite] Missing Cloudflare credentials, skipping R2 bucket deletion');
+					}
+				} catch (deleteR2Error) {
+					console.error('[deleteSite] Failed to delete R2 bucket:', deleteR2Error);
+					// Continue anyway
 				}
 			}
 

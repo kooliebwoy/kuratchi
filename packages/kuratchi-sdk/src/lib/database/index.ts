@@ -56,7 +56,7 @@ import { getDoEnvironment, getAdminEnvironment } from './core/config.js';
 import { KuratchiDatabase } from './core/database.js';
 // Uses example schema as default for database.admin() helper (legacy convenience)
 import { adminSchemaDsl } from '../schema/admin.example.js';
-import type { SchemaType, D1Client, OrmClient } from './core/types.js';
+import type { SchemaType, D1Client, OrmClient, ClientOptions } from './core/types.js';
 
 /**
  * Convenience namespace for common database operations
@@ -202,9 +202,53 @@ export const database = {
   },
 
   /**
-   * Delete a database (placeholder)
+   * Delete a database (D1 + worker)
+   * @param args.databaseId - The D1 database UUID
+   * @param args.workerName - Optional worker name to delete (if different from database name)
    */
-  async delete(_args: { name: string; instance?: KuratchiDatabase }): Promise<void> {
-    throw new Error('database.delete is not implemented yet');
+  async delete(args: { 
+    databaseId: string; 
+    workerName?: string;
+    apiToken?: string;
+    accountId?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const envConfig = getDoEnvironment();
+    
+    const apiToken = args.apiToken || envConfig.apiToken;
+    const accountId = args.accountId || envConfig.accountId;
+    
+    if (!apiToken || !accountId) {
+      return { success: false, error: 'API token and account ID are required' };
+    }
+    
+    try {
+      // Import CloudflareClient dynamically to avoid circular deps
+      const { CloudflareClient } = await import('../utils/cloudflare.js');
+      const client = new CloudflareClient({ apiToken, accountId });
+      
+      // Delete worker first if provided
+      if (args.workerName) {
+        try {
+          await client.deleteWorkerScript(args.workerName);
+          console.log(`[database.delete] Deleted worker: ${args.workerName}`);
+        } catch (workerErr: any) {
+          console.warn(`[database.delete] Failed to delete worker ${args.workerName}:`, workerErr.message);
+          // Continue to delete database
+        }
+      }
+      
+      // Delete D1 database
+      const result = await client.deleteDatabase(args.databaseId);
+      
+      if (result.success) {
+        console.log(`[database.delete] Deleted database: ${args.databaseId}`);
+        return { success: true };
+      } else {
+        return { success: false, error: JSON.stringify(result.errors) };
+      }
+    } catch (err: any) {
+      console.error('[database.delete] Error:', err);
+      return { success: false, error: err.message };
+    }
   }
 };

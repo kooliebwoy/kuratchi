@@ -844,6 +844,53 @@ export async function addWorkerBinding(
 }
 
 /**
+ * Delete an R2 bucket via Cloudflare API (control-plane operation)
+ * 
+ * @param name - Bucket name
+ * @param config - Optional config with apiToken and accountId
+ * @returns Result with success flag
+ * 
+ * @example
+ * ```typescript
+ * import { r2 } from 'kuratchi-sdk';
+ * const result = await r2.deleteBucket('my-bucket-name');
+ * ```
+ */
+export async function deleteBucket(name: string, config?: CreateBucketConfig): Promise<{ success: boolean; error?: string }> {
+  console.log('[Kuratchi R2] deleteBucket called with:', { name, hasConfig: !!config });
+  
+  const platform = getCurrentPlatform() as any;
+  const env = platform?.env || (typeof process !== 'undefined' ? process.env : {});
+
+  const apiToken = config?.apiToken || 
+    env.CF_API_TOKEN || 
+    env.CLOUDFLARE_API_TOKEN || 
+    env.KURATCHI_CF_API_TOKEN;
+  
+  const accountId = config?.accountId || 
+    env.CF_ACCOUNT_ID || 
+    env.CLOUDFLARE_ACCOUNT_ID || 
+    env.KURATCHI_CF_ACCOUNT_ID;
+
+  if (!apiToken) {
+    return { success: false, error: 'Cloudflare API token is required' };
+  }
+  if (!accountId) {
+    return { success: false, error: 'Cloudflare Account ID is required' };
+  }
+
+  try {
+    const client = new CloudflareClient({ apiToken, accountId });
+    await client.deleteR2Bucket(name);
+    console.log('[Kuratchi R2] ✓ Deleted bucket:', name);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Kuratchi R2] deleteBucket error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Convenience namespace export
  */
 export const r2 = {
@@ -854,6 +901,7 @@ export const r2 = {
   list,
   bucket,
   createBucket,
+  deleteBucket,
   addWorkerBinding,
   enablePublicDomain,
   disablePublicDomain,

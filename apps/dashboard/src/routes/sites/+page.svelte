@@ -5,13 +5,15 @@
     createSite,
     deleteSite
   } from '$lib/functions/sites.remote';
-  import { Layout, Plus, ExternalLink, Settings, Trash2, X, FileText } from '@lucide/svelte';
+  import { Layout, Plus, ExternalLink, Settings, Trash2, X, FileText, AlertTriangle, CheckCircle, Database, HardDrive } from '@lucide/svelte';
   import { Button, Card, Badge, Dialog, Loading, FormField, FormInput } from '@kuratchi/ui';
 
   let createDialog: HTMLDialogElement;
   let createDialogOpen = $state(false);
   let showDeleteConfirm = $state(false);
   let deletingSite = $state<any>(null);
+  let isDeleting = $state(false);
+  let deleteError = $state<string | null>(null);
 
   logRouteActivity();
   const sites = getSites();
@@ -26,6 +28,69 @@
   function handleDeleteClick(site: any) {
     deletingSite = site;
     showDeleteConfirm = true;
+    deleteError = null;
+  }
+
+  async function handleDeleteSubmit(e: Event) {
+    e.preventDefault();
+    if (!deletingSite) return;
+    
+    isDeleting = true;
+    deleteError = null;
+    
+    const siteName = deletingSite.name;
+    
+    try {
+      // Submit the form using the native form submission
+      const form = e.target as HTMLFormElement;
+      const formData = new FormData(form);
+      
+      // Use fetch to submit to the deleteSite action
+      const response = await fetch(deleteSite.action, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (result?.success) {
+        // Send notification about successful deletion
+        try {
+          await fetch('/api/notifications/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Site Deleted',
+              message: `"${siteName}" has been permanently deleted along with all its resources.`,
+              category: 'system',
+              priority: 'normal'
+            })
+          });
+        } catch (notifyErr) {
+          console.warn('Failed to send notification:', notifyErr);
+        }
+        
+        // Refresh the sites list
+        await sites.refresh();
+        
+        showDeleteConfirm = false;
+        deletingSite = null;
+      } else {
+        deleteError = result?.error || 'Failed to delete site. Please try again.';
+      }
+    } catch (err: any) {
+      deleteError = err.message || 'An unexpected error occurred.';
+    } finally {
+      isDeleting = false;
+    }
+  }
+
+  function cancelDelete() {
+    if (!isDeleting) {
+      showDeleteConfirm = false;
+      deletingSite = null;
+      deleteError = null;
+    }
   }
 
   function formatDate(dateString: string) {
@@ -175,28 +240,84 @@
 </Dialog>
 
 {#if showDeleteConfirm && deletingSite}
-  <Dialog bind:open={showDeleteConfirm} size="sm" onClose={() => { showDeleteConfirm = false; deletingSite = null; }}>
+  <Dialog bind:open={showDeleteConfirm} size="md" onClose={cancelDelete}>
     {#snippet header()}
       <div class="kui-modal-header">
-        <h3 class="text-error">Confirm Delete</h3>
-        <Button variant="ghost" size="xs" onclick={() => { showDeleteConfirm = false; deletingSite = null; }}>
+        <div class="kui-modal-header-title">
+          <div class="kui-modal-icon danger">
+            <AlertTriangle />
+          </div>
+          <div>
+            <h3>Delete Site</h3>
+            <p class="kui-subtext">This action cannot be undone</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="xs" onclick={cancelDelete} disabled={isDeleting}>
           <X class="kui-icon" />
         </Button>
       </div>
     {/snippet}
     {#snippet children()}
       <div class="kui-stack">
-        <p class="kui-subtext">Are you sure you want to delete <strong>{deletingSite.name}</strong>?</p>
-        <p class="kui-subtext">This will permanently delete the site and its data.</p>
-        <div class="kui-modal-actions">
-          <Button variant="ghost" onclick={() => { showDeleteConfirm = false; deletingSite = null; }}>Cancel</Button>
-          <form {...deleteSite} onsubmit={() => { showDeleteConfirm = false; deletingSite = null; }}>
-            <input type="hidden" name="id" value={deletingSite.id} />
-            <Button type="submit" variant="error">
-              <Trash2 class="kui-icon" /> Delete Site
+        {#if isDeleting}
+          <div class="kui-delete-progress">
+            <div class="kui-delete-progress__header">
+              <Loading size="md" />
+              <div>
+                <p class="kui-strong">Deleting "{deletingSite.name}"...</p>
+                <p class="kui-subtext">Please wait while we remove all resources</p>
+              </div>
+            </div>
+            <div class="kui-delete-progress__steps">
+              <div class="kui-delete-step">
+                <Database class="kui-icon" />
+                <span>Removing database and worker</span>
+              </div>
+              <div class="kui-delete-step">
+                <HardDrive class="kui-icon" />
+                <span>Deleting storage bucket</span>
+              </div>
+              <div class="kui-delete-step">
+                <Layout class="kui-icon" />
+                <span>Cleaning up site records</span>
+              </div>
+            </div>
+          </div>
+        {:else if deleteError}
+          <div class="kui-callout error">
+            <AlertTriangle class="kui-icon" />
+            <div>
+              <p class="kui-strong">Failed to delete site</p>
+              <p class="kui-subtext">{deleteError}</p>
+            </div>
+          </div>
+          <div class="kui-modal-actions">
+            <Button variant="ghost" onclick={cancelDelete}>Cancel</Button>
+            <Button variant="error" onclick={handleDeleteSubmit}>
+              <Trash2 class="kui-icon" /> Try Again
             </Button>
-          </form>
-        </div>
+          </div>
+        {:else}
+          <div class="kui-delete-warning">
+            <p>You are about to permanently delete <strong>{deletingSite.name}</strong>.</p>
+            <p class="kui-subtext">The following will be removed:</p>
+            <ul class="kui-delete-list">
+              <!-- <li><Database class="kui-icon" /> D1 database and worker</li>
+              <li><HardDrive class="kui-icon" /> R2 storage bucket and files</li> -->
+              <li><Layout class="kui-icon" /> All pages and content</li>
+              <li><FileText class="kui-icon" /> Form submissions</li>
+            </ul>
+          </div>
+          <div class="kui-modal-actions">
+            <Button variant="ghost" onclick={cancelDelete}>Cancel</Button>
+            <form onsubmit={handleDeleteSubmit}>
+              <input type="hidden" name="id" value={deletingSite.id} />
+              <Button type="submit" variant="error">
+                <Trash2 class="kui-icon" /> Delete Site Permanently
+              </Button>
+            </form>
+          </div>
+        {/if}
       </div>
     {/snippet}
   </Dialog>
@@ -320,5 +441,125 @@
 
   .text-right {
     text-align: right;
+  }
+
+  /* Delete Modal Styles */
+  .kui-modal-header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-modal-header-title h3 {
+    margin: 0;
+  }
+
+  .kui-modal-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--kui-radius-lg);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  .kui-modal-icon.danger {
+    background: color-mix(in srgb, var(--kui-color-error) 15%, transparent);
+    color: var(--kui-color-error);
+  }
+
+  .kui-delete-progress {
+    padding: var(--kui-spacing-md);
+    background: var(--kui-color-surface-muted);
+    border-radius: var(--kui-radius-lg);
+    border: 1px solid var(--kui-color-border);
+  }
+
+  .kui-delete-progress__header {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+    margin-bottom: var(--kui-spacing-md);
+  }
+
+  .kui-delete-progress__steps {
+    display: grid;
+    gap: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .kui-delete-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--kui-color-muted);
+    font-size: 0.9rem;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .kui-delete-step:nth-child(2) {
+    animation-delay: 0.3s;
+  }
+
+  .kui-delete-step:nth-child(3) {
+    animation-delay: 0.6s;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  .kui-delete-warning {
+    padding: var(--kui-spacing-md);
+    background: color-mix(in srgb, var(--kui-color-error) 5%, var(--kui-color-surface));
+    border-radius: var(--kui-radius-lg);
+    border: 1px solid color-mix(in srgb, var(--kui-color-error) 20%, var(--kui-color-border));
+  }
+
+  .kui-delete-warning p {
+    margin: 0 0 0.5rem;
+  }
+
+  .kui-delete-list {
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .kui-delete-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--kui-color-muted);
+    font-size: 0.9rem;
+  }
+
+  .kui-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-md);
+    border-radius: var(--kui-radius-lg);
+    border: 1px solid var(--kui-color-border);
+  }
+
+  .kui-callout.error {
+    background: color-mix(in srgb, var(--kui-color-error) 10%, var(--kui-color-surface));
+    border-color: color-mix(in srgb, var(--kui-color-error) 30%, var(--kui-color-border));
+    color: var(--kui-color-error);
+  }
+
+  .kui-callout.success {
+    background: color-mix(in srgb, var(--kui-color-success) 10%, var(--kui-color-surface));
+    border-color: color-mix(in srgb, var(--kui-color-success) 30%, var(--kui-color-border));
+    color: var(--kui-color-success);
+  }
+
+  .kui-callout.info {
+    background: color-mix(in srgb, var(--kui-color-info) 10%, var(--kui-color-surface));
+    border-color: color-mix(in srgb, var(--kui-color-info) 30%, var(--kui-color-border));
   }
 </style>

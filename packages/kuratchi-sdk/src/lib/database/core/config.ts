@@ -26,7 +26,7 @@ export function getDoEnvironment(): EnvironmentConfig {
     workersSubdomain: env.CF_WORKERS_SUBDOMAIN || env.CLOUDFLARE_WORKERS_SUBDOMAIN || env.KURATCHI_CF_WORKERS_SUBDOMAIN,
     accountId: env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID,
     apiToken: env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN,
-    scriptName: env.SCRIPT_NAME || env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal',
+    scriptName: env.SCRIPT_NAME || env.KURATCHI_D1_SCRIPT_NAME || 'kuratchi-d1',
     gatewayKey: env.GATEWAY_KEY || env.KURATCHI_GATEWAY_KEY
   };
 }

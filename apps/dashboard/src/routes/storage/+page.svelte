@@ -52,14 +52,6 @@
                   <HardDrive class="kui-icon" />
                   <div>
                     <p class="kui-bucket-name">{bucket.name}</p>
-                    {#if bucket.metadata?.name}
-                      <p class="kui-bucket-meta">
-                        {bucket.metadata.name}
-                        {#if bucket.metadata.subdomain}
-                          · <code>{bucket.metadata.subdomain}.kuratchi.site</code>
-                        {/if}
-                      </p>
-                    {/if}
                   </div>
                 </div>
               </td>

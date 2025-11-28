@@ -70,6 +70,8 @@
     "KURATCHI_ADMIN_DB_ID": "a915922d-0cfe-495e-aae1-3561c165847d",
     "KURATCHI_ADMIN_DB_NAME": "kuratchi-admin-db",
     "CF_SSL_FOR_SAAS_ZONE_ID": "186c912626782570e099d4f7b2a895b3",
-    "SITE_RENDERER_ORIGIN_HOST": "kuratchi.site"
+    "SITE_RENDERER_ORIGIN_HOST": "kuratchi.site",
+    "KURATCHI_BUCKET_ORIGIN_HOST": "kuratchi.cloud",
+    "KURATCHI_BUCKET_ZONE_ID": "82f6264dfcc2a69eff43b4f3dd932751"
   }
 }
