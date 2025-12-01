@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 5,
+  version: 6,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -20,12 +20,15 @@ export const organizationSchema: SchemaDsl = {
       email: 'text not null unique',
       emailVerified: 'timestamp_ms',
       image: 'text',
-      status: 'boolean',
-      role: 'enum(owner,editor,member)',
+      status: 'boolean', // true (active) | false (suspended) - use invite_token to detect invited
+      role: 'text', // More flexible for custom roles
       password_hash: 'text',
       accessAttempts: 'integer',
       tenantId: 'text',
       organization: 'text',
+      invite_token: 'text', // If set, user is invited (hasn't accepted yet)
+      invite_expires_at: 'timestamp_ms',
+      invited_by: 'text',
       '...timestamps': true,
     },
     session: {

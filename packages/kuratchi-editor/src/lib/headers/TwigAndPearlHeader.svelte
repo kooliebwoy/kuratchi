@@ -16,7 +16,6 @@
         title: 'Clutch CMS Logo',
     }
 
-    // Default menu data
     interface Props {
         searchEnabled?: boolean;
         type?: string;
@@ -31,49 +30,61 @@
         menuHidden?: boolean;
     }
 
+    const DEFAULT_MENU = [
+        { label: 'Home', link: '/' },
+        {
+            label: 'Products',
+            items: [
+                { label: 'Product A', link: '#' },
+                { label: 'Product B', link: '#' },
+            ],
+        },
+        { label: 'About Us', link: '#' },
+        { label: 'Contact', link: '#' },
+    ];
+
     let {
-        searchEnabled = true,
+        searchEnabled: initialSearchEnabled = true,
         type = 'twig-and-pearl-header',
-        backgroundColor = '#212121',
-        homeIconColor = '#575757',
-        textColor = '#ffffff',
-        reverseOrder = false,
-        icons = [
+        backgroundColor: initialBackgroundColor = '#212121',
+        homeIconColor: initialHomeIconColor = '#575757',
+        textColor: initialTextColor = '#ffffff',
+        reverseOrder: initialReverseOrder = false,
+        icons: initialIcons = [
             { icon: 'facebook', link: '#', name: "Facebook", enabled: true },
             { icon: 'x', link: '#', name: "X", enabled: true },
             { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
         ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[],
-        menu = [],
+        menu: initialMenu = [],
         editable = true,
-        useMobileMenuOnDesktop = false,
-        menuHidden = false
+        useMobileMenuOnDesktop: initialUseMobileMenuOnDesktop = false,
+        menuHidden: initialMenuHidden = false
     }: Props = $props();
 
-    if (!menuHidden && menu.length === 0 ) {
-        menu = [
-            { label: 'Home', link: '/' },
-            {
-                label: 'Products',
-                items: [
-                    { label: 'Product A', link: '#' },
-                    { label: 'Product B', link: '#' },
-                ],
-            },
-            { label: 'About Us', link: '#' },
-            { label: 'Contact', link: '#' },
-        ];
-    }
+    const resolvedMenu = (!initialMenuHidden && (initialMenu?.length ?? 0) === 0)
+        ? DEFAULT_MENU
+        : initialMenu;
+
+    let searchEnabled = $state(initialSearchEnabled);
+    let backgroundColor = $state(initialBackgroundColor);
+    let homeIconColor = $state(initialHomeIconColor);
+    let textColor = $state(initialTextColor);
+    let reverseOrder = $state(initialReverseOrder);
+    let icons = $state<{ icon: LucideIconKey; link: string; name: string; enabled: boolean }[]>(initialIcons);
+    let localMenu = $state(resolvedMenu);
+    let useMobileMenuOnDesktop = $state(initialUseMobileMenuOnDesktop);
+    let menuHidden = $state(initialMenuHidden);
 
     let content = $derived({
         id,
-        backgroundColor: backgroundColor,
-        homeIconColor: homeIconColor,
-        textColor: textColor,
-        reverseOrder: reverseOrder,
-        searchEnabled: searchEnabled,
-        type: type,
+        backgroundColor,
+        homeIconColor,
+        textColor,
+        reverseOrder,
+        searchEnabled,
+        type,
         icons,
-        menu,
+        menu: localMenu,
         useMobileMenuOnDesktop,
         menuHidden
     });
@@ -190,7 +201,7 @@
             style:background-color={backgroundColor}
             style:color={textColor}
         >
-            <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+            <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
             <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
                 <div class="krt-header__segment">
                     {#if reverseOrder}
@@ -215,7 +226,7 @@
                             </a>
                             {#if !menuHidden}
                                 <ul class="krt-header__navList">
-                                    {#each menu as item}
+                                    {#each localMenu as item}
                                         <li class="krt-header__navItem">
                                             {#if item.items}
                                                 <details class="krt-header__dropdown">
@@ -248,7 +259,7 @@
                                 </span>
                             </summary>
                             <ul class="krt-header__sheet" style:background-color={backgroundColor}>
-                                {#each menu as item}
+                                {#each localMenu as item}
                                     <li>
                                         {#if item.items}
                                             <details class="krt-header__sheetDropdown">
@@ -281,7 +292,7 @@
                             </a>
                             {#if !menuHidden}
                                 <ul class="krt-header__navList">
-                                    {#each menu as item}
+                                    {#each localMenu as item}
                                         <li class="krt-header__navItem">
                                             {#if item.items}
                                                 <details class="krt-header__dropdown">
@@ -333,7 +344,7 @@
         data-krt-serialized={serializeContent()}
     >
         <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}
@@ -358,7 +369,7 @@
                         </a>
                         {#if !menuHidden}
                             <ul class="krt-header__navList">
-                                {#each menu as item}
+                                {#each localMenu as item}
                                     <li class="krt-header__navItem">
                                         {#if item.items}
                                             <details class="krt-header__dropdown">
@@ -391,7 +402,7 @@
                             </span>
                         </summary>
                         <ul class="krt-header__sheet" style:background-color={backgroundColor}>
-                            {#each menu as item}
+                            {#each localMenu as item}
                                 <li>
                                     {#if item.items}
                                         <details class="krt-header__sheetDropdown">
@@ -424,7 +435,7 @@
                         </a>
                         {#if !menuHidden}
                             <ul class="krt-header__navList">
-                                {#each menu as item}
+                                {#each localMenu as item}
                                     <li class="krt-header__navItem">
                                         {#if item.items}
                                             <details class="krt-header__dropdown">

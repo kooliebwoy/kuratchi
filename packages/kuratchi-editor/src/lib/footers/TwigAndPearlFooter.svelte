@@ -19,23 +19,35 @@
   }
 
   let {
-    reverseOrder = $bindable(false),
-    textColor = $bindable('#ffffff'),
-    backgroundColor = $bindable('#212121'),
+    reverseOrder: initialReverseOrder = false,
+    textColor: initialTextColor = '#ffffff',
+    backgroundColor: initialBackgroundColor = '#212121',
     type = 'twig-and-pearl-footer',
-    icons = $bindable([
+    icons: initialIcons = [
         { icon: 'facebook', link: '#', name: "Facebook", enabled: true },
         { icon: 'x', link: '#', name: "X", enabled: true },
         { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
-    ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[]),
-    menu = undefined,
-    copyrightText = {
+    ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[],
+    menu: initialMenu = undefined,
+    copyrightText: initialCopyrightText = {
         href: 'https://kayde.io',
         by: 'Kayde',
     },
     editable = true,
-    menuHidden = false
+    menuHidden: initialMenuHidden = false
   }: Props = $props();
+
+  const resolvedMenu = (!initialMenuHidden && (initialMenu?.length ?? 0) === 0)
+    ? undefined
+    : initialMenu;
+
+  let reverseOrder = $state(initialReverseOrder);
+  let textColor = $state(initialTextColor);
+  let backgroundColor = $state(initialBackgroundColor);
+  let icons = $state(initialIcons);
+  let localMenu = $state(resolvedMenu);
+  let copyrightText = $state(initialCopyrightText);
+  let menuHidden = $state(initialMenuHidden);
 
     let footerLogo = {
         href: 'https://kayde.io',
@@ -73,19 +85,20 @@
 
     // Compute menu once per prop change to avoid inline re-evaluation
     const footerMenu = $derived.by(() => {
-        return (menu && Array.isArray(menu) && menu.length > 0) ? menu : defaultFooterMenu;
+        return (localMenu && Array.isArray(localMenu) && localMenu.length > 0) ? localMenu : defaultFooterMenu;
     });
 
-    let content = $derived({
+  let content = $derived({
         id,
-        backgroundColor: backgroundColor,
-        textColor: textColor,
-        reverseOrder: reverseOrder,
-        poweredBy: poweredBy,
-        type: type,
+        backgroundColor,
+        textColor,
+        reverseOrder,
+        poweredBy,
+        type,
         icons,
         menu: footerMenu,
-        menuHidden
+        menuHidden,
+        copyrightText
     });
     const serializeContent = () => JSON.stringify(content);
 
@@ -187,7 +200,7 @@
             style:color={textColor}
         >
             <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
-            <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+            <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
             <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
                 {#if reverseOrder}
                     <div class="krt-footer__columns">
@@ -262,7 +275,7 @@
         data-krt-serialized={serializeContent()}
     >
         <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__primary" class:krt-footer__primary--reversed={reverseOrder}>
             {#if reverseOrder}
                 <div class="krt-footer__columns">

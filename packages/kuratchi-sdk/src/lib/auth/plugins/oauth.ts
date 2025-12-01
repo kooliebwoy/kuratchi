@@ -450,12 +450,51 @@ export function oauthPlugin(options: OAuthPluginOptions): AuthPlugin {
 
                 if (existingUser) {
                   user = existingUser;
+                  
+                  // Build update data
+                  const updateData: Record<string, any> = { updated_at: Date.now() };
+                  
+                  // Update emailVerified if OAuth provider confirms it and not already set
+                  if (!existingUser.emailVerified) {
+                    const providerEmailVerified = 
+                      providerConfig.name === 'google' ? (profile.email_verified ?? profile.emailVerified ?? profile.verified_email) :
+                      providerConfig.name === 'microsoft' ? true : // Microsoft requires verified email
+                      false;
+                    
+                    if (providerEmailVerified) {
+                      updateData.emailVerified = Date.now();
+                    }
+                  }
+                  
+                  // Accept invite if user was invited (has invite_token set)
+                  if (existingUser.invite_token) {
+                    updateData.status = true; // Active
+                    updateData.invite_token = null;
+                    updateData.invite_expires_at = null;
+                    console.log(`[OAuth] Accepting invite for user ${existingUser.email}`);
+                  }
+                  
+                  // Apply updates if any
+                  if (Object.keys(updateData).length > 1) { // More than just updated_at
+                    await orgDb.users.update(
+                      { id: existingUser.id },
+                      updateData
+                    );
+                    user = { ...existingUser, ...updateData };
+                  }
                 } else {
-                  // Create new user
+                  // Determine if email is verified by OAuth provider
+                  const providerEmailVerified = 
+                    providerConfig.name === 'google' ? (profile.email_verified ?? profile.emailVerified ?? profile.verified_email) :
+                    providerConfig.name === 'microsoft' ? true : // Microsoft requires verified email
+                    false;
+                  
+                  // Create new user with emailVerified if provider confirms it
                   const { data: newUser } = await orgDb.users.insert({
                     email: canonicalEmail || null,
                     name: name || null,
                     image: image || null,
+                    emailVerified: providerEmailVerified ? Date.now() : null,
                     created_at: Date.now()
                   });
                   user = newUser;

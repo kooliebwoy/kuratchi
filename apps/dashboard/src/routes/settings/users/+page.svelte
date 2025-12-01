@@ -1,21 +1,35 @@
 <script lang="ts">
-  import { Users, Plus, Pencil, Trash2, X, Shield, UserCheck, UserX, Search } from '@lucide/svelte';
-  import { Dialog, FormField, FormInput, Button, Card, Badge, Loading } from '@kuratchi/ui';
+  import { Users, Pencil, Trash2, X, Shield, UserCheck, UserX, Search, Mail, Clock, Send } from '@lucide/svelte';
+  import { Dialog, FormField, FormInput, FormSelect, Button, Card, Badge, Loading } from '@kuratchi/ui';
   import {
     getUsers,
-    createUser,
+    inviteUser,
     updateUser,
     suspendUser,
     activateUser,
-    deleteUser
+    deleteUser,
+    resendInvite
   } from '$lib/functions/users.remote';
+
+  // Available roles for invite (owner cannot be assigned)
+  const INVITABLE_ROLES = [
+    { value: 'editor', label: 'Editor', description: 'Can create and edit content' },
+    { value: 'member', label: 'Member', description: 'Basic team member access' },
+    { value: 'viewer', label: 'Viewer', description: 'Read-only access' },
+    { value: 'moderator', label: 'Moderator', description: 'Content moderation' },
+    { value: 'developer', label: 'Developer', description: 'Technical access' },
+    { value: 'billing', label: 'Billing', description: 'Finance and billing access' }
+  ];
 
   const users = getUsers();
 
   const usersList = $derived(users.current ? (Array.isArray(users.current) ? users.current : []) : []);
 
   let searchQuery = $state('');
-  let filterStatus = $state<'all' | 'active' | 'suspended'>('all');
+  let filterStatus = $state<'all' | 'active' | 'suspended' | 'invited'>('all');
+
+  // Helper to check if user is invited (has invite_token set)
+  const isInvited = (u: any) => !!u.invite_token;
 
   const filteredUsers = $derived.by(() => {
     let filtered = usersList;
@@ -25,8 +39,9 @@
     }
     if (filterStatus !== 'all') {
       filtered = filtered.filter((u: any) => {
-        const isActive = u.status !== false;
-        return filterStatus === 'active' ? isActive : !isActive;
+        if (filterStatus === 'invited') return isInvited(u);
+        if (filterStatus === 'suspended') return u.status === false;
+        return u.status !== false && !isInvited(u);
       });
     }
     return filtered;
@@ -99,8 +114,8 @@
       </div>
     </div>
     <Button variant="primary" onclick={openCreateModal}>
-      <Plus class="kui-icon" />
-      Add User
+      <Mail class="kui-icon" />
+      Invite User
     </Button>
   </header>
 
@@ -113,6 +128,7 @@
       <select class="kui-select" bind:value={filterStatus}>
         <option value="all">All Status</option>
         <option value="active">Active</option>
+        <option value="invited">Invited</option>
         <option value="suspended">Suspended</option>
       </select>
     </div>
@@ -164,12 +180,26 @@
                   {/if}
                 </td>
                 <td>
-                  <Badge variant={user.status === false ? 'error' : 'success'} size="xs">
-                    {user.status === false ? 'Suspended' : 'Active'}
-                  </Badge>
+                  {#if isInvited(user)}
+                    <Badge variant="warning" size="xs">
+                      <Clock class="kui-icon" /> Invited
+                    </Badge>
+                  {:else if user.status === false}
+                    <Badge variant="error" size="xs">Suspended</Badge>
+                  {:else}
+                    <Badge variant="success" size="xs">Active</Badge>
+                  {/if}
                 </td>
                 <td class="text-right">
                   <div class="kui-inline end">
+                    {#if isInvited(user)}
+                      <form {...resendInvite} style="display: contents;">
+                        <input type="hidden" name="id" value={user.id} />
+                        <Button type="submit" variant="ghost" size="xs" aria-label="Resend invite" title="Resend invitation email">
+                          <Send class="kui-icon" />
+                        </Button>
+                      </form>
+                    {/if}
                     <Button variant="ghost" size="xs" onclick={() => openEditModal(user)} aria-label="Edit user">
                       <Pencil class="kui-icon" />
                     </Button>
@@ -178,8 +208,8 @@
                       size="xs"
                       onclick={() => handleSuspendToggle(user)}
                       aria-label={user.status === false ? 'Activate' : 'Suspend'}
-                      disabled={user.isOwner}
-                      title={user.isOwner ? 'Cannot suspend owner user' : (user.status === false ? 'Activate user' : 'Suspend user')}
+                      disabled={user.isOwner || isInvited(user)}
+                      title={user.isOwner ? 'Cannot suspend owner user' : isInvited(user) ? 'Cannot suspend invited user' : (user.status === false ? 'Activate user' : 'Suspend user')}
                     >
                       {#if user.status === false}
                         <UserCheck class="kui-icon" />
@@ -221,11 +251,11 @@
 </div>
 
 {#if showUserModal}
-  {@const formRef = modalMode === 'create' ? createUser : updateUser}
+  {@const formRef = modalMode === 'create' ? inviteUser : updateUser}
   <Dialog bind:open={showUserModal} size="md" onClose={() => { showUserModal = false; resetForm(); }}>
     {#snippet header()}
       <div class="kui-modal-header">
-        <h3>{modalMode === 'create' ? 'Add New User' : 'Edit User'}</h3>
+        <h3>{modalMode === 'create' ? 'Invite User' : 'Edit User'}</h3>
         <Button variant="ghost" size="xs" onclick={() => { showUserModal = false; resetForm(); }}>
           <X class="kui-icon" />
         </Button>
@@ -246,14 +276,33 @@
         </FormField>
 
         {#if modalMode === 'create'}
-          <FormField label="Password" issues={formRef.fields.password.issues()} hint="Minimum 8 characters">
-            <FormInput field={formRef.fields.password} type="password" placeholder="••••••••" />
+          <FormField label="Role" issues={inviteUser.fields.role.issues()}>
+            <FormSelect field={inviteUser.fields.role}>
+              {#each INVITABLE_ROLES as role}
+                <option value={role.value}>{role.label} - {role.description}</option>
+              {/each}
+            </FormSelect>
           </FormField>
+          
+          <div class="kui-callout info">
+            <Mail class="kui-icon" />
+            <div>
+              <p class="kui-strong">Invitation will be sent</p>
+              <p class="kui-subtext">The user will receive an email with a link to join your organization. They can sign in with Google, GitHub, or set up a password.</p>
+            </div>
+          </div>
         {/if}
 
         <div class="kui-modal-actions">
           <Button variant="ghost" onclick={() => { showUserModal = false; resetForm(); }}>Cancel</Button>
-          <Button type="submit" variant="primary">{modalMode === 'create' ? 'Add User' : 'Save Changes'}</Button>
+          <Button type="submit" variant="primary">
+            {#if modalMode === 'create'}
+              <Send class="kui-icon" />
+              Send Invitation
+            {:else}
+              Save Changes
+            {/if}
+          </Button>
         </div>
       </form>
     {/snippet}
@@ -465,6 +514,31 @@
     display: flex;
     justify-content: flex-end;
     gap: var(--kui-spacing-sm);
+  }
+
+  .kui-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface-muted);
+    border: 1px solid var(--kui-color-border);
+  }
+
+  .kui-callout.info {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+  }
+
+  .kui-callout .kui-icon {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    color: var(--kui-color-primary);
+  }
+
+  .kui-strong {
+    font-weight: 600;
   }
 
   @media (max-width: 780px) {

@@ -9,7 +9,7 @@ export type { SessionPluginOptions } from './session.js';
 export { storagePlugin } from './storage.js';
 export type { StoragePluginOptions } from './storage.js';
 
-export { adminPlugin, requireSuperadmin, createSuperadmin } from './admin.js';
+export { adminPlugin, requireSuperadmin } from './admin.js';
 export type { AdminPluginOptions } from './admin.js';
 
 export { organizationPlugin } from './organization.js';
@@ -20,6 +20,9 @@ export type { GuardsPluginOptions } from './guards.js';
 
 export { emailAuthPlugin } from './email-auth.js';
 export type { EmailAuthPluginOptions } from './email-auth.js';
+
+export { emailVerificationPlugin } from './email-verification.js';
+export type { EmailVerificationPluginOptions, EmailVerificationExtension } from './email-verification.js';
 
 export { oauthPlugin } from './oauth.js';
 export type { OAuthPluginOptions, OAuthProviderConfig } from './oauth.js';

@@ -98,8 +98,6 @@ export const getEmailDomains = guardedQuery(async () => {
       return [];
     }
 
-    console.log('[emailDomains.get] Fetched domains:', result.data);
-
     return result.data || [];
   } catch (err) {
     console.error('[emailDomains.get] error:', err);

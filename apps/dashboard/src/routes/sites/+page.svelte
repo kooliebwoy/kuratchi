@@ -5,8 +5,12 @@
     createSite,
     deleteSite
   } from '$lib/functions/sites.remote';
-  import { Layout, Plus, ExternalLink, Settings, Trash2, X, FileText, AlertTriangle, CheckCircle, Database, HardDrive } from '@lucide/svelte';
+  import { Layout, Plus, ExternalLink, Settings, Trash2, X, FileText, AlertTriangle, CheckCircle, Database, HardDrive, Mail } from '@lucide/svelte';
   import { Button, Card, Badge, Dialog, Loading, FormField, FormInput } from '@kuratchi/ui';
+  import { page } from '$app/state';
+
+  // Get email verification status from layout data
+  const isEmailVerified = $derived(page.data.isEmailVerified);
 
   let createDialog: HTMLDialogElement;
   let createDialogOpen = $state(false);
@@ -113,10 +117,17 @@
       <h1>Manage your Kuratchi websites</h1>
       <p class="kui-subtext">Create, manage, and access each site.</p>
     </div>
-    <Button variant="primary" onclick={() => createDialogOpen = true}>
-      <Plus class="kui-icon" />
-      New Site
-    </Button>
+    {#if isEmailVerified}
+      <Button variant="primary" onclick={() => createDialogOpen = true}>
+        <Plus class="kui-icon" />
+        New Site
+      </Button>
+    {:else}
+      <Button variant="primary" disabled title="Please verify your email to create sites">
+        <Mail class="kui-icon" />
+        Verify Email to Create
+      </Button>
+    {/if}
   </header>
 
   <Card class="kui-panel">

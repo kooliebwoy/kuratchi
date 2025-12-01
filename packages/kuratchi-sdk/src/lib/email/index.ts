@@ -4,7 +4,14 @@
  */
 
 import type { RequestEvent } from '@sveltejs/kit';
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { 
+	SESv2Client, 
+	SendEmailCommand,
+	CreateEmailIdentityCommand,
+	GetEmailIdentityCommand,
+	DeleteEmailIdentityCommand,
+	ListEmailIdentitiesCommand
+} from '@aws-sdk/client-sesv2';
 
 export interface EmailPluginOptions {
 	/** AWS Region for SES (e.g., 'us-east-1') */
@@ -408,5 +415,258 @@ export async function getEmailById(
 	} catch (error) {
 		console.error('[Email] Failed to get email:', error);
 		return null;
+	}
+}
+
+// ============================================================================
+// SES Identity Verification (for sandbox mode)
+// ============================================================================
+
+export interface SesIdentityStatus {
+	email: string;
+	verified: boolean;
+	verificationStatus?: string;
+	error?: string;
+}
+
+/**
+ * Request SES to send a verification email to the given address.
+ * In sandbox mode, recipients must verify their email before receiving emails.
+ * 
+ * @param email - Email address to verify
+ * @returns Result with success status
+ */
+export async function requestSesVerification(
+	email: string
+): Promise<{ success: boolean; error?: string; alreadyVerified?: boolean }> {
+	if (!sesClient) {
+		return { success: false, error: 'Email plugin not initialized' };
+	}
+
+	try {
+		// First check if already verified
+		const status = await getSesIdentityStatus(email);
+		if (status.verified) {
+			return { success: true, alreadyVerified: true };
+		}
+
+		// Create email identity - this triggers SES to send a verification email
+		const command = new CreateEmailIdentityCommand({
+			EmailIdentity: email
+		});
+		
+		await sesClient.send(command);
+		console.log(`[SES] Verification email requested for: ${email}`);
+		
+		return { success: true };
+	} catch (error: any) {
+		// If identity already exists, that's fine
+		if (error.name === 'AlreadyExistsException') {
+			console.log(`[SES] Identity already exists for: ${email}`);
+			return { success: true };
+		}
+		
+		console.error('[SES] Failed to request verification:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * Check if an email address is verified in SES.
+ * 
+ * @param email - Email address to check
+ * @returns Status object with verification info
+ */
+export async function getSesIdentityStatus(
+	email: string
+): Promise<SesIdentityStatus> {
+	if (!sesClient) {
+		return { email, verified: false, error: 'Email plugin not initialized' };
+	}
+
+	try {
+		const command = new GetEmailIdentityCommand({
+			EmailIdentity: email
+		});
+		
+		const result = await sesClient.send(command);
+		
+		// Check verification status
+		const verified = result.VerifiedForSendingStatus === true;
+		
+		return {
+			email,
+			verified,
+			verificationStatus: result.VerificationStatus
+		};
+	} catch (error: any) {
+		// If identity doesn't exist, it's not verified
+		if (error.name === 'NotFoundException') {
+			return { email, verified: false, verificationStatus: 'NOT_STARTED' };
+		}
+		
+		console.error('[SES] Failed to get identity status:', error);
+		return { email, verified: false, error: error.message };
+	}
+}
+
+/**
+ * Check multiple email addresses for SES verification status.
+ * Useful for batch checking.
+ * 
+ * @param emails - Array of email addresses to check
+ * @returns Array of status objects
+ */
+export async function checkSesVerificationBatch(
+	emails: string[]
+): Promise<SesIdentityStatus[]> {
+	if (!sesClient) {
+		return emails.map(email => ({ email, verified: false, error: 'Email plugin not initialized' }));
+	}
+
+	// Check each email in parallel
+	const results = await Promise.all(
+		emails.map(email => getSesIdentityStatus(email))
+	);
+	
+	return results;
+}
+
+/**
+ * List all verified email identities in SES.
+ * Useful for syncing verification status with app database.
+ * 
+ * @returns Array of verified email addresses
+ */
+export async function listVerifiedSesIdentities(): Promise<string[]> {
+	if (!sesClient) {
+		return [];
+	}
+
+	try {
+		const verified: string[] = [];
+		let nextToken: string | undefined;
+		
+		do {
+			const command = new ListEmailIdentitiesCommand({
+				PageSize: 100,
+				NextToken: nextToken
+			});
+			
+			const result = await sesClient.send(command);
+			
+			// Filter for verified email identities (not domains)
+			if (result.EmailIdentities) {
+				for (const identity of result.EmailIdentities) {
+					if (identity.IdentityType === 'EMAIL_ADDRESS' && identity.SendingEnabled) {
+						verified.push(identity.IdentityName!);
+					}
+				}
+			}
+			
+			nextToken = result.NextToken;
+		} while (nextToken);
+		
+		return verified;
+	} catch (error) {
+		console.error('[SES] Failed to list identities:', error);
+		return [];
+	}
+}
+
+/**
+ * Delete an email identity from SES.
+ * 
+ * @param email - Email address to remove
+ */
+export async function deleteSesIdentity(
+	email: string
+): Promise<{ success: boolean; error?: string }> {
+	if (!sesClient) {
+		return { success: false, error: 'Email plugin not initialized' };
+	}
+
+	try {
+		const command = new DeleteEmailIdentityCommand({
+			EmailIdentity: email
+		});
+		
+		await sesClient.send(command);
+		console.log(`[SES] Identity deleted: ${email}`);
+		
+		return { success: true };
+	} catch (error: any) {
+		console.error('[SES] Failed to delete identity:', error);
+		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * Sync SES verification status with app database.
+ * Checks all users with unverified emails and updates their status
+ * if they've verified through SES.
+ * 
+ * @param event - Request event for database access
+ * @param organizationId - Organization to sync (optional, uses session if not provided)
+ * @returns Number of users updated
+ */
+export async function syncSesVerificationStatus(
+	event: RequestEvent,
+	organizationId?: string
+): Promise<{ updated: number; checked: number; errors: string[] }> {
+	const errors: string[] = [];
+	let updated = 0;
+	let checked = 0;
+
+	try {
+		const orgId = organizationId || (event.locals.session as any)?.organizationId;
+		if (!orgId) {
+			return { updated: 0, checked: 0, errors: ['No organization ID available'] };
+		}
+
+		const orgDb = await event.locals.kuratchi?.orgDatabaseClient?.(orgId);
+		if (!orgDb) {
+			return { updated: 0, checked: 0, errors: ['Organization database not available'] };
+		}
+
+		// Get all users with unverified emails
+		const { data: unverifiedUsers } = await orgDb.users
+			.where({ emailVerified: { isNullish: true } })
+			.many();
+
+		if (!unverifiedUsers || unverifiedUsers.length === 0) {
+			return { updated: 0, checked: 0, errors: [] };
+		}
+
+		checked = unverifiedUsers.length;
+
+		// Check each user's email in SES
+		for (const user of unverifiedUsers) {
+			if (!user.email) continue;
+
+			try {
+				const status = await getSesIdentityStatus(user.email);
+				
+				if (status.verified) {
+					// Update user's emailVerified field
+					await orgDb.users.update(
+						{ id: user.id },
+						{ 
+							emailVerified: Date.now(),
+							updated_at: new Date().toISOString()
+						}
+					);
+					updated++;
+					console.log(`[SES Sync] Verified email for user: ${user.email}`);
+				}
+			} catch (e: any) {
+				errors.push(`Failed to check ${user.email}: ${e.message}`);
+			}
+		}
+
+		return { updated, checked, errors };
+	} catch (error: any) {
+		console.error('[SES Sync] Failed:', error);
+		return { updated, checked, errors: [error.message] };
 	}
 }

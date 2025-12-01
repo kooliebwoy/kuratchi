@@ -9,7 +9,8 @@ import {
   rateLimitPlugin,
   turnstilePlugin,
   guardsPlugin,
-  requireAuth
+  requireAuth,
+  emailVerificationPlugin
 } from 'kuratchi-sdk/auth';
 import { adminSchema } from '$lib/schemas/admin';
 import { organizationSchema } from '$lib/schemas/organization';
@@ -53,6 +54,7 @@ export const { handle }: { handle: Handle } = kuratchi({
           }
         ]
       }),
+      emailVerificationPlugin(),
       activityPlugin({ define: activityTypes }),
       rolesPlugin({
         define: roles,

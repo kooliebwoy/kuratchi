@@ -15,7 +15,8 @@ import type {
     SiteLayoutExtension,
     SitePresetItem,
     ThemesExtension,
-    ThemeOption
+    ThemeOption,
+    ThemeSettings
 } from './context';
 import { EXT } from './context';
 
@@ -59,7 +60,11 @@ export interface PluginManagerOptions {
     themes?: {
         list: ThemeOption[];
         getSelectedId: () => string;
+        getSettings: () => ThemeSettings;
         apply: (id: string) => void;
+        switch: (id: string, options?: { updateHeaderFooter?: boolean }) => void;
+        updateSettings: (settings: Partial<ThemeSettings>) => void;
+        resetSettings: () => void;
     };
 }
 
@@ -121,7 +126,11 @@ export function createPluginManager(opts: PluginManagerOptions) {
         register(EXT.THEMES, {
             get themes() { return t.list; },
             get selectedThemeId() { return t.getSelectedId(); },
-            applyTheme: t.apply
+            get themeSettings() { return t.getSettings(); },
+            applyTheme: t.apply,
+            switchTheme: t.switch,
+            updateThemeSettings: t.updateSettings,
+            resetThemeSettings: t.resetSettings
         } satisfies ThemesExtension);
     }
 

@@ -26,6 +26,9 @@ export const organizationSchemaDsl: SchemaDsl = {
       accessAttempts: 'integer',
       tenantId: 'text',
       organization: 'text',
+      invite_token: 'text',
+      invite_expires_at: 'timestamp_ms',
+      invited_by: 'text',
       '...timestamps': true,
     },
     session: {

@@ -82,6 +82,38 @@ export interface ThemeOption {
     siteMetadata?: Record<string, unknown>;
 }
 
+/**
+ * Theme settings for live style customization.
+ * These settings override theme defaults without replacing content.
+ */
+export interface ThemeSettings {
+    /** Layout max width: 'full' | 'wide' (1440px) | 'medium' (1200px) | 'narrow' (960px) */
+    maxWidth: 'full' | 'wide' | 'medium' | 'narrow';
+    /** Section spacing: 'none' | 'small' | 'medium' | 'large' */
+    sectionSpacing: 'none' | 'small' | 'medium' | 'large';
+    /** Site background color */
+    backgroundColor: string;
+    /** Primary accent color */
+    primaryColor: string;
+    /** Secondary accent color */
+    secondaryColor: string;
+    /** Text color */
+    textColor: string;
+    /** Border radius style: 'none' | 'small' | 'medium' | 'large' */
+    borderRadius: 'none' | 'small' | 'medium' | 'large';
+}
+
+/** Default theme settings */
+export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
+    maxWidth: 'full',
+    sectionSpacing: 'medium',
+    backgroundColor: '#ffffff',
+    primaryColor: '#3b82f6',
+    secondaryColor: '#64748b',
+    textColor: '#0f172a',
+    borderRadius: 'medium'
+};
+
 // ============================================
 // Extension Interfaces
 // ============================================
@@ -108,7 +140,15 @@ export interface SiteLayoutExtension {
 export interface ThemesExtension {
     readonly themes: ThemeOption[];
     readonly selectedThemeId: string;
+    readonly themeSettings: ThemeSettings;
+    /** Apply a new theme (replaces content with theme defaults - use for initial setup) */
     applyTheme: (themeId: string) => void;
+    /** Switch theme without replacing content (only updates styles and optionally header/footer) */
+    switchTheme: (themeId: string, options?: { updateHeaderFooter?: boolean }) => void;
+    /** Update individual theme settings */
+    updateThemeSettings: (settings: Partial<ThemeSettings>) => void;
+    /** Reset theme settings to defaults */
+    resetThemeSettings: () => void;
 }
 
 // ============================================

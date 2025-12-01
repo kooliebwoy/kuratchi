@@ -13,10 +13,11 @@ export type {
     SitePresetItem,
     SiteLayoutExtension,
     ThemeOption,
+    ThemeSettings,
     ThemesExtension,
 } from './context';
 
-export { EXT } from './context';
+export { EXT, DEFAULT_THEME_SETTINGS } from './context';
 
 // Plugin manager
 export { createPluginManager, type PluginManager, type PluginManagerOptions } from './manager';

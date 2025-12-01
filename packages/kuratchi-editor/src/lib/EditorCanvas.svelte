@@ -10,6 +10,8 @@
     import { imageConfig } from './stores/imageConfig';
     import { PanelsTopLeft, Plus } from "@lucide/svelte";
     import type { SiteRegionState } from "./types.js";
+import type { ThemeSettings } from "./plugins/context";
+import { DEFAULT_THEME_SETTINGS } from "./plugins/context";
 
     interface Props {
         editor?: HTMLElement | null;
@@ -30,6 +32,7 @@
             header?: { visible?: boolean; useMobileMenuOnDesktop?: boolean; items?: any[] };
             footer?: { visible?: boolean; items?: any[] };
         };
+        themeSettings?: ThemeSettings;
     }
 
     let { 
@@ -47,8 +50,10 @@
         onContentChange,
         onHeaderChange,
         onFooterChange,
-        navigation
+        navigation,
+        themeSettings = DEFAULT_THEME_SETTINGS
     }: Props = $props();
+
     
     let inlineBlockSearchInput: HTMLInputElement;
     let inlineBlockSearch = $state('');
@@ -255,7 +260,18 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
     );
 </script>
 
-<div class="krt-editorCanvas" style:background-color={backgroundColor}>
+<div 
+    class="krt-editorCanvas" 
+    style:background-color={themeSettings.backgroundColor || backgroundColor}
+    style:color={themeSettings.textColor}
+    style:--krt-theme-max-width={themeSettings.maxWidth === 'full' ? '100%' : themeSettings.maxWidth === 'wide' ? '1440px' : themeSettings.maxWidth === 'medium' ? '1200px' : '960px'}
+    style:--krt-theme-section-spacing={themeSettings.sectionSpacing === 'none' ? '0' : themeSettings.sectionSpacing === 'small' ? '1rem' : themeSettings.sectionSpacing === 'large' ? '4rem' : '2rem'}
+    style:--krt-theme-bg={themeSettings.backgroundColor}
+    style:--krt-theme-primary={themeSettings.primaryColor}
+    style:--krt-theme-secondary={themeSettings.secondaryColor}
+    style:--krt-theme-text={themeSettings.textColor}
+    style:--krt-theme-radius={themeSettings.borderRadius === 'none' ? '0' : themeSettings.borderRadius === 'small' ? '0.25rem' : themeSettings.borderRadius === 'large' ? '1rem' : '0.5rem'}
+>
     {#if isWebpage}
         <div
             bind:this={headerElement}
@@ -373,13 +389,12 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
 
     .krt-editorCanvas {
         height: 100%;
-        background: #f5f5f5;
         display: flex;
         flex-direction: column;
-        max-width: 96rem;
-        margin: 0 auto;
+        width: 100%;
         border-radius: 1.5rem;
         box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        overflow: hidden;
     }
 
     .krt-editorCanvas__header,
@@ -417,18 +432,20 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
 
     .krt-editorCanvas__container {
         width: 100%;
+        max-width: var(--krt-theme-max-width, 100%);
+        margin: 0 auto;
         padding: 0 4rem;
     }
 
     .krt-editorCanvas__article {
-        padding: 2rem 0;
+        padding: var(--krt-theme-section-spacing, 2rem) 0;
         color: inherit;
         width: 100%;
         max-width: none;
         position: relative;
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: var(--krt-theme-section-spacing, 0.75rem);
     }
 
     .krt-editorCanvas__block {

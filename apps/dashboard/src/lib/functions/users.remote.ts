@@ -2,6 +2,7 @@ import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
 import { getDatabase } from '$lib/server/db-context';
+import { sendEmail } from 'kuratchi-sdk/email';
 
 // Helpers
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -162,74 +163,389 @@ export const getOrganizationRoles = guardedQuery(async () => {
   }
 });
 
+// Available roles for invite (owner cannot be assigned via invite)
+const INVITABLE_ROLES = ['editor', 'member', 'viewer', 'moderator', 'developer', 'billing'] as const;
+
 // Forms
-export const createUser = guardedForm(
+export const inviteUser = guardedForm(
   v.object({
     email: v.pipe(v.string(), v.email()),
     name: v.pipe(v.string(), v.nonEmpty()),
-    password: v.pipe(v.string(), v.minLength(8))
+    role: v.pipe(v.string(), v.nonEmpty())
   }),
-  async ({ email, name, password }) => {
+  async ({ email, name, role }) => {
     try {
-      const { locals } = getRequestEvent();
+      const event = getRequestEvent();
+      const { locals } = event;
+      const session = locals.session as any;
       const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
+      const organizationId = session?.organizationId;
 
       if (!orgDb) {
         throw new Error('Organization database not available');
       }
 
-      // Check if user already exists in org
+      if (!organizationId) {
+        throw new Error('Organization ID not found');
+      }
+
+      // Validate role - owner cannot be assigned via invite
+      if (role === 'owner') {
+        error(400, 'Cannot invite users as owner. Transfer ownership instead.');
+      }
+
+      if (!INVITABLE_ROLES.includes(role as any)) {
+        error(400, `Invalid role. Must be one of: ${INVITABLE_ROLES.join(', ')}`);
+      }
+
+      // Check if user already exists in this organization
       const existingResult = await orgDb.users
         .where({ email, deleted_at: { isNullish: true } })
         .first();
       
       if (existingResult?.data) {
-        error(400, 'User with this email already exists');
+        error(400, 'User with this email already exists in this organization');
       }
 
-      // Hash password
-      const authHelper = (locals.kuratchi as any)?.authHelper;
-      let password_hash: string | undefined;
-      if (authHelper) {
-        const hashedUser = await authHelper.hashPassword(password);
-        password_hash = hashedUser;
-      }
+      // Check admin database for existing user across organizations
+      const adminDb = await getDatabase(locals);
+      const existingAdminUser = await adminDb.organizationUsers
+        ?.where({ email, deleted_at: { isNullish: true } })
+        .many();
+      
+      const isExistingUser = existingAdminUser?.data?.length > 0;
 
-      // Create user in org database
+      // Create user in org database (pending invite status)
       const userId = crypto.randomUUID();
       const now = new Date().toISOString();
+      const inviteToken = crypto.randomUUID();
+      const inviteExpiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
 
       await orgDb.users.insert({
         id: userId,
         email,
         name,
-        password_hash,
-        role: 'member',
-        status: true,
+        password_hash: null, // No password - user will set via OAuth or credentials setup
+        role,
+        status: null, // null = pending/invited (invite_token presence indicates invited)
         emailVerified: null,
+        invite_token: inviteToken,
+        invite_expires_at: inviteExpiry,
+        invited_by: session?.user?.id,
         created_at: now,
         updated_at: now,
         deleted_at: null
       });
 
+      // Add to admin organizationUsers mapping
+      await adminDb.organizationUsers?.insert({
+        id: crypto.randomUUID(),
+        organizationId,
+        email,
+        created_at: now,
+        updated_at: now,
+        deleted_at: null
+      });
+
+      // Get organization name for the email
+      const orgResult = await adminDb.organizations
+        ?.where({ id: organizationId })
+        .first();
+      const orgName = orgResult?.data?.organizationName || orgResult?.data?.name || 'the organization';
+
+      // Build invite link - directs to sign in page with invite context
+      const origin = (locals as any).env?.ORIGIN || `${event.url.protocol}//${event.url.host}`;
+      const inviteLink = `${origin}/auth/signin?invite=${encodeURIComponent(inviteToken)}&org=${encodeURIComponent(organizationId)}`;
+
+      // Send invite email
+      const inviterName = session?.user?.name || session?.user?.email || 'Someone';
+      let emailResult: { success: boolean; error?: string } = { success: false };
+      let sesVerificationRequested = false;
+      
+      // Try to send invite email
+      emailResult = await sendEmail(event, {
+        to: email,
+        subject: `You've been invited to join ${orgName}`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #0f172a; margin-bottom: 24px;">You're invited!</h2>
+            <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
+              Hi ${name},
+            </p>
+            <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+              <strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> on Kuratchi as a <strong>${role}</strong>.
+            </p>
+            ${isExistingUser ? `
+              <p style="color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 24px; padding: 12px; background: #f1f5f9; border-radius: 8px;">
+                <strong>Note:</strong> You already have a Kuratchi account. When you sign in, you'll be able to switch between your organizations.
+              </p>
+            ` : ''}
+            <a href="${inviteLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              Accept Invitation
+            </a>
+            <p style="color: #94a3b8; font-size: 14px; margin-top: 32px;">
+              This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+        emailType: 'user_invite',
+        organizationId,
+        userId,
+        metadata: {
+          inviteToken,
+          invitedBy: session?.user?.id,
+          role,
+          expiresAt: new Date(inviteExpiry).toISOString()
+        }
+      });
+
+      // If email failed (likely SES sandbox), request SES verification for the recipient
+      if (!emailResult.success) {
+        console.warn('[inviteUser] Failed to send invite email (likely SES sandbox):', emailResult.error);
+        
+        // Try to request SES verification for the recipient
+        try {
+          const { requestSesVerification } = await import('kuratchi-sdk/email');
+          const sesResult = await requestSesVerification(email);
+          sesVerificationRequested = sesResult.success;
+          
+          if (sesResult.success) {
+            console.log('[inviteUser] SES verification requested for:', email);
+          }
+        } catch (sesErr) {
+          console.warn('[inviteUser] Failed to request SES verification:', sesErr);
+        }
+      }
+
       // Log activity
       if (locals.kuratchi?.activity?.log) {
         try {
           await locals.kuratchi.activity.log({
-            action: 'user.created',
-            data: { userId, email, name }
+            action: 'user.invited',
+            data: { userId, email, name, role, invitedBy: session?.user?.id }
           });
         } catch (activityErr) {
-          console.warn('[createUser] Failed to log activity:', activityErr);
+          console.warn('[inviteUser] Failed to log activity:', activityErr);
         }
       }
 
       await getUsers().refresh();
-      return { success: true, userId };
+      return { 
+        success: true, 
+        userId, 
+        emailSent: emailResult.success,
+        sesVerificationRequested,
+        isExistingUser 
+      };
     } catch (err: any) {
-      console.error('[users.createUser] error:', err);
-      error(500, err.message || 'Failed to create user');
+      console.error('[users.inviteUser] error:', err);
+      error(500, err.message || 'Failed to invite user');
     }
+  }
+);
+
+// Resend invite email
+export const resendInvite = guardedForm(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async ({ id }) => {
+    try {
+      const event = getRequestEvent();
+      const { locals } = event;
+      const session = locals.session as any;
+      const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
+      const organizationId = session?.organizationId;
+
+      if (!orgDb) {
+        throw new Error('Organization database not available');
+      }
+
+      // Get user
+      const userResult = await orgDb.users.where({ id }).first();
+      const user = userResult?.data;
+      
+      if (!user) {
+        error(404, 'User not found');
+      }
+
+      if (user.status !== 'invited') {
+        error(400, 'User has already accepted the invitation');
+      }
+
+      // Generate new invite token
+      const inviteToken = crypto.randomUUID();
+      const inviteExpiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+      const now = new Date().toISOString();
+
+      await orgDb.users
+        .where({ id })
+        .update({
+          invite_token: inviteToken,
+          invite_expires_at: inviteExpiry,
+          updated_at: now
+        });
+
+      // Get organization name
+      const adminDb = await getDatabase(locals);
+      const orgResult = await adminDb.organizations
+        ?.where({ id: organizationId })
+        .first();
+      const orgName = orgResult?.data?.organizationName || orgResult?.data?.name || 'the organization';
+
+      // Build invite link
+      const origin = (locals as any).env?.ORIGIN || `${event.url.protocol}//${event.url.host}`;
+      const inviteLink = `${origin}/auth/signin?invite=${encodeURIComponent(inviteToken)}&org=${encodeURIComponent(organizationId)}`;
+
+      // Send invite email
+      const inviterName = session?.user?.name || session?.user?.email || 'Someone';
+      const emailResult = await sendEmail(event, {
+        to: user.email,
+        subject: `Reminder: You've been invited to join ${orgName}`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <h2 style="color: #0f172a; margin-bottom: 24px;">Invitation Reminder</h2>
+            <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
+              Hi ${user.name},
+            </p>
+            <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+              This is a reminder that <strong>${inviterName}</strong> invited you to join <strong>${orgName}</strong> on Kuratchi as a <strong>${user.role}</strong>.
+            </p>
+            <a href="${inviteLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              Accept Invitation
+            </a>
+            <p style="color: #94a3b8; font-size: 14px; margin-top: 32px;">
+              This invitation will expire in 7 days.
+            </p>
+          </div>
+        `,
+        emailType: 'user_invite_reminder',
+        organizationId,
+        userId: id,
+        metadata: {
+          inviteToken,
+          role: user.role
+        }
+      });
+
+      return { success: true, emailSent: emailResult.success };
+    } catch (err: any) {
+      console.error('[users.resendInvite] error:', err);
+      error(500, err.message || 'Failed to resend invite');
+    }
+  }
+);
+
+// Legacy createUser - kept for backwards compatibility but redirects to inviteUser
+export const createUser = guardedForm(
+  v.object({
+    email: v.pipe(v.string(), v.email()),
+    name: v.pipe(v.string(), v.nonEmpty()),
+    role: v.optional(v.string())
+  }),
+  async ({ email, name, role }) => {
+    // Redirect to invite flow
+    const event = getRequestEvent();
+    const { locals } = event;
+    const session = locals.session as any;
+    const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.();
+    const organizationId = session?.organizationId;
+
+    if (!orgDb) {
+      throw new Error('Organization database not available');
+    }
+
+    // Use inviteUser logic
+    const finalRole = role || 'member';
+    
+    // Validate role
+    if (finalRole === 'owner') {
+      error(400, 'Cannot create users as owner. Transfer ownership instead.');
+    }
+
+    // Check if user already exists
+    const existingResult = await orgDb.users
+      .where({ email, deleted_at: { isNullish: true } })
+      .first();
+    
+    if (existingResult?.data) {
+      error(400, 'User with this email already exists in this organization');
+    }
+
+    // Create user with invited status
+    const userId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const inviteToken = crypto.randomUUID();
+    const inviteExpiry = Date.now() + (7 * 24 * 60 * 60 * 1000);
+
+    await orgDb.users.insert({
+      id: userId,
+      email,
+      name,
+      password_hash: null,
+      role: finalRole,
+      status: 'invited',
+      emailVerified: null,
+      invite_token: inviteToken,
+      invite_expires_at: inviteExpiry,
+      invited_by: session?.user?.id,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null
+    });
+
+    // Add to admin mapping
+    const adminDb = await getDatabase(locals);
+    await adminDb.organizationUsers?.insert({
+      id: crypto.randomUUID(),
+      organizationId,
+      email,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null
+    });
+
+    // Get org name and send invite
+    const orgResult = await adminDb.organizations?.where({ id: organizationId }).first();
+    const orgName = orgResult?.data?.organizationName || orgResult?.data?.name || 'the organization';
+    const origin = (locals as any).env?.ORIGIN || `${event.url.protocol}//${event.url.host}`;
+    const inviteLink = `${origin}/auth/signin?invite=${encodeURIComponent(inviteToken)}&org=${encodeURIComponent(organizationId)}`;
+    const inviterName = session?.user?.name || session?.user?.email || 'Someone';
+
+    await sendEmail(event, {
+      to: email,
+      subject: `You've been invited to join ${orgName}`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+          <h2 style="color: #0f172a; margin-bottom: 24px;">You're invited!</h2>
+          <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">Hi ${name},</p>
+          <p style="color: #475569; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">
+            <strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> on Kuratchi as a <strong>${finalRole}</strong>.
+          </p>
+          <a href="${inviteLink}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            Accept Invitation
+          </a>
+          <p style="color: #94a3b8; font-size: 14px; margin-top: 32px;">
+            This invitation will expire in 7 days.
+          </p>
+        </div>
+      `,
+      emailType: 'user_invite',
+      organizationId,
+      userId
+    });
+
+    if (locals.kuratchi?.activity?.log) {
+      try {
+        await locals.kuratchi.activity.log({
+          action: 'user.invited',
+          data: { userId, email, name, role: finalRole }
+        });
+      } catch (e) {}
+    }
+
+    await getUsers().refresh();
+    return { success: true, userId };
   }
 );
 

@@ -1,4 +1,4 @@
-import { getRequestEvent, form } from '$app/server';
+import { getRequestEvent, form, query } from '$app/server';
 import * as v from 'valibot';
 import { error, redirect } from '@sveltejs/kit';
 
@@ -8,7 +8,8 @@ import { error, redirect } from '@sveltejs/kit';
 
 const signInSchema = v.object({
 	email: v.pipe(v.string(), v.email('Invalid email address')),
-	password: v.pipe(v.string(), v.nonEmpty('Password is required'))
+	password: v.pipe(v.string(), v.nonEmpty('Password is required')),
+	organizationId: v.optional(v.string()) // For multi-org sign-in
 });
 
 const signupSchema = v.object({
@@ -16,6 +17,12 @@ const signupSchema = v.object({
 	email: v.pipe(v.string(), v.email('Invalid email address')),
 	password: v.pipe(v.string(), v.minLength(8, 'Password must be at least 8 characters')),
 	userName: v.optional(v.string())
+});
+
+const acceptInviteSchema = v.object({
+	inviteToken: v.pipe(v.string(), v.nonEmpty()),
+	organizationId: v.pipe(v.string(), v.nonEmpty()),
+	password: v.optional(v.pipe(v.string(), v.minLength(8, 'Password must be at least 8 characters')))
 });
 
 // ============================================================================
@@ -241,5 +248,178 @@ export const signUp = form('unchecked', async (data: any) => {
 		}
 
 		error(500, err.message || 'Failed to create organization');
+	}
+});
+
+// ============================================================================
+// GET USER ORGANIZATIONS (for multi-org login)
+// ============================================================================
+
+/**
+ * Get all organizations a user belongs to
+ * Used when user has multiple orgs and needs to select one
+ */
+export const getUserOrganizations = query(async () => {
+	const { locals, url } = getRequestEvent();
+	const email = url.searchParams.get('email');
+	
+	if (!email) {
+		return { organizations: [] };
+	}
+	
+	try {
+		const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
+		if (!adminDb) {
+			return { organizations: [] };
+		}
+		
+		// Find all organizations this email belongs to
+		const { data: orgUsers } = await adminDb.organizationUsers
+			.where({ email, deleted_at: { isNullish: true } })
+			.many();
+		
+		if (!orgUsers || orgUsers.length === 0) {
+			return { organizations: [] };
+		}
+		
+		// Get organization details
+		const organizations = await Promise.all(
+			orgUsers.map(async (ou: any) => {
+				const { data: org } = await adminDb.organizations
+					.where({ id: ou.organizationId })
+					.first();
+				
+				if (!org) return null;
+				
+				return {
+					id: org.id,
+					name: org.organizationName || org.name,
+					slug: org.organizationSlug
+				};
+			})
+		);
+		
+		return {
+			organizations: organizations.filter(Boolean),
+			hasMultiple: organizations.filter(Boolean).length > 1
+		};
+	} catch (err) {
+		console.error('[getUserOrganizations] Error:', err);
+		return { organizations: [] };
+	}
+});
+
+// ============================================================================
+// ACCEPT INVITE
+// ============================================================================
+
+/**
+ * Accept an organization invite
+ * - Validates invite token
+ * - Updates user status from 'invited' to active
+ * - Optionally sets password if provided
+ * - Creates session and signs user in
+ */
+export const acceptInvite = form('unchecked', async (data: any) => {
+	const result = v.safeParse(acceptInviteSchema, data);
+	if (!result.success) {
+		const firstError = result.issues[0];
+		error(400, firstError?.message || 'Validation failed');
+	}
+	
+	const { inviteToken, organizationId, password } = result.output;
+	const { locals } = getRequestEvent();
+	
+	try {
+		const orgDb = await (locals.kuratchi as any)?.orgDatabaseClient?.(organizationId);
+		if (!orgDb) {
+			error(404, 'Organization not found');
+		}
+		
+		// Find user with this invite token
+		const { data: user } = await orgDb.users
+			.where({ invite_token: inviteToken, status: 'invited' })
+			.first();
+		
+		if (!user) {
+			error(400, 'Invalid or expired invitation');
+		}
+		
+		// Check if invite is expired
+		if (user.invite_expires_at && user.invite_expires_at < Date.now()) {
+			error(400, 'Invitation has expired. Please request a new one.');
+		}
+		
+		const now = new Date().toISOString();
+		const updateData: any = {
+			status: true, // Active
+			invite_token: null,
+			invite_expires_at: null,
+			updated_at: now
+		};
+		
+		// If password provided, hash and store it
+		if (password) {
+			const authHelper = (locals.kuratchi as any)?.authHelper;
+			if (authHelper?.hashPassword) {
+				updateData.password_hash = await authHelper.hashPassword(password);
+			}
+		}
+		
+		// Update user
+		await orgDb.users
+			.where({ id: user.id })
+			.update(updateData);
+		
+		// Log activity
+		if (locals.kuratchi?.activity?.log) {
+			try {
+				await locals.kuratchi.activity.log({
+					action: 'user.invite_accepted',
+					organizationId,
+					userId: user.id,
+					data: { email: user.email, name: user.name }
+				});
+			} catch (activityErr) {
+				console.warn('[acceptInvite] Failed to log activity:', activityErr);
+			}
+		}
+		
+		// If password was set, sign them in automatically
+		if (password && (locals.kuratchi as any)?.auth?.credentials?.signIn) {
+			const authResult = await (locals.kuratchi as any).auth.credentials.signIn(
+				user.email,
+				password,
+				{ organizationId }
+			);
+			
+			if (authResult.success) {
+				return {
+					success: true,
+					signedIn: true,
+					message: 'Invitation accepted! You are now signed in.',
+					user: {
+						id: user.id,
+						email: user.email,
+						name: user.name
+					}
+				};
+			}
+		}
+		
+		return {
+			success: true,
+			signedIn: false,
+			message: 'Invitation accepted! Please sign in to continue.',
+			user: {
+				id: user.id,
+				email: user.email,
+				name: user.name
+			}
+		};
+	} catch (err: any) {
+		console.error('[acceptInvite] Error:', err);
+		if (err.status) throw err;
+		error(500, err.message || 'Failed to accept invitation');
 	}
 });

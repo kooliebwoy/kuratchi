@@ -173,14 +173,6 @@
                     <ArrowRight aria-hidden="true" />
                 </button>
             </div>
-        <div class="krt-heroFigure__content">
-            <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
-            <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>
-            <button class="krt-heroFigure__cta" type="button" onclick={(event) => event.preventDefault()}>
-                <span contenteditable bind:innerHTML={button.label}></span>
-                <ArrowRight aria-hidden="true" />
-            </button>
-        </div>
     </section>
 </div>
 {:else}

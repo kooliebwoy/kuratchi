@@ -3,7 +3,7 @@ import { notificationSchemas } from 'kuratchi-sdk/notifications';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 10,
+  version: 11,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -21,10 +21,13 @@ export const adminSchema: SchemaDsl = {
       email: 'text not null unique',
       emailVerified: 'timestamp_ms',
       image: 'text',
-      status: 'boolean',
-      role: 'enum(superadmin,owner,editor,member)',
+      status: 'boolean', // true (active) | false (suspended) - use invite_token to detect invited
+      role: 'text', // More flexible for custom roles (superadmin, owner, editor, member, etc.)
       password_hash: 'text',
       accessAttempts: 'integer',
+      invite_token: 'text', // If set, user is invited (hasn't accepted yet)
+      invite_expires_at: 'timestamp_ms',
+      invited_by: 'text',
       '...timestamps': true,
     },
     passwordResetTokens: {

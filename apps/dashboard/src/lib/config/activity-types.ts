@@ -135,6 +135,46 @@ export const activityTypes: Record<string, ActivityTypeDefinition> = {
     isAdminAction: true,
     isHidden: false
   },
+  'user.invited': {
+    label: 'User Invited',
+    category: 'users',
+    severity: 'info',
+    description: 'User invited to organization',
+    isAdminAction: true,
+    isHidden: false
+  },
+  'user.invite_accepted': {
+    label: 'Invite Accepted',
+    category: 'users',
+    severity: 'info',
+    description: 'User accepted invitation',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'user.invite_resent': {
+    label: 'Invite Resent',
+    category: 'users',
+    severity: 'info',
+    description: 'Invitation email resent to user',
+    isAdminAction: true,
+    isHidden: false
+  },
+  'user.email_verification_sent': {
+    label: 'Verification Email Sent',
+    category: 'users',
+    severity: 'info',
+    description: 'Email verification request sent',
+    isAdminAction: false,
+    isHidden: false
+  },
+  'user.email_verified': {
+    label: 'Email Verified',
+    category: 'users',
+    severity: 'info',
+    description: 'User email address verified',
+    isAdminAction: false,
+    isHidden: false
+  },
 
   // ============================================================================
   // Organization Management

@@ -22,31 +22,38 @@
     }
 
     let {
-        reverseOrder = false,
-        textColor = '#ffffff',
-        backgroundColor = '#212121',
+        reverseOrder: initialReverseOrder = false,
+        textColor: initialTextColor = '#ffffff',
+        backgroundColor: initialBackgroundColor = '#212121',
         type = 'saige-blake-footer',
         icons: initialIcons = [
             { icon: 'facebook', slug: '#', name: "Facebook", enabled: true },
             { icon: 'x', slug: '#', name: "X", enabled: true },
             { icon: 'instagram', slug: '#', name: "Instagram", enabled: true },
         ] as { icon: LucideIconKey; slug: string; name: string; enabled: boolean }[],
-        subscribeText = 'Get all the latest news and info sent to your inbox.',
-        copyrightText = {
+        subscribeText: initialSubscribeText = 'Get all the latest news and info sent to your inbox.',
+        copyrightText: initialCopyrightText = {
             href: 'https://kayde.io',
             by: 'Kayde',
         },
-        menu = [
+        menu: initialMenu = [
             { label: 'Privacy Policy', slug: '/product-a' },
             { label: 'Terms & Conditions', slug: '/product-b' },
             { label: 'Follow Us', slug: '/product-c' },
             { label: 'Contact Us', slug: '/product-d' },
         ],
-        menuHidden = false,
+        menuHidden: initialMenuHidden = false,
         editable = true
     }: Props = $props();
 
+    let reverseOrder = $state(initialReverseOrder);
+    let textColor = $state(initialTextColor);
+    let backgroundColor = $state(initialBackgroundColor);
     let icons = $state(initialIcons);
+    let subscribeText = $state(initialSubscribeText);
+    let copyrightText = $state(initialCopyrightText);
+    let localMenu = $state(initialMenu);
+    let menuHidden = $state(initialMenuHidden);
 
     const defaultMenu = [
         { label: 'Privacy Policy', slug: '/product-a' },
@@ -57,7 +64,7 @@
 
     // Compute menu once per prop change to avoid inline re-evaluation
     const computedMenu = $derived.by(() => {
-        return (menu && Array.isArray(menu) && menu.length > 0) ? menu : defaultMenu;
+        return (localMenu && Array.isArray(localMenu) && localMenu.length > 0) ? localMenu : defaultMenu;
     });
 
     const poweredBy = 'Powered by Clutch CMS';
@@ -65,15 +72,15 @@
 
     let content = $derived({
         id,
-        backgroundColor: backgroundColor,
-        textColor: textColor,
-        reverseOrder: reverseOrder,
-        poweredBy: poweredBy,
+        backgroundColor,
+        textColor,
+        reverseOrder,
+        poweredBy,
         type,
         icons,
-        // Do not include menu here to avoid excessive JSON churn
         subscribeText,
         copyrightText,
+        menuHidden
     });
     const serializeContent = () => JSON.stringify(content);
 
@@ -174,7 +181,7 @@
         style:color={textColor}
         data-type={type}
     >
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading" contenteditable bind:innerHTML={subscribeText}></h2>
             <div class="krt-footer__form">
@@ -248,7 +255,7 @@
         data-krt-serialized={serializeContent()}
     >
         <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={'script'} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <section class="krt-footer__cta">
             <h2 class="krt-footer__heading">{subscribeText}</h2>
             <div class="krt-footer__form">

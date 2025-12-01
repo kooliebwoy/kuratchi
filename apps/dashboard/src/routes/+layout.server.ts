@@ -4,7 +4,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   const isAuthenticated = !!locals.session?.user;
 
   const isSuperadmin = locals.kuratchi?.superadmin?.isSuperadmin?.() || false;
-  // const isEmailVerified = locals.session?.user?.isEmailVerified;
+  const isEmailVerified = locals.session?.isEmailVerified;
 
   const user = {
     name: locals.session?.user?.name,
@@ -13,6 +13,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   }
 
   return {
+    isEmailVerified,
     isAuthenticated,
     isSuperadmin,
     user

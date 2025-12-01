@@ -48,16 +48,32 @@ const guardedQuery = <R>(permission: string, fn: () => Promise<R>) => {
 	});
 };
 
-// Guarded form with permission check and activity logging
+// Helper to check email verification for write operations
+const requireEmailVerified = () => {
+	const { locals } = getRequestEvent();
+	const session = locals.session as any;
+	
+	if (!session?.isEmailVerified) {
+		error(403, 'Please verify your email address before creating sites');
+	}
+};
+
+// Guarded form with permission check, email verification, and activity logging
 const guardedForm = <R>(
 	permission: string,
 	schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
 	activityType: string,
-	fn: (data: any) => Promise<R>
+	fn: (data: any) => Promise<R>,
+	options?: { requireEmailVerification?: boolean }
 ) => {
 	return form('unchecked', async (data: any) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
+
+		// Check email verification for write operations (default: true for create/update/delete)
+		if (options?.requireEmailVerification !== false) {
+			requireEmailVerified();
+		}
 
 		// Check permission
 		requirePermission(permission);

@@ -22,7 +22,8 @@
     } from "@lucide/svelte";
     import { blockRegistry } from "./stores/editorSignals.svelte.js";
     import { createPluginManager, type PluginManager } from "./plugins/manager";
-    import type { NavigationState } from "./plugins/context";
+    import type { NavigationState, ThemeSettings } from "./plugins/context";
+import { DEFAULT_THEME_SETTINGS } from "./plugins/context";
 
     type Props = EditorOptions;
 
@@ -74,6 +75,12 @@ let {
     let footerElement = $state<HTMLElement | undefined>(undefined);
     const themeOptions = getAllThemes();
     let selectedThemeId = $state((siteMetadata as any)?.themeId || DEFAULT_THEME_ID);
+    
+    // Theme settings state - loaded from siteMetadata or defaults
+    let themeSettings = $state<ThemeSettings>({
+        ...DEFAULT_THEME_SETTINGS,
+        ...((siteMetadata as any)?.themeSettings || {})
+    });
 
     // Provide siteMetadata context for sections that need it (ContactCTA, Modal, etc.)
     // We need to use a reactive getter so sections always get the latest metadata
@@ -338,7 +345,9 @@ let {
             slug: homepage.slug
         };
 
-        siteMetadata = { ...(template.siteMetadata || {}), themeId };
+        // Reset theme settings to defaults when applying a new theme
+        themeSettings = { ...DEFAULT_THEME_SETTINGS };
+        siteMetadata = { ...(template.siteMetadata || {}), themeId, themeSettings };
 
         if (onSiteMetadataUpdate) {
             await onSiteMetadataUpdate(siteMetadata);
@@ -347,6 +356,60 @@ let {
         triggerStateSave();
 
         navState = ensureNavigation();
+    };
+
+    /**
+     * Switch theme without replacing content.
+     * Only updates styles and optionally header/footer.
+     */
+    const switchTheme = async (themeId: string, options?: { updateHeaderFooter?: boolean }) => {
+        const template = getThemeTemplate(themeId);
+        selectedThemeId = themeId;
+
+        // Optionally update header/footer to match new theme
+        if (options?.updateHeaderFooter) {
+            if (template.header) {
+                await mountHeaderComponent(template.header);
+            }
+            if (template.footer) {
+                await mountFooterComponent(template.footer);
+            }
+        }
+
+        // Update theme ID but preserve existing content and settings
+        siteMetadata = { ...siteMetadata, themeId };
+
+        if (onSiteMetadataUpdate) {
+            await onSiteMetadataUpdate(siteMetadata);
+        }
+        triggerStateSave();
+    };
+
+    /**
+     * Update individual theme settings.
+     * These are applied as CSS variables for live preview.
+     */
+    const updateThemeSettings = async (settings: Partial<ThemeSettings>) => {
+        themeSettings = { ...themeSettings, ...settings };
+        siteMetadata = { ...siteMetadata, themeSettings };
+
+        if (onSiteMetadataUpdate) {
+            await onSiteMetadataUpdate(siteMetadata);
+        }
+        triggerStateSave();
+    };
+
+    /**
+     * Reset theme settings to defaults.
+     */
+    const resetThemeSettings = async () => {
+        themeSettings = { ...DEFAULT_THEME_SETTINGS };
+        siteMetadata = { ...siteMetadata, themeSettings };
+
+        if (onSiteMetadataUpdate) {
+            await onSiteMetadataUpdate(siteMetadata);
+        }
+        triggerStateSave();
     };
 
     const adjustBrowserSize = (size: 'phone' | 'tablet' | 'desktop') => {
@@ -496,7 +559,11 @@ let {
         themes: {
             list: themeOptions,
             getSelectedId: () => selectedThemeId,
-            apply: applyTheme
+            getSettings: () => themeSettings,
+            apply: applyTheme,
+            switch: switchTheme,
+            updateSettings: updateThemeSettings,
+            resetSettings: resetThemeSettings
         }
     });
 
@@ -524,6 +591,7 @@ let {
         onHeaderChange={handleHeaderChange}
         onFooterChange={handleFooterChange}
         navigation={navState}
+        {themeSettings}
     />
 {:else}
     <!-- Full editor UI -->
@@ -666,6 +734,7 @@ let {
                                 onHeaderChange={handleHeaderChange}
                                 onFooterChange={handleFooterChange}
                                 navigation={navState}
+                                {themeSettings}
                             />
                         {/key}
                     </div>
