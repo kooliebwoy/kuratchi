@@ -50,7 +50,7 @@ let {
         onSiteMetadataUpdate,
         currentPageId,
         onPageSwitch,
-        onCreatePage,
+        onPageCreate,
         enabledPlugins
     }: Props = $props();
 
@@ -491,11 +491,15 @@ let {
     let navState = $state<NavigationState>(ensureNavigation());
 
     async function saveNavigation(nextNav: NavigationState) {
+        console.log('[Editor] saveNavigation called with:', nextNav);
         navState = nextNav;
         siteMetadata = { ...(siteMetadata || {}), navigation: nextNav };
+        console.log('[Editor] siteMetadata updated:', siteMetadata);
         if (onSiteMetadataUpdate) {
+            console.log('[Editor] calling onSiteMetadataUpdate');
             await onSiteMetadataUpdate(siteMetadata);
         }
+        console.log('[Editor] triggering state save');
         triggerStateSave();
     }
 
@@ -535,7 +539,16 @@ let {
             triggerStateSave();
         },
         switchPage: (pageId: string) => onPageSwitch?.(pageId),
-        createPage: () => onCreatePage?.(),
+        createPage: async (data: { title: string; slug: string }) => {
+            if (!onPageCreate) return null;
+            try {
+                const result = await onPageCreate(data);
+                return result;
+            } catch (err) {
+                console.error('[Editor] Failed to create page:', err);
+                return null;
+            }
+        },
         addBlock: addBlockToContent,
         
         // Navigation extension

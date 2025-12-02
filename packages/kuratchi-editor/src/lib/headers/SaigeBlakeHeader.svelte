@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { Pencil } from '@lucide/svelte';
     import { BlockActions } from '../utils/index.js';
-    import { IconPicker, ImagePicker } from '../widgets/index.js';
+    import { IconPicker, ImagePicker, NavMenu, NavMenuMobile, type DesktopNavConfig, type MobileNavConfig, type NavMenuItem } from '../widgets/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
@@ -11,6 +11,13 @@
         url: string;
         alt: string;
     }
+
+    // Nav configuration types
+    type DropdownTriggerOption = 'hover' | 'click';
+    type DropdownAlignOption = 'start' | 'center' | 'end';
+    type SubmenuDirectionOption = 'left' | 'right';
+    type MobileStyleOption = 'drawer' | 'fullscreen';
+    type DrawerPositionOption = 'left' | 'right';
 
     interface Props {
         type?: string;
@@ -21,7 +28,30 @@
         menu?: any;
         logo?: LogoData;
         editable?: boolean;
+        // Nav configuration props
+        navDropdownTrigger?: DropdownTriggerOption;
+        navDropdownAlign?: DropdownAlignOption;
+        navSubmenuDirection?: SubmenuDirectionOption;
+        navHoverBgColor?: string;
+        navDropdownBgColor?: string;
+        navDropdownTextColor?: string;
+        mobileNavStyle?: MobileStyleOption;
+        mobileDrawerPosition?: DrawerPositionOption;
     }
+
+    const DEFAULT_MENU: NavMenuItem[] = [
+        { id: '1', label: 'Home', url: '/' },
+        {
+            id: '2',
+            label: 'Products',
+            children: [
+                { id: '2a', label: 'Product A', url: '/product-a' },
+                { id: '2b', label: 'Product B', url: '/product-b' },
+            ],
+        },
+        { id: '3', label: 'About Us', url: '/about' },
+        { id: '4', label: 'Contact', url: '/contact' },
+    ];
 
     let {
         type = 'saige-blake-header',
@@ -33,13 +63,36 @@
             { icon: 'x', link: '#', name: "X", enabled: true },
             { icon: 'instagram', link: '#', name: "Instagram", enabled: true },
         ] as { icon: LucideIconKey; link: string; name: string; enabled: boolean }[],
-        menu = [],
+        menu: initialMenu = [],
         logo: initialLogo = {
             url: '/clutch-cms-logo.png',
             alt: 'Clutch CMS Logo'
         },
-        editable = true
+        editable = true,
+        // Nav configuration props
+        navDropdownTrigger: initialNavDropdownTrigger = 'hover' as DropdownTriggerOption,
+        navDropdownAlign: initialNavDropdownAlign = 'start' as DropdownAlignOption,
+        navSubmenuDirection: initialNavSubmenuDirection = 'right' as SubmenuDirectionOption,
+        navHoverBgColor: initialNavHoverBgColor = 'color-mix(in srgb, currentColor 8%, transparent)',
+        navDropdownBgColor: initialNavDropdownBgColor = '',
+        navDropdownTextColor: initialNavDropdownTextColor = '#1f2937',
+        mobileNavStyle: initialMobileNavStyle = 'drawer' as MobileStyleOption,
+        mobileDrawerPosition: initialMobileDrawerPosition = 'right' as DrawerPositionOption,
     }: Props = $props();
+
+    // Normalize menu items to use 'children' and 'url' properties
+    function normalizeMenuItems(items: any[]): NavMenuItem[] {
+        return items.map((item, index) => ({
+            id: item.id || `item-${index}`,
+            label: item.label,
+            url: item.url || item.slug || item.link,
+            children: item.children || item.items ? normalizeMenuItems(item.children || item.items) : undefined,
+        }));
+    }
+
+    const resolvedMenu = (initialMenu?.length ?? 0) === 0
+        ? DEFAULT_MENU
+        : normalizeMenuItems(initialMenu);
 
     // Use local state for logo so changes trigger reactivity
     let logo = $state<LogoData>(initialLogo);
@@ -52,25 +105,86 @@
     let textColor = $state(initialTextColor);
     let reverseOrder = $state(initialReverseOrder);
 
-    if ( menu.length === 0 ) {
-        menu = [
-            { label: 'Home', slug: '/' },
-            {
-                label: 'Products',
-                items: [
-                    { label: 'Product A', slug: '/product-a' },
-                    { label: 'Product B', slug: '/product-b' },
-                ],
-            },
-            { label: 'About Us', slug: '/about' },
-            { label: 'Contact', slug: '/contact' },
-        ];
-    }
+    // Nav configuration state
+    let navDropdownTrigger = $state<DropdownTriggerOption>(initialNavDropdownTrigger);
+    let navDropdownAlign = $state<DropdownAlignOption>(initialNavDropdownAlign);
+    let navSubmenuDirection = $state<SubmenuDirectionOption>(initialNavSubmenuDirection);
+    let navHoverBgColor = $state(initialNavHoverBgColor);
+    let navDropdownBgColor = $state(initialNavDropdownBgColor);
+    let navDropdownTextColor = $state(initialNavDropdownTextColor);
+    let mobileNavStyle = $state<MobileStyleOption>(initialMobileNavStyle);
+    let mobileDrawerPosition = $state<DrawerPositionOption>(initialMobileDrawerPosition);
+    let mobileMenuOpen = $state(false);
 
     let id = crypto.randomUUID();
-    let localMenu = $state(menu);
+    let localMenu = $state<NavMenuItem[]>(resolvedMenu);
     let logoUrl = $derived(logo?.url || '');
     let logoAlt = $derived(logo?.alt || 'Logo');
+
+    // Computed desktop nav config - light theme style
+    const desktopNavConfig = $derived<DesktopNavConfig>({
+        orientation: 'horizontal',
+        dropdownTrigger: navDropdownTrigger,
+        dropdownAlign: navDropdownAlign,
+        submenuDirection: navSubmenuDirection,
+        colors: {
+            background: 'transparent',
+            backgroundHover: navHoverBgColor,
+            backgroundActive: navHoverBgColor,
+            text: textColor,
+            textHover: textColor,
+            dropdownBackground: navDropdownBgColor || 'rgba(255, 255, 255, 0.96)',
+            dropdownItemHover: 'rgba(15, 23, 42, 0.08)',
+            dropdownText: navDropdownTextColor,
+            dropdownBorder: 'rgba(15, 23, 42, 0.12)',
+            dropdownShadow: '0 18px 45px rgba(15, 23, 42, 0.15)',
+        },
+        typography: {
+            fontSize: '0.95rem',
+            fontWeight: 600,
+        },
+        spacing: {
+            itemGap: '0.25rem',
+            itemPadding: '0.35rem 0.5rem',
+            dropdownItemPadding: '0.5rem 0.65rem',
+            dropdownPadding: '0.5rem',
+        },
+        borders: {
+            itemRadius: '0.375rem',
+            dropdownRadius: '0.75rem',
+        },
+        animation: {
+            duration: '200ms',
+            easing: 'ease',
+            caretRotation: true,
+        },
+        caret: {
+            show: true,
+            size: '0.875rem',
+        },
+        dropdownMinWidth: '11rem',
+    });
+
+    // Computed mobile nav config
+    const mobileNavConfig = $derived<MobileNavConfig>({
+        style: mobileNavStyle,
+        drawerPosition: mobileDrawerPosition,
+        colors: {
+            background: 'rgba(255, 255, 255, 0.96)',
+            backgroundHover: 'rgba(15, 23, 42, 0.08)',
+            text: navDropdownTextColor,
+            dropdownBackground: 'rgba(15, 23, 42, 0.04)',
+            dropdownText: navDropdownTextColor,
+        },
+        typography: {
+            fontSize: '1rem',
+            fontWeight: 500,
+        },
+        showCloseButton: true,
+        showBackdrop: true,
+        backdropOpacity: 0.5,
+        accordionBehavior: 'single',
+    });
 
     let content = $derived({
         id,
@@ -81,15 +195,17 @@
         icons,
         menu: localMenu,
         logo,
+        navDropdownTrigger,
+        navDropdownAlign,
+        navSubmenuDirection,
+        navHoverBgColor,
+        navDropdownBgColor,
+        navDropdownTextColor,
+        mobileNavStyle,
+        mobileDrawerPosition,
     });
     const serializeContent = () => JSON.stringify(content);
     const componentRef = {};
-
-    function hrefFrom(item: any): string {
-        if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
-        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
-        return '#';
-    }
 
     let component = $state<HTMLElement>();
     let mounted = $state(false);
@@ -180,6 +296,56 @@
                             {/each}
                         </div>
                     </section>
+
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Navigation Style</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <label class="krt-headerDrawer__card">
+                                <span>Dropdown Trigger</span>
+                                <select class="krt-headerDrawer__select" bind:value={navDropdownTrigger}>
+                                    <option value="hover">Hover</option>
+                                    <option value="click">Click</option>
+                                </select>
+                            </label>
+                            <label class="krt-headerDrawer__card">
+                                <span>Dropdown Align</span>
+                                <select class="krt-headerDrawer__select" bind:value={navDropdownAlign}>
+                                    <option value="start">Left</option>
+                                    <option value="center">Center</option>
+                                    <option value="end">Right</option>
+                                </select>
+                            </label>
+                            <label class="krt-headerDrawer__card">
+                                <span>Submenu Direction</span>
+                                <select class="krt-headerDrawer__select" bind:value={navSubmenuDirection}>
+                                    <option value="right">Right</option>
+                                    <option value="left">Left</option>
+                                </select>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Mobile Menu</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <label class="krt-headerDrawer__card">
+                                <span>Menu Style</span>
+                                <select class="krt-headerDrawer__select" bind:value={mobileNavStyle}>
+                                    <option value="drawer">Drawer</option>
+                                    <option value="fullscreen">Fullscreen</option>
+                                </select>
+                            </label>
+                            {#if mobileNavStyle === 'drawer'}
+                                <label class="krt-headerDrawer__card">
+                                    <span>Drawer Position</span>
+                                    <select class="krt-headerDrawer__select" bind:value={mobileDrawerPosition}>
+                                        <option value="right">Right</option>
+                                        <option value="left">Left</option>
+                                    </select>
+                                </label>
+                            {/if}
+                        </div>
+                    </section>
                 </div>
             {/snippet}
         </BlockActions>
@@ -211,26 +377,11 @@
                             {/if}
                         </a>
                         {#if localMenu.length}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item, index}
-                                    {#if item.items?.length}
-                                        <li class="krt-header__navItem">
-                                            <details class="krt-header__navDropdown">
-                                                <summary>{item.label}</summary>
-                                                <ul class="krt-header__menuPopover">
-                                                    {#each item.items as subItem}
-                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                    {/each}
-                                                </ul>
-                                            </details>
-                                        </li>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <li class="krt-header__navItem">
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        </li>
-                                    {/if}
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </div>
                 {/if}
@@ -238,31 +389,14 @@
 
             <div class="krt-header__brand">
                 {#if localMenu.length}
-                    <details class="krt-header__sheetToggle">
-                        <summary aria-label="Toggle menu">
-                            <span class="krt-header__mobileTrigger">
-                                <Menu aria-hidden="true" />
-                            </span>
-                        </summary>
-                        <ul class="krt-header__sheet">
-                            {#each localMenu as item, index}
-                                <li>
-                                    {#if item.items?.length}
-                                        <details class="krt-header__sheetDropdown">
-                                            <summary>{item.label}</summary>
-                                            <ul>
-                                                {#each item.items as subItem}
-                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                {/each}
-                                            </ul>
-                                        </details>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <a href={hrefFrom(item)}>{item.label}</a>
-                                    {/if}
-                                </li>
-                            {/each}
-                        </ul>
-                    </details>
+                    <button 
+                        class="krt-header__mobileTrigger"
+                        type="button"
+                        aria-label="Toggle menu"
+                        onclick={() => mobileMenuOpen = !mobileMenuOpen}
+                    >
+                        <Menu aria-hidden="true" />
+                    </button>
                 {/if}
             </div>
 
@@ -275,37 +409,11 @@
                             {/if}
                         </a>
                         {#if localMenu.length}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item, index}
-                                    {@const itemKey = item.id ?? item.slug ?? `item-${index}`}
-                                    {#if item.items?.length}
-                                        <li class="krt-header__navItem">
-                                            <button
-                                                class="krt-header__navButton"
-                                                type="button"
-                                                popovertarget={`saige-popover-${itemKey}`}
-                                                style={`anchor-name: --saige-anchor-${itemKey}`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                            <ul
-                                                id={`saige-popover-${itemKey}`}
-                                                popover
-                                                class="krt-header__menuPopover"
-                                                style={`position-anchor: --saige-anchor-${itemKey}`}
-                                            >
-                                                {#each item.items as subItem}
-                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                {/each}
-                                            </ul>
-                                        </li>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <li class="krt-header__navItem">
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        </li>
-                                    {/if}
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </div>
                 {:else}
@@ -321,6 +429,13 @@
             </div>
         </div>
     </div>
+
+    <NavMenuMobile
+        items={localMenu}
+        config={mobileNavConfig}
+        bind:isOpen={mobileMenuOpen}
+        onClose={() => mobileMenuOpen = false}
+    />
 </div>
 
 {:else}
@@ -353,26 +468,11 @@
                             {/if}
                         </a>
                         {#if localMenu.length}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item, index}
-                                    {#if item.items?.length}
-                                        <li class="krt-header__navItem">
-                                            <details class="krt-header__navDropdown">
-                                                <summary>{item.label}</summary>
-                                                <ul class="krt-header__menuPopover">
-                                                    {#each item.items as subItem}
-                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                    {/each}
-                                                </ul>
-                                            </details>
-                                        </li>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <li class="krt-header__navItem">
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        </li>
-                                    {/if}
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </div>
                 {/if}
@@ -380,31 +480,14 @@
 
             <div class="krt-header__brand">
                 {#if localMenu.length}
-                    <details class="krt-header__sheetToggle">
-                        <summary aria-label="Toggle menu">
-                            <span class="krt-header__mobileTrigger">
-                                <Menu aria-hidden="true" />
-                            </span>
-                        </summary>
-                        <ul class="krt-header__sheet">
-                            {#each localMenu as item, index}
-                                <li>
-                                    {#if item.items?.length}
-                                        <details class="krt-header__sheetDropdown">
-                                            <summary>{item.label}</summary>
-                                            <ul>
-                                                {#each item.items as subItem}
-                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                {/each}
-                                            </ul>
-                                        </details>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <a href={hrefFrom(item)}>{item.label}</a>
-                                    {/if}
-                                </li>
-                            {/each}
-                        </ul>
-                    </details>
+                    <button 
+                        class="krt-header__mobileTrigger"
+                        type="button"
+                        aria-label="Toggle menu"
+                        onclick={() => mobileMenuOpen = !mobileMenuOpen}
+                    >
+                        <Menu aria-hidden="true" />
+                    </button>
                 {/if}
             </div>
 
@@ -417,37 +500,11 @@
                             {/if}
                         </a>
                         {#if localMenu.length}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item, index}
-                                    {@const itemKey = item.id ?? item.slug ?? `item-${index}`}
-                                    {#if item.items?.length}
-                                        <li class="krt-header__navItem">
-                                            <button
-                                                class="krt-header__navButton"
-                                                type="button"
-                                                popovertarget={`saige-popover-${itemKey}`}
-                                                style={`anchor-name: --saige-anchor-${itemKey}`}
-                                            >
-                                                {item.label}
-                                            </button>
-                                            <ul
-                                                id={`saige-popover-${itemKey}`}
-                                                popover
-                                                class="krt-header__menuPopover"
-                                                style={`position-anchor: --saige-anchor-${itemKey}`}
-                                            >
-                                                {#each item.items as subItem}
-                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                {/each}
-                                            </ul>
-                                        </li>
-                                    {:else if hrefFrom(item) !== '#'}
-                                        <li class="krt-header__navItem">
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        </li>
-                                    {/if}
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </div>
                 {:else}
@@ -463,6 +520,13 @@
             </div>
         </div>
     </div>
+
+    <NavMenuMobile
+        items={localMenu}
+        config={mobileNavConfig}
+        bind:isOpen={mobileMenuOpen}
+        onClose={() => mobileMenuOpen = false}
+    />
 {/if}
 
 <style>
@@ -507,6 +571,22 @@
 
     .krt-headerDrawer__card span {
         font-weight: 500;
+    }
+
+    .krt-headerDrawer__select {
+        padding: 0.4rem 0.6rem;
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-bg, #fafafa);
+        font-size: 0.85rem;
+        color: var(--krt-color-text, #1f2937);
+        cursor: pointer;
+        min-width: 6rem;
+    }
+
+    .krt-headerDrawer__select:focus {
+        outline: 2px solid var(--krt-color-primary, #3b82f6);
+        outline-offset: 1px;
     }
 
     .krt-headerDrawer__card--color {
@@ -654,121 +734,12 @@
         display: block;
     }
 
-    .krt-header__navList {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-md, 0.75rem);
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-
-    @media (max-width: 63.9375rem) {
-        .krt-header__navList {
-            display: none;
-        }
-    }
-
-    .krt-header__navItem {
-        position: relative;
-    }
-
-    .krt-header__navItem a,
-    .krt-header__navDropdown summary {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: inherit;
-        text-decoration: none;
-        padding: 0.35rem 0.5rem;
-        border-radius: var(--krt-radius-sm, 0.375rem);
-        border: 1px solid transparent;
-        background: transparent;
-        cursor: pointer;
-        transition: background 150ms ease, border 150ms ease, color 150ms ease;
-        list-style: none;
-        display: inline-flex;
-        align-items: center;
-        gap: var(--krt-space-xs, 0.25rem);
-    }
-
-    .krt-header__navItem a:hover,
-    .krt-header__navDropdown summary:hover,
-    .krt-header__navDropdown[open] summary {
-        background: color-mix(in srgb, currentColor 8%, transparent);
-        border-color: color-mix(in srgb, currentColor 16%, transparent);
-    }
-
-    .krt-header__navDropdown summary::-webkit-details-marker {
-        display: none;
-    }
-
-    .krt-header__navDropdown {
-        position: relative;
-    }
-
-    .krt-header__navDropdown > ul {
-        position: absolute;
-        inset-inline-start: 0;
-        inset-block-start: calc(100% + 0.25rem);
-        z-index: 3;
-    }
-
-    .krt-header__navDropdown:not([open]) > ul {
-        display: none;
-    }
-
-    .krt-header__menuPopover {
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-sm, 0.5rem);
-        border-radius: var(--krt-radius-lg, 0.75rem);
-        border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
-        background: color-mix(in srgb, #ffffff 88%, currentColor 12%);
-        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
-        min-width: 11rem;
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-xs, 0.25rem);
-        color: var(--krt-color-neutral-900, #1f2937);
-    }
-
-    .krt-header__menuPopover a {
-        display: block;
-        padding: 0.5rem 0.65rem;
-        border-radius: var(--krt-radius-sm, 0.375rem);
-        text-decoration: none;
-        color: inherit;
-        font-weight: 500;
-    }
-
-    .krt-header__menuPopover a:hover {
-        background: rgba(15, 23, 42, 0.08);
-    }
-
     .krt-header__brand {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: var(--krt-space-sm, 0.5rem);
         position: relative;
-    }
-
-    .krt-header__sheetToggle {
-        position: relative;
-        display: inline-flex;
-    }
-
-    .krt-header__sheetToggle summary {
-        list-style: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0;
-        padding: 0;
-    }
-
-    .krt-header__sheetToggle summary::-webkit-details-marker {
-        display: none;
     }
 
     .krt-header__mobileTrigger {
@@ -785,75 +756,15 @@
         transition: background 150ms ease, transform 150ms ease;
     }
 
-    .krt-header__sheetToggle[open] .krt-header__mobileTrigger,
     .krt-header__mobileTrigger:hover {
         background: rgba(255, 255, 255, 0.85);
         transform: translateY(-1px);
     }
 
     @media (min-width: 64rem) {
-        .krt-header__sheetToggle {
+        .krt-header__mobileTrigger {
             display: none;
         }
-    }
-
-    .krt-header__sheet {
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-md, 0.75rem);
-        border-radius: var(--krt-radius-lg, 0.75rem);
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
-        min-width: 17rem;
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-sm, 0.5rem);
-        color: var(--krt-color-neutral-900, #1f2937);
-    }
-
-    @media (min-width: 64rem) {
-        .krt-header__sheet {
-            display: none;
-        }
-    }
-
-    .krt-header__sheet a {
-        display: block;
-        padding: 0.45rem 0.6rem;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        text-decoration: none;
-        color: inherit;
-        font-weight: 500;
-    }
-
-    .krt-header__sheet a:hover {
-        background: rgba(15, 23, 42, 0.08);
-    }
-
-    .krt-header__sheetDropdown {
-        border-radius: var(--krt-radius-md, 0.5rem);
-        overflow: hidden;
-        background: rgba(15, 23, 42, 0.04);
-    }
-
-    .krt-header__sheetDropdown summary {
-        cursor: pointer;
-        padding: 0.45rem 0.6rem;
-        font-weight: 600;
-    }
-
-    .krt-header__sheetDropdown[open] summary {
-        background: rgba(15, 23, 42, 0.08);
-    }
-
-    .krt-header__sheetDropdown ul {
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-sm, 0.5rem) var(--krt-space-sm, 0.5rem) var(--krt-space-md, 0.75rem);
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-xs, 0.25rem);
     }
 
     .krt-header__metaGroup {

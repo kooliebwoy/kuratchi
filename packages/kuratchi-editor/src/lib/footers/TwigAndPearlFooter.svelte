@@ -1,6 +1,6 @@
 <script lang="ts">
  import { onMount } from 'svelte';
- import { IconPicker } from '../widgets/index.js';
+ import { IconPicker, FooterNavColumns, type FooterLinkColumn, type FooterColumnsConfig } from '../widgets/index.js';
  import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
  import { BlockActions } from '../utils/index.js';
  import { blockRegistry } from '../stores/editorSignals.svelte.js';
@@ -88,6 +88,32 @@
         return (localMenu && Array.isArray(localMenu) && localMenu.length > 0) ? localMenu : defaultFooterMenu;
     });
 
+    // Normalize menu to FooterLinkColumn format
+    function normalizeFooterColumns(menu: any[]): FooterLinkColumn[] {
+        return menu.map((column, index) => ({
+            id: column.id || `col-${index}`,
+            heading: column.label || column.heading || '',
+            links: (column.items || column.links || []).map((link: any, linkIndex: number) => ({
+                id: link.id || `link-${index}-${linkIndex}`,
+                label: link.label,
+                url: link.link || link.url || link.slug || '#',
+                external: link.external,
+            })),
+        }));
+    }
+
+    const footerColumns = $derived<FooterLinkColumn[]>(normalizeFooterColumns(footerMenu));
+
+    // Footer nav configuration
+    const footerNavConfig = $derived<Partial<FooterColumnsConfig>>({
+        layout: 'columns',
+        colors: {
+            headingText: textColor,
+            linkText: textColor,
+            linkHover: textColor,
+        },
+    });
+
   let content = $derived({
         id,
         backgroundColor,
@@ -110,12 +136,6 @@
     blockRegistry.register(componentRef, () => ({ ...content, region: 'footer' }), 'footer', component);
     return () => blockRegistry.unregister(componentRef);
   });
-
-    function hrefFrom(item: any): string {
-        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
-        if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
-        return '#';
-    }
 </script>
 
 {#if editable}
@@ -205,20 +225,11 @@
                 {#if reverseOrder}
                     <div class="krt-footer__columns">
                         {#if !menuHidden}
-                            <div class="krt-footer__navColumns">
-                                {#each footerMenu as column}
-                                    <nav class="krt-footer__navColumn">
-                                        <h6>{column.label}</h6>
-                                        <ul>
-                                            {#each column.items as item}
-                                                <li>
-                                                    <a href={hrefFrom(item)}>{item.label}</a>
-                                                </li>
-                                            {/each}
-                                        </ul>
-                                    </nav>
-                                {/each}
-                            </div>
+                            <FooterNavColumns 
+                                columns={footerColumns} 
+                                config={footerNavConfig}
+                                ariaLabel="Footer navigation"
+                            />
                         {/if}
                     </div>
                     <aside class="krt-footer__brand">
@@ -230,20 +241,11 @@
                     </aside>
                     <div class="krt-footer__columns">
                         {#if !menuHidden}
-                            <div class="krt-footer__navColumns">
-                                {#each footerMenu as column}
-                                    <nav class="krt-footer__navColumn">
-                                        <h6>{column.label}</h6>
-                                        <ul>
-                                            {#each column.items as item}
-                                                <li>
-                                                    <a href={hrefFrom(item)}>{item.label}</a>
-                                                </li>
-                                            {/each}
-                                        </ul>
-                                    </nav>
-                                {/each}
-                            </div>
+                            <FooterNavColumns 
+                                columns={footerColumns} 
+                                config={footerNavConfig}
+                                ariaLabel="Footer navigation"
+                            />
                         {/if}
                     </div>
                 {/if}
@@ -255,7 +257,7 @@
                 <nav class="krt-footer__social">
                     {#each icons as { icon, link, name }}
                         {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                        <a class="krt-footer__iconButton" href={hrefFrom({ link })} aria-label={name}>
+                        <a class="krt-footer__iconButton" href={link || '#'} aria-label={name}>
                             <Comp aria-hidden="true" />
                         </a>
                     {/each}
@@ -280,20 +282,11 @@
             {#if reverseOrder}
                 <div class="krt-footer__columns">
                     {#if !menuHidden}
-                        <div class="krt-footer__navColumns">
-                            {#each footerMenu as column}
-                                <nav class="krt-footer__navColumn">
-                                    <h6>{column.label}</h6>
-                                    <ul>
-                                        {#each column.items as item}
-                                            <li>
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            </li>
-                                        {/each}
-                                    </ul>
-                                </nav>
-                            {/each}
-                        </div>
+                        <FooterNavColumns 
+                            columns={footerColumns} 
+                            config={footerNavConfig}
+                            ariaLabel="Footer navigation"
+                        />
                     {/if}
                 </div>
                 <aside class="krt-footer__brand">
@@ -305,20 +298,11 @@
                 </aside>
                 <div class="krt-footer__columns">
                     {#if !menuHidden}
-                        <div class="krt-footer__navColumns">
-                            {#each footerMenu as column}
-                                <nav class="krt-footer__navColumn">
-                                    <h6>{column.label}</h6>
-                                    <ul>
-                                        {#each column.items as item}
-                                            <li>
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            </li>
-                                        {/each}
-                                    </ul>
-                                </nav>
-                            {/each}
-                        </div>
+                        <FooterNavColumns 
+                            columns={footerColumns} 
+                            config={footerNavConfig}
+                            ariaLabel="Footer navigation"
+                        />
                     {/if}
                 </div>
             {/if}
@@ -330,7 +314,7 @@
             <nav class="krt-footer__social">
                 {#each icons as { icon, link, name }}
                     {@const Comp = LucideIconMap[icon as LucideIconKey]}
-                    <a class="krt-footer__iconButton" href={hrefFrom({ link })} aria-label={name}>
+                    <a class="krt-footer__iconButton" href={link || '#'} aria-label={name}>
                         <Comp aria-hidden="true" />
                     </a>
                 {/each}
@@ -526,49 +510,6 @@
         .krt-footer__columns {
             flex-direction: row;
         }
-    }
-
-    .krt-footer__navColumns {
-        display: grid;
-        gap: var(--krt-space-lg, 1rem);
-    }
-
-    @media (min-width: 48rem) {
-        .krt-footer__navColumns {
-            grid-auto-flow: column;
-            grid-auto-columns: minmax(10rem, auto);
-        }
-    }
-
-    .krt-footer__navColumn h6 {
-        margin: 0 0 var(--krt-space-sm, 0.5rem);
-        font-size: 0.8rem;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        font-weight: 600;
-        color: inherit;
-        opacity: 0.8;
-    }
-
-    .krt-footer__navColumn ul {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-xs, 0.25rem);
-    }
-
-    .krt-footer__navColumn a {
-        font-size: 0.95rem;
-        color: inherit;
-        text-decoration: none;
-        opacity: 0.85;
-        transition: opacity 150ms ease;
-    }
-
-    .krt-footer__navColumn a:hover {
-        opacity: 1;
     }
 
     .krt-footer__meta {

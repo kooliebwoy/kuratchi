@@ -409,8 +409,9 @@ export interface EditorOptions {
   onPageSwitch?: (pageId: string) => void;
   /**
    * Callback when user creates a new page
+   * Receives the page title and slug, should return the created page with its ID
    */
-  onCreatePage?: () => void;
+  onPageCreate?: (data: { title: string; slug: string }) => Promise<{ id: string; title: string; slug: string }>;
   /**
    * List of enabled plugin IDs (e.g., ['forms', 'blog'])
    * If not specified, all registered plugins are enabled

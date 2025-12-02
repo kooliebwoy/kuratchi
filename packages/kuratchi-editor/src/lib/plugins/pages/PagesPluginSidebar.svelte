@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { PluginContext, NavigationExtension } from '../context';
     import { EXT } from '../context';
-    import { Plus, Home, ChevronDown, ChevronUp } from '@lucide/svelte';
+    import { Plus, Home, ChevronDown, ChevronUp, X, Loader2 } from '@lucide/svelte';
 
     let { ctx }: { ctx: PluginContext } = $props();
 
@@ -16,6 +16,13 @@
     let localSeoDescription = $state('');
     let settingsExpanded = $state(true);
 
+    // Create page modal state
+    let showCreateModal = $state(false);
+    let newPageTitle = $state('');
+    let newPageSlug = $state('');
+    let creating = $state(false);
+    let createError = $state<string | null>(null);
+
     $effect(() => {
         if (currentPage) {
             localTitle = currentPage.title ?? '';
@@ -24,6 +31,70 @@
             localSeoDescription = currentPage.seoDescription ?? '';
         }
     });
+
+    // Auto-generate slug from title
+    $effect(() => {
+        if (newPageTitle && !newPageSlug) {
+            newPageSlug = generateSlug(newPageTitle);
+        }
+    });
+
+    function generateSlug(title: string): string {
+        return title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    function openCreateModal() {
+        newPageTitle = '';
+        newPageSlug = '';
+        createError = null;
+        showCreateModal = true;
+    }
+
+    function closeCreateModal() {
+        showCreateModal = false;
+        newPageTitle = '';
+        newPageSlug = '';
+        createError = null;
+    }
+
+    async function handleCreatePage() {
+        if (!newPageTitle.trim() || !newPageSlug.trim() || creating) return;
+
+        creating = true;
+        createError = null;
+
+        try {
+            const result = await ctx.createPage({ 
+                title: newPageTitle.trim(), 
+                slug: newPageSlug.trim() 
+            });
+
+            if (result) {
+                // Auto-add to header menu
+                if (nav) {
+                    nav.addPageToMenu('header', { 
+                        id: result.id, 
+                        name: result.title, 
+                        slug: result.slug 
+                    });
+                }
+
+                // Switch to the new page
+                ctx.switchPage(result.id);
+                closeCreateModal();
+            } else {
+                createError = 'Failed to create page. Please try again.';
+            }
+        } catch (err) {
+            console.error('Failed to create page:', err);
+            createError = 'Failed to create page. The slug might already exist.';
+        } finally {
+            creating = false;
+        }
+    }
 
     const handleTitleChange = () => ctx.updatePageTitle(localTitle);
     const handleSEOChange = () => ctx.updatePageSEO({ seoTitle: localSeoTitle, seoDescription: localSeoDescription, slug: localSlug });
@@ -69,7 +140,7 @@
 
     <div class="pages-plugin__header">
         <h3>All Pages</h3>
-        <button class="pages-plugin__newButton" onclick={() => ctx.createPage()} title="Create new page">
+        <button class="pages-plugin__newButton" onclick={openCreateModal} title="Create new page">
             <Plus /><span>New</span>
         </button>
     </div>
@@ -97,12 +168,77 @@
     {:else}
         <div class="pages-plugin__empty">
             <p>No pages yet</p>
-            <button class="pages-plugin__createButton" onclick={() => ctx.createPage()}>
+            <button class="pages-plugin__createButton" onclick={openCreateModal}>
                 <Plus />Create First Page
             </button>
         </div>
     {/if}
 </div>
+
+<!-- Create Page Modal -->
+{#if showCreateModal}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="pages-plugin__modalOverlay" onclick={closeCreateModal}>
+        <div class="pages-plugin__modal" onclick={(e) => e.stopPropagation()}>
+            <div class="pages-plugin__modalHeader">
+                <h3>Create New Page</h3>
+                <button class="pages-plugin__modalClose" onclick={closeCreateModal} aria-label="Close">
+                    <X />
+                </button>
+            </div>
+
+            <div class="pages-plugin__modalBody">
+                {#if createError}
+                    <div class="pages-plugin__error">{createError}</div>
+                {/if}
+
+                <label class="pages-plugin__formGroup">
+                    <span>Page Title</span>
+                    <input
+                        type="text"
+                        placeholder="About Us"
+                        bind:value={newPageTitle}
+                        disabled={creating}
+                    />
+                </label>
+
+                <label class="pages-plugin__formGroup">
+                    <span>URL Slug</span>
+                    <input
+                        type="text"
+                        placeholder="about-us"
+                        bind:value={newPageSlug}
+                        disabled={creating}
+                    />
+                    <span class="pages-plugin__helper">URL: /{newPageSlug || 'page-slug'}</span>
+                </label>
+            </div>
+
+            <div class="pages-plugin__modalActions">
+                <button 
+                    class="pages-plugin__cancelButton" 
+                    onclick={closeCreateModal} 
+                    disabled={creating}
+                >
+                    Cancel
+                </button>
+                <button
+                    class="pages-plugin__submitButton"
+                    onclick={handleCreatePage}
+                    disabled={!newPageTitle.trim() || !newPageSlug.trim() || creating}
+                >
+                    {#if creating}
+                        <Loader2 class="animate-spin" />
+                        Creating...
+                    {:else}
+                        Create Page
+                    {/if}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .pages-plugin {
@@ -377,5 +513,188 @@
     .pages-plugin__createButton :global(svg) {
         width: 1rem;
         height: 1rem;
+    }
+
+    /* Modal Styles */
+    .pages-plugin__modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: grid;
+        place-items: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .pages-plugin__modal {
+        background: var(--krt-editor-bg, #ffffff);
+        border-radius: var(--krt-editor-radius-lg, 0.75rem);
+        width: min(400px, 95vw);
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+        overflow: hidden;
+    }
+
+    .pages-plugin__modalHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--krt-editor-border, #e2e8f0);
+    }
+
+    .pages-plugin__modalHeader h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .pages-plugin__modalClose {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        background: transparent;
+        color: var(--krt-editor-text-secondary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .pages-plugin__modalClose:hover {
+        background: var(--krt-editor-surface, #f8fafc);
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .pages-plugin__modalClose :global(svg) {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .pages-plugin__modalBody {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+
+    .pages-plugin__error {
+        padding: 0.75rem 1rem;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #dc2626;
+        font-size: 0.8125rem;
+    }
+
+    .pages-plugin__formGroup {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .pages-plugin__formGroup span:first-child {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .pages-plugin__formGroup input {
+        padding: 0.625rem 0.75rem;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        font-size: 0.875rem;
+        color: var(--krt-editor-text-primary, #0f172a);
+        background: var(--krt-editor-bg, #ffffff);
+        transition: all 0.2s ease;
+    }
+
+    .pages-plugin__formGroup input:focus {
+        outline: none;
+        border-color: var(--krt-editor-accent, #3b82f6);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .pages-plugin__formGroup input:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .pages-plugin__helper {
+        font-size: 0.75rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .pages-plugin__modalActions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.625rem;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--krt-editor-border, #e2e8f0);
+        background: var(--krt-editor-surface, #f8fafc);
+    }
+
+    .pages-plugin__cancelButton {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        background: var(--krt-editor-bg, #ffffff);
+        color: var(--krt-editor-text-secondary, #64748b);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: inherit;
+    }
+
+    .pages-plugin__cancelButton:hover:not(:disabled) {
+        background: var(--krt-editor-surface-hover, #f1f5f9);
+    }
+
+    .pages-plugin__cancelButton:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .pages-plugin__submitButton {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        background: var(--krt-editor-accent, #3b82f6);
+        color: #ffffff;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: inherit;
+    }
+
+    .pages-plugin__submitButton:hover:not(:disabled) {
+        background: var(--krt-editor-accent-hover, #2563eb);
+    }
+
+    .pages-plugin__submitButton:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .pages-plugin__submitButton :global(svg) {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .pages-plugin__submitButton :global(.animate-spin) {
+        animation: spin 1s linear infinite;
     }
 </style>

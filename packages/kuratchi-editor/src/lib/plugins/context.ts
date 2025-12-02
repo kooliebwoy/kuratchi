@@ -34,8 +34,23 @@ export interface SEOUpdate {
 export interface NavMenuItem {
     id: string;
     label: string;
-    slug: string;
+    url: string;
+    /** Page ID if linked to an internal page */
     pageId?: string;
+    /** Whether this is an external link */
+    isExternal?: boolean;
+    /** Link target (_blank, _self, etc.) */
+    target?: '_blank' | '_self' | '_parent' | '_top';
+    /** Whether to open in new tab (derived from target === '_blank') */
+    openInNewTab?: boolean;
+    /** Link rel attribute for SEO (nofollow, noopener, etc.) */
+    rel?: string;
+    /** Title attribute for accessibility/SEO */
+    title?: string;
+    /** Aria label for accessibility */
+    ariaLabel?: string;
+    /** Nested menu items */
+    children?: NavMenuItem[];
 }
 
 export interface NavRegionState {
@@ -196,7 +211,7 @@ export interface PluginContext {
     updatePageSEO: (seo: SEOUpdate) => void;
     updateSiteMetadata: (updates: Record<string, unknown>) => void;
     switchPage: (pageId: string) => void;
-    createPage: () => void;
+    createPage: (data: { title: string; slug: string }) => Promise<{ id: string; title: string; slug: string } | null>;
     addBlock: (type: string, props?: Record<string, unknown>) => void;
 
     // Events

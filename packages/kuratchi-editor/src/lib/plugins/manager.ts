@@ -36,7 +36,7 @@ export interface PluginManagerOptions {
     updatePageSEO: (seo: SEOUpdate) => void;
     updateSiteMetadata: (updates: Record<string, unknown>) => void;
     switchPage: (pageId: string) => void;
-    createPage: () => void;
+    createPage: (data: { title: string; slug: string }) => Promise<{ id: string; title: string; slug: string } | null>;
     addBlock: (type: string, props?: Record<string, unknown>) => void;
 
     // Navigation
@@ -94,14 +94,26 @@ export function createPluginManager(opts: PluginManagerOptions) {
         const n = opts.navigation;
         register(EXT.NAVIGATION, {
             get state() { return n.getState(); },
-            updateHeaderMenu: (items: NavMenuItem[]) => { const s = n.getState(); s.header.items = items; n.save(s); },
-            updateFooterMenu: (items: NavMenuItem[]) => { const s = n.getState(); s.footer.items = items; n.save(s); },
+            updateHeaderMenu: (items: NavMenuItem[]) => { 
+                console.log('[NavigationExtension] updateHeaderMenu called with items:', items);
+                const s = n.getState(); 
+                s.header.items = items; 
+                console.log('[NavigationExtension] calling save with state:', s);
+                n.save(s); 
+            },
+            updateFooterMenu: (items: NavMenuItem[]) => { 
+                console.log('[NavigationExtension] updateFooterMenu called with items:', items);
+                const s = n.getState(); 
+                s.footer.items = items; 
+                console.log('[NavigationExtension] calling save with state:', s);
+                n.save(s); 
+            },
             setHeaderVisible: (v: boolean) => { const s = n.getState(); s.header.visible = v; n.save(s); },
             setFooterVisible: (v: boolean) => { const s = n.getState(); s.footer.visible = v; n.save(s); },
             setHeaderMobileOnDesktop: (v: boolean) => { const s = n.getState(); s.header.useMobileMenuOnDesktop = v; n.save(s); },
             addPageToMenu: (loc: 'header' | 'footer', page: PageItem) => {
                 const s = n.getState();
-                const item: NavMenuItem = { id: n.genId(), label: page.name, slug: page.slug, pageId: page.id };
+                const item: NavMenuItem = { id: n.genId(), label: page.name, url: `/${page.slug}`, pageId: page.id };
                 if (loc === 'header') s.header.items = [...s.header.items, item];
                 else s.footer.items = [...s.footer.items, item];
                 n.save(s);
