@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
 	import { onMount } from 'svelte';
 	import { BlockActions } from "../utils/index.js";
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
 	type Slide = {
 		id?: string;
@@ -18,6 +25,7 @@
 		slides?: Slide[];
 		metadata?: {
 			showIndicators?: boolean;
+			layout?: Partial<SectionLayout>;
 		};
 		editable?: boolean;
 	}
@@ -53,9 +61,10 @@
 		id = crypto.randomUUID(),
 		type = "carousel",
 		slides = $bindable<Slide[]>([...defaultSlides]),
-		metadata = {
-			showIndicators: true
-		},
+		metadata = $bindable({
+			showIndicators: true,
+			layout: { ...DEFAULT_SECTION_LAYOUT }
+		}),
 		editable = true
 	}: Props = $props();
 
@@ -73,6 +82,16 @@
 	normalizeSlides();
 
 	let showIndicators = $state(metadata.showIndicators ?? true);
+
+	// Section layout state
+	let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+	
+	// Sync layout changes back to metadata
+	$effect(() => {
+		metadata.layout = { ...sectionLayout };
+	});
+
+	const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
 	const slideId = (index: number) => `carousel-${id}-${index}`;
 	const prevId = (index: number) => slideId((index - 1 + slides.length) % slides.length);
@@ -102,7 +121,8 @@
 		type,
 		slides,
 		metadata: {
-			showIndicators
+			showIndicators,
+			layout: metadata.layout
 		}
 	});
 
@@ -111,14 +131,11 @@
 	let mounted = $state(false);
 
 	onMount(() => {
+		if (!editable) return;
 		mounted = true;
+		blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+		return () => blockRegistry.unregister(componentRef);
 	});
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
-        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
-        return () => blockRegistry.unregister(componentRef);
-    });
 </script>
 
 {#if editable}
@@ -132,6 +149,11 @@
 			>
 				{#snippet inspector()}
 					<div class="krt-carouselDrawer">
+						<section class="krt-carouselDrawer__section">
+							<h3>Section Layout</h3>
+							<SectionLayoutControls bind:layout={sectionLayout} />
+						</section>
+
 						<section class="krt-carouselDrawer__section">
 							<div class="krt-carouselDrawer__header">
 								<div>
@@ -193,7 +215,7 @@
 				{/snippet}
 			</BlockActions>
 		{/if}
-		<div class="space-y-2" {id} data-type={type}>
+		<div class="space-y-2 krt-carousel" {id} data-type={type} style={sectionLayoutStyles}>
 			<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 			<div class="carousel w-full rounded-box overflow-hidden">
 				{#each slides as slide, index (slide.id)}
@@ -227,7 +249,7 @@
 
 	
 {:else}
-	<section id={id} data-type={type} class="space-y-2">
+	<section id={id} data-type={type} class="space-y-2 krt-carousel" style={sectionLayoutStyles}>
 		<div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 		<div class="carousel w-full rounded-box overflow-hidden">
 			{#each slides as slide, index (slide.id)}
@@ -260,6 +282,15 @@
 {/if}
 
 <style>
+	.krt-carousel {
+		width: 100%;
+		max-width: var(--section-max-width, 100%);
+		margin-inline: auto;
+		padding-inline: var(--section-padding-x, 0);
+		padding-block: var(--section-padding-y, 0);
+		border-radius: var(--section-border-radius, 0);
+	}
+
 	.krt-carouselDrawer {
 		display: flex;
 		flex-direction: column;

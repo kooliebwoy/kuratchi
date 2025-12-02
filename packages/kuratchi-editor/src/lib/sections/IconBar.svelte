@@ -4,6 +4,13 @@
     import { BlockActions } from "../utils/index.js";
     import { IconPicker } from "../widgets/index.js";
     import { LucideIconMap, type LucideIconKey } from "../utils/lucide-icons.js";
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface IconItem {
         icon: LucideIconKey;
@@ -19,6 +26,7 @@
             backgroundColor: string;
             iconColors: string;
             roundedBorder: string;
+            layout?: Partial<SectionLayout>;
         };
         icons?: IconItem[];
         editable?: boolean;
@@ -27,11 +35,12 @@
     let {
         id = crypto.randomUUID(),
         type = 'icon-bar',
-        metadata = {
+        metadata = $bindable({
             backgroundColor: '#575757',
             iconColors: '#212121',
-            roundedBorder: 'rounded-3xl'
-        },
+            roundedBorder: 'rounded-3xl',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
+        }),
         icons = $bindable<IconItem[]>([
             { icon: 'truck', link: '#', name: "Free Shipping & Returns", enabled: true },
             { icon: 'badgeDollarSign', link: '#', name: "100% Money Back Guarantee", enabled: true },
@@ -47,6 +56,16 @@
     let iconColors = $state(metadata.iconColors);
     let roundedBorder = $state(metadata.roundedBorder);
 
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const visibleIcons = $derived(iconsState.filter((icon) => icon.enabled));
 
     let content = $derived({
@@ -56,7 +75,8 @@
         metadata: {
             backgroundColor,
             iconColors,
-            roundedBorder
+            roundedBorder,
+            layout: metadata.layout
         }
     })
 
@@ -89,11 +109,8 @@
     let mounted = $state(false);
 
     onMount(() => {
+        if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
@@ -110,6 +127,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-iconBar__drawer">
+                    <section class="krt-iconBar__drawerSection">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-iconBar__drawerSection">
                         <h3>Appearance</h3>
                         <div class="krt-iconBar__drawerGrid">
@@ -165,7 +187,7 @@
             {/snippet}
         </BlockActions>
     {/if}
-    <section {id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
+    <section {id} data-type={type} class={`krt-iconBar ${radiusClass}`} style="background-color: {backgroundColor}; {sectionLayoutStyles}">
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-iconBar__band" style:color={iconColors}>
             {#each iconsState as { icon, name }}
@@ -180,7 +202,7 @@
 
 </div>
 {:else}
-    <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style:background-color={backgroundColor}>
+    <section id={id} data-type={type} class={`krt-iconBar ${radiusClass}`} style="background-color: {backgroundColor}; {sectionLayoutStyles}">
         <div class="krt-iconBar__band" style:color={iconColors}>
             {#each visibleIcons as iconItem}
                 {@const Comp = LucideIconMap[iconItem.icon as LucideIconKey]}
@@ -206,9 +228,12 @@
     .krt-iconBar {
         display: flex;
         justify-content: center;
-        padding: var(--krt-space-lg, 1rem) var(--krt-space-3xl, 2.5rem);
-        margin-block: var(--krt-space-lg, 1rem);
-        border-radius: var(--krt-radius-xl, 1rem);
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
+        padding-inline: var(--section-padding-x, var(--krt-space-3xl, 2.5rem));
+        padding-block: var(--section-padding-y, var(--krt-space-lg, 1rem));
+        border-radius: var(--section-border-radius, var(--krt-radius-xl, 1rem));
         transition: background 180ms ease;
     }
 

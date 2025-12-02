@@ -2,10 +2,18 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface DifferenceImage {
         id: string;
         src: string;
+        url?: string;
         alt: string;
         key?: string;
     }
@@ -16,6 +24,7 @@
         metadata?: {
             image1: DifferenceImage;
             image2: DifferenceImage;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -35,10 +44,21 @@
                 src: 'https://fakeimg.pl/1024x768/?text=After',
                 alt: 'After image',
                 key: ''
-            }
+            },
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     let component = $state<HTMLElement>();
     const componentRef = {};
@@ -46,12 +66,14 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
     });
 
     const content = $derived({ id, type, metadata });
 
     let split = $state(50);
-    const viewportStyle = $derived(`--krt-diff-split: ${editable ? split : 50}%`);
+    const viewportStyle = $derived(`--krt-diff-split: ${editable ? split : 50}%; ${sectionLayoutStyles}`);
 
     const imageUrl = (image?: DifferenceImage) => image?.url ?? image?.src ?? '';
 
@@ -59,12 +81,6 @@
         const target = event.currentTarget as HTMLInputElement;
         split = Number(target.value);
     };
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
-        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
-        return () => blockRegistry.unregister(componentRef);
-    });
 </script>
 
 {#if editable}
@@ -117,6 +133,8 @@
     .krt-diff {
         position: relative;
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         min-width: 100%;
     }
 

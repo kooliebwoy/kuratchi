@@ -4,6 +4,8 @@
     import { getContext } from 'svelte';
     import { onMount } from 'svelte';
     import { BlockActions, SideActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { type SectionLayout, DEFAULT_SECTION_LAYOUT, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
 
     interface Props {
         id?: string;
@@ -23,6 +25,7 @@
         borderRadius?: string;
         showCloseButton?: boolean;
         closeOnBackdrop?: boolean;
+        layout?: Partial<SectionLayout>;
         editable?: boolean;
     }
 
@@ -44,11 +47,14 @@
         borderRadius = '0.75rem',
         showCloseButton = true,
         closeOnBackdrop = true,
+        layout = {},
         editable = true
     }: Props = $props();
 
     let isOpen = $state(false);
     let siteMetadata = getContext<any>('siteMetadata');
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layout));
+    let layoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     let content = $derived({
         id,
@@ -67,7 +73,8 @@
         backgroundColor,
         borderRadius,
         showCloseButton,
-        closeOnBackdrop
+        closeOnBackdrop,
+        layout: sectionLayout
     });
 
     const openModal = () => {
@@ -141,32 +148,34 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
+    <div class="editor-item group relative krt-modal" style={layoutStyles} bind:this={component}>
         {#if mounted}
             <BlockActions {id} {type} element={component} />
         {/if}
-        <div class="modal-trigger-wrapper" {id} data-type={type}>
-            <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
-            {#if triggerStyle === 'button'}
-                <button
-                    class="modal-trigger-button"
-                    style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
-                >
-                    {triggerText}
-                </button>
-            {:else if triggerStyle === 'link'}
-                <button class="modal-trigger-link">
-                    {triggerText}
-                </button>
-            {:else if triggerStyle === 'image' && triggerImage}
-                <button class="modal-trigger-image">
-                    <img src={triggerImage} alt="Open modal" />
-                </button>
-            {:else}
-                <div class="editor-placeholder">
-                    <p>Click to configure modal trigger</p>
-                </div>
-            {/if}
+        <div class="krt-modal__inner">
+            <div class="modal-trigger-wrapper" {id} data-type={type}>
+                <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
+                {#if triggerStyle === 'button'}
+                    <button
+                        class="modal-trigger-button"
+                        style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
+                    >
+                        {triggerText}
+                    </button>
+                {:else if triggerStyle === 'link'}
+                    <button class="modal-trigger-link">
+                        {triggerText}
+                    </button>
+                {:else if triggerStyle === 'image' && triggerImage}
+                    <button class="modal-trigger-image">
+                        <img src={triggerImage} alt="Open modal" />
+                    </button>
+                {:else}
+                    <div class="editor-placeholder">
+                        <p>Click to configure modal trigger</p>
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
 
@@ -178,131 +187,143 @@
             </button>
         {/snippet}
         {#snippet content()}
-            <div class="space-y-4">
-                <label class="form-control">
-                    <span class="label-text text-xs">Content Type</span>
-                    <select class="select select-sm select-bordered" bind:value={contentType}>
-                        <option value="form">Form</option>
-                        <option value="image">Image</option>
-                        <option value="custom">Custom HTML</option>
-                    </select>
-                </label>
+            <div class="krt-modalDrawer">
+                <section class="krt-modalDrawer__section">
+                    <h3>Section Layout</h3>
+                    <SectionLayoutControls bind:layout={sectionLayout} />
+                </section>
 
-                {#if contentType === 'form'}
-                    {#if availableForms.length > 0}
-                        <label class="form-control">
-                            <span class="label-text text-xs">Select Form</span>
-                            <select class="select select-sm select-bordered" bind:value={formId}>
-                                <option value="">Choose a form...</option>
-                                {#each availableForms as form}
-                                    <option value={form.id}>{form.settings.formName}</option>
-                                {/each}
-                            </select>
-                        </label>
-                    {:else}
-                        <div class="text-xs text-gray-500 p-2">No forms created yet. Create one in the Forms tab.</div>
+                <section class="krt-modalDrawer__section">
+                    <h3>Content Type</h3>
+                    <div class="krt-modalDrawer__field">
+                        <label class="krt-modalDrawer__label">Content Type</label>
+                        <select class="krt-modalDrawer__select" bind:value={contentType}>
+                            <option value="form">Form</option>
+                            <option value="image">Image</option>
+                            <option value="custom">Custom HTML</option>
+                        </select>
+                    </div>
+
+                    {#if contentType === 'form'}
+                        {#if availableForms.length > 0}
+                            <div class="krt-modalDrawer__field">
+                                <label class="krt-modalDrawer__label">Select Form</label>
+                                <select class="krt-modalDrawer__select" bind:value={formId}>
+                                    <option value="">Choose a form...</option>
+                                    {#each availableForms as form}
+                                        <option value={form.id}>{form.settings.formName}</option>
+                                    {/each}
+                                </select>
+                            </div>
+                        {:else}
+                            <div class="krt-modalDrawer__hint">No forms created yet. Create one in the Forms tab.</div>
+                        {/if}
+                    {:else if contentType === 'image'}
+                        <div class="krt-modalDrawer__field">
+                            <label class="krt-modalDrawer__label">Image URL</label>
+                            <input type="text" class="krt-modalDrawer__input" placeholder="https://..." bind:value={imageUrl} />
+                        </div>
+                        <div class="krt-modalDrawer__field">
+                            <label class="krt-modalDrawer__label">Alt Text</label>
+                            <input type="text" class="krt-modalDrawer__input" placeholder="Alt text" bind:value={imageAlt} />
+                        </div>
+                    {:else if contentType === 'custom'}
+                        <div class="krt-modalDrawer__field">
+                            <label class="krt-modalDrawer__label">Custom HTML</label>
+                            <textarea class="krt-modalDrawer__textarea" rows="4" placeholder="<p>Your HTML here...</p>" bind:value={customContent}></textarea>
+                        </div>
                     {/if}
-                {:else if contentType === 'image'}
-                    <label class="form-control">
-                        <span class="label-text text-xs">Image URL</span>
-                        <input type="text" class="input input-sm input-bordered" placeholder="https://..." bind:value={imageUrl} />
-                    </label>
-                    <label class="form-control">
-                        <span class="label-text text-xs">Alt Text</span>
-                        <input type="text" class="input input-sm input-bordered" placeholder="Alt text" bind:value={imageAlt} />
-                    </label>
-                {:else if contentType === 'custom'}
-                    <label class="form-control">
-                        <span class="label-text text-xs">Custom HTML</span>
-                        <textarea class="textarea textarea-sm textarea-bordered" rows="4" placeholder="<p>Your HTML here...</p>" bind:value={customContent}></textarea>
-                    </label>
-                {/if}
+                </section>
 
-                <div class="divider my-1"></div>
+                <section class="krt-modalDrawer__section">
+                    <h3>Trigger</h3>
+                    <div class="krt-modalDrawer__field">
+                        <label class="krt-modalDrawer__label">Trigger Style</label>
+                        <select class="krt-modalDrawer__select" bind:value={triggerStyle}>
+                            <option value="button">Button</option>
+                            <option value="link">Link</option>
+                            <option value="image">Image</option>
+                        </select>
+                    </div>
 
-                <label class="form-control">
-                    <span class="label-text text-xs">Trigger Style</span>
-                    <select class="select select-sm select-bordered" bind:value={triggerStyle}>
-                        <option value="button">Button</option>
-                        <option value="link">Link</option>
-                        <option value="image">Image</option>
-                    </select>
-                </label>
+                    <div class="krt-modalDrawer__field">
+                        <label class="krt-modalDrawer__label">Trigger Text</label>
+                        <input type="text" class="krt-modalDrawer__input" bind:value={triggerText} />
+                    </div>
 
-                <label class="form-control">
-                    <span class="label-text text-xs">Trigger Text</span>
-                    <input type="text" class="input input-sm input-bordered" bind:value={triggerText} />
-                </label>
+                    {#if triggerStyle === 'button'}
+                        <div class="krt-modalDrawer__row">
+                            <div class="krt-modalDrawer__field">
+                                <label class="krt-modalDrawer__label">Button Color</label>
+                                <input type="color" class="krt-modalDrawer__colorInput" bind:value={triggerButtonColor} />
+                            </div>
+                            <div class="krt-modalDrawer__field">
+                                <label class="krt-modalDrawer__label">Text Color</label>
+                                <input type="color" class="krt-modalDrawer__colorInput" bind:value={triggerButtonTextColor} />
+                            </div>
+                        </div>
+                    {:else if triggerStyle === 'image'}
+                        <div class="krt-modalDrawer__field">
+                            <label class="krt-modalDrawer__label">Trigger Image URL</label>
+                            <input type="text" class="krt-modalDrawer__input" placeholder="https://..." bind:value={triggerImage} />
+                        </div>
+                    {/if}
+                </section>
 
-                {#if triggerStyle === 'button'}
-                    <div class="grid grid-cols-2 gap-2">
-                        <label class="form-control">
-                            <span class="label-text text-xs">Button Color</span>
-                            <input type="color" class="input input-sm w-full" bind:value={triggerButtonColor} />
-                        </label>
-                        <label class="form-control">
-                            <span class="label-text text-xs">Text Color</span>
-                            <input type="color" class="input input-sm w-full" bind:value={triggerButtonTextColor} />
+                <section class="krt-modalDrawer__section">
+                    <h3>Modal Settings</h3>
+                    <div class="krt-modalDrawer__field">
+                        <label class="krt-modalDrawer__label">Modal Width</label>
+                        <select class="krt-modalDrawer__select" bind:value={modalWidth}>
+                            <option value="sm">Small</option>
+                            <option value="md">Medium</option>
+                            <option value="lg">Large</option>
+                            <option value="xl">Extra Large</option>
+                            <option value="full">Full Width</option>
+                        </select>
+                    </div>
+
+                    <div class="krt-modalDrawer__checkboxField">
+                        <label class="krt-modalDrawer__checkboxLabel">
+                            <input type="checkbox" class="krt-modalDrawer__checkbox" bind:checked={showCloseButton} />
+                            <span>Show close button</span>
                         </label>
                     </div>
-                {:else if triggerStyle === 'image'}
-                    <label class="form-control">
-                        <span class="label-text text-xs">Trigger Image URL</span>
-                        <input type="text" class="input input-sm input-bordered" placeholder="https://..." bind:value={triggerImage} />
-                    </label>
-                {/if}
 
-                <div class="divider my-1"></div>
-
-                <label class="form-control">
-                    <span class="label-text text-xs">Modal Width</span>
-                    <select class="select select-sm select-bordered" bind:value={modalWidth}>
-                        <option value="sm">Small</option>
-                        <option value="md">Medium</option>
-                        <option value="lg">Large</option>
-                        <option value="xl">Extra Large</option>
-                        <option value="full">Full Width</option>
-                    </select>
-                </label>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer justify-start gap-2">
-                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={showCloseButton} />
-                        <span class="label-text text-xs">Show close button</span>
-                    </label>
-                </div>
-
-                <div class="form-control">
-                    <label class="label cursor-pointer justify-start gap-2">
-                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={closeOnBackdrop} />
-                        <span class="label-text text-xs">Close on backdrop click</span>
-                    </label>
-                </div>
+                    <div class="krt-modalDrawer__checkboxField">
+                        <label class="krt-modalDrawer__checkboxLabel">
+                            <input type="checkbox" class="krt-modalDrawer__checkbox" bind:checked={closeOnBackdrop} />
+                            <span>Close on backdrop click</span>
+                        </label>
+                    </div>
+                </section>
             </div>
         {/snippet}
     </SideActions>
 {:else}
     <!-- Non-editable mode (actual website) -->
-    <section id={id} data-type={type}>
+    <section class="krt-modal" style={layoutStyles} id={id} data-type={type}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
-        <div class="modal-trigger-wrapper">
-        {#if triggerStyle === 'button'}
-            <button
-                class="modal-trigger-button"
-                onclick={openModal}
-                style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
-            >
-                {triggerText}
-            </button>
-        {:else if triggerStyle === 'link'}
-            <button class="modal-trigger-link" onclick={openModal}>
-                {triggerText}
-            </button>
-        {:else if triggerStyle === 'image' && triggerImage}
-            <button class="modal-trigger-image" onclick={openModal}>
-                <img src={triggerImage} alt="Open modal" />
-            </button>
-        {/if}
+        <div class="krt-modal__inner">
+            <div class="modal-trigger-wrapper">
+            {#if triggerStyle === 'button'}
+                <button
+                    class="modal-trigger-button"
+                    onclick={openModal}
+                    style="background-color: {triggerButtonColor}; color: {triggerButtonTextColor};"
+                >
+                    {triggerText}
+                </button>
+            {:else if triggerStyle === 'link'}
+                <button class="modal-trigger-link" onclick={openModal}>
+                    {triggerText}
+                </button>
+            {:else if triggerStyle === 'image' && triggerImage}
+                <button class="modal-trigger-image" onclick={openModal}>
+                    <img src={triggerImage} alt="Open modal" />
+                </button>
+            {/if}
+        </div>
     </div>
 
     <!-- Modal Overlay & Content -->
@@ -419,6 +440,160 @@
 {/if}
 
 <style>
+    /* Section Layout */
+    .krt-modal {
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-left: auto;
+        margin-right: auto;
+        padding-left: var(--section-padding-x, 1.5rem);
+        padding-right: var(--section-padding-x, 1.5rem);
+        padding-top: var(--section-padding-y, 3rem);
+        padding-bottom: var(--section-padding-y, 3rem);
+        min-height: var(--section-min-height, auto);
+        border-radius: var(--section-border-radius, 0);
+        box-sizing: border-box;
+    }
+
+    .krt-modal__inner {
+        width: 100%;
+    }
+
+    /* Drawer Styles */
+    .krt-modalDrawer {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .krt-modalDrawer__section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-modalDrawer__section h3 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #6b7280;
+        margin: 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .krt-modalDrawer__field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .krt-modalDrawer__row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+
+    .krt-modalDrawer__label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .krt-modalDrawer__input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        background: #fff;
+        color: #1f2937;
+        transition: border-color 0.15s ease;
+    }
+
+    .krt-modalDrawer__input:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .krt-modalDrawer__textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        background: #fff;
+        color: #1f2937;
+        resize: vertical;
+        min-height: 80px;
+        font-family: inherit;
+        transition: border-color 0.15s ease;
+    }
+
+    .krt-modalDrawer__textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .krt-modalDrawer__select {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        background: #fff;
+        color: #1f2937;
+        cursor: pointer;
+        transition: border-color 0.15s ease;
+    }
+
+    .krt-modalDrawer__select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .krt-modalDrawer__colorInput {
+        width: 100%;
+        height: 2rem;
+        padding: 0.125rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        cursor: pointer;
+    }
+
+    .krt-modalDrawer__hint {
+        font-size: 0.75rem;
+        color: #6b7280;
+        padding: 0.5rem;
+        background: #f9fafb;
+        border-radius: 0.375rem;
+    }
+
+    .krt-modalDrawer__checkboxField {
+        display: flex;
+        align-items: center;
+    }
+
+    .krt-modalDrawer__checkboxLabel {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.75rem;
+        color: #374151;
+    }
+
+    .krt-modalDrawer__checkbox {
+        width: 1rem;
+        height: 1rem;
+        cursor: pointer;
+        accent-color: #3b82f6;
+    }
+
     .editor-placeholder {
         padding: 2rem;
         text-align: center;

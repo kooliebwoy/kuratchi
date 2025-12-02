@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface FAQItem {
         question: string;
@@ -18,6 +25,7 @@
             backgroundColor?: string;
             borderColor?: string;
             textColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -44,7 +52,8 @@
         metadata = $bindable({
             backgroundColor: '#0f172a',
             borderColor: '#1e293b',
-            textColor: '#e2e8f0'
+            textColor: '#e2e8f0',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
@@ -54,8 +63,18 @@
     const componentRef = {};
     let mounted = $state(false);
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-faq-bg: ${metadata.backgroundColor}; --krt-faq-border: ${metadata.borderColor}; --krt-faq-text: ${metadata.textColor};`
+        `--krt-faq-bg: ${metadata.backgroundColor}; --krt-faq-border: ${metadata.borderColor}; --krt-faq-text: ${metadata.textColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({ id, type, eyebrow, heading, faqs, metadata: { ...metadata } });
@@ -78,6 +97,11 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="FAQ settings">
                 {#snippet inspector()}
                     <div class="krt-faq__drawer">
+                        <section class="krt-faq__section">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
+
                         <section class="krt-faq__section">
                             <h3>Colors</h3>
                             <div class="krt-faq__grid">
@@ -149,10 +173,13 @@
 <style>
     .krt-faq {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-faq-bg);
         color: var(--krt-faq-text);
-        border-radius: 20px;
-        padding: 32px;
+        border-radius: var(--section-border-radius, 20px);
+        padding-inline: var(--section-padding-x, 32px);
+        padding-block: var(--section-padding-y, 32px);
         border: 1px solid var(--krt-faq-border);
     }
 

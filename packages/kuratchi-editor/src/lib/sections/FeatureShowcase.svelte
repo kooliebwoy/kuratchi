@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface FeatureItem {
         title: string;
@@ -21,6 +28,7 @@
             cardColor?: string;
             accentColor?: string;
             textColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -41,17 +49,28 @@
             backgroundColor: '#0b1224',
             cardColor: '#10172f',
             accentColor: '#22c55e',
-            textColor: '#e2e8f0'
+            textColor: '#e2e8f0',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     let component = $state<HTMLElement>();
     const componentRef = {};
     let mounted = $state(false);
 
     const layoutStyle = $derived(
-        `--krt-features-bg: ${metadata.backgroundColor}; --krt-features-card: ${metadata.cardColor}; --krt-features-accent: ${metadata.accentColor}; --krt-features-text: ${metadata.textColor};`
+        `--krt-features-bg: ${metadata.backgroundColor}; --krt-features-card: ${metadata.cardColor}; --krt-features-accent: ${metadata.accentColor}; --krt-features-text: ${metadata.textColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({ id, type, eyebrow, heading, subheading, features, metadata: { ...metadata } });
@@ -70,6 +89,10 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="Feature showcase settings">
                 {#snippet inspector()}
                     <div class="krt-featureShowcase__drawer">
+                        <section class="krt-featureShowcase__section">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
                         <section class="krt-featureShowcase__section">
                             <h3>Colors</h3>
                             <div class="krt-featureShowcase__grid">
@@ -147,10 +170,13 @@
 <style>
     .krt-featureShowcase {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-features-bg);
         color: var(--krt-features-text);
-        border-radius: 24px;
-        padding: 48px 40px;
+        border-radius: var(--section-border-radius, 24px);
+        padding-inline: var(--section-padding-x, 40px);
+        padding-block: var(--section-padding-y, 48px);
     }
 
     .krt-featureShowcase__inner {

@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount, getContext } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface FormField {
         id: string;
@@ -38,6 +45,7 @@
             backgroundColor?: string;
             textColor?: string;
             accentColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -55,10 +63,21 @@
         metadata = $bindable({
             backgroundColor: '#0b1224',
             textColor: '#e2e8f0',
-            accentColor: '#a855f7'
+            accentColor: '#a855f7',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     // Get forms from site metadata context (works in both editor and site-renderer)
     const siteMetadata = getContext<any>('siteMetadata');
@@ -78,7 +97,7 @@
     let formError = $state<string | null>(null);
 
     const layoutStyle = $derived(
-        `--krt-contact-bg: ${metadata.backgroundColor}; --krt-contact-text: ${metadata.textColor}; --krt-contact-accent: ${metadata.accentColor};`
+        `--krt-contact-bg: ${metadata.backgroundColor}; --krt-contact-text: ${metadata.textColor}; --krt-contact-accent: ${metadata.accentColor}; ${sectionLayoutStyles}`
     );
 
     // Only save formId - form data comes from context at runtime
@@ -146,6 +165,10 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="Contact CTA settings">
                 {#snippet inspector()}
                     <div class="krt-contact__drawer">
+                        <section class="krt-contact__section">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
                         <section class="krt-contact__section">
                             <h3>Colors</h3>
                             <div class="krt-contact__grid">
@@ -300,10 +323,13 @@
 <style>
     .krt-contact {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-contact-bg);
         color: var(--krt-contact-text);
-        border-radius: 24px;
-        padding: 48px 40px;
+        border-radius: var(--section-border-radius, 24px);
+        padding-inline: var(--section-padding-x, 40px);
+        padding-block: var(--section-padding-y, 48px);
     }
 
     .krt-contact__inner {

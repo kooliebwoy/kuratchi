@@ -3,6 +3,13 @@
     import { BlockActions } from '../utils/index.js';
     import { ImagePicker } from '../widgets/index.js';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface CardImage {
         url?: string;
@@ -16,6 +23,7 @@
         backgroundColor: string;
         textColor: string;
         reverseOrder: boolean;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -43,7 +51,8 @@
         metadata: layoutMetadata = $bindable<LayoutMetadata>({
             backgroundColor: '#f3f4f680',
             textColor: '#111827',
-            reverseOrder: false
+            reverseOrder: false,
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }) as LayoutMetadata,
         editable = true
     }: Props = $props();
@@ -57,6 +66,16 @@
 
     // Use url directly (already contains full cloud URL from upload), fallback to src for legacy
     const imageUrl = $derived(image?.url ?? image?.src ?? '');
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     let content = $derived({
         id,
@@ -90,6 +109,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-aboutCardDrawer">
+                    <section class="krt-aboutCardDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-aboutCardDrawer__section">
                         <h3>Content</h3>
                         <div class="krt-aboutCardDrawer__fields">
@@ -138,7 +162,7 @@
         {id}
         data-type={type}
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
-        style:background-color={layoutMetadata.backgroundColor}
+        style="background-color: {layoutMetadata.backgroundColor}; {sectionLayoutStyles}"
     >
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutCard__inner">
@@ -155,65 +179,13 @@
             </figure>
         </div>
     </section>
-
-    <BlockActions
-        {id}
-        {type}
-        element={component}
-        inspectorTitle="About card settings"
-    >
-        {#snippet inspector()}
-            <div class="krt-aboutCardDrawer">
-                <section class="krt-aboutCardDrawer__section">
-                    <h3>Content</h3>
-                    <div class="krt-aboutCardDrawer__fields">
-                        <label class="krt-aboutCardDrawer__field">
-                            <span>Heading</span>
-                            <input type="text" bind:value={heading} placeholder="Heading" />
-                        </label>
-                        <label class="krt-aboutCardDrawer__field">
-                            <span>Body</span>
-                            <textarea rows="4" bind:value={body} placeholder="Tell your brand story"></textarea>
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-aboutCardDrawer__section">
-                    <h3>Layout</h3>
-                    <label class="krt-aboutCardDrawer__toggle">
-                        <input type="checkbox" bind:checked={layoutMetadata.reverseOrder} />
-                        <span>Swap image and copy</span>
-                    </label>
-                </section>
-
-                <section class="krt-aboutCardDrawer__section">
-                    <h3>Colors</h3>
-                    <div class="krt-aboutCardDrawer__grid">
-                        <label class="krt-aboutCardDrawer__field">
-                            <span>Background</span>
-                            <input type="color" bind:value={layoutMetadata.backgroundColor} />
-                        </label>
-                        <label class="krt-aboutCardDrawer__field">
-                            <span>Text</span>
-                            <input type="color" bind:value={layoutMetadata.textColor} />
-                        </label>
-                    </div>
-                </section>
-
-                <section class="krt-aboutCardDrawer__section">
-                    <h3>Image</h3>
-                    <ImagePicker bind:selectedImage={image} mode="single" />
-                </section>
-            </div>
-        {/snippet}
-    </BlockActions>
 </div>
 {:else}
     <section
         id={id}
         data-type={type}
         class={`krt-aboutCard ${layoutMetadata.reverseOrder ? 'krt-aboutCard--reverse' : ''}`}
-        style:background-color={layoutMetadata.backgroundColor}
+        style="background-color: {layoutMetadata.backgroundColor}; {sectionLayoutStyles}"
     >
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutCard__inner">
@@ -238,8 +210,12 @@
     .krt-aboutCard {
         position: relative;
         isolation: isolate;
-        border-radius: var(--krt-radius-2xl, 1.5rem);
-        padding: clamp(2.5rem, 5vw + 1rem, 5rem);
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
+        border-radius: var(--section-border-radius, 1.5rem);
+        padding-inline: var(--section-padding-x, clamp(2.5rem, 5vw + 1rem, 5rem));
+        padding-block: var(--section-padding-y, clamp(2.5rem, 5vw + 1rem, 5rem));
         box-shadow: 0 32px 64px rgba(15, 23, 42, 0.12);
         overflow: hidden;
     }

@@ -4,6 +4,13 @@
     import { onMount } from 'svelte';
     import { ImagePicker } from '../widgets/index.js';
     import { BlockActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface CardImage {
         key?: string;
@@ -25,6 +32,7 @@
         headingColor: string;
         textColor: string;
         buttonColor: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -79,7 +87,8 @@
             backgroundColor: '#f8fafc',
             headingColor: '#0f172a',
             textColor: '#1f2937',
-            buttonColor: '#0f172a'
+            buttonColor: '#0f172a',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }) as LayoutMetadata,
         cards = $bindable<CardContent[]>(createDefaultCards()),
         editable = true
@@ -90,6 +99,16 @@
     if (!layoutMetadata.headingColor) layoutMetadata.headingColor = '#0f172a';
     if (!layoutMetadata.textColor) layoutMetadata.textColor = '#1f2937';
     if (!layoutMetadata.buttonColor) layoutMetadata.buttonColor = '#0f172a';
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     const normalizedCards = $derived(
         cards.map((card) => ({
@@ -106,7 +125,7 @@
     );
 
     const layoutStyle = $derived(
-        `--krt-gridCtas-bg: ${layoutMetadata.backgroundColor}; --krt-gridCtas-heading: ${layoutMetadata.headingColor}; --krt-gridCtas-text: ${layoutMetadata.textColor}; --krt-gridCtas-button: ${layoutMetadata.buttonColor};`
+        `--krt-gridCtas-bg: ${layoutMetadata.backgroundColor}; --krt-gridCtas-heading: ${layoutMetadata.headingColor}; --krt-gridCtas-text: ${layoutMetadata.textColor}; --krt-gridCtas-button: ${layoutMetadata.buttonColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -119,7 +138,8 @@
             backgroundColor: layoutMetadata.backgroundColor,
             headingColor: layoutMetadata.headingColor,
             textColor: layoutMetadata.textColor,
-            buttonColor: layoutMetadata.buttonColor
+            buttonColor: layoutMetadata.buttonColor,
+            layout: layoutMetadata.layout
         }
     });
 
@@ -176,6 +196,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-gridCtasDrawer">
+                    <section class="krt-gridCtasDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-gridCtasDrawer__section">
                         <h3>Section content</h3>
                         <div class="krt-gridCtasDrawer__fields">
@@ -344,7 +369,12 @@
         position: relative;
         isolation: isolate;
         display: block;
-        padding: clamp(3rem, 6vw, 5rem) clamp(1.5rem, 7vw, 4.5rem);
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
+        padding-inline: var(--section-padding-x, clamp(1.5rem, 7vw, 4.5rem));
+        padding-block: var(--section-padding-y, clamp(3rem, 6vw, 5rem));
+        border-radius: var(--section-border-radius, 0);
         background: var(--krt-gridCtas-bg, #f8fafc);
         color: var(--krt-gridCtas-text, #1f2937);
     }

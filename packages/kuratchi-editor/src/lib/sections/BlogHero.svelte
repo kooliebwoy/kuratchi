@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     type Alignment = 'left' | 'center';
 
@@ -9,6 +16,7 @@
         align: Alignment;
         backgroundColor: string;
         textColor: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -28,13 +36,24 @@
         metadata: layoutMetadata = $bindable<LayoutMetadata>({
             align: 'center',
             backgroundColor: '#111827',
-            textColor: '#ffffff'
+            textColor: '#ffffff',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }) as LayoutMetadata,
         editable = true
     }: Props = $props();
 
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-blogHero-bg: ${layoutMetadata.backgroundColor}; --krt-blogHero-text: ${layoutMetadata.textColor};`
+        `--krt-blogHero-bg: ${layoutMetadata.backgroundColor}; --krt-blogHero-text: ${layoutMetadata.textColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -50,11 +69,8 @@
     let mounted = $state(false);
 
     onMount(() => {
+        if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
@@ -71,6 +87,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-blogHeroDrawer">
+                    <section class="krt-blogHeroDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-blogHeroDrawer__section">
                         <h3>Content</h3>
                         <label class="krt-blogHeroDrawer__field">
@@ -178,10 +199,14 @@
 
     .krt-blogHero {
         position: relative;
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-blogHero-bg, #111827);
         color: var(--krt-blogHero-text, #ffffff);
-        padding: clamp(2rem, 6vw, 5rem) clamp(1.5rem, 4vw, 3rem);
-        border-radius: 2rem;
+        padding-inline: var(--section-padding-x, clamp(1.5rem, 4vw, 3rem));
+        padding-block: var(--section-padding-y, clamp(2rem, 6vw, 5rem));
+        border-radius: var(--section-border-radius, 2rem);
         overflow: hidden;
     }
 

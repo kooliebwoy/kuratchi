@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface StatItem {
         label: string;
@@ -19,6 +26,7 @@
             backgroundColor?: string;
             textColor?: string;
             accentColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -37,7 +45,8 @@
         metadata = $bindable({
             backgroundColor: '#0b1224',
             textColor: '#e2e8f0',
-            accentColor: '#7c3aed'
+            accentColor: '#7c3aed',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
@@ -46,8 +55,18 @@
     const componentRef = {};
     let mounted = $state(false);
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-stats-bg: ${metadata.backgroundColor}; --krt-stats-text: ${metadata.textColor}; --krt-stats-accent: ${metadata.accentColor};`
+        `--krt-stats-bg: ${metadata.backgroundColor}; --krt-stats-text: ${metadata.textColor}; --krt-stats-accent: ${metadata.accentColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({ id, type, eyebrow, heading, stats, metadata: { ...metadata } });
@@ -66,6 +85,11 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="Stats settings">
                 {#snippet inspector()}
                     <div class="krt-stats__drawer">
+                        <section class="krt-stats__drawerSection">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
+
                         <section class="krt-stats__drawerSection">
                             <h3>Colors</h3>
                             <div class="krt-stats__drawerGrid">
@@ -131,10 +155,13 @@
 <style>
     .krt-stats {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-stats-bg);
         color: var(--krt-stats-text);
-        border-radius: 20px;
-        padding: 32px;
+        border-radius: var(--section-border-radius, 20px);
+        padding-inline: var(--section-padding-x, 32px);
+        padding-block: var(--section-padding-y, 32px);
     }
 
     .krt-stats__inner {

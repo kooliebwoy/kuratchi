@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface PlanFeature {
         label: string;
@@ -28,6 +35,7 @@
             cardColor?: string;
             accentColor?: string;
             textColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -78,7 +86,8 @@
             backgroundColor: '#0f172a',
             cardColor: '#0b1224',
             accentColor: '#22d3ee',
-            textColor: '#e2e8f0'
+            textColor: '#e2e8f0',
+            layout: { ...DEFAULT_SECTION_LAYOUT, verticalSpacing: 'spacious' }
         }),
         editable = true
     }: Props = $props();
@@ -87,8 +96,18 @@
     const componentRef = {};
     let mounted = $state(false);
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-pricing-bg: ${metadata.backgroundColor}; --krt-pricing-card: ${metadata.cardColor}; --krt-pricing-accent: ${metadata.accentColor}; --krt-pricing-text: ${metadata.textColor};`
+        `--krt-pricing-bg: ${metadata.backgroundColor}; --krt-pricing-card: ${metadata.cardColor}; --krt-pricing-accent: ${metadata.accentColor}; --krt-pricing-text: ${metadata.textColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({ id, type, eyebrow, heading, subheading, plans, metadata: { ...metadata } });
@@ -107,6 +126,11 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="Pricing settings">
                 {#snippet inspector()}
                     <div class="krt-pricing__drawer">
+                        <section class="krt-pricing__section">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
+
                         <section class="krt-pricing__section">
                             <h3>Colors</h3>
                             <div class="krt-pricing__grid">
@@ -196,10 +220,13 @@
 <style>
     .krt-pricing {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-pricing-bg);
         color: var(--krt-pricing-text);
-        border-radius: 24px;
-        padding: 48px 40px;
+        border-radius: var(--section-border-radius, 24px);
+        padding-inline: var(--section-padding-x, 40px);
+        padding-block: var(--section-padding-y, 48px);
     }
 
     .krt-pricing__inner {

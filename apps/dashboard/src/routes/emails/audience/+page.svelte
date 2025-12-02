@@ -446,14 +446,20 @@
     {#snippet children()}
       <div class="kui-stack">
         <FormField label="Email">
-          <FormInput field={{ name: 'email', bind: { value: newContactEmail } } as any} placeholder="user@example.com" />
+          <input
+            type="email"
+            class="kui-input"
+            placeholder="user@example.com"
+            bind:value={newContactEmail}
+            required
+          />
         </FormField>
         <div class="kui-grid">
           <FormField label="First Name (optional)">
-            <FormInput field={{ name: 'firstName', bind: { value: newContactFirstName } } as any} />
+            <input type="text" class="kui-input" bind:value={newContactFirstName} />
           </FormField>
           <FormField label="Last Name (optional)">
-            <FormInput field={{ name: 'lastName', bind: { value: newContactLastName } } as any} />
+            <input type="text" class="kui-input" bind:value={newContactLastName} />
           </FormField>
         </div>
         
@@ -512,10 +518,10 @@
         
         <div class="kui-grid">
           <FormField label="First Name">
-            <FormInput field={{ name: 'firstName', bind: { value: newContactFirstName } } as any} />
+            <input type="text" class="kui-input" bind:value={newContactFirstName} />
           </FormField>
           <FormField label="Last Name">
-            <FormInput field={{ name: 'lastName', bind: { value: newContactLastName } } as any} />
+            <input type="text" class="kui-input" bind:value={newContactLastName} />
           </FormField>
         </div>
 

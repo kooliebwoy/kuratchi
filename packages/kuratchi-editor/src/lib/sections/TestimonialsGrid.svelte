@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { BlockActions } from '../utils/index.js';
     import { onMount } from 'svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface TestimonialItem {
         quote: string;
@@ -20,6 +27,7 @@
             cardColor?: string;
             textColor?: string;
             accentColor?: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -50,7 +58,8 @@
             backgroundColor: '#0b1224',
             cardColor: '#0f172a',
             textColor: '#e2e8f0',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
@@ -59,8 +68,18 @@
     const componentRef = {};
     let mounted = $state(false);
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-testimonial-bg: ${metadata.backgroundColor}; --krt-testimonial-card: ${metadata.cardColor}; --krt-testimonial-text: ${metadata.textColor}; --krt-testimonial-accent: ${metadata.accentColor};`
+        `--krt-testimonial-bg: ${metadata.backgroundColor}; --krt-testimonial-card: ${metadata.cardColor}; --krt-testimonial-text: ${metadata.textColor}; --krt-testimonial-accent: ${metadata.accentColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({ id, type, heading, testimonials, metadata: { ...metadata } });
@@ -79,6 +98,11 @@
             <BlockActions id={id} type={type} element={component} inspectorTitle="Testimonials settings">
                 {#snippet inspector()}
                     <div class="krt-testimonials__drawer">
+                        <section class="krt-testimonials__section">
+                            <h3>Section Layout</h3>
+                            <SectionLayoutControls bind:layout={sectionLayout} />
+                        </section>
+
                         <section class="krt-testimonials__section">
                             <h3>Colors</h3>
                             <div class="krt-testimonials__grid">
@@ -154,10 +178,13 @@
 <style>
     .krt-testimonials {
         width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-testimonial-bg);
         color: var(--krt-testimonial-text);
-        border-radius: 22px;
-        padding: 44px 38px;
+        border-radius: var(--section-border-radius, 22px);
+        padding-inline: var(--section-padding-x, 38px);
+        padding-block: var(--section-padding-y, 44px);
     }
 
     .krt-testimonials__inner {

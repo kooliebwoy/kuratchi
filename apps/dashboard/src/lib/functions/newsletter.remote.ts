@@ -4,12 +4,26 @@ import * as v from 'valibot';
 import * as newsletter from 'kuratchi-sdk/newsletter';
 
 const ensureSession = () => {
-const event = getRequestEvent();
-const session = event.locals.session;
-if (!session?.user) {
-error(401, 'Unauthorized');
-}
-return { event, session };
+  const event = getRequestEvent();
+  const session = event.locals.session;
+
+  if (!session?.user) {
+    error(401, 'Unauthorized');
+  }
+
+  // Newsletter SDK expects organizationId on session.user for tenant isolation.
+  const organizationId = session.organizationId || (session.user as any)?.organizationId;
+  if (!organizationId) {
+    error(400, 'Organization context required');
+  }
+
+  if (!session.user.organizationId) {
+    // Mutate the session in place so downstream SDK calls see the org isolation field.
+    session.user = { ...session.user, organizationId };
+    event.locals.session = { ...session, organizationId, user: session.user };
+  }
+
+  return { event, session: { ...session, organizationId, user: session.user } };
 };
 
 const guardedQuery = <R>(fn: () => Promise<R>) => {

@@ -5,6 +5,13 @@
     import { BlockActions } from '../utils/index.js';
     import { blogStore } from '../stores/blog';
     import type { BlogData } from '../types';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     type BlogLayoutStyle = 'grid' | 'list';
 
@@ -14,6 +21,7 @@
         borderColor: string;
         textColor: string;
         accentColor: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface NormalizedPost {
@@ -58,10 +66,21 @@
             cardBackground: '#ffffff',
             borderColor: '#e2e8f0',
             textColor: '#0f172a',
-            accentColor: '#2563eb'
+            accentColor: '#2563eb',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }) as LayoutMetadata,
         editable = true
     }: Props = $props();
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     const blog = blogStore;
 
@@ -107,7 +126,7 @@
     });
 
     const layoutStyle = $derived(
-        `--krt-blogList-bg: ${layoutMetadata.backgroundColor}; --krt-blogList-card: ${layoutMetadata.cardBackground}; --krt-blogList-border: ${layoutMetadata.borderColor}; --krt-blogList-text: ${layoutMetadata.textColor}; --krt-blogList-accent: ${layoutMetadata.accentColor};`
+        `--krt-blogList-bg: ${layoutMetadata.backgroundColor}; --krt-blogList-card: ${layoutMetadata.cardBackground}; --krt-blogList-border: ${layoutMetadata.borderColor}; --krt-blogList-text: ${layoutMetadata.textColor}; --krt-blogList-accent: ${layoutMetadata.accentColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -128,11 +147,8 @@
     let mounted = $state(false);
 
     onMount(() => {
+        if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
@@ -149,6 +165,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-blogListDrawer">
+                    <section class="krt-blogListDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-blogListDrawer__section">
                         <h3>Layout</h3>
                         <label class="krt-blogListDrawer__field">

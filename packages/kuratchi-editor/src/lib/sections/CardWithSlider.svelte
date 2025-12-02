@@ -3,6 +3,13 @@
     import { onMount } from 'svelte';
     import { BlockActions } from "../utils/index.js";
     import { ImagePicker } from "../widgets/index.js";
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
     
     interface CarouselImage {
         key?: string;
@@ -25,6 +32,7 @@
             buttonColor: string;
             headingColor: string;
             contentColor: string;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -42,7 +50,8 @@
             reverseOrder: false,
             buttonColor: '#111827',
             headingColor: '#111827',
-            contentColor: '#4b5563'
+            contentColor: '#4b5563',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
@@ -55,6 +64,16 @@
     let buttonColor = $state(metadata.buttonColor);
     let headingColor = $state(metadata.headingColor);
     let contentColor = $state(metadata.contentColor);
+
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        metadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     // Keep original images format for saving, normalized for display
     const normalizedImages = $derived(images.map((image) => ({
@@ -76,7 +95,8 @@
             reverseOrder,
             buttonColor,
             headingColor,
-            contentColor
+            contentColor,
+            layout: metadata.layout
         }
     });
 
@@ -85,11 +105,8 @@
     let mounted = $state(false);
 
     onMount(() => {
+        if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
@@ -106,6 +123,11 @@
         >
             {#snippet inspector()}
                 <div class="krt-sliderDrawer">
+                    <section class="krt-sliderDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-sliderDrawer__section">
                         <h3>Layout</h3>
                         <label class="krt-sliderDrawer__toggle">
@@ -148,7 +170,7 @@
             {/snippet}
         </BlockActions>
     {/if}
-    <section {id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
+    <section {id} data-type={type} class="krt-sliderLayout" style="background-color: {backgroundColor}; {sectionLayoutStyles}">
         <div class="krt-sliderLayout__inner" class:krt-sliderLayout__inner--reverse={reverseOrder}>
             <div class="krt-sliderLayout__card">
                 <div class="krt-card" style:background-color={cardBackgroundColor}>
@@ -198,7 +220,7 @@
     </section>
 </div>
 {:else}
-    <section id={id} data-type={type} class="krt-sliderLayout" style:background-color={backgroundColor}>
+    <section id={id} data-type={type} class="krt-sliderLayout" style="background-color: {backgroundColor}; {sectionLayoutStyles}">
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class={`krt-sliderLayout__inner ${reverseOrder ? 'krt-sliderLayout__inner--reverse' : ''}`}>
             <div class="krt-sliderLayout__card">
@@ -239,7 +261,12 @@
 
 <style>
     .krt-sliderLayout {
-        padding: var(--krt-space-3xl, 2.5rem) var(--krt-space-4xl, 3rem);
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
+        padding-inline: var(--section-padding-x, var(--krt-space-4xl, 3rem));
+        padding-block: var(--section-padding-y, var(--krt-space-3xl, 2.5rem));
+        border-radius: var(--section-border-radius, 0);
         display: flex;
         justify-content: center;
     }

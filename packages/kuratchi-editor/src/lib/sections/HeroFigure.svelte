@@ -4,6 +4,13 @@
     import { onMount } from 'svelte';
     import { ImagePicker } from '../widgets/index.js';
     import { BlockActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface HeroButton {
         label?: string;
@@ -21,6 +28,7 @@
         headingColor: string;
         textColor: string;
         buttonColor: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -47,7 +55,8 @@
             backgroundColor: '#ffffff',
             headingColor: '#0f172a',
             textColor: '#475569',
-            buttonColor: '#0f172a'
+            buttonColor: '#0f172a',
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }) as LayoutMetadata,
         image: initialImage = {
             url: 'https://fakeimg.pl/489x600/?text=World&font=lobster',
@@ -58,8 +67,18 @@
 
     let image = $state<HeroImage>(initialImage);
 
+    // Section layout state
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-heroFigure-bg: ${layoutMetadata.backgroundColor}; --krt-heroFigure-heading: ${layoutMetadata.headingColor}; --krt-heroFigure-text: ${layoutMetadata.textColor}; --krt-heroFigure-button: ${layoutMetadata.buttonColor};`
+        `--krt-heroFigure-bg: ${layoutMetadata.backgroundColor}; --krt-heroFigure-heading: ${layoutMetadata.headingColor}; --krt-heroFigure-text: ${layoutMetadata.textColor}; --krt-heroFigure-button: ${layoutMetadata.buttonColor}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -78,10 +97,6 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
@@ -103,6 +118,11 @@
             </li>
             {#snippet inspector()}
                 <div class="krt-heroFigureDrawer">
+                    <section class="krt-heroFigureDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-heroFigureDrawer__section">
                         <div class="krt-heroFigureDrawer__toggle">
                             <label>
@@ -263,9 +283,13 @@
 
     .krt-heroFigure {
         position: relative;
+        width: 100%;
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         background: var(--krt-heroFigure-bg, #fff);
-        border-radius: 2rem;
-        padding: clamp(2rem, 6vw, 4rem);
+        border-radius: var(--section-border-radius, 2rem);
+        padding-inline: var(--section-padding-x, clamp(2rem, 6vw, 4rem));
+        padding-block: var(--section-padding-y, clamp(2rem, 6vw, 4rem));
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: clamp(1.5rem, 4vw, 3rem);

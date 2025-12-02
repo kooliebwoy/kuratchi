@@ -2,6 +2,13 @@
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface ButtonConfig {
         label: string;
@@ -13,6 +20,7 @@
         headingColor: string;
         buttonColor: string;
         textColor: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -35,7 +43,8 @@
             backgroundColor: '#54545499',
             headingColor: '#212121',
             buttonColor: '#212121',
-            textColor: '#ffffff'
+            textColor: '#ffffff',
+            layout: { ...DEFAULT_SECTION_LAYOUT, heightMode: 'medium' }
         }) as LayoutMetadata,
         editable = true
     }: Props = $props();
@@ -47,6 +56,16 @@
     if (!layoutMetadata.textColor) layoutMetadata.textColor = '#ffffff';
     if (!button.label) button.label = 'Read more';
     if (!button.link) button.link = '#';
+
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
 
     let content = $derived({
         id,
@@ -82,6 +101,14 @@
         >
             {#snippet inspector()}
                 <div class="krt-aboutHeroDrawer">
+                    <section class="krt-aboutHeroDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls 
+                            bind:layout={sectionLayout}
+                            showHeightControls={true}
+                        />
+                    </section>
+
                     <section class="krt-aboutHeroDrawer__section">
                         <h3>Content</h3>
                         <div class="krt-aboutHeroDrawer__fields">
@@ -127,9 +154,9 @@
                     </section>
                 </div>
             {/snippet}
-        </BlockActions>
+            </BlockActions>
     {/if}
-    <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
+    <section {id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor} style={sectionLayoutStyles}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading}></h1>
@@ -148,7 +175,7 @@
 
 </div>
 {:else}
-    <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor}>
+    <section id={id} data-type={type} class="krt-aboutHero" style:background-color={layoutMetadata.backgroundColor} style={sectionLayoutStyles}>
         <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
         <div class="krt-aboutHero__content">
             <h1 class="krt-aboutHero__heading" style:color={layoutMetadata.headingColor}>
@@ -178,16 +205,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: clamp(3rem, 5vw + 1rem, 6rem) clamp(1.75rem, 4vw, 5rem);
-        border-radius: var(--krt-radius-2xl, 1.5rem);
+        padding-inline: var(--section-padding-x, clamp(1.75rem, 4vw, 5rem));
+        padding-block: var(--section-padding-y, clamp(3rem, 5vw + 1rem, 6rem));
+        border-radius: var(--section-border-radius, var(--krt-radius-2xl, 1.5rem));
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         box-shadow: 0 40px 80px rgba(15, 23, 42, 0.12);
         text-align: center;
         overflow: hidden;
-        min-height: clamp(420px, 65vh, 640px);
-    }
-
-    .krt-aboutHero__metadata {
-        display: none;
+        min-height: var(--section-min-height, clamp(420px, 65vh, 640px));
     }
 
     .krt-aboutHero__content {

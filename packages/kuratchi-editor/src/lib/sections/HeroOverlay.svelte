@@ -2,6 +2,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     interface HeroButton {
         label?: string;
@@ -23,6 +30,7 @@
         buttonColor: string;
         showBackgroundImage: boolean;
         backgroundImage: string;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -55,7 +63,8 @@
                 textColor: '#e2e8f0',
                 buttonColor: '#f97316',
                 showBackgroundImage: true,
-                backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay'
+                backgroundImage: 'https://fakeimg.pl/1600x900/?text=Hero+Overlay',
+                layout: { ...DEFAULT_SECTION_LAYOUT, verticalSpacing: 'spacious' }
             } as LayoutMetadata
         ),
         image = $bindable<HeroImage>({
@@ -66,6 +75,14 @@
         editable = true
     }: Props = $props();
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
     const backgroundImageValue = $derived(
         layoutMetadata?.showBackgroundImage && layoutMetadata?.backgroundImage
             ? `url(${layoutMetadata.backgroundImage})`
@@ -74,8 +91,10 @@
 
     const backgroundOpacity = $derived(layoutMetadata?.showBackgroundImage ? 1 : 0);
 
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     const layoutStyle = $derived(
-        `--krt-heroOverlay-bg: ${layoutMetadata?.backgroundColor || '#05060a'}; --krt-heroOverlay-heading: ${layoutMetadata?.headingColor || '#f8fafc'}; --krt-heroOverlay-text: ${layoutMetadata?.textColor || '#e2e8f0'}; --krt-heroOverlay-button: ${layoutMetadata?.buttonColor || '#f97316'}; --krt-heroOverlay-bgImage: ${backgroundImageValue}; --krt-heroOverlay-bgOpacity: ${backgroundOpacity};`
+        `--krt-heroOverlay-bg: ${layoutMetadata?.backgroundColor || '#05060a'}; --krt-heroOverlay-heading: ${layoutMetadata?.headingColor || '#f8fafc'}; --krt-heroOverlay-text: ${layoutMetadata?.textColor || '#e2e8f0'}; --krt-heroOverlay-button: ${layoutMetadata?.buttonColor || '#f97316'}; --krt-heroOverlay-bgImage: ${backgroundImageValue}; --krt-heroOverlay-bgOpacity: ${backgroundOpacity}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -114,6 +133,14 @@
         >
             {#snippet inspector()}
                 <div class="krt-heroOverlayDrawer">
+                    <section class="krt-heroOverlayDrawer__section">
+                        <h3>Section Layout</h3>
+                        <SectionLayoutControls 
+                            bind:layout={sectionLayout}
+                            showHeightControls={true}
+                        />
+                    </section>
+
                     <section class="krt-heroOverlayDrawer__section">
                         <h3>Layout</h3>
                         <label class="krt-heroOverlayDrawer__toggle">
@@ -207,12 +234,15 @@
     .krt-heroOverlay {
         position: relative;
         overflow: hidden;
-        border-radius: var(--krt-radius-2xl, 1.75rem);
-        min-height: 24rem;
+        border-radius: var(--section-border-radius, var(--krt-radius-2xl, 1.75rem));
+        min-height: var(--section-min-height, 24rem);
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: clamp(2.5rem, 6vw, 5rem);
+        padding-inline: var(--section-padding-x, clamp(2.5rem, 6vw, 5rem));
+        padding-block: var(--section-padding-y, clamp(2.5rem, 6vw, 5rem));
         background: var(--krt-heroOverlay-bg, #05060a);
     }
 

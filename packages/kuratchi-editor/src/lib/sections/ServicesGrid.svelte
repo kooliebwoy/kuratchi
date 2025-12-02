@@ -4,6 +4,13 @@
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from './section-layout.js';
 
     type ServicesSpacing = 'small' | 'medium' | 'large';
 
@@ -25,6 +32,7 @@
         subtitle: string;
         services: ServiceItem[];
         styling: StylingOptions;
+        layout?: Partial<SectionLayout>;
     }
 
     interface Props {
@@ -68,7 +76,8 @@
                 textColor: '#0f172a',
                 columns: 3,
                 spacing: 'large'
-            }
+            },
+            layout: { ...DEFAULT_SECTION_LAYOUT }
         }),
         editable = true
     }: Props = $props();
@@ -97,6 +106,16 @@
     let columns = $state(layoutMetadata.styling.columns);
     let spacing = $state(layoutMetadata.styling.spacing);
 
+    // Ensure layout defaults are merged
+    let sectionLayout = $state<SectionLayout>(mergeLayoutWithDefaults(layoutMetadata.layout));
+    
+    // Sync layout changes back to metadata
+    $effect(() => {
+        layoutMetadata.layout = { ...sectionLayout };
+    });
+
+    const sectionLayoutStyles = $derived(getSectionLayoutStyles(sectionLayout));
+
     $effect(() => {
         layoutMetadata.title = title;
         layoutMetadata.subtitle = subtitle;
@@ -119,7 +138,7 @@
         `--krt-servicesGrid-bg: ${backgroundColor}; --krt-servicesGrid-text: ${textColor}; --krt-servicesGrid-columns: ${Math.min(
             Math.max(columns, 1),
             4
-        )}; --krt-servicesGrid-gap: ${spacingGapMap[spacing] ?? spacingGapMap.large};`
+        )}; --krt-servicesGrid-gap: ${spacingGapMap[spacing] ?? spacingGapMap.large}; ${sectionLayoutStyles}`
     );
 
     const content = $derived({
@@ -186,6 +205,13 @@
         >
             {#snippet inspector()}
                 <div class="krt-servicesGridDrawer">
+                    <section class="krt-servicesGridDrawer__section">
+                        <div class="krt-servicesGridDrawer__sectionHeader">
+                            <h3>Section Layout</h3>
+                        </div>
+                        <SectionLayoutControls bind:layout={sectionLayout} />
+                    </section>
+
                     <section class="krt-servicesGridDrawer__section">
                         <h3>Intro</h3>
                         <div class="krt-servicesGridDrawer__fields">
@@ -377,9 +403,13 @@
         position: relative;
         isolation: isolate;
         display: block;
-        padding: clamp(3rem, 6vw, 6rem) clamp(1.5rem, 5vw, 6rem);
+        padding-inline: var(--section-padding-x, clamp(1.5rem, 5vw, 6rem));
+        padding-block: var(--section-padding-y, clamp(3rem, 6vw, 6rem));
         background: var(--krt-servicesGrid-bg, #f8fafc);
         color: var(--krt-servicesGrid-text, #0f172a);
+        max-width: var(--section-max-width, 100%);
+        margin-inline: auto;
+        border-radius: var(--section-border-radius, 0);
     }
 
     .krt-servicesGrid__metadata {
