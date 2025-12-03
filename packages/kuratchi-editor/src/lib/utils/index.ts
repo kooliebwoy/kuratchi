@@ -3,5 +3,8 @@ export * from './emojis';
 export * from './guard';
 export * from './point';
 export * from './rect';
+export * from './block-spacing';
 export { default as BlockActions } from './BlockActions.svelte';
+export { default as DragHandle } from './DragHandle.svelte';
 export { default as SideActions } from './SideActions.svelte';
+export { default as SpacingControl } from './SpacingControl.svelte';

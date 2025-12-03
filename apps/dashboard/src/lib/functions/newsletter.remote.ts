@@ -570,16 +570,22 @@ segmentIds: v.optional(v.array(v.string()))
 }),
 async ({ email, firstName, lastName, segmentIds = [] }) => {
 const { event } = ensureSession();
+try {
 const result = await newsletter.addAudienceContact(event, {
 email,
-firstName,
-lastName,
-segmentIds
+firstName: firstName || undefined,
+lastName: lastName || undefined,
+segmentIds: segmentIds.length > 0 ? segmentIds : undefined
 });
 if (!result.success) {
+console.error('[addAudienceContact] SDK returned error:', result.error);
 error(500, result.error || 'Failed to add contact');
 }
 return { success: true, id: result.id };
+} catch (err: any) {
+console.error('[addAudienceContact] Exception:', err);
+throw err;
+}
 }
 );
 

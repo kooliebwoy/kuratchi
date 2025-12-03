@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Layers, Clock, Play, Trash2, Edit2, Mail, Loader2, Plus, RefreshCw, AlertTriangle, ArrowRight, X } from '@lucide/svelte';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
-  import { Button, Card, Dialog, Badge, Loading, FormField, FormInput, FormSelect, FormTextarea } from '@kuratchi/ui';
+  import { Button, Card, Dialog, Badge, Loading, FormField } from '@kuratchi/ui';
   import {
     listSegments,
     listDripCampaigns,
@@ -71,12 +71,23 @@
     ...overrides
   });
 
-  const describeStepSchedule = (step: DripCampaignRecord['steps'][number]) => {
-    if (step.scheduleMode === 'absolute' && step.sendAt) {
+  const describeStepSchedule = (step: StepInput | DripCampaignRecord['steps'][number]) => {
+    if ('scheduleMode' in step && step.scheduleMode === 'absolute' && 'runAt' in step && step.runAt) {
+      return new Date(step.runAt).toLocaleString();
+    }
+    if ('scheduleMode' in step && step.scheduleMode === 'absolute' && 'sendAt' in step && step.sendAt) {
       return new Date(step.sendAt).toLocaleString();
     }
-    const delay = delayFromMinutes(step.delayMinutes ?? 0);
-    return `+${delay.value} ${delay.unit}`;
+    // For StepInput with delayValue/delayUnit
+    if ('delayValue' in step && 'delayUnit' in step) {
+      return `+${step.delayValue} ${step.delayUnit}`;
+    }
+    // For DripStepRecord with delayMinutes
+    if ('delayMinutes' in step) {
+      const delay = delayFromMinutes(step.delayMinutes ?? 0);
+      return `+${delay.value} ${delay.unit}`;
+    }
+    return '+0 minutes';
   };
 
   let showEditor = $state(false);
@@ -251,8 +262,8 @@
         id: editingId ?? undefined,
         name: formName.trim(),
         description: formDescription.trim() || undefined,
-        segmentId: formSegmentId,
-        segmentName: selectedSegmentName(formSegmentId),
+        audienceId: formSegmentId,
+        audienceName: selectedSegmentName(formSegmentId),
         startAt: formStartAt || undefined,
         steps: formSteps.map((step) => ({
           id: step.id,
@@ -419,23 +430,23 @@
         <div class="kui-builder__sidebar">
           <div class="kui-stack">
             <FormField label="Campaign Name">
-              <FormInput field={{ name: 'campaignName', bind: { value: formName } } as any} placeholder="Onboarding sequence" />
+              <input type="text" class="kui-input" bind:value={formName} placeholder="Onboarding sequence" />
             </FormField>
 
             <FormField label="Description">
-              <FormTextarea field={{ name: 'campaignDescription', bind: { value: formDescription } } as any} placeholder="What is this sequence about?" rows={2} />
+              <textarea class="kui-textarea" bind:value={formDescription} placeholder="What is this sequence about?" rows="2"></textarea>
             </FormField>
 
             <FormField label="Target Segment">
-              <FormSelect field={{ name: 'segment', bind: { value: formSegmentId } } as any}>
+              <select class="kui-select" bind:value={formSegmentId}>
                 {#each segments as segment}
                   <option value={segment.id}>{segment.name}</option>
                 {/each}
-              </FormSelect>
+              </select>
             </FormField>
 
             <FormField label="Start at (optional)">
-              <FormInput field={{ name: 'startAt', bind: { value: formStartAt } } as any} type="datetime-local" />
+              <input type="datetime-local" class="kui-input" bind:value={formStartAt} />
             </FormField>
 
             {#if saveError}
@@ -468,7 +479,7 @@
                   <div class="kui-step__header">
                     <div class="kui-inline">
                       <span class="kui-badge">Step {index + 1}</span>
-                      <FormInput field={{ name: `step-label-${step.id}`, bind: { value: step.label } } as any} placeholder="Email Step" />
+                      <input type="text" class="kui-input" bind:value={step.label} placeholder="Email Step" />
                     </div>
                     <div class="kui-inline end">
                       <Button variant="ghost" size="xs" onclick={() => moveStep(index, -1)} disabled={index === 0}>↑</Button>
@@ -481,10 +492,10 @@
 
                   <div class="kui-grid">
                     <FormField label="Subject">
-                      <FormInput field={{ name: `step-subject-${step.id}`, bind: { value: step.subject } } as any} placeholder="Email subject" />
+                      <input type="text" class="kui-input" bind:value={step.subject} placeholder="Email subject" />
                     </FormField>
                     <FormField label="Preview Text">
-                      <FormInput field={{ name: `step-preview-${step.id}`, bind: { value: step.previewText } } as any} placeholder="Optional preview text" />
+                      <input type="text" class="kui-input" bind:value={step.previewText} placeholder="Optional preview text" />
                     </FormField>
                   </div>
 
@@ -496,17 +507,17 @@
                       </div>
                       {#if step.scheduleMode === 'relative'}
                         <div class="kui-inline">
-                          <FormInput field={{ name: `delay-${step.id}`, bind: { value: step.delayValue } } as any} type="number" min="0" step="1" class="kui-input--sm" />
-                          <FormSelect field={{ name: `delay-unit-${step.id}`, bind: { value: step.delayUnit } } as any} class="kui-select--sm">
+                          <input type="number" class="kui-input kui-input--sm" bind:value={step.delayValue} min="0" step="1" />
+                          <select class="kui-select kui-select--sm" bind:value={step.delayUnit}>
                             <option value="minutes">Minutes</option>
                             <option value="hours">Hours</option>
                             <option value="days">Days</option>
-                          </FormSelect>
+                          </select>
                           <ArrowRight class="kui-icon" />
                           <span class="kui-subtext">{describeStepSchedule(step)}</span>
                         </div>
                       {:else}
-                        <FormInput field={{ name: `runat-${step.id}`, bind: { value: step.runAt } } as any} type="datetime-local" />
+                        <input type="datetime-local" class="kui-input" bind:value={step.runAt} />
                       {/if}
                     </FormField>
                     <FormField label="Branching (optional)">
@@ -517,26 +528,26 @@
                       {#if step.branching}
                         <div class="kui-grid">
                           <FormField label="Monitor">
-                            <FormSelect field={{ name: `monitor-${step.id}`, bind: { value: step.branching.monitor } } as any}>
+                            <select class="kui-select" bind:value={step.branching.monitor}>
                               <option value="opened">Opened</option>
                               <option value="clicked">Clicked</option>
-                            </FormSelect>
+                            </select>
                           </FormField>
                           <FormField label="Evaluate after">
                             <div class="kui-inline">
-                              <FormInput field={{ name: `eval-${step.id}`, bind: { value: step.branching.evaluateValue } } as any} type="number" min="1" class="kui-input--sm" />
-                              <FormSelect field={{ name: `eval-unit-${step.id}`, bind: { value: step.branching.evaluateUnit } } as any} class="kui-select--sm">
+                              <input type="number" class="kui-input kui-input--sm" bind:value={step.branching.evaluateValue} min="1" />
+                              <select class="kui-select kui-select--sm" bind:value={step.branching.evaluateUnit}>
                                 <option value="minutes">Minutes</option>
                                 <option value="hours">Hours</option>
                                 <option value="days">Days</option>
-                              </FormSelect>
+                              </select>
                             </div>
                           </FormField>
                           <FormField label="Success Step ID">
-                            <FormInput field={{ name: `success-${step.id}`, bind: { value: step.branching.successStepId } } as any} placeholder="Step ID" />
+                            <input type="text" class="kui-input" bind:value={step.branching.successStepId} placeholder="Step ID" />
                           </FormField>
                           <FormField label="Fallback Step ID">
-                            <FormInput field={{ name: `fallback-${step.id}`, bind: { value: step.branching.fallbackStepId } } as any} placeholder="Step ID" />
+                            <input type="text" class="kui-input" bind:value={step.branching.fallbackStepId} placeholder="Step ID" />
                           </FormField>
                         </div>
                       {/if}
@@ -744,12 +755,66 @@
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
+  .kui-input,
+  .kui-select,
+  .kui-textarea {
+    width: 100%;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: 0.65rem 0.8rem;
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    font-size: 0.95rem;
+  }
+
+  .kui-input:focus,
+  .kui-select:focus,
+  .kui-textarea:focus {
+    outline: none;
+    border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 2px var(--kui-color-primary-weak);
+  }
+
   .kui-input--sm {
     max-width: 90px;
+    padding: 0.4rem 0.6rem;
   }
 
   .kui-select--sm {
     max-width: 120px;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .kui-stack {
+    display: grid;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kui-callout {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: var(--kui-spacing-sm);
+    background: var(--kui-color-surface-muted);
+  }
+
+  .kui-callout.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .kui-toast {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--kui-radius-md);
+    font-size: 0.9rem;
+    z-index: 100;
+  }
+
+  .kui-toast.success {
+    background: var(--kui-color-success);
+    color: white;
   }
 
   @keyframes spin {

@@ -3,7 +3,7 @@
     import EditorToolbar from "../widgets/EditorToolbar.svelte";
     import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
-    import { BlockActions } from "../utils/index.js";
+    import { BLOCK_SPACING_VALUES, DragHandle, type BlockSpacing } from "../utils/index.js";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
     interface Props {
@@ -13,6 +13,8 @@
         metadata?: {
             color?: string;
             size?: string;
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
         };
         editable?: boolean;
     }
@@ -23,12 +25,14 @@
         type = 'heading',
         metadata = {
             color: '#000000',
-            size: 'h2'
+            size: 'h2',
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
         },
         editable = true
     }: Props = $props();
 
-    let component: HTMLElement;
+    let component: HTMLElement | undefined;
     const componentRef = {};
 
     // Selection state
@@ -39,6 +43,27 @@
 
     let color = $state(metadata.color);
     let size = $state(metadata.size);
+    let spacingTop = $state<BlockSpacing>(metadata.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata.spacingBottom ?? 'normal');
+
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
+
+    // Block context for toolbar - using function to get latest component ref
+    function getBlockContext() {
+        return {
+            type: 'heading' as const,
+            blockElement: component,
+            headingSize: size,
+            onHeadingSizeChange: (newSize: string) => { size = newSize; },
+            spacingTop,
+            spacingBottom,
+            onSpacingTopChange: (s: BlockSpacing) => { spacingTop = s; },
+            onSpacingBottomChange: (s: BlockSpacing) => { spacingBottom = s; }
+        };
+    }
 
     let content = $derived({
         id,
@@ -46,7 +71,9 @@
         heading: heading,
         metadata : {
             color,
-            size
+            size,
+            spacingTop,
+            spacingBottom
         }
     })
 
@@ -74,19 +101,10 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative krt-heading-block" bind:this={component}>
+    <div class="editor-item group relative krt-heading-block" style={spacingStyle} bind:this={component}>
         {#if mounted}
-            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} />
-        {/if}
-        
-        {#if mounted}
-            <BlockActions {component}>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h2'}>H2</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h3'}>H3</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h4'}>H4</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h5'}>H5</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'h6'}>H6</button></li>
-            </BlockActions>
+            <DragHandle />
+            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} blockContext={getBlockContext()} />
         {/if}
         
         <div data-type={type} id={id} class="krt-heading-body">
@@ -109,7 +127,7 @@
     </div>
 {:else}
     {@const tag = size ?? 'h2'}
-    <div data-type={type} id={id} class="krt-heading-block krt-heading-body">
+    <div data-type={type} id={id} class="krt-heading-block krt-heading-body" style={spacingStyle}>
         <svelte:element this={tag} style:color={color} class={`krt-heading krt-heading--${tag}`}>
             {@html heading}
         </svelte:element>

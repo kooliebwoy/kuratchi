@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Users, Plus, Trash2, Mail, Loader2, Search, X } from '@lucide/svelte';
-  import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
+  import { Users, Plus, Trash2, Mail, Loader2, Search, X, UserPlus } from '@lucide/svelte';
+  import { Button, Card, Dialog, Loading, FormField, Badge } from '@kuratchi/ui';
   import {
     listSegments,
     createSegment,
@@ -8,8 +8,11 @@
     listSegmentContacts,
     addSegmentContact,
     removeSegmentContact,
+    loadAudienceContacts,
+    addContactToSegments,
     type SegmentSummary,
-    type SegmentContact
+    type SegmentContact,
+    type AudienceContact
   } from '$lib/functions/newsletter.remote';
 
   const segmentsResource = listSegments();
@@ -34,6 +37,15 @@
 
   let searchQuery = $state('');
   let deletingId = $state<string | null>(null);
+
+  // Add existing contacts state
+  let showAddExistingModal = $state(false);
+  let audienceContacts = $state<AudienceContact[]>([]);
+  let audienceSearchQuery = $state('');
+  let loadingAudience = $state(false);
+  let selectedContactIds = $state<string[]>([]);
+  let addingExistingContacts = $state(false);
+  let showNewContactForm = $state(false); // Toggle between existing/new contact modes
 
   const filteredSegments = $derived.by(() => {
     if (!searchQuery) return segments;
@@ -74,11 +86,16 @@
   async function openContactsModal(segment: SegmentSummary) {
     selectedSegment = segment;
     showContactsModal = true;
+    showNewContactForm = false; // Default to existing contacts
     loadingContacts = true;
     contactsError = null;
+    selectedContactIds = [];
+    audienceSearchQuery = '';
     try {
       const result = await listSegmentContacts({ segmentId: segment.id, limit: 100 });
       contacts = result.contacts;
+      // Also load audience contacts for inline selection
+      await loadAudienceList();
     } catch (err) {
       contactsError = err instanceof Error ? err.message : 'Failed to load contacts';
     } finally {
@@ -106,6 +123,10 @@
       newContactEmail = '';
       newContactFirstName = '';
       newContactLastName = '';
+      // Switch back to existing contacts view and refresh list
+      showNewContactForm = false;
+      await loadAudienceList();
+      await segmentsResource.refresh();
     } catch (err) {
       addContactError = err instanceof Error ? err.message : 'Failed to add contact';
     } finally {
@@ -121,6 +142,69 @@
       contacts = contacts.filter((c) => c.email !== contact.email);
     } catch (err) {
       contactsError = err instanceof Error ? err.message : 'Failed to remove contact';
+    }
+  }
+
+  // Load audience contacts for selection
+  async function loadAudienceList() {
+    loadingAudience = true;
+    try {
+      const result = await loadAudienceContacts({
+        limit: 50,
+        offset: 0,
+        search: audienceSearchQuery || undefined
+      });
+      // Filter out contacts already in the segment
+      const contactEmails = new Set(contacts.map(c => c.email));
+      audienceContacts = result.contacts.filter(c => !contactEmails.has(c.email));
+    } catch (err) {
+      console.error('Failed to load audience:', err);
+      audienceContacts = [];
+    } finally {
+      loadingAudience = false;
+    }
+  }
+
+  // Handle search in add existing modal
+  async function handleAudienceSearch() {
+    await loadAudienceList();
+  }
+
+  // Add selected existing contacts to segment
+  async function handleAddExistingContacts() {
+    if (!selectedSegment || selectedContactIds.length === 0) return;
+
+    addingExistingContacts = true;
+    addContactError = null;
+    try {
+      // Add all selected contacts to the segment
+      for (const contactId of selectedContactIds) {
+        await addContactToSegments({
+          contactId,
+          segmentIds: [selectedSegment.id]
+        });
+      }
+
+      // Refresh contacts list and audience list
+      const result = await listSegmentContacts({ segmentId: selectedSegment.id, limit: 100 });
+      contacts = result.contacts;
+      await segmentsResource.refresh();
+      await loadAudienceList(); // Refresh to remove added contacts from list
+
+      selectedContactIds = [];
+    } catch (err) {
+      addContactError = err instanceof Error ? err.message : 'Failed to add contacts';
+    } finally {
+      addingExistingContacts = false;
+    }
+  }
+
+  // Toggle contact selection
+  function toggleContactSelection(contactId: string) {
+    if (selectedContactIds.includes(contactId)) {
+      selectedContactIds = selectedContactIds.filter(id => id !== contactId);
+    } else {
+      selectedContactIds = [...selectedContactIds, contactId];
     }
   }
 </script>
@@ -193,7 +277,12 @@
     {#snippet children()}
       <div class="kui-stack">
         <FormField label="Segment name">
-          <FormInput field={{ name: 'segmentName', bind: { value: newSegmentName } } as any} placeholder="Customers" />
+          <input 
+            type="text" 
+            class="kui-input" 
+            placeholder="Customers" 
+            bind:value={newSegmentName}
+          />
         </FormField>
         {#if createError}
           <div class="kui-callout error">{createError}</div>
@@ -264,30 +353,121 @@
           {/if}
         {/if}
 
-        <div class="kui-divider">Add Contact</div>
-        <div class="kui-grid">
-          <FormField label="Email">
-            <FormInput field={{ name: 'email', bind: { value: newContactEmail } } as any} placeholder="user@example.com" />
-          </FormField>
-          <FormField label="First Name (optional)">
-            <FormInput field={{ name: 'firstName', bind: { value: newContactFirstName } } as any} />
-          </FormField>
-          <FormField label="Last Name (optional)">
-            <FormInput field={{ name: 'lastName', bind: { value: newContactLastName } } as any} />
-          </FormField>
+        <div class="kui-divider">Add Contacts</div>
+        
+        <!-- Tab toggle for add mode -->
+        <div class="kui-add-tabs">
+          <button 
+            class="kui-add-tab" 
+            class:active={!showNewContactForm}
+            onclick={() => showNewContactForm = false}
+          >
+            <Users class="kui-icon" /> Existing Contacts
+          </button>
+          <button 
+            class="kui-add-tab" 
+            class:active={showNewContactForm}
+            onclick={() => showNewContactForm = true}
+          >
+            <UserPlus class="kui-icon" /> New Contact
+          </button>
         </div>
-        {#if addContactError}
-          <div class="kui-callout error">{addContactError}</div>
-        {/if}
-        <div class="kui-inline end">
-          <Button variant="primary" size="sm" onclick={handleAddContact} disabled={addingContact}>
-            {#if addingContact}
-              <Loading size="sm" /> Adding...
-            {:else}
-              <Plus class="kui-icon" /> Add Contact
+
+        {#if showNewContactForm}
+          <!-- Add New Contact Form -->
+          <div class="kui-new-contact-form">
+            <p class="kui-form-hint">Create a new contact and add them to this segment. They'll also be added to your audience.</p>
+            <div class="kui-grid">
+              <FormField label="Email">
+                <input 
+                  type="email" 
+                  class="kui-input" 
+                  placeholder="user@example.com" 
+                  bind:value={newContactEmail}
+                />
+              </FormField>
+              <FormField label="First Name (optional)">
+                <input 
+                  type="text" 
+                  class="kui-input" 
+                  bind:value={newContactFirstName}
+                />
+              </FormField>
+              <FormField label="Last Name (optional)">
+                <input 
+                  type="text" 
+                  class="kui-input" 
+                  bind:value={newContactLastName}
+                />
+              </FormField>
+            </div>
+            {#if addContactError}
+              <div class="kui-callout error">{addContactError}</div>
             {/if}
-          </Button>
-        </div>
+            <div class="kui-inline end">
+              <Button variant="primary" size="sm" onclick={handleAddContact} disabled={addingContact}>
+                {#if addingContact}
+                  <Loading size="sm" /> Adding...
+                {:else}
+                  <UserPlus class="kui-icon" /> Add to Segment & Audience
+                {/if}
+              </Button>
+            </div>
+          </div>
+        {:else}
+          <!-- Select from Existing Contacts -->
+          <div class="kui-existing-contacts">
+            <div class="kui-search-box-inline">
+              <Search class="kui-search-icon" />
+              <input 
+                type="text" 
+                class="kui-search-input" 
+                placeholder="Search by email..." 
+                bind:value={audienceSearchQuery}
+                onkeydown={(e) => e.key === 'Enter' && handleAudienceSearch()}
+              />
+              <Button variant="ghost" size="sm" onclick={handleAudienceSearch}>
+                Search
+              </Button>
+            </div>
+
+            {#if loadingAudience}
+              <div class="kui-center-sm"><Loading size="sm" /></div>
+            {:else if audienceContacts.length === 0}
+              <p class="kui-subtext">No contacts found. Try searching or add a new contact.</p>
+            {:else}
+              <div class="kui-contact-list">
+                {#each audienceContacts as contact}
+                  <label class="kui-contact-checkbox" class:selected={selectedContactIds.includes(contact.id)}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedContactIds.includes(contact.id)}
+                      onchange={() => toggleContactSelection(contact.id)}
+                    />
+                    <div class="kui-contact-info">
+                      <span class="kui-contact-email">{contact.email}</span>
+                      {#if contact.first_name || contact.last_name}
+                        <span class="kui-contact-name">{contact.first_name} {contact.last_name}</span>
+                      {/if}
+                    </div>
+                  </label>
+                {/each}
+              </div>
+            {/if}
+
+            {#if selectedContactIds.length > 0}
+              <div class="kui-inline end">
+                <Button variant="primary" size="sm" onclick={handleAddExistingContacts} disabled={addingExistingContacts}>
+                  {#if addingExistingContacts}
+                    <Loading size="sm" /> Adding...
+                  {:else}
+                    <Plus class="kui-icon" /> Add {selectedContactIds.length} Contact{selectedContactIds.length !== 1 ? 's' : ''}
+                  {/if}
+                </Button>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/snippet}
   </Dialog>
@@ -540,6 +720,133 @@
 
   .kui-inline.end {
     justify-content: flex-end;
+  }
+
+  .kui-add-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--kui-color-border);
+    margin-bottom: 1rem;
+  }
+
+  .kui-add-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--kui-color-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .kui-add-tab:hover {
+    color: var(--kui-color-text);
+  }
+
+  .kui-add-tab.active {
+    color: var(--kui-color-primary);
+    border-bottom-color: var(--kui-color-primary);
+  }
+
+  .kui-new-contact-form,
+  .kui-existing-contacts {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .kui-form-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+    padding: 0.75rem;
+    background: var(--kui-color-surface-muted);
+    border-radius: var(--kui-radius-md);
+  }
+
+  .kui-search-box-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface);
+  }
+
+  .kui-add-buttons {
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .kui-contact-list {
+    display: grid;
+    gap: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+  }
+
+  .kui-contact-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border-radius: var(--kui-radius-sm);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+
+  .kui-contact-checkbox:hover {
+    background: var(--kui-color-surface-muted);
+  }
+
+  .kui-contact-checkbox.selected {
+    background: rgba(59, 130, 246, 0.08);
+  }
+
+  .kui-contact-checkbox input[type="checkbox"] {
+    margin: 0;
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+  }
+
+  .kui-contact-checkbox .kui-contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .kui-contact-checkbox .kui-contact-email {
+    font-weight: 500;
+    color: var(--kui-color-text);
+  }
+
+  .kui-contact-checkbox .kui-contact-name {
+    font-size: 0.85rem;
+    color: var(--kui-color-muted);
+  }
+
+  .kui-selection-info {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--kui-color-primary);
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .kui-center-sm {
+    display: grid;
+    place-items: center;
+    min-height: 100px;
+    gap: 1rem;
   }
 
   .kui-icon {

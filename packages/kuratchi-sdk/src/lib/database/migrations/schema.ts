@@ -174,7 +174,20 @@ export function normalizeSchema(dsl: SchemaDsl): DatabaseSchema {
       if (cdef === true) continue; // allow flags if needed later
       cols.push(parseColumnDef(cname, cdef));
     }
-    tables.push({ name: tname, columns: cols });
+    
+    // Parse indexes for this table
+    const indexes: Index[] = [];
+    if (dsl.indexes && dsl.indexes[tname]) {
+      for (const [idxName, idxDef] of Object.entries(dsl.indexes[tname])) {
+        indexes.push({
+          name: idxName,
+          columns: idxDef.columns,
+          unique: idxDef.unique,
+        });
+      }
+    }
+    
+    tables.push({ name: tname, columns: cols, indexes: indexes.length > 0 ? indexes : undefined });
   }
   return { name: dsl.name, version: dsl.version, tables };
 }

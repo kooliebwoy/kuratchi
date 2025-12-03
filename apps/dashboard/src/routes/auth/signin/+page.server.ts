@@ -1,7 +1,12 @@
 import type { PageServerLoad, Actions } from './$types';
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
+  if (locals?.session && locals.session.user) {
+    // User is already signed in, redirect to dashboard
+    redirect(302, '/');
+  }
+
   const turnstile = (locals.kuratchi as any)?.security?.turnstile || null;
   
   // Check for invite token

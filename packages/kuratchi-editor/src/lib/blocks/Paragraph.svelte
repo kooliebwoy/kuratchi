@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte";
 	import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
 	import EditorToolbar from "../widgets/EditorToolbar.svelte";
-	import { BlockActions } from "../utils/index.js";
+	import { BLOCK_SPACING_VALUES, DragHandle, type BlockSpacing } from "../utils/index.js";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
     interface Props {
@@ -11,6 +11,9 @@
         type?: string;
         metadata?: {
             color?: string;
+            fontSize?: string;
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
         };
         editable?: boolean;
     }
@@ -21,13 +24,38 @@
         type = 'paragraph',
         metadata = {
             color: '#000000',
+            fontSize: '1rem',
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
         },
         editable = true
     }: Props = $props();
 
-    let component: HTMLElement;
+    let component: HTMLElement | undefined;
     const componentRef = {};
     let color = metadata.color;
+    let fontSize = $state(metadata.fontSize ?? '1rem');
+    let spacingTop = $state<BlockSpacing>(metadata.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata.spacingBottom ?? 'normal');
+
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
+
+    // Block context for toolbar - using function to get latest component ref
+    function getBlockContext() {
+        return {
+            type: 'paragraph' as const,
+            blockElement: component,
+            fontSize,
+            onFontSizeChange: (newSize: string) => { fontSize = newSize; },
+            spacingTop,
+            spacingBottom,
+            onSpacingTopChange: (s: BlockSpacing) => { spacingTop = s; },
+            onSpacingBottomChange: (s: BlockSpacing) => { spacingBottom = s; }
+        };
+    }
 
     // Selection state
     let selectionState: SelectionState = $state({
@@ -56,6 +84,9 @@
         paragraph,
         metadata: {
             color,
+            fontSize,
+            spacingTop,
+            spacingBottom
         }
     });
 
@@ -69,24 +100,21 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative krt-paragraph-block" bind:this={component}>
+    <div class="editor-item group relative krt-paragraph-block" bind:this={component} style={spacingStyle}>
         {#if mounted}
-            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} />
-        {/if}
-
-        {#if mounted}
-            <BlockActions {component} />
+            <DragHandle />
+            <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} blockContext={getBlockContext()} />
         {/if}
         
         <div data-type={type} id={id} class="krt-paragraph-body">
             <!-- JSON Data for this component -->
             <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
-            <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable"></p>
+            <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable" style:font-size={fontSize}></p>
         </div>
     </div>
 {:else}
-    <div data-type={type} id={id} class="krt-paragraph-block krt-paragraph-body">
-        <svelte:element this={'p'} class="krt-paragraph" style:color={color}>
+    <div data-type={type} id={id} class="krt-paragraph-block krt-paragraph-body" style={spacingStyle}>
+        <svelte:element this={'p'} class="krt-paragraph" style:color={color} style:font-size={fontSize}>
             {@html paragraph}
         </svelte:element>
     </div>
@@ -105,7 +133,7 @@
 
     .krt-paragraph {
         margin: 0;
-        font-size: 1rem;
+        font-size: inherit;
         line-height: 1.7;
     }
 

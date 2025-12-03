@@ -315,14 +315,13 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
                 <div class="krt-editorCanvas__inlineSearch">
                     <input 
                         class="krt-editorCanvas__inlineInput" 
-                        style="{backgroundColor === '#ffffff' || !backgroundColor ? 'color: rgba(0,0,0,0.8)' : 'color: rgba(255,255,255,0.8)'}" 
                         bind:value={inlineBlockSearch} 
                         bind:this={inlineBlockSearchInput} 
                         oninput={handleInlineSearch} 
                         placeholder="Type / to add blocks or sections"
                     />
                     {#if inlineDropdown?.open && inlineFilteredItems.length > 0}
-                        <div class="krt-editorCanvas__inlineDropdown">
+                        <div class="krt-editorCanvas__inlineDropdown" class:krt-editorCanvas__inlineDropdown--top={deduplicatedContent.length === 0}>
                             {#each inlineFilteredItems as item}
                                 <button class="krt-editorCanvas__inlineButton" onclick={() => addComponent(item)}>
                                     <item.icon />
@@ -454,11 +453,13 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
 
     .krt-editorCanvas__addBlock {
         position: relative;
+        overflow: visible;
     }
 
     .krt-editorCanvas__inlineSearch {
         position: relative;
         width: 100%;
+        overflow: visible;
     }
 
     .krt-editorCanvas__inlineInput {
@@ -469,10 +470,13 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         padding: 0.5rem 0;
         font-size: 1rem;
         font-weight: 500;
+        color: var(--krt-editor-text-color, #1f2937);
+        caret-color: var(--krt-editor-text-color, #1f2937);
     }
 
     .krt-editorCanvas__inlineInput::placeholder {
         opacity: 0.4;
+        color: var(--krt-editor-text-color, #1f2937);
     }
 
     .krt-editorCanvas__inlineInput:focus {
@@ -496,6 +500,15 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
+    }
+
+    /* When no content, show dropdown below the input instead of above */
+    .krt-editorCanvas__inlineDropdown--top {
+        bottom: auto;
+        top: 100%;
+        margin-bottom: 0;
+        margin-top: 0.5rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     }
 
     .krt-editorCanvas__inlineButton {

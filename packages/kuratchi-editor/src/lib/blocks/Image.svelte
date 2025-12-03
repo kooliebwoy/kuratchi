@@ -3,7 +3,8 @@
     import { deserialize } from "$app/forms";
     import { Upload } from "@lucide/svelte";
     import type { ActionResult } from "@sveltejs/kit";
-    import { BlockActions } from "../utils/index.js";
+    import { DragHandle, BLOCK_SPACING_VALUES, type BlockSpacing } from "../utils/index.js";
+    import { deleteElement } from "../utils/editor.svelte.js";
     import { onMount } from "svelte";
     import { imageConfig } from "../stores/imageConfig.js";
 
@@ -11,6 +12,10 @@
         id?: string;
         image?: Record<string, unknown>;
         type?: string;
+        metadata?: {
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
+        };
         editable?: boolean;
     }
 
@@ -18,12 +23,23 @@
         id = crypto.randomUUID(),
         image = {},
         type = 'image',
+        metadata = {
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
+        },
         editable = true
     }: Props = $props();
 
-    let component = $state<HTMLElement>();
+    let component: HTMLElement | undefined;
     const componentRef = {};
     let componentEditor = $state<HTMLElement>();
+    let spacingTop = $state<BlockSpacing>(metadata?.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata?.spacingBottom ?? 'normal');
+
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
 
     let profilePhotoFile: HTMLInputElement | null = $state(null);
     let photoError: boolean = $state(false);
@@ -117,25 +133,25 @@
         id,
         type,
         image: uploadedImage,
+        metadata: {
+            spacingTop,
+            spacingBottom
+        }
     })
 
     let mounted = $state(false);
     onMount(() => {
         if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
 {#if editable}
-    <div class="editor-item group relative krt-image-block" bind:this={component}>
+    <div class="editor-item group relative krt-image-block" bind:this={component} style={spacingStyle}>
         {#if mounted}
-            <BlockActions {component} />
+            <DragHandle />
         {/if}
 
         <div data-type={type} id={id} class="krt-image-body">

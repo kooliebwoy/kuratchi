@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Plus, Trash2, Eye, Loader2, Code2 } from '@lucide/svelte';
-  import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
+  import { Plus, Trash2, Eye, Loader2, Code2, X } from '@lucide/svelte';
+  import { Button, Card, Dialog, Loading, FormField, Badge } from '@kuratchi/ui';
   import EmailEditor from '$lib/components/EmailEditor.svelte';
   import {
     listTemplates,
@@ -115,7 +115,7 @@
               </p>
             </div>
             <div class="kui-inline end">
-              <Button variant="outline" size="sm" onclick={() => openPreviewModal(template)}>
+              <Button variant="neutral" size="sm" onclick={() => openPreviewModal(template)}>
                 <Eye class="kui-icon" /> Preview
               </Button>
               <Button variant="ghost" size="sm" onclick={() => handleDeleteTemplate(template.id)} disabled={deletingId === template.id}>
@@ -145,10 +145,10 @@
       </div>
       <div class="kui-modal__body">
         <FormField label="Template name">
-          <FormInput field={{ name: 'name', bind: { value: formName } } as any} placeholder="Template name" />
+          <input type="text" class="kui-input" bind:value={formName} placeholder="Template name" />
         </FormField>
         <FormField label="Email subject">
-          <FormInput field={{ name: 'subject', bind: { value: formSubject } } as any} placeholder="Email subject" />
+          <input type="text" class="kui-input" bind:value={formSubject} placeholder="Email subject" />
         </FormField>
         <FormField label="HTML Content">
           <textarea
@@ -250,6 +250,22 @@
   .kui-icon {
     width: 1rem;
     height: 1rem;
+  }
+
+  .kui-input {
+    width: 100%;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    padding: 0.65rem 0.8rem;
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    font-size: 0.95rem;
+  }
+
+  .kui-input:focus {
+    outline: none;
+    border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 2px var(--kui-color-primary-weak);
   }
 
   .kui-panel.center {

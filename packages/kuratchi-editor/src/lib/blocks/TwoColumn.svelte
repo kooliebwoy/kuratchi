@@ -1,6 +1,6 @@
 <script lang="ts">
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
-    import { BlockActions } from "../utils/index.js";
+    import { DragHandle, BLOCK_SPACING_VALUES, type BlockSpacing } from "../utils/index.js";
     import { onMount } from "svelte";
 
     interface Props {
@@ -12,6 +12,8 @@
             leftWidth?: '1/3' | '1/2' | '2/3';
             gap?: 'sm' | 'md' | 'lg' | 'xl';
             verticalAlign?: 'top' | 'center' | 'bottom';
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
         };
         editable?: boolean;
     }
@@ -24,63 +26,25 @@
         metadata = {
             leftWidth: '1/2',
             gap: 'md',
-            verticalAlign: 'top'
+            verticalAlign: 'top',
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
         },
         editable = true
     }: Props = $props();
 
-    let component = $state<HTMLElement>();
+    let component: HTMLElement | undefined;
     const componentRef = {};
     let leftWidth = $state(metadata.leftWidth);
     let gap = $state(metadata.gap);
     let verticalAlign = $state(metadata.verticalAlign);
+    let spacingTop = $state<BlockSpacing>(metadata?.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata?.spacingBottom ?? 'normal');
 
-    // Calculate grid classes based on left width
-    let gridClasses = $derived((() => {
-        switch (leftWidth) {
-            case '1/3': return 'grid-cols-3';
-            case '2/3': return 'grid-cols-3';
-            case '1/2':
-            default: return 'grid-cols-2';
-        }
-    })());
-
-    let leftColClasses = $derived((() => {
-        switch (leftWidth) {
-            case '1/3': return 'col-span-1';
-            case '2/3': return 'col-span-2';
-            case '1/2':
-            default: return 'col-span-1';
-        }
-    })());
-
-    let rightColClasses = $derived((() => {
-        switch (leftWidth) {
-            case '1/3': return 'col-span-2';
-            case '2/3': return 'col-span-1';
-            case '1/2':
-            default: return 'col-span-1';
-        }
-    })());
-
-    let gapClasses = $derived((() => {
-        switch (gap) {
-            case 'sm': return 'gap-2';
-            case 'lg': return 'gap-8';
-            case 'xl': return 'gap-12';
-            case 'md':
-            default: return 'gap-4';
-        }
-    })());
-
-    let alignClasses = $derived((() => {
-        switch (verticalAlign) {
-            case 'center': return 'items-center';
-            case 'bottom': return 'items-end';
-            case 'top':
-            default: return 'items-start';
-        }
-    })());
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
 
     let content = $derived({
         id,
@@ -90,7 +54,9 @@
         metadata: {
             leftWidth,
             gap,
-            verticalAlign
+            verticalAlign,
+            spacingTop,
+            spacingBottom
         }
     });
 
@@ -98,68 +64,95 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
+    <div class="editor-item group relative krt-twocol-block" bind:this={component} style={spacingStyle}>
         {#if mounted}
-            <BlockActions {component}>
-                <small>Column Width</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => leftWidth = '1/3'}>1/3 - 2/3</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => leftWidth = '1/2'}>1/2 - 1/2</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => leftWidth = '2/3'}>2/3 - 1/3</button></li>
-                
-                <div class="divider my-1"></div>
-                <small>Gap Size</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => gap = 'sm'}>Small</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => gap = 'md'}>Medium</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => gap = 'lg'}>Large</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => gap = 'xl'}>Extra Large</button></li>
-                
-                <div class="divider my-1"></div>
-                <small>Vertical Alignment</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'top'}>Top</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'center'}>Center</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => verticalAlign = 'bottom'}>Bottom</button></li>
-            </BlockActions>
+            <DragHandle />
         {/if}
         
-        <div data-type={type} {id} class="w-full min-w-full">
+        <div data-type={type} {id} class="krt-twocol-body">
             <!-- JSON Data for this component -->
             <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
 
-            <div class={`grid ${gridClasses} ${gapClasses} ${alignClasses} py-4`}>
-                <div class={`${leftColClasses} prose prose-sm max-w-none`}>
+            <div class={`krt-twocol-grid krt-twocol-grid--${leftWidth?.replace('/', '-')} krt-twocol-grid--gap-${gap} krt-twocol-grid--align-${verticalAlign}`}>
+                <div class="krt-twocol-left">
                     <div 
                         contenteditable
                         bind:innerHTML={leftContent}
-                        class="outline-none min-h-[100px] p-4 border border-dashed border-base-300 rounded"
+                        class="krt-twocol-content"
                     ></div>
                 </div>
-                <div class={`${rightColClasses} prose prose-sm max-w-none`}>
+                <div class="krt-twocol-right">
                     <div 
                         contenteditable
                         bind:innerHTML={rightContent}
-                        class="outline-none min-h-[100px] p-4 border border-dashed border-base-300 rounded"
+                        class="krt-twocol-content"
                     ></div>
                 </div>
             </div>
         </div>
     </div>
 {:else}
-    <div data-type={type} {id} class={`w-full min-w-full py-4 grid ${gridClasses} ${gapClasses} ${alignClasses}`}>
-        <div class={`${leftColClasses} prose prose-sm max-w-none`}>
-            <div class="min-h-[100px]">{@html leftContent}</div>
-        </div>
-        <div class={`${rightColClasses} prose prose-sm max-w-none`}>
-            <div class="min-h-[100px]">{@html rightContent}</div>
+    <div data-type={type} {id} class="krt-twocol-block krt-twocol-body" style={spacingStyle}>
+        <div class={`krt-twocol-grid krt-twocol-grid--${leftWidth?.replace('/', '-')} krt-twocol-grid--gap-${gap} krt-twocol-grid--align-${verticalAlign}`}>
+            <div class="krt-twocol-left">
+                <div class="krt-twocol-content">{@html leftContent}</div>
+            </div>
+            <div class="krt-twocol-right">
+                <div class="krt-twocol-content">{@html rightContent}</div>
+            </div>
         </div>
     </div>
 {/if}
+
+<style>
+    .krt-twocol-block {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-twocol-body {
+        width: 100%;
+        padding: 1rem 0;
+    }
+
+    .krt-twocol-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .krt-twocol-grid--1-3 {
+        grid-template-columns: 1fr 2fr;
+    }
+
+    .krt-twocol-grid--2-3 {
+        grid-template-columns: 2fr 1fr;
+    }
+
+    .krt-twocol-grid--gap-sm { gap: 0.5rem; }
+    .krt-twocol-grid--gap-md { gap: 1rem; }
+    .krt-twocol-grid--gap-lg { gap: 2rem; }
+    .krt-twocol-grid--gap-xl { gap: 3rem; }
+
+    .krt-twocol-grid--align-top { align-items: start; }
+    .krt-twocol-grid--align-center { align-items: center; }
+    .krt-twocol-grid--align-bottom { align-items: end; }
+
+    .krt-twocol-content {
+        outline: none;
+        min-height: 100px;
+        padding: 1rem;
+        border: 1px dashed var(--krt-color-border-subtle, #e5e7eb);
+        border-radius: 0.5rem;
+    }
+
+    .krt-twocol-content:focus {
+        border-color: var(--krt-color-accent, #4f46e5);
+        border-style: solid;
+    }
+</style>
