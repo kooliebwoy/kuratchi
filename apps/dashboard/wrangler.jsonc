@@ -72,6 +72,9 @@
     "CF_SSL_FOR_SAAS_ZONE_ID": "186c912626782570e099d4f7b2a895b3",
     "SITE_RENDERER_ORIGIN_HOST": "kuratchi.site",
     "KURATCHI_BUCKET_ORIGIN_HOST": "kuratchi.cloud",
-    "KURATCHI_BUCKET_ZONE_ID": "82f6264dfcc2a69eff43b4f3dd932751"
+    "KURATCHI_BUCKET_ZONE_ID": "82f6264dfcc2a69eff43b4f3dd932751",
+    "CF_ANALYTICS_ZONE_TAG": "4a355d66c4e543629bf742b8f9467fbd",
+    "AWS_REGION": "us-east-2",
+    "SES_FROM_EMAIL": "info@kuratchi.dev"
   }
 }

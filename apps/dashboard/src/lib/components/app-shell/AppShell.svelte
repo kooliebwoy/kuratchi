@@ -3,7 +3,7 @@
   import AppHeader from './AppHeader.svelte';
   import AppSidebar from './AppSidebar.svelte';
   import type { AppNavItem, AppUser } from './types';
-  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield, BookOpen } from '@lucide/svelte';
+  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield, BookOpen, Bike, BarChart3 } from '@lucide/svelte';
 
   interface Props {
     workspace: string;
@@ -17,10 +17,12 @@
     { label: 'Overview', icon: Home, href: '/' },
     { label: 'Sites', icon: Layout, href: '/sites' },
     { label: 'Blog', icon: BookOpen, href: '/blog' },
+    { label: 'Catalog', icon: Bike, href: '/catalog' },
     { label: 'Emails', icon: Mail, href: '/emails' },
     { label: 'Forms', icon: Database, href: '/forms' },
     { label: 'Domains', icon: GlobeLock, href: '/domains' },
     { label: 'Storage', icon: Folder, href: '/storage' },
+    { label: 'Analytics', icon: BarChart3, href: '/analytics' },
     { label: 'Activity', icon: Activity, href: '/activity' },
     { label: 'Settings', icon: Settings, href: '/settings' },
     { label: 'Super Admin', icon: Shield, href: '/superadmin', requireSuperadmin: true }

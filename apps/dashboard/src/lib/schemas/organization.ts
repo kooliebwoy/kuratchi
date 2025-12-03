@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 7,
+  version: 9,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -108,6 +108,7 @@ export const organizationSchema: SchemaDsl = {
       r2Binding: 'text',
       r2StorageDomain: 'text', // Custom storage domain (e.g., subdomain.kuratchi.cloud)
       metadata: 'json',
+      analytics_token: 'text', // Cloudflare Web Analytics site tag
       '...timestamps': true,
     },
     siteCustomDomains: {
@@ -342,6 +343,62 @@ export const organizationSchema: SchemaDsl = {
       processedAt: 'text',
       '...timestamps': true,
     },
+    // =========== OEM CATALOG TABLES ===========
+    catalogOems: {
+      id: 'text primary key not null',
+      name: 'text not null',
+      logo_url: 'text',
+      website_url: 'text',
+      description: 'text',
+      '...timestamps': true,
+    },
+    catalogVehicles: {
+      id: 'text primary key not null',
+      oem_id: 'text not null -> catalogOems.id cascade',
+      oem_name: 'text not null',
+      model_name: 'text not null',
+      model_year: 'integer',
+      category: 'text default other',
+      msrp: 'integer',
+      currency: 'text default USD',
+      source_url: 'text',
+      thumbnail_url: 'text',
+      images: 'json default (json_array())',
+      specifications: 'json default (json_object())',
+      features: 'json default (json_array())',
+      description: 'text',
+      status: 'text default draft',
+      '...timestamps': true,
+    },
+    catalogVehicleImages: {
+      id: 'text primary key not null',
+      vehicle_id: 'text not null -> catalogVehicles.id cascade',
+      url: 'text not null',
+      alt_text: 'text',
+      is_primary: 'boolean default 0',
+      sort_order: 'integer default 0',
+      '...timestamps': true,
+    },
+    catalogCategories: {
+      id: 'text primary key not null',
+      name: 'text not null',
+      slug: 'text not null unique',
+      description: 'text',
+      parent_id: 'text',
+      sort_order: 'integer default 0',
+      '...timestamps': true,
+    },
+    catalogSpecTemplates: {
+      id: 'text primary key not null',
+      category: 'text',
+      name: 'text not null',
+      label: 'text not null',
+      unit: 'text',
+      input_type: 'text default text',
+      options: 'json',
+      sort_order: 'integer default 0',
+      '...timestamps': true,
+    },
   },
   indexes: {
     // Newsletter indexes for performance
@@ -387,6 +444,21 @@ export const organizationSchema: SchemaDsl = {
       idx_newsletter_branch_checks_campaign: { columns: ['campaignId'] },
       idx_newsletter_branch_checks_contact: { columns: ['contactId'] },
       idx_newsletter_branch_checks_evaluate: { columns: ['evaluateAt', 'processed'] },
+    },
+    // Catalog indexes
+    catalogVehicles: {
+      idx_catalog_vehicles_oem: { columns: ['oem_id'] },
+      idx_catalog_vehicles_category: { columns: ['category'] },
+      idx_catalog_vehicles_status: { columns: ['status'] },
+    },
+    catalogVehicleImages: {
+      idx_catalog_vehicle_images_vehicle: { columns: ['vehicle_id'] },
+    },
+    catalogCategories: {
+      idx_catalog_categories_parent: { columns: ['parent_id'] },
+    },
+    catalogSpecTemplates: {
+      idx_catalog_spec_templates_category: { columns: ['category'] },
     },
   },
 } as const;
