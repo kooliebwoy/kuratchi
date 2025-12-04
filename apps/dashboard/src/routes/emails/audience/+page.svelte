@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Users, Plus, Trash2, Mail, Loader2, Search, X, Edit, UserMinus, UserPlus, BarChart3, TrendingUp, Calendar } from '@lucide/svelte';
+  import { Users, Plus, Trash2, Mail, Loader2, Search, X, Edit, UserMinus, UserPlus, BarChart3, TrendingUp, Calendar, Tag } from '@lucide/svelte';
   import { Button, Card, Dialog, Loading, FormField, FormInput, Badge } from '@kuratchi/ui';
   import {
     listAudienceContacts,
@@ -56,12 +56,14 @@
   let showEditModal = $state(false);
   let showDeleteModal = $state(false);
   let showSegmentsModal = $state(false);
+  let showManageSegmentsModal = $state(false);
 
   // Form states
   let newContactEmail = $state('');
   let newContactFirstName = $state('');
   let newContactLastName = $state('');
   let selectedSegments = $state<string[]>([]);
+  let contactSegments = $state<string[]>([]); // Current segments for manage modal
   let submitting = $state(false);
   let formError = $state<string | null>(null);
 
@@ -218,6 +220,62 @@
       await statsResource.refresh();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update subscription';
+    }
+  }
+
+  // Open manage segments modal
+  function openManageSegmentsModal(contact: AudienceContact) {
+    selectedContact = contact;
+    // Find segment IDs by matching segment names
+    contactSegments = segments
+      .filter(s => contact.segments.includes(s.name))
+      .map(s => s.id);
+    showManageSegmentsModal = true;
+    formError = null;
+  }
+
+  // Handle manage segments save
+  async function handleManageSegments() {
+    if (!selectedContact) return;
+
+    submitting = true;
+    formError = null;
+
+    try {
+      // Get current segment IDs
+      const currentSegmentIds = segments
+        .filter(s => selectedContact!.segments.includes(s.name))
+        .map(s => s.id);
+
+      // Find segments to add and remove
+      const segmentsToAdd = contactSegments.filter(id => !currentSegmentIds.includes(id));
+      const segmentsToRemove = currentSegmentIds.filter(id => !contactSegments.includes(id));
+
+      // Add to new segments
+      if (segmentsToAdd.length > 0) {
+        await addContactToSegments({
+          contactId: selectedContact.id,
+          segmentIds: segmentsToAdd
+        });
+      }
+
+      // Remove from old segments
+      if (segmentsToRemove.length > 0) {
+        await removeContactFromSegments({
+          contactId: selectedContact.id,
+          segmentIds: segmentsToRemove
+        });
+      }
+
+      showManageSegmentsModal = false;
+      selectedContact = null;
+      contactSegments = [];
+      await loadContacts(true);
+      await segmentsResource.refresh();
+    } catch (err) {
+      formError = err instanceof Error ? err.message : 'Failed to update segments';
+    } finally {
+      submitting = false;
     }
   }
 
@@ -383,6 +441,14 @@
               </td>
               <td class="text-right">
                 <div class="kui-actions">
+                  <Button 
+                    variant="ghost" 
+                    size="xs" 
+                    onclick={() => openManageSegmentsModal(contact)}
+                    title="Manage Segments"
+                  >
+                    <Tag class="kui-icon" />
+                  </Button>
                   <Button 
                     variant="ghost" 
                     size="xs" 
@@ -578,6 +644,67 @@
               <Loading size="sm" /> Deleting...
             {:else}
               Delete Contact
+            {/if}
+          </Button>
+        </div>
+      </div>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Manage Segments Modal -->
+{#if showManageSegmentsModal && selectedContact}
+  <Dialog bind:open={showManageSegmentsModal} size="sm" onClose={() => { showManageSegmentsModal = false; selectedContact = null; contactSegments = []; }}>
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <h3>Manage Segments</h3>
+        <Button variant="ghost" size="xs" onclick={() => { showManageSegmentsModal = false; selectedContact = null; contactSegments = []; }}>
+          <X class="kui-icon" />
+        </Button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <div class="kui-stack">
+        <div class="kui-contact-summary">
+          <strong>{selectedContact.email}</strong>
+          {#if selectedContact.first_name || selectedContact.last_name}
+            <span class="kui-text-muted"> — {selectedContact.first_name} {selectedContact.last_name}</span>
+          {/if}
+        </div>
+
+        {#if segments.length > 0}
+          <FormField label="Select segments for this contact">
+            <div class="kui-segment-selector">
+              {#each segments as segment}
+                <label class="kui-checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    bind:group={contactSegments} 
+                    value={segment.id}
+                  />
+                  <span>{segment.name}</span>
+                  <span class="kui-text-muted kui-segment-count">({segment.subscriberCount || 0})</span>
+                </label>
+              {/each}
+            </div>
+          </FormField>
+        {:else}
+          <div class="kui-callout">
+            <p>No segments yet. <a href="/emails/segments">Create a segment</a> first.</p>
+          </div>
+        {/if}
+
+        {#if formError}
+          <div class="kui-callout error">{formError}</div>
+        {/if}
+
+        <div class="kui-modal-actions">
+          <Button variant="ghost" onclick={() => { showManageSegmentsModal = false; selectedContact = null; contactSegments = []; }}>Cancel</Button>
+          <Button variant="primary" onclick={handleManageSegments} disabled={submitting || segments.length === 0}>
+            {#if submitting}
+              <Loading size="sm" /> Saving...
+            {:else}
+              Save Segments
             {/if}
           </Button>
         </div>
@@ -895,6 +1022,11 @@
 
   .kui-checkbox-label input[type="checkbox"] {
     margin: 0;
+  }
+
+  .kui-segment-count {
+    margin-left: auto;
+    font-size: 0.8rem;
   }
 
   .kui-form-field {

@@ -70,13 +70,24 @@ export async function createOrmClient(options: CreateOrmClientOptions): Promise<
   
   if (!skipMigrations) {
     try {
-      console.log(`[Kuratchi] Synchronizing schema for ${normalizedSchema.name} (via ${type})...`);
-      await synchronizeSchema({
+      const schemaVersion = (normalizedSchema as any).version ?? 'unknown';
+      console.log(`[Kuratchi] Synchronizing schema for ${normalizedSchema.name} v${schemaVersion} (via ${type})...`);
+      const syncResult = await synchronizeSchema({
         client: migrationClient,
         schema: normalizedSchema,
         databaseName
       });
-      console.log(`[Kuratchi] ✓ Schema synchronized for ${normalizedSchema.name}`);
+      if (syncResult.changed) {
+        console.log(`[Kuratchi] ✓ Schema synchronized for ${normalizedSchema.name} - applied ${syncResult.appliedStatements.length} statement(s)`);
+        if (syncResult.appliedStatements.length > 0) {
+          console.log(`[Kuratchi] Applied statements:`, syncResult.appliedStatements.slice(0, 5).join('\n').substring(0, 500));
+        }
+      } else {
+        console.log(`[Kuratchi] ✓ Schema already up-to-date for ${normalizedSchema.name} v${schemaVersion} (hash: ${syncResult.hash.substring(0, 8)})`);
+      }
+      if (syncResult.warnings.length > 0) {
+        console.warn(`[Kuratchi] Schema warnings:`, syncResult.warnings);
+      }
     } catch (error: any) {
       console.error(`[Kuratchi] Schema sync error for ${normalizedSchema.name}:`, error.message);
       throw error;

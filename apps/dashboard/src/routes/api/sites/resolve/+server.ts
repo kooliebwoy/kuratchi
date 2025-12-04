@@ -138,7 +138,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 				domain: site.domain,
 				environment: site.environment,
 				theme: site.theme,
-				metadata: site.metadata
+				metadata: site.metadata,
+				analytics_token: site.analytics_token || null
 			},
 			orgId: siteMapping.orgId,
 			siteDatabase: siteDbTokenResult.success && siteDbTokenResult.data ? {

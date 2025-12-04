@@ -1,6 +1,6 @@
 <script lang="ts">
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
-    import { BlockActions } from "../utils/index.js";
+    import { DragHandle, BLOCK_SPACING_VALUES, type BlockSpacing } from "../utils/index.js";
     import Checkbox from "./Checkbox.svelte";
     import { onMount, mount } from "svelte";
 
@@ -8,7 +8,11 @@
         id?: string;
         checklist?: any[];
         type?: string;
-        metadata?: any;
+        metadata?: {
+            color?: string;
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
+        };
         editable?: boolean;
     }
 
@@ -18,21 +22,32 @@
         type = 'checklist',
         metadata = {
             color: '#000000',
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
         },
         editable = true
     }: Props = $props();
 
-    let component = $state<HTMLElement>();
+    let component: HTMLElement | undefined;
     const componentRef = {};
+    let spacingTop = $state<BlockSpacing>(metadata?.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata?.spacingBottom ?? 'normal');
+
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
 
     // extract body from the content and the card title
     let content = $derived({
         id,
         type,
         checklist,
-        // metadata : {
-        //     color,
-        // }
+        metadata: {
+            color: metadata.color,
+            spacingTop,
+            spacingBottom
+        }
     })
 
     let checklistParent: HTMLDivElement | null = null;
@@ -80,24 +95,20 @@
     onMount(() => {
         if (!editable) return;
         mounted = true;
-    });
-
-    onMount(() => {
-        if (typeof editable !== 'undefined' && !editable) return;
         blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
         return () => blockRegistry.unregister(componentRef);
     });
 </script>
 
 {#if editable}
-    <div class="editor-item group relative" bind:this={component}>
+    <div class="editor-item group relative krt-checklist-block" bind:this={component} style={spacingStyle}>
         {#if mounted}
-            <BlockActions {component} />
+            <DragHandle />
         {/if}
 
-        <div data-type={type} id={id} class="w-full min-w-full">
+        <div data-type={type} id={id} class="krt-checklist-body">
             <!-- JSON Data for this component -->
-            <div class="hidden" id="metadata-{id}">
+            <div id="metadata-{id}" style="display: none;">
                 {JSON.stringify(content)}
             </div>
 
@@ -107,14 +118,42 @@
         </div>
     </div>
 {:else}
-    <div data-type={type} id={id} class="w-full min-w-full space-y-3">
+    <div data-type={type} id={id} class="krt-checklist-block krt-checklist-body" style={spacingStyle}>
         {#each Array.isArray(checklist) ? checklist : [] as item, index}
-            <div class="flex items-start gap-3">
-                <input type="checkbox" class="checkbox" disabled checked={Boolean(item?.completed)} />
-                <p class="flex-1 text-base" style:color={metadata?.color || '#000000'}>
+            <div class="krt-checklist-item">
+                <input type="checkbox" class="krt-checklist-checkbox" disabled checked={Boolean(item?.completed)} />
+                <p class="krt-checklist-text" style:color={metadata?.color || '#000000'}>
                     {item?.content ?? `Item ${index + 1}`}
                 </p>
             </div>
         {/each}
     </div>
 {/if}
+
+<style>
+    .krt-checklist-block {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .krt-checklist-body {
+        width: 100%;
+    }
+
+    .krt-checklist-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .krt-checklist-checkbox {
+        margin-top: 0.25rem;
+    }
+
+    .krt-checklist-text {
+        flex: 1;
+        margin: 0;
+        font-size: 1rem;
+    }
+</style>

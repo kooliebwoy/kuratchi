@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Zap, Users, FileText, Globe, ArrowRight } from '@lucide/svelte';
+  import { Mail, Zap, Users, TrendingUp, Clock, AlertCircle, CheckCircle2, Send } from '@lucide/svelte';
   import { getEmails, getEmailStats } from '$lib/functions/emails.remote';
   import { listDripCampaigns, listSegments } from '$lib/functions/newsletter.remote';
   import { getEmailDomains } from '$lib/functions/emailDomains.remote';
@@ -14,36 +14,29 @@
   const campaigns = $derived(Array.isArray(dripResource.current) ? dripResource.current : []);
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);
   const domains = $derived(Array.isArray(domainsResource.current) ? domainsResource.current : []);
+  const emailList = $derived(Array.isArray(emails.current) ? emails.current : []);
   
-  const activeCampaigns = $derived(campaigns.filter((c: any) => c.status === 'active').length);
+  const activeCampaigns = $derived(campaigns.filter((c: any) => c.status === 'active'));
   const totalContacts = $derived(segments.reduce((sum: number, seg: any) => sum + (seg.contactCount ?? 0), 0));
   const verifiedDomains = $derived(domains.filter(d => d.emailVerified));
   const hasVerifiedDomain = $derived(verifiedDomains.length > 0);
 
-  // Setup progress tracking
-  const setupSteps = $derived([
-    { 
-      id: 'domain', 
-      title: 'Add & Verify Domain', 
-      completed: hasVerifiedDomain,
-      link: '/domains'
-    },
-    { 
-      id: 'campaign', 
-      title: 'Create First Campaign', 
-      completed: campaigns.length > 0,
-      link: '/emails/drip'
-    },
-    { 
-      id: 'launch', 
-      title: 'Launch Campaign', 
-      completed: activeCampaigns > 0,
-      link: '/emails/drip'
-    }
-  ]);
-  
-  const setupComplete = $derived(setupSteps.every(step => step.completed));
-  const completedSteps = $derived(setupSteps.filter(step => step.completed).length);
+  // Recent emails (last 5)
+  const recentEmails = $derived(emailList.slice(0, 5));
+
+  // Calculate success rate
+  const successRate = $derived(
+    statsData.total > 0 
+      ? Math.round((statsData.sent / statsData.total) * 100) 
+      : 0
+  );
+
+  // Check for issues that need attention
+  const needsAttention = $derived([
+    !hasVerifiedDomain && { type: 'warning', message: 'No verified domain', link: '/domains' },
+    statsData.failed > 0 && { type: 'error', message: `${statsData.failed} failed emails`, link: '/emails/broadcast' },
+    statsData.pending > 10 && { type: 'info', message: `${statsData.pending} emails pending`, link: '/emails/broadcast' },
+  ].filter(Boolean));
 </script>
 
 <svelte:head>
@@ -51,241 +44,182 @@
 </svelte:head>
 
 <div class="kui-email-overview">
-  <!-- Getting Started Section (show if not complete) -->
-  {#if !setupComplete}
-    <section class="kui-section kui-section--setup">
-      <div class="kui-section-header">
-        <div>
-          <h2>Get Started with Email</h2>
-          <p class="kui-section-subtitle">{completedSteps} of {setupSteps.length} steps completed</p>
-        </div>
-        <div class="kui-progress-ring" role="progressbar" aria-valuenow={completedSteps} aria-valuemin={0} aria-valuemax={setupSteps.length} style="--progress: {(completedSteps / setupSteps.length) * 100}%">
-          <span>{completedSteps}/{setupSteps.length}</span>
-        </div>
-      </div>
-
-      <div class="kui-steps-grid">
-        {#each setupSteps as step, index}
-          <a href={step.link} class={`kui-step ${step.completed ? 'kui-step--completed' : ''}`}>
-            <div class="kui-step-icon">
-              {step.completed ? '✓' : index + 1}
-            </div>
-            <div class="kui-step-content">
-              <h3>{step.title}</h3>
-            </div>
-            <ArrowRight class="kui-step-arrow" />
-          </a>
-        {/each}
-      </div>
+  <!-- Alerts Section (only show if there are issues) -->
+  {#if needsAttention.length > 0}
+    <section class="kui-alerts">
+      {#each needsAttention as alert}
+        <a href={alert.link} class="kui-alert kui-alert--{alert.type}">
+          <AlertCircle />
+          <span>{alert.message}</span>
+        </a>
+      {/each}
     </section>
   {/if}
 
-  <!-- Quick Navigation -->
-  <section>
-    <h3 class="kui-section-title">Quick Access</h3>
-    <div class="kui-nav-grid">
-      <a href="/emails/drip" class="kui-nav-card">
-        <div class="kui-nav-icon kui-nav-icon--drip">
-          <Zap />
-        </div>
-        <div class="kui-nav-content">
-          <h4>Drip Campaigns</h4>
-          <p>Build automated sequences</p>
-        </div>
-        <ArrowRight class="kui-nav-arrow" />
-      </a>
+  <!-- Key Metrics -->
+  <section class="kui-metrics">
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--sent">
+        <Send />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{statsData.sent.toLocaleString()}</span>
+        <span class="kui-metric-label">Emails Sent</span>
+      </div>
+    </div>
 
-      <a href="/emails/broadcast" class="kui-nav-card">
-        <div class="kui-nav-icon kui-nav-icon--broadcast">
-          <Mail />
-        </div>
-        <div class="kui-nav-content">
-          <h4>Broadcasts</h4>
-          <p>Send direct emails</p>
-        </div>
-        <ArrowRight class="kui-nav-arrow" />
-      </a>
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--rate">
+        <TrendingUp />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{successRate}%</span>
+        <span class="kui-metric-label">Delivery Rate</span>
+      </div>
+    </div>
 
-      <a href="/emails/segments" class="kui-nav-card">
-        <div class="kui-nav-icon kui-nav-icon--segments">
-          <Users />
-        </div>
-        <div class="kui-nav-content">
-          <h4>Segments</h4>
-          <p>Organize contacts</p>
-        </div>
-        <ArrowRight class="kui-nav-arrow" />
-      </a>
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--contacts">
+        <Users />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{totalContacts.toLocaleString()}</span>
+        <span class="kui-metric-label">Total Contacts</span>
+      </div>
+    </div>
 
-      <a href="/emails/templates" class="kui-nav-card">
-        <div class="kui-nav-icon kui-nav-icon--templates">
-          <FileText />
-        </div>
-        <div class="kui-nav-content">
-          <h4>Templates</h4>
-          <p>Manage templates</p>
-        </div>
-        <ArrowRight class="kui-nav-arrow" />
-      </a>
-
-      <a href="/domains" class="kui-nav-card">
-        <div class="kui-nav-icon kui-nav-icon--domains">
-          <Globe />
-        </div>
-        <div class="kui-nav-content">
-          <h4>Domains</h4>
-          <p>Verify domains</p>
-        </div>
-        <ArrowRight class="kui-nav-arrow" />
-      </a>
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--active">
+        <Zap />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{activeCampaigns.length}</span>
+        <span class="kui-metric-label">Active Campaigns</span>
+      </div>
     </div>
   </section>
+
+  <div class="kui-two-col">
+    <!-- Active Campaigns -->
+    <section class="kui-card">
+      <h3>Active Campaigns</h3>
+      {#if activeCampaigns.length === 0}
+        <div class="kui-empty">
+          <Zap />
+          <p>No active campaigns</p>
+          <a href="/emails/drip" class="kui-link">Create a campaign →</a>
+        </div>
+      {:else}
+        <ul class="kui-campaign-list">
+          {#each activeCampaigns.slice(0, 4) as campaign}
+            <li class="kui-campaign-item">
+              <div class="kui-campaign-status"></div>
+              <div class="kui-campaign-info">
+                <span class="kui-campaign-name">{campaign.name}</span>
+                <span class="kui-campaign-meta">{campaign.steps?.length || 0} emails in sequence</span>
+              </div>
+            </li>
+          {/each}
+        </ul>
+        {#if activeCampaigns.length > 4}
+          <a href="/emails/drip" class="kui-link">View all {activeCampaigns.length} campaigns →</a>
+        {/if}
+      {/if}
+    </section>
+
+    <!-- Recent Activity -->
+    <section class="kui-card">
+      <h3>Recent Emails</h3>
+      {#if recentEmails.length === 0}
+        <div class="kui-empty">
+          <Mail />
+          <p>No emails sent yet</p>
+          <a href="/emails/broadcast" class="kui-link">Send your first email →</a>
+        </div>
+      {:else}
+        <ul class="kui-activity-list">
+          {#each recentEmails as email}
+            <li class="kui-activity-item">
+              <div class="kui-activity-icon" class:kui-activity-icon--success={email.status === 'sent'} class:kui-activity-icon--error={email.status === 'failed'}>
+                {#if email.status === 'sent'}
+                  <CheckCircle2 />
+                {:else if email.status === 'failed'}
+                  <AlertCircle />
+                {:else}
+                  <Clock />
+                {/if}
+              </div>
+              <div class="kui-activity-info">
+                <span class="kui-activity-subject">{email.subject || 'No subject'}</span>
+                <span class="kui-activity-to">{email.recipient || ''}</span>
+              </div>
+            </li>
+          {/each}
+        </ul>
+        <a href="/emails/broadcast" class="kui-link">View all emails →</a>
+      {/if}
+    </section>
+  </div>
 </div>
 
 <style>
   .kui-email-overview {
     display: grid;
-    gap: 2rem;
+    gap: 1.5rem;
   }
 
-  .kui-section {
-    background: var(--kui-color-surface);
-    border: 1px solid var(--kui-color-border);
-    border-radius: var(--kui-radius-lg);
-    padding: 1.5rem;
-  }
-
-  .kui-section--setup {
-    background: linear-gradient(135deg, rgba(88, 76, 217, 0.08) 0%, rgba(88, 76, 217, 0.04) 100%);
-    border-color: rgba(88, 76, 217, 0.15);
-  }
-
-  .kui-section-header {
+  /* Alerts */
+  .kui-alerts {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 2rem;
-    margin-bottom: 1.5rem;
-  }
-
-  .kui-section-header h2 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--kui-color-text);
-  }
-
-  .kui-section-subtitle {
-    margin: 0;
-    font-size: 0.9rem;
-    color: var(--kui-color-muted);
-  }
-
-  .kui-progress-ring {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 5rem;
-    height: 5rem;
-    border-radius: 50%;
-    background: conic-gradient(
-      var(--kui-color-primary) 0deg,
-      var(--kui-color-primary) calc(var(--progress) * 3.6deg),
-      rgba(88, 76, 217, 0.1) calc(var(--progress) * 3.6deg)
-    );
-    flex-shrink: 0;
-  }
-
-  .kui-progress-ring span {
-    width: 4.5rem;
-    height: 4.5rem;
-    border-radius: 50%;
-    background: var(--kui-color-surface);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--kui-color-primary);
-  }
-
-  .kui-steps-grid {
-    display: grid;
+    flex-wrap: wrap;
     gap: 0.75rem;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 
-  .kui-step {
+  .kui-alert {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: var(--kui-color-surface-muted);
-    border: 1px solid var(--kui-color-border);
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
     border-radius: var(--kui-radius-md);
-    text-decoration: none;
-    color: inherit;
-    transition: all var(--kui-duration-base) ease;
-  }
-
-  .kui-step:hover {
-    background: var(--kui-color-surface);
-    border-color: var(--kui-color-primary);
-    box-shadow: var(--kui-shadow-xs);
-  }
-
-  .kui-step--completed .kui-step-icon {
-    background: var(--kui-color-success);
-    color: #fff;
-  }
-
-  .kui-step-icon {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(88, 76, 217, 0.1);
-    color: var(--kui-color-primary);
-    font-weight: 600;
     font-size: 0.875rem;
-    flex-shrink: 0;
+    font-weight: 500;
+    text-decoration: none;
+    transition: opacity 150ms ease;
   }
 
-  .kui-step-content h3 {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--kui-color-text);
+  .kui-alert:hover {
+    opacity: 0.85;
   }
 
-  .kui-step-arrow {
+  .kui-alert :global(svg) {
     width: 1rem;
     height: 1rem;
-    color: var(--kui-color-muted);
-    margin-left: auto;
-    transition: color var(--kui-duration-base) ease;
+    flex-shrink: 0;
   }
 
-  .kui-step:hover .kui-step-arrow {
-    color: var(--kui-color-primary);
+  .kui-alert--warning {
+    background: rgba(245, 158, 11, 0.12);
+    color: #d97706;
   }
 
-  .kui-section-title {
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--kui-color-text);
+  .kui-alert--error {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
   }
 
-  .kui-nav-grid {
+  .kui-alert--info {
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+  }
+
+  /* Metrics */
+  .kui-metrics {
     display: grid;
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 
-  .kui-nav-card {
+  .kui-metric {
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -293,17 +227,9 @@
     background: var(--kui-color-surface);
     border: 1px solid var(--kui-color-border);
     border-radius: var(--kui-radius-md);
-    text-decoration: none;
-    color: inherit;
-    transition: all var(--kui-duration-base) ease;
   }
 
-  .kui-nav-card:hover {
-    border-color: var(--kui-color-primary);
-    box-shadow: var(--kui-shadow-sm);
-  }
-
-  .kui-nav-icon {
+  .kui-metric-icon {
     width: 2.5rem;
     height: 2.5rem;
     border-radius: var(--kui-radius-md);
@@ -313,91 +239,224 @@
     flex-shrink: 0;
   }
 
-  .kui-nav-icon :global(svg) {
+  .kui-metric-icon :global(svg) {
     width: 1.25rem;
     height: 1.25rem;
   }
 
-  .kui-nav-icon--drip {
-    background: rgba(168, 85, 247, 0.12);
-    color: #a855f7;
-  }
-
-  .kui-nav-icon--broadcast {
+  .kui-metric-icon--sent {
     background: rgba(34, 197, 94, 0.12);
     color: #22c55e;
   }
 
-  .kui-nav-icon--segments {
+  .kui-metric-icon--rate {
     background: rgba(59, 130, 246, 0.12);
     color: #3b82f6;
   }
 
-  .kui-nav-icon--templates {
+  .kui-metric-icon--contacts {
+    background: rgba(168, 85, 247, 0.12);
+    color: #a855f7;
+  }
+
+  .kui-metric-icon--active {
     background: rgba(245, 158, 11, 0.12);
     color: #f59e0b;
   }
 
-  .kui-nav-icon--domains {
-    background: rgba(236, 72, 153, 0.12);
-    color: #ec4899;
+  .kui-metric-data {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
   }
 
-  .kui-nav-content {
-    flex: 1;
+  .kui-metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--kui-color-text);
+    line-height: 1.2;
   }
 
-  .kui-nav-content h4 {
-    margin: 0 0 0.25rem 0;
+  .kui-metric-label {
+    font-size: 0.8rem;
+    color: var(--kui-color-muted);
+  }
+
+  /* Two Column Layout */
+  .kui-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  /* Cards */
+  .kui-card {
+    background: var(--kui-color-surface);
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    padding: 1.25rem;
+  }
+
+  .kui-card h3 {
+    margin: 0 0 1rem 0;
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--kui-color-text);
   }
 
-  .kui-nav-content p {
-    margin: 0;
-    font-size: 0.85rem;
+  /* Empty State */
+  .kui-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    text-align: center;
     color: var(--kui-color-muted);
   }
 
-  .kui-nav-arrow {
-    width: 1.25rem;
-    height: 1.25rem;
+  .kui-empty :global(svg) {
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+  }
+
+  .kui-empty p {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+  }
+
+  .kui-link {
+    font-size: 0.85rem;
+    color: var(--kui-color-primary);
+    text-decoration: none;
+  }
+
+  .kui-link:hover {
+    text-decoration: underline;
+  }
+
+  /* Campaign List */
+  .kui-campaign-list {
+    list-style: none;
+    margin: 0 0 1rem 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .kui-campaign-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .kui-campaign-status {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+  }
+
+  .kui-campaign-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+
+  .kui-campaign-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--kui-color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kui-campaign-meta {
+    font-size: 0.8rem;
+    color: var(--kui-color-muted);
+  }
+
+  /* Activity List */
+  .kui-activity-list {
+    list-style: none;
+    margin: 0 0 1rem 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .kui-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .kui-activity-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--kui-color-muted);
     flex-shrink: 0;
-    transition: color var(--kui-duration-base) ease;
   }
 
-  .kui-nav-card:hover .kui-nav-arrow {
-    color: var(--kui-color-primary);
+  .kui-activity-icon :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .kui-activity-icon--success {
+    color: #22c55e;
+  }
+
+  .kui-activity-icon--error {
+    color: #ef4444;
+  }
+
+  .kui-activity-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+
+  .kui-activity-subject {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--kui-color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kui-activity-to {
+    font-size: 0.8rem;
+    color: var(--kui-color-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @media (max-width: 1024px) {
+    .kui-metrics {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 
   @media (max-width: 768px) {
-    .kui-section-header {
-      flex-direction: column-reverse;
-      gap: 1rem;
-    }
-
-    .kui-progress-ring {
-      width: 4rem;
-      height: 4rem;
-    }
-
-    .kui-progress-ring span {
-      width: 3.5rem;
-      height: 3.5rem;
-      font-size: 0.75rem;
-    }
-
-    .kui-steps-grid {
+    .kui-metrics {
       grid-template-columns: 1fr;
     }
 
-    .kui-metrics-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-
-    .kui-nav-grid {
+    .kui-two-col {
       grid-template-columns: 1fr;
     }
   }

@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { BlockActions } from "../utils/index.js";
+    import { DragHandle, BLOCK_SPACING_VALUES, type BlockSpacing } from "../utils/index.js";
+    import { deleteElement } from "../utils/editor.svelte.js";
+    import EditorToolbar from "../widgets/EditorToolbar.svelte";
     import { onMount } from "svelte";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
 
@@ -12,6 +14,8 @@
             style?: 'primary' | 'secondary' | 'accent' | 'neutral' | 'ghost';
             size?: 'xs' | 'sm' | 'md' | 'lg';
             target?: '_blank' | '_self';
+            spacingTop?: BlockSpacing;
+            spacingBottom?: BlockSpacing;
         };
         editable?: boolean;
     }
@@ -24,16 +28,58 @@
         metadata = {
             style: 'primary',
             size: 'md',
-            target: '_self'
+            target: '_self',
+            spacingTop: 'normal',
+            spacingBottom: 'normal'
         },
         editable = true
     }: Props = $props();
 
-    let component = $state<HTMLElement>();
+    let component: HTMLElement | undefined;
     const componentRef = {};
     let style = $state(metadata?.style ?? 'primary');
     let size = $state(metadata?.size ?? 'md');
     let target = $state(metadata?.target ?? '_self');
+    let spacingTop = $state<BlockSpacing>(metadata?.spacingTop ?? 'normal');
+    let spacingBottom = $state<BlockSpacing>(metadata?.spacingBottom ?? 'normal');
+
+    // Computed spacing styles
+    let spacingStyle = $derived(
+        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
+    );
+
+    // Block context for toolbar
+    function getBlockContext() {
+        return {
+            type: 'generic' as const,
+            blockElement: component,
+            spacingTop,
+            spacingBottom,
+            onSpacingTopChange: (s: BlockSpacing) => { spacingTop = s; },
+            onSpacingBottomChange: (s: BlockSpacing) => { spacingBottom = s; }
+        };
+    }
+
+    // Selection state for toolbar
+    let showToolbar = $state(false);
+    let toolbarPosition = $state({ x: 0, y: 0 });
+
+    function handleFocus() {
+        if (!component) return;
+        const rect = component.getBoundingClientRect();
+        toolbarPosition = {
+            x: rect.left + rect.width / 2,
+            y: rect.top
+        };
+        showToolbar = true;
+    }
+
+    function handleBlur(e: FocusEvent) {
+        // Don't hide if focus moved within the component or toolbar
+        const relatedTarget = e.relatedTarget as HTMLElement;
+        if (component?.contains(relatedTarget)) return;
+        showToolbar = false;
+    }
 
     let content = $derived({
         id,
@@ -43,7 +89,9 @@
         metadata: {
             style,
             size,
-            target
+            target,
+            spacingTop,
+            spacingBottom
         }
     });
 
@@ -57,27 +105,10 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative krt-button-block" bind:this={component}>
+    <div class="editor-item group relative krt-button-block" bind:this={component} style={spacingStyle}>
         {#if mounted}
-            <BlockActions {component}>
-                <small>Button Style</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'primary'}>Primary</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'secondary'}>Secondary</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'accent'}>Accent</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => style = 'ghost'}>Ghost</button></li>
-                
-                <div class="divider my-1"></div>
-                <small>Button Size</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'xs'}>Extra Small</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'sm'}>Small</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'md'}>Medium</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => size = 'lg'}>Large</button></li>
-                
-                <div class="divider my-1"></div>
-                <small>Link Target</small>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => target = '_self'}>Same Window</button></li>
-                <li><button class="btn btn-sm btn-ghost" onclick={() => target = '_blank'}>New Window</button></li>
-            </BlockActions>
+            <DragHandle />
+            <EditorToolbar component={component} show={showToolbar} position={toolbarPosition} blockContext={getBlockContext()} />
         {/if}
         
         <div data-type={type} {id} class="krt-button-body">
@@ -92,6 +123,8 @@
                     contenteditable
                     bind:textContent={text}
                     role="button"
+                    onfocus={handleFocus}
+                    onblur={handleBlur}
                 >
                     {text}
                 </a>

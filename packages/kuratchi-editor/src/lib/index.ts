@@ -11,3 +11,6 @@ export { getHeader, headers } from './registry/headers.svelte';
 export { getFooter, footers } from './registry/footers.svelte';
 export { resolveBlockRender } from './render/index';
 export { blogStore } from './stores/blog';
+
+// Export functions for converting blocks to HTML/text
+export { blocksToHtml, blocksToEmailHtml, blocksToText } from './export';

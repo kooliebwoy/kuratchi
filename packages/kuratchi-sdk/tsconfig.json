@@ -1,5 +1,5 @@
 {
-  "extends": "@kuratchi/config-typescript/base.json",
+  "extends": "./.svelte-kit/tsconfig.json",
   "compilerOptions": {
     "declaration": true,
     "declarationMap": true,
@@ -8,6 +8,7 @@
     "inlineSources": false,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "noEmit": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
@@ -20,7 +21,8 @@
     "svelte.config.js",
     "vite.config.ts",
     "tsconfig.json.d.ts",
-    "src/tests/**/*"
+    "src/tests/**/*",
+    ".svelte-kit/**/*"
   ],
-  "exclude": ["node_modules", "dist", ".svelte-kit"]
+  "exclude": ["node_modules", "dist"]
 }

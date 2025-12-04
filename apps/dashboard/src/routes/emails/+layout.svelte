@@ -14,12 +14,12 @@
 
   const tabs = [
     { label: 'Overview', href: '/emails', icon: Mail },
-    { label: 'Email Log', href: '/emails/log', icon: List },
     { label: 'Broadcasts', href: '/emails/broadcast', icon: Send },
     { label: 'Drip Campaigns', href: '/emails/drip', icon: Zap },
     { label: 'Audience', href: '/emails/audience', icon: Users },
     { label: 'Segments', href: '/emails/segments', icon: Users },
-    { label: 'Templates', href: '/emails/templates', icon: FileText }
+    { label: 'Templates', href: '/emails/templates', icon: FileText },
+    { label: 'Email Log', href: '/emails/log', icon: List }
   ];
 </script>
 

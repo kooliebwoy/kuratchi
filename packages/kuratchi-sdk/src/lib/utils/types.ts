@@ -7,11 +7,19 @@ export type TableDsl = Record<string, ColumnDefString | true>;
 
 export type MixinsDsl = Record<string, TableDsl>;
 
+export type IndexDsl = {
+  columns: string[];
+  unique?: boolean;
+};
+
+export type TableIndexesDsl = Record<string, IndexDsl>;
+
 export type SchemaDsl = {
   name: string;
   version: number;
   mixins?: MixinsDsl;
   tables: Record<string, TableDsl>;
+  indexes?: Record<string, TableIndexesDsl>; // tableName -> { indexName -> IndexDsl }
 };
 
 export type SchemaModule = { [k: string]: SchemaDsl };
