@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { Pencil } from '@lucide/svelte';
     import { BlockActions } from '../utils/index.js';
-    import { IconPicker } from '../widgets/index.js';
+    import { IconPicker, FooterNavLinks, type FooterLink, type FooterLinksConfig } from '../widgets/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
@@ -67,8 +67,37 @@
         return (localMenu && Array.isArray(localMenu) && localMenu.length > 0) ? localMenu : defaultMenu;
     });
 
+    // Normalize menu items to FooterLink format
+    function normalizeFooterLinks(items: any[]): FooterLink[] {
+        return items.map((item, index) => ({
+            id: item.id || `link-${index}`,
+            label: item.label,
+            url: item.slug || item.link || item.url || '#',
+            external: item.external,
+        }));
+    }
+
+    const footerLinks = $derived<FooterLink[]>(normalizeFooterLinks(computedMenu));
+
+    // Footer links configuration
+    const footerLinksConfig = $derived<Partial<FooterLinksConfig>>({
+        layout: 'horizontal',
+        colors: {
+            linkText: textColor,
+            linkHover: textColor,
+        },
+    });
+
     const poweredBy = 'Powered by Clutch CMS';
     const componentRef = {};
+
+    // Helper function to get href from an item
+    function hrefFrom(item: any): string {
+        if (typeof item?.url === 'string' && item.url.length > 0) return item.url;
+        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
+        if (typeof item?.slug === 'string' && item.slug.length > 0) return `/${item.slug}`;
+        return '#';
+    }
 
     let content = $derived({
         id,
@@ -83,12 +112,6 @@
         menuHidden
     });
     const serializeContent = () => JSON.stringify(content);
-
-    function hrefFrom(item: any): string {
-        if (typeof item?.slug === 'string' && item.slug.length > 0) return item.slug;
-        if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
-        return '#';
-    }
 
     let component = $state<HTMLElement>();
     let mounted = $state(false);
@@ -199,11 +222,7 @@
             <div class="krt-footer__segment">
                 {#if reverseOrder}
                     {#if !menuHidden}
-                        <nav class="krt-footer__menu">
-                            {#each computedMenu as item}
-                                <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
-                            {/each}
-                        </nav>
+                        <FooterNavLinks links={footerLinks} config={footerLinksConfig} />
                     {/if}
                 {:else}
                     <div class="krt-footer__icons">
@@ -227,11 +246,7 @@
                         {/each}
                     </div>
                 {:else if !menuHidden}
-                    <nav class="krt-footer__menu">
-                        {#each computedMenu as item}
-                            <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
-                        {/each}
-                    </nav>
+                    <FooterNavLinks links={footerLinks} config={footerLinksConfig} />
                 {/if}
             </div>
         </section>
@@ -273,11 +288,7 @@
             <div class="krt-footer__segment">
                 {#if reverseOrder}
                     {#if !menuHidden}
-                        <nav class="krt-footer__menu">
-                            {#each computedMenu as item}
-                                <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
-                            {/each}
-                        </nav>
+                        <FooterNavLinks links={footerLinks} config={footerLinksConfig} />
                     {/if}
                 {:else}
                     <div class="krt-footer__icons">
@@ -301,11 +312,7 @@
                         {/each}
                     </div>
                 {:else if !menuHidden}
-                    <nav class="krt-footer__menu">
-                        {#each computedMenu as item}
-                            <a class="krt-footer__menuLink" href={hrefFrom(item)}>{item.label}</a>
-                        {/each}
-                    </nav>
+                    <FooterNavLinks links={footerLinks} config={footerLinksConfig} />
                 {/if}
             </div>
         </section>
@@ -584,47 +591,6 @@
     .krt-footer__iconButton :global(svg) {
         width: 1.1rem;
         height: 1.1rem;
-    }
-
-    .krt-footer__menu {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--krt-space-sm, 0.5rem);
-        justify-content: center;
-    }
-
-    @media (min-width: 48rem) {
-        .krt-footer__menu {
-            justify-content: flex-start;
-        }
-    }
-
-    .krt-footer__menuLink {
-        text-decoration: none;
-        font-size: 0.95rem;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        opacity: 0.85;
-        position: relative;
-    }
-
-    .krt-footer__menuLink::after {
-        content: '';
-        position: absolute;
-        inset-inline: 0;
-        inset-block-end: -0.2rem;
-        height: 1px;
-        background: currentColor;
-        opacity: 0;
-        transition: opacity 150ms ease;
-    }
-
-    .krt-footer__menuLink:hover {
-        opacity: 1;
-    }
-
-    .krt-footer__menuLink:hover::after {
-        opacity: 0.6;
     }
 
     .krt-footer__legal {

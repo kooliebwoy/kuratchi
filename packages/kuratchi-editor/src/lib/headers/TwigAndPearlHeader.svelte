@@ -2,9 +2,9 @@
     import { Pencil } from '@lucide/svelte';
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
-    import { IconPicker } from '../widgets/index.js';
+    import { IconPicker, NavMenu, NavMenuMobile, type DesktopNavConfig, type MobileNavConfig, type NavMenuItem } from '../widgets/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
-    import { Home, Search, Menu } from '@lucide/svelte';
+    import { Home, Search, Menu, ChevronDown } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
     let id = crypto.randomUUID(); // Ensure each content has a unique ID
@@ -15,6 +15,13 @@
         alt: 'Clutch CMS Logo',
         title: 'Clutch CMS Logo',
     }
+
+    // Nav dropdown trigger options
+    type DropdownTriggerOption = 'hover' | 'click';
+    type DropdownAlignOption = 'start' | 'center' | 'end';
+    type SubmenuDirectionOption = 'left' | 'right';
+    type MobileStyleOption = 'drawer' | 'fullscreen';
+    type DrawerPositionOption = 'left' | 'right';
 
     interface Props {
         searchEnabled?: boolean;
@@ -28,19 +35,29 @@
         editable?: boolean;
         useMobileMenuOnDesktop?: boolean;
         menuHidden?: boolean;
+        // New nav configuration props
+        navDropdownTrigger?: DropdownTriggerOption;
+        navDropdownAlign?: DropdownAlignOption;
+        navSubmenuDirection?: SubmenuDirectionOption;
+        navHoverBgColor?: string;
+        navDropdownBgColor?: string;
+        navDropdownTextColor?: string;
+        mobileNavStyle?: MobileStyleOption;
+        mobileDrawerPosition?: DrawerPositionOption;
     }
 
-    const DEFAULT_MENU = [
-        { label: 'Home', link: '/' },
+    const DEFAULT_MENU: NavMenuItem[] = [
+        { id: '1', label: 'Home', url: '/' },
         {
+            id: '2',
             label: 'Products',
-            items: [
-                { label: 'Product A', link: '#' },
-                { label: 'Product B', link: '#' },
+            children: [
+                { id: '2a', label: 'Product A', url: '#' },
+                { id: '2b', label: 'Product B', url: '#' },
             ],
         },
-        { label: 'About Us', link: '#' },
-        { label: 'Contact', link: '#' },
+        { id: '3', label: 'About Us', url: '#' },
+        { id: '4', label: 'Contact', url: '#' },
     ];
 
     let {
@@ -58,12 +75,31 @@
         menu: initialMenu = [],
         editable = true,
         useMobileMenuOnDesktop: initialUseMobileMenuOnDesktop = false,
-        menuHidden: initialMenuHidden = false
+        menuHidden: initialMenuHidden = false,
+        // Nav configuration props
+        navDropdownTrigger: initialNavDropdownTrigger = 'hover' as DropdownTriggerOption,
+        navDropdownAlign: initialNavDropdownAlign = 'start' as DropdownAlignOption,
+        navSubmenuDirection: initialNavSubmenuDirection = 'right' as SubmenuDirectionOption,
+        navHoverBgColor: initialNavHoverBgColor = 'rgba(255, 255, 255, 0.1)',
+        navDropdownBgColor: initialNavDropdownBgColor = '',
+        navDropdownTextColor: initialNavDropdownTextColor = '#ffffff',
+        mobileNavStyle: initialMobileNavStyle = 'drawer' as MobileStyleOption,
+        mobileDrawerPosition: initialMobileDrawerPosition = 'right' as DrawerPositionOption,
     }: Props = $props();
+
+    // Normalize menu items to use 'children' and 'url' properties
+    function normalizeMenuItems(items: any[]): NavMenuItem[] {
+        return items.map((item, index) => ({
+            id: item.id || `item-${index}`,
+            label: item.label,
+            url: item.url || item.link || item.slug,
+            children: item.children || item.items ? normalizeMenuItems(item.children || item.items) : undefined,
+        }));
+    }
 
     const resolvedMenu = (!initialMenuHidden && (initialMenu?.length ?? 0) === 0)
         ? DEFAULT_MENU
-        : initialMenu;
+        : normalizeMenuItems(initialMenu);
 
     let searchEnabled = $state(initialSearchEnabled);
     let backgroundColor = $state(initialBackgroundColor);
@@ -71,9 +107,85 @@
     let textColor = $state(initialTextColor);
     let reverseOrder = $state(initialReverseOrder);
     let icons = $state<{ icon: LucideIconKey; link: string; name: string; enabled: boolean }[]>(initialIcons);
-    let localMenu = $state(resolvedMenu);
+    let localMenu = $state<NavMenuItem[]>(resolvedMenu);
     let useMobileMenuOnDesktop = $state(initialUseMobileMenuOnDesktop);
     let menuHidden = $state(initialMenuHidden);
+
+    // Nav configuration state
+    let navDropdownTrigger = $state<DropdownTriggerOption>(initialNavDropdownTrigger);
+    let navDropdownAlign = $state<DropdownAlignOption>(initialNavDropdownAlign);
+    let navSubmenuDirection = $state<SubmenuDirectionOption>(initialNavSubmenuDirection);
+    let navHoverBgColor = $state(initialNavHoverBgColor);
+    let navDropdownBgColor = $state(initialNavDropdownBgColor);
+    let navDropdownTextColor = $state(initialNavDropdownTextColor);
+    let mobileNavStyle = $state<MobileStyleOption>(initialMobileNavStyle);
+    let mobileDrawerPosition = $state<DrawerPositionOption>(initialMobileDrawerPosition);
+    let mobileMenuOpen = $state(false);
+
+    // Computed desktop nav config
+    const desktopNavConfig = $derived<DesktopNavConfig>({
+        orientation: 'horizontal',
+        dropdownTrigger: navDropdownTrigger,
+        dropdownAlign: navDropdownAlign,
+        submenuDirection: navSubmenuDirection,
+        colors: {
+            background: 'transparent',
+            backgroundHover: navHoverBgColor,
+            backgroundActive: navHoverBgColor,
+            text: textColor,
+            textHover: textColor,
+            dropdownBackground: navDropdownBgColor || backgroundColor,
+            dropdownItemHover: navHoverBgColor,
+            dropdownText: navDropdownTextColor,
+            dropdownBorder: 'rgba(255, 255, 255, 0.15)',
+            dropdownShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+        },
+        typography: {
+            fontSize: '0.95rem',
+            fontWeight: 500,
+        },
+        spacing: {
+            itemGap: '0.25rem',
+            itemPadding: '0.35rem 0.5rem',
+            dropdownItemPadding: '0.35rem 0.6rem',
+            dropdownPadding: '0.5rem',
+        },
+        borders: {
+            itemRadius: '0.375rem',
+            dropdownRadius: '0.5rem',
+        },
+        animation: {
+            duration: '200ms',
+            easing: 'ease',
+            caretRotation: true,
+        },
+        caret: {
+            show: true,
+            size: '0.875rem',
+        },
+        dropdownMinWidth: '10rem',
+    });
+
+    // Computed mobile nav config
+    const mobileNavConfig = $derived<MobileNavConfig>({
+        style: mobileNavStyle,
+        drawerPosition: mobileDrawerPosition,
+        colors: {
+            background: backgroundColor,
+            backgroundHover: navHoverBgColor,
+            text: textColor,
+            dropdownBackground: navDropdownBgColor || backgroundColor,
+            dropdownText: navDropdownTextColor,
+        },
+        typography: {
+            fontSize: '1rem',
+            fontWeight: 500,
+        },
+        showCloseButton: true,
+        showBackdrop: true,
+        backdropOpacity: 0.5,
+        accordionBehavior: 'single',
+    });
 
     let content = $derived({
         id,
@@ -86,7 +198,16 @@
         icons,
         menu: localMenu,
         useMobileMenuOnDesktop,
-        menuHidden
+        menuHidden,
+        // Nav configuration
+        navDropdownTrigger,
+        navDropdownAlign,
+        navSubmenuDirection,
+        navHoverBgColor,
+        navDropdownBgColor,
+        navDropdownTextColor,
+        mobileNavStyle,
+        mobileDrawerPosition,
     });
     const serializeContent = () => JSON.stringify(content);
 
@@ -103,9 +224,21 @@
     });
 
     function hrefFrom(item: any): string {
+        if (typeof item?.url === 'string' && item.url.length > 0) return item.url;
         if (typeof item?.link === 'string' && item.link.length > 0) return item.link;
         if (typeof item?.slug === 'string' && item.slug.length > 0) return `/${item.slug}`;
         return '#';
+    }
+
+    // Get children from menu item (supports both 'items' and 'children' properties)
+    function getChildren(item: any): any[] {
+        return item?.children ?? item?.items ?? [];
+    }
+
+    // Check if menu item has children
+    function hasChildren(item: any): boolean {
+        const children = getChildren(item);
+        return Array.isArray(children) && children.length > 0;
     }
 </script>
 
@@ -190,6 +323,77 @@
                                 {/each}
                             </div>
                         </section>
+
+                        <section class="krt-headerDrawer__section">
+                            <h3 class="krt-headerDrawer__title">Navigation Style</h3>
+                            <div class="krt-headerDrawer__cards">
+                                <label class="krt-headerDrawer__card">
+                                    <span>Dropdown Trigger</span>
+                                    <select class="krt-headerDrawer__select" bind:value={navDropdownTrigger}>
+                                        <option value="hover">Hover</option>
+                                        <option value="click">Click</option>
+                                    </select>
+                                </label>
+                                <label class="krt-headerDrawer__card">
+                                    <span>Dropdown Align</span>
+                                    <select class="krt-headerDrawer__select" bind:value={navDropdownAlign}>
+                                        <option value="start">Left</option>
+                                        <option value="center">Center</option>
+                                        <option value="end">Right</option>
+                                    </select>
+                                </label>
+                                <label class="krt-headerDrawer__card">
+                                    <span>Submenu Direction</span>
+                                    <select class="krt-headerDrawer__select" bind:value={navSubmenuDirection}>
+                                        <option value="right">Right</option>
+                                        <option value="left">Left</option>
+                                    </select>
+                                </label>
+                                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                                    <span>Hover Background</span>
+                                    <div class="krt-headerDrawer__colorControl">
+                                        <input type="color" bind:value={navHoverBgColor} />
+                                        <span>{navHoverBgColor}</span>
+                                    </div>
+                                </label>
+                                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                                    <span>Dropdown Background</span>
+                                    <div class="krt-headerDrawer__colorControl">
+                                        <input type="color" bind:value={navDropdownBgColor} />
+                                        <span>{navDropdownBgColor || 'Same as header'}</span>
+                                    </div>
+                                </label>
+                                <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
+                                    <span>Dropdown Text Color</span>
+                                    <div class="krt-headerDrawer__colorControl">
+                                        <input type="color" bind:value={navDropdownTextColor} />
+                                        <span>{navDropdownTextColor}</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </section>
+
+                        <section class="krt-headerDrawer__section">
+                            <h3 class="krt-headerDrawer__title">Mobile Menu</h3>
+                            <div class="krt-headerDrawer__cards">
+                                <label class="krt-headerDrawer__card">
+                                    <span>Menu Style</span>
+                                    <select class="krt-headerDrawer__select" bind:value={mobileNavStyle}>
+                                        <option value="drawer">Drawer</option>
+                                        <option value="fullscreen">Fullscreen</option>
+                                    </select>
+                                </label>
+                                {#if mobileNavStyle === 'drawer'}
+                                    <label class="krt-headerDrawer__card">
+                                        <span>Drawer Position</span>
+                                        <select class="krt-headerDrawer__select" bind:value={mobileDrawerPosition}>
+                                            <option value="right">Right</option>
+                                            <option value="left">Left</option>
+                                        </select>
+                                    </label>
+                                {/if}
+                            </div>
+                        </section>
                     </div>
                 {/snippet}
             </BlockActions>
@@ -225,26 +429,11 @@
                                 <Home aria-hidden="true" />
                             </a>
                             {#if !menuHidden}
-                                <ul class="krt-header__navList">
-                                    {#each localMenu as item}
-                                        <li class="krt-header__navItem">
-                                            {#if item.items}
-                                                <details class="krt-header__dropdown">
-                                                    <summary>{item.label}</summary>
-                                                    <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
-                                                        {#each item.items as subItem}
-                                                            <li>
-                                                                <a href={hrefFrom(subItem)}>{subItem.label}</a>
-                                                            </li>
-                                                        {/each}
-                                                    </ul>
-                                                </details>
-                                            {:else}
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            {/if}
-                                        </li>
-                                    {/each}
-                                </ul>
+                                <NavMenu 
+                                    items={localMenu} 
+                                    config={desktopNavConfig}
+                                    ariaLabel="Main navigation"
+                                />
                             {/if}
                         </nav>
                     {/if}
@@ -252,31 +441,15 @@
 
                 <div class="krt-header__brand">
                     {#if !menuHidden}
-                        <details class="krt-header__sheetToggle" class:krt-header__sheetToggle--desktopHidden={showDesktopMenu}>
-                            <summary aria-label="Open menu">
-                                <span class="krt-header__mobileTrigger">
-                                    <Menu aria-hidden="true" />
-                                </span>
-                            </summary>
-                            <ul class="krt-header__sheet" style:background-color={backgroundColor}>
-                                {#each localMenu as item}
-                                    <li>
-                                        {#if item.items}
-                                            <details class="krt-header__sheetDropdown">
-                                                <summary>{item.label}</summary>
-                                                <ul>
-                                                    {#each item.items as subItem}
-                                                        <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                    {/each}
-                                                </ul>
-                                            </details>
-                                        {:else}
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        {/if}
-                                    </li>
-                                {/each}
-                            </ul>
-                        </details>
+                        <button 
+                            type="button"
+                            class="krt-header__mobileTrigger"
+                            class:krt-header__mobileTrigger--desktopHidden={showDesktopMenu}
+                            onclick={() => mobileMenuOpen = true}
+                            aria-label="Open menu"
+                        >
+                            <Menu aria-hidden="true" />
+                        </button>
                     {/if}
 
                     <a class="krt-header__logo" href="homepage">
@@ -291,26 +464,11 @@
                                 <Home aria-hidden="true" />
                             </a>
                             {#if !menuHidden}
-                                <ul class="krt-header__navList">
-                                    {#each localMenu as item}
-                                        <li class="krt-header__navItem">
-                                            {#if item.items}
-                                                <details class="krt-header__dropdown">
-                                                    <summary>{item.label}</summary>
-                                                    <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
-                                                        {#each item.items as subItem}
-                                                            <li>
-                                                                <a href={hrefFrom(subItem)}>{subItem.label}</a>
-                                                            </li>
-                                                        {/each}
-                                                    </ul>
-                                                </details>
-                                            {:else if item.link}
-                                                <a href={hrefFrom(item)}>{item.label}</a>
-                                            {/if}
-                                        </li>
-                                    {/each}
-                                </ul>
+                                <NavMenu 
+                                    items={localMenu} 
+                                    config={desktopNavConfig}
+                                    ariaLabel="Main navigation"
+                                />
                             {/if}
                         </nav>
                     {:else}
@@ -332,6 +490,13 @@
                 </div>
             </div>
         </div>
+
+        <!-- Mobile Navigation Menu -->
+        <NavMenuMobile 
+            items={localMenu}
+            config={mobileNavConfig}
+            bind:isOpen={mobileMenuOpen}
+        />
     </div>
 
 {:else}
@@ -368,26 +533,11 @@
                             <Home aria-hidden="true" />
                         </a>
                         {#if !menuHidden}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item}
-                                    <li class="krt-header__navItem">
-                                        {#if item.items}
-                                            <details class="krt-header__dropdown">
-                                                <summary>{item.label}</summary>
-                                                <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
-                                                    {#each item.items as subItem}
-                                                        <li>
-                                                            <a href={hrefFrom(subItem)}>{subItem.label}</a>
-                                                        </li>
-                                                    {/each}
-                                                </ul>
-                                            </details>
-                                        {:else}
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        {/if}
-                                    </li>
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </nav>
                 {/if}
@@ -395,31 +545,15 @@
 
             <div class="krt-header__brand">
                 {#if !menuHidden}
-                    <details class="krt-header__sheetToggle" class:krt-header__sheetToggle--desktopHidden={showDesktopMenu}>
-                        <summary aria-label="Open menu">
-                            <span class="krt-header__mobileTrigger">
-                                <Menu aria-hidden="true" />
-                            </span>
-                        </summary>
-                        <ul class="krt-header__sheet" style:background-color={backgroundColor}>
-                            {#each localMenu as item}
-                                <li>
-                                    {#if item.items}
-                                        <details class="krt-header__sheetDropdown">
-                                            <summary>{item.label}</summary>
-                                            <ul>
-                                                {#each item.items as subItem}
-                                                    <li><a href={hrefFrom(subItem)}>{subItem.label}</a></li>
-                                                {/each}
-                                            </ul>
-                                        </details>
-                                    {:else}
-                                        <a href={hrefFrom(item)}>{item.label}</a>
-                                    {/if}
-                                </li>
-                            {/each}
-                        </ul>
-                    </details>
+                    <button 
+                        type="button"
+                        class="krt-header__mobileTrigger"
+                        class:krt-header__mobileTrigger--desktopHidden={showDesktopMenu}
+                        onclick={() => mobileMenuOpen = true}
+                        aria-label="Open menu"
+                    >
+                        <Menu aria-hidden="true" />
+                    </button>
                 {/if}
 
                 <a class="krt-header__logo" href="homepage">
@@ -434,26 +568,11 @@
                             <Home aria-hidden="true" />
                         </a>
                         {#if !menuHidden}
-                            <ul class="krt-header__navList">
-                                {#each localMenu as item}
-                                    <li class="krt-header__navItem">
-                                        {#if item.items}
-                                            <details class="krt-header__dropdown">
-                                                <summary>{item.label}</summary>
-                                                <ul class="krt-header__dropdownList" style:background-color={backgroundColor}>
-                                                    {#each item.items as subItem}
-                                                        <li>
-                                                            <a href={hrefFrom(subItem)}>{subItem.label}</a>
-                                                        </li>
-                                                    {/each}
-                                                </ul>
-                                            </details>
-                                        {:else if item.link}
-                                            <a href={hrefFrom(item)}>{item.label}</a>
-                                        {/if}
-                                    </li>
-                                {/each}
-                            </ul>
+                            <NavMenu 
+                                items={localMenu} 
+                                config={desktopNavConfig}
+                                ariaLabel="Main navigation"
+                            />
                         {/if}
                     </nav>
                 {:else}
@@ -474,6 +593,13 @@
                 {/if}
             </div>
         </div>
+
+        <!-- Mobile Navigation Menu -->
+        <NavMenuMobile 
+            items={localMenu}
+            config={mobileNavConfig}
+            bind:isOpen={mobileMenuOpen}
+        />
     </div>
 {/if}
 
@@ -519,6 +645,22 @@
 
     .krt-headerDrawer__card span {
         font-weight: 500;
+    }
+
+    .krt-headerDrawer__select {
+        padding: 0.4rem 0.6rem;
+        border-radius: var(--krt-radius-sm, 0.375rem);
+        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
+        background: var(--krt-color-bg, #fafafa);
+        font-size: 0.85rem;
+        color: var(--krt-color-text, #1f2937);
+        cursor: pointer;
+        min-width: 6rem;
+    }
+
+    .krt-headerDrawer__select:focus {
+        outline: 2px solid var(--krt-color-primary, #3b82f6);
+        outline-offset: 1px;
     }
 
     .krt-headerDrawer__card--color {
@@ -675,77 +817,6 @@
         transform: translateY(-1px);
     }
 
-    .krt-header__navList {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-md, 0.75rem);
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-
-    .krt-header__navItem a,
-    .krt-header__navItem summary {
-        font-size: 0.95rem;
-        font-weight: 500;
-        color: inherit;
-        text-decoration: none;
-        cursor: pointer;
-        padding: 0.35rem 0.5rem;
-        border-radius: var(--krt-radius-sm, 0.375rem);
-        transition: background 150ms ease, color 150ms ease;
-    }
-
-    .krt-header__navItem a:hover,
-    .krt-header__navItem summary:hover {
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    .krt-header__dropdown {
-        position: relative;
-    }
-
-    .krt-header__dropdown summary::-webkit-details-marker {
-        display: none;
-    }
-
-    .krt-header__dropdown[open] summary {
-        background: rgba(255, 255, 255, 0.1);
-    }
-
-    .krt-header__dropdownList {
-        position: absolute;
-        inset-block-start: calc(100% + 0.4rem);
-        inset-inline-start: 0;
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-sm, 0.5rem);
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(0, 0, 0, 0.85);
-        backdrop-filter: blur(6px);
-        min-width: 10rem;
-    }
-
-    .krt-header__dropdown:not([open]) > .krt-header__dropdownList {
-        display: none;
-    }
-
-    .krt-header__dropdownList li {
-        margin: 0;
-        padding: 0;
-    }
-
-    .krt-header__dropdownList a {
-        display: block;
-        padding: 0.35rem 0.6rem;
-        border-radius: var(--krt-radius-sm, 0.375rem);
-    }
-
-    .krt-header__dropdownList a:hover {
-        background: rgba(255, 255, 255, 0.12);
-    }
-
     .krt-header__brand {
         display: flex;
         align-items: center;
@@ -770,24 +841,6 @@
         display: block;
     }
 
-    .krt-header__sheetToggle {
-        position: relative;
-        display: inline-flex;
-    }
-
-    .krt-header__sheetToggle summary {
-        list-style: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0;
-        padding: 0;
-    }
-
-    .krt-header__sheetToggle summary::-webkit-details-marker {
-        display: none;
-    }
-
     .krt-header__mobileTrigger {
         display: inline-flex;
         align-items: center;
@@ -802,69 +855,18 @@
         transition: background 150ms ease;
     }
 
-    .krt-header__sheetToggle[open] .krt-header__mobileTrigger,
     .krt-header__mobileTrigger:hover {
         background: rgba(255, 255, 255, 0.12);
     }
 
-    .krt-header__sheetToggle--desktopHidden {
+    .krt-header__mobileTrigger--desktopHidden {
         display: inline-flex;
     }
 
     @media (min-width: 64rem) {
-        .krt-header__sheetToggle--desktopHidden {
+        .krt-header__mobileTrigger--desktopHidden {
             display: none;
         }
-    }
-
-    .krt-header__sheet {
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-md, 0.75rem);
-        border-radius: var(--krt-radius-lg, 0.75rem);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        box-shadow: 0 12px 50px rgba(15, 23, 42, 0.45);
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-sm, 0.5rem);
-        min-width: 17rem;
-        color: inherit;
-    }
-
-    .krt-header__sheet a {
-        display: block;
-        padding: 0.45rem 0.6rem;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        text-decoration: none;
-        color: inherit;
-    }
-
-    .krt-header__sheet a:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    .krt-header__sheetDropdown {
-        border-radius: var(--krt-radius-md, 0.5rem);
-        overflow: hidden;
-    }
-
-    .krt-header__sheetDropdown summary {
-        cursor: pointer;
-        padding: 0.45rem 0.6rem;
-        border-radius: var(--krt-radius-md, 0.5rem);
-    }
-
-    .krt-header__sheetDropdown[open] summary {
-        background: rgba(255, 255, 255, 0.12);
-    }
-
-    .krt-header__sheetDropdown ul {
-        list-style: none;
-        margin: 0;
-        padding: var(--krt-space-sm, 0.5rem);
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-xs, 0.25rem);
     }
 
     .krt-header__iconButton {
