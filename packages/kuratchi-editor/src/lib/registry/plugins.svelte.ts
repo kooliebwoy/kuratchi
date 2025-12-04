@@ -2,6 +2,7 @@ import type { EditorPlugin } from '../plugins/context';
 import { pagesPlugin } from '../plugins/pages';
 import { navigationPlugin } from '../plugins/navigation';
 import { formsPlugin } from '../plugins/forms';
+import { catalogPlugin } from '../plugins/catalog';
 import { blogPlugin } from '../plugins/blog';
 import { sitePlugin } from '../plugins/site';
 import { themesPlugin } from '../plugins/themes';
@@ -71,6 +72,7 @@ registry.register(navigationPlugin);
 registry.register(sitePlugin);
 registry.register(themesPlugin);
 registry.register(formsPlugin);
+registry.register(catalogPlugin);
 // registry.register(blogPlugin);
 
 // Future plugins:

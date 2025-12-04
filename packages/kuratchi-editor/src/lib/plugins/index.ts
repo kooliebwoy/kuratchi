@@ -28,6 +28,7 @@ export { navigationPlugin } from './navigation';
 export { sitePlugin } from './site';
 export { themesPlugin } from './themes';
 export { formsPlugin } from './forms';
+export { catalogPlugin } from './catalog';
 
 // Shared components
 export { default as MenuWidget } from './MenuWidget.svelte';

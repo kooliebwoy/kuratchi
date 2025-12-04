@@ -12,13 +12,16 @@ import FeatureShowcase from '../sections/FeatureShowcase.svelte';
 import TestimonialsGrid from '../sections/TestimonialsGrid.svelte';
 import PricingPlans from '../sections/PricingPlans.svelte';
 import ContactCTA from '../sections/ContactCTA.svelte';
+import CatalogGrid from '../sections/CatalogGrid.svelte';
+import CatalogView from '../sections/CatalogView.svelte';
+import FeaturedVehicles from '../sections/FeaturedVehicles.svelte';
 // Blocks promoted to sections
 import Carousel from '../sections/Carousel.svelte';
 import HoverCard from '../sections/HoverCard.svelte';
 import Modal from '../sections/Modal.svelte';
 import ImageDifference from '../sections/ImageDifference.svelte';
 import type { Component } from 'svelte';
-import { BarChart3, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders } from '@lucide/svelte';
+import { BarChart3, Bike, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders, Star } from '@lucide/svelte';
 
 export interface SectionDefinition {
 	name: string;
@@ -154,6 +157,27 @@ export const sections: SectionDefinition[] = [
                 icon: Sliders,
                 description: 'Compare two images with a slider',
                 component: ImageDifference
+        },
+        {
+                name: 'Catalog Grid',
+                type: 'catalog-grid',
+                icon: Bike,
+                description: 'Vehicle catalog grid with filters and search',
+                component: CatalogGrid
+        },
+        {
+                name: 'Catalog View',
+                type: 'catalog-view',
+                icon: LayoutGrid,
+                description: 'Full inventory page with grid/list views, pagination, and filters',
+                component: CatalogView
+        },
+        {
+                name: 'Featured Vehicles',
+                type: 'featured-vehicles',
+                icon: Star,
+                description: 'Showcase selected vehicles in grid, carousel, or showcase layout',
+                component: FeaturedVehicles
         }
 ];
 

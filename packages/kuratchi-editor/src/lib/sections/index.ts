@@ -24,6 +24,9 @@ export { default as SectionLayoutControls } from './SectionLayoutControls.svelte
 
 // Section components
 export { default as AboutUs } from './AboutUs.svelte';
+export { default as CatalogGrid } from './CatalogGrid.svelte';
+export { default as CatalogView } from './CatalogView.svelte';
+export { default as FeaturedVehicles } from './FeaturedVehicles.svelte';
 export { default as AboutUsCard } from './AboutUsCard.svelte';
 export { default as BlogHero } from './BlogHero.svelte';
 export { default as BlogPostList } from './BlogPostList.svelte';

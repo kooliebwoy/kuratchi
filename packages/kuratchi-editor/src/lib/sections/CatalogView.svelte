@@ -1,0 +1,1305 @@
+<script lang="ts">
+    import { Bike, Search, Grid, List, ChevronLeft, ChevronRight, SlidersHorizontal, X } from '@lucide/svelte';
+    import SectionLayoutControls from './SectionLayoutControls.svelte';
+    import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
+
+    interface CatalogOem {
+        id: string;
+        name: string;
+        logo_url?: string;
+    }
+
+    interface CatalogVehicle {
+        id: string;
+        oem_id: string;
+        oem_name: string;
+        model_name: string;
+        model_year?: number;
+        category: string;
+        msrp?: number;
+        currency?: string;
+        thumbnail_url?: string;
+        description?: string;
+        status: string;
+    }
+
+    interface Props {
+        // Data
+        vehicles?: CatalogVehicle[];
+        oems?: CatalogOem[];
+        
+        // Layout configuration
+        viewMode?: 'grid' | 'list';
+        gridColumns?: 2 | 3 | 4;
+        itemsPerPage?: 6 | 9 | 12 | 18 | 24;
+        
+        // Filter configuration
+        showFilters?: boolean;
+        filterPosition?: 'left' | 'right' | 'top';
+        collapsibleFilters?: boolean;
+        
+        // Display options
+        showSearch?: boolean;
+        showViewToggle?: boolean;
+        showPrices?: boolean;
+        showPagination?: boolean;
+        
+        // Header
+        title?: string;
+        subtitle?: string;
+        showHeader?: boolean;
+        
+        // Section layout
+        layout?: Partial<SectionLayout>;
+        isEditing?: boolean;
+        onLayoutChange?: (layout: SectionLayout) => void;
+    }
+
+    let {
+        vehicles = [],
+        oems = [],
+        viewMode = 'grid',
+        gridColumns = 3,
+        itemsPerPage = 12,
+        showFilters = true,
+        filterPosition = 'left',
+        collapsibleFilters = true,
+        showSearch = true,
+        showViewToggle = true,
+        showPrices = true,
+        showPagination = true,
+        title = 'Vehicle Inventory',
+        subtitle = '',
+        showHeader = true,
+        layout = {},
+        isEditing = false,
+        onLayoutChange
+    }: Props = $props();
+
+    // State
+    let currentViewMode = $state(viewMode);
+    let searchQuery = $state('');
+    let selectedOem = $state<string>('all');
+    let selectedCategory = $state<string>('all');
+    let selectedYear = $state<string>('all');
+    let priceRange = $state<{ min: number | null; max: number | null }>({ min: null, max: null });
+    let currentPage = $state(1);
+    let filtersExpanded = $state(!collapsibleFilters);
+    let mobileFiltersOpen = $state(false);
+
+    // Layout
+    const mergedLayout = $derived(mergeLayoutWithDefaults(layout));
+    const layoutStyles = $derived(getSectionLayoutStyles(mergedLayout));
+
+    // Categories
+    const categories = [
+        { value: 'all', label: 'All Categories' },
+        { value: 'atv', label: 'ATV' },
+        { value: 'utv', label: 'UTV / Side-by-Side' },
+        { value: 'dirtbike', label: 'Dirt Bike' },
+        { value: 'pitbike', label: 'Pit Bike' },
+        { value: 'motorcycle', label: 'Motorcycle' },
+        { value: 'electric', label: 'Electric' },
+        { value: 'other', label: 'Other' }
+    ];
+
+    // Get unique years from vehicles
+    const availableYears = $derived(() => {
+        const years = new Set<number>();
+        vehicles.forEach(v => {
+            if (v.model_year) years.add(v.model_year);
+        });
+        return Array.from(years).sort((a, b) => b - a);
+    });
+
+    // Filtered vehicles
+    const filteredVehicles = $derived(() => {
+        let result = vehicles.filter(v => v.status === 'published');
+
+        if (selectedOem !== 'all') {
+            result = result.filter(v => v.oem_id === selectedOem);
+        }
+
+        if (selectedCategory !== 'all') {
+            result = result.filter(v => v.category === selectedCategory);
+        }
+
+        if (selectedYear !== 'all') {
+            result = result.filter(v => v.model_year === parseInt(selectedYear));
+        }
+
+        if (priceRange.min !== null) {
+            result = result.filter(v => (v.msrp || 0) >= priceRange.min!);
+        }
+
+        if (priceRange.max !== null) {
+            result = result.filter(v => (v.msrp || 0) <= priceRange.max!);
+        }
+
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(v =>
+                v.model_name?.toLowerCase().includes(query) ||
+                v.oem_name?.toLowerCase().includes(query) ||
+                v.description?.toLowerCase().includes(query)
+            );
+        }
+
+        return result;
+    });
+
+    // Pagination
+    const totalPages = $derived(Math.ceil(filteredVehicles().length / itemsPerPage));
+    const paginatedVehicles = $derived(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredVehicles().slice(start, start + itemsPerPage);
+    });
+
+    // Reset page when filters change
+    $effect(() => {
+        // Dependencies
+        searchQuery; selectedOem; selectedCategory; selectedYear; priceRange;
+        currentPage = 1;
+    });
+
+    // Helpers
+    const formatPrice = (amount: number | undefined, currency: string = 'USD') => {
+        if (!amount) return '';
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency,
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    };
+
+    const getCategoryLabel = (cat: string) => {
+        const found = categories.find(c => c.value === cat);
+        return found?.label || cat;
+    };
+
+    const clearFilters = () => {
+        searchQuery = '';
+        selectedOem = 'all';
+        selectedCategory = 'all';
+        selectedYear = 'all';
+        priceRange = { min: null, max: null };
+    };
+
+    const hasActiveFilters = $derived(
+        selectedOem !== 'all' || 
+        selectedCategory !== 'all' || 
+        selectedYear !== 'all' || 
+        priceRange.min !== null || 
+        priceRange.max !== null ||
+        searchQuery !== ''
+    );
+
+    const handleLayoutChange = (newLayout: SectionLayout) => {
+        onLayoutChange?.(newLayout);
+    };
+</script>
+
+<section class="catalog-view" style={layoutStyles} data-filter-position={filterPosition}>
+    {#if isEditing}
+        <SectionLayoutControls
+            layout={mergedLayout}
+            onchange={handleLayoutChange}
+        />
+    {/if}
+
+    <div class="catalog-view__container">
+        <!-- Header -->
+        {#if showHeader && (title || subtitle)}
+            <header class="catalog-view__header">
+                {#if title}
+                    <h1 class="catalog-view__title">{title}</h1>
+                {/if}
+                {#if subtitle}
+                    <p class="catalog-view__subtitle">{subtitle}</p>
+                {/if}
+            </header>
+        {/if}
+
+        <!-- Top Bar: Search + View Toggle -->
+        <div class="catalog-view__topbar">
+            {#if showSearch}
+                <div class="catalog-view__search">
+                    <Search size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search vehicles..."
+                        bind:value={searchQuery}
+                    />
+                    {#if searchQuery}
+                        <button class="catalog-view__searchClear" onclick={() => searchQuery = ''}>
+                            <X size={16} />
+                        </button>
+                    {/if}
+                </div>
+            {/if}
+
+            <div class="catalog-view__topbarActions">
+                <!-- Mobile filter toggle -->
+                {#if showFilters && filterPosition !== 'top'}
+                    <button 
+                        class="catalog-view__mobileFilterBtn"
+                        onclick={() => mobileFiltersOpen = !mobileFiltersOpen}
+                    >
+                        <SlidersHorizontal size={18} />
+                        Filters
+                        {#if hasActiveFilters}
+                            <span class="catalog-view__filterBadge"></span>
+                        {/if}
+                    </button>
+                {/if}
+
+                {#if showViewToggle}
+                    <div class="catalog-view__viewToggle">
+                        <button
+                            class="catalog-view__viewBtn"
+                            class:active={currentViewMode === 'grid'}
+                            onclick={() => currentViewMode = 'grid'}
+                            title="Grid view"
+                        >
+                            <Grid size={18} />
+                        </button>
+                        <button
+                            class="catalog-view__viewBtn"
+                            class:active={currentViewMode === 'list'}
+                            onclick={() => currentViewMode = 'list'}
+                            title="List view"
+                        >
+                            <List size={18} />
+                        </button>
+                    </div>
+                {/if}
+
+                <span class="catalog-view__count">
+                    {filteredVehicles().length} vehicle{filteredVehicles().length !== 1 ? 's' : ''}
+                </span>
+            </div>
+        </div>
+
+        <!-- Top Filters (if position is top) -->
+        {#if showFilters && filterPosition === 'top'}
+            <div class="catalog-view__filtersTop">
+                <div class="catalog-view__filterRow">
+                    <select bind:value={selectedOem} class="catalog-view__select">
+                        <option value="all">All Brands</option>
+                        {#each oems as oem}
+                            <option value={oem.id}>{oem.name}</option>
+                        {/each}
+                    </select>
+
+                    <select bind:value={selectedCategory} class="catalog-view__select">
+                        {#each categories as cat}
+                            <option value={cat.value}>{cat.label}</option>
+                        {/each}
+                    </select>
+
+                    {#if availableYears().length > 0}
+                        <select bind:value={selectedYear} class="catalog-view__select">
+                            <option value="all">All Years</option>
+                            {#each availableYears() as year}
+                                <option value={year.toString()}>{year}</option>
+                            {/each}
+                        </select>
+                    {/if}
+
+                    {#if hasActiveFilters}
+                        <button class="catalog-view__clearBtn" onclick={clearFilters}>
+                            Clear Filters
+                        </button>
+                    {/if}
+                </div>
+            </div>
+        {/if}
+
+        <!-- Main Content Area -->
+        <div class="catalog-view__main" class:has-sidebar={showFilters && filterPosition !== 'top'}>
+            <!-- Sidebar Filters -->
+            {#if showFilters && filterPosition !== 'top'}
+                <aside 
+                    class="catalog-view__sidebar"
+                    class:mobile-open={mobileFiltersOpen}
+                    data-position={filterPosition}
+                >
+                    <div class="catalog-view__sidebarHeader">
+                        <h3>Filters</h3>
+                        {#if hasActiveFilters}
+                            <button class="catalog-view__clearLink" onclick={clearFilters}>
+                                Clear all
+                            </button>
+                        {/if}
+                        <button 
+                            class="catalog-view__sidebarClose"
+                            onclick={() => mobileFiltersOpen = false}
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <!-- Brand Filter -->
+                    <div class="catalog-view__filterGroup">
+                        <h4>Brand</h4>
+                        <div class="catalog-view__filterOptions">
+                            <label class="catalog-view__filterOption">
+                                <input 
+                                    type="radio" 
+                                    name="oem" 
+                                    value="all" 
+                                    bind:group={selectedOem}
+                                />
+                                <span>All Brands</span>
+                            </label>
+                            {#each oems as oem}
+                                <label class="catalog-view__filterOption">
+                                    <input 
+                                        type="radio" 
+                                        name="oem" 
+                                        value={oem.id} 
+                                        bind:group={selectedOem}
+                                    />
+                                    <span>{oem.name}</span>
+                                </label>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <!-- Category Filter -->
+                    <div class="catalog-view__filterGroup">
+                        <h4>Category</h4>
+                        <div class="catalog-view__filterOptions">
+                            {#each categories as cat}
+                                <label class="catalog-view__filterOption">
+                                    <input 
+                                        type="radio" 
+                                        name="category" 
+                                        value={cat.value} 
+                                        bind:group={selectedCategory}
+                                    />
+                                    <span>{cat.label}</span>
+                                </label>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <!-- Year Filter -->
+                    {#if availableYears().length > 0}
+                        <div class="catalog-view__filterGroup">
+                            <h4>Year</h4>
+                            <div class="catalog-view__filterOptions">
+                                <label class="catalog-view__filterOption">
+                                    <input 
+                                        type="radio" 
+                                        name="year" 
+                                        value="all" 
+                                        bind:group={selectedYear}
+                                    />
+                                    <span>All Years</span>
+                                </label>
+                                {#each availableYears() as year}
+                                    <label class="catalog-view__filterOption">
+                                        <input 
+                                            type="radio" 
+                                            name="year" 
+                                            value={year.toString()} 
+                                            bind:group={selectedYear}
+                                        />
+                                        <span>{year}</span>
+                                    </label>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
+                    <!-- Price Range -->
+                    {#if showPrices}
+                        <div class="catalog-view__filterGroup">
+                            <h4>Price Range</h4>
+                            <div class="catalog-view__priceInputs">
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    bind:value={priceRange.min}
+                                    class="catalog-view__priceInput"
+                                />
+                                <span>to</span>
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    bind:value={priceRange.max}
+                                    class="catalog-view__priceInput"
+                                />
+                            </div>
+                        </div>
+                    {/if}
+                </aside>
+
+                <!-- Mobile overlay -->
+                {#if mobileFiltersOpen}
+                    <div 
+                        class="catalog-view__overlay"
+                        onclick={() => mobileFiltersOpen = false}
+                    ></div>
+                {/if}
+            {/if}
+
+            <!-- Vehicle Grid/List -->
+            <div class="catalog-view__content">
+                {#if paginatedVehicles().length === 0}
+                    <div class="catalog-view__empty">
+                        <Bike size={48} strokeWidth={1} />
+                        <p>No vehicles found</p>
+                        {#if hasActiveFilters}
+                            <button class="catalog-view__emptyBtn" onclick={clearFilters}>
+                                Clear filters
+                            </button>
+                        {/if}
+                    </div>
+                {:else if currentViewMode === 'grid'}
+                    <div 
+                        class="catalog-view__grid"
+                        style="--columns: {gridColumns}"
+                    >
+                        {#each paginatedVehicles() as vehicle}
+                            <article class="catalog-view__card">
+                                <div class="catalog-view__cardImage">
+                                    {#if vehicle.thumbnail_url}
+                                        <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+                                    {:else}
+                                        <div class="catalog-view__cardPlaceholder">
+                                            <Bike size={32} />
+                                        </div>
+                                    {/if}
+                                    <span class="catalog-view__cardCategory">
+                                        {getCategoryLabel(vehicle.category)}
+                                    </span>
+                                </div>
+                                <div class="catalog-view__cardContent">
+                                    <span class="catalog-view__cardBrand">{vehicle.oem_name}</span>
+                                    <h3 class="catalog-view__cardTitle">
+                                        {#if vehicle.model_year}{vehicle.model_year}{/if}
+                                        {vehicle.model_name}
+                                    </h3>
+                                    {#if showPrices && vehicle.msrp}
+                                        <span class="catalog-view__cardPrice">
+                                            {formatPrice(vehicle.msrp, vehicle.currency)}
+                                        </span>
+                                    {/if}
+                                    <button class="catalog-view__cardBtn">
+                                        View Details
+                                    </button>
+                                </div>
+                            </article>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="catalog-view__list">
+                        {#each paginatedVehicles() as vehicle}
+                            <article class="catalog-view__listItem">
+                                <div class="catalog-view__listImage">
+                                    {#if vehicle.thumbnail_url}
+                                        <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+                                    {:else}
+                                        <div class="catalog-view__listPlaceholder">
+                                            <Bike size={24} />
+                                        </div>
+                                    {/if}
+                                </div>
+                                <div class="catalog-view__listContent">
+                                    <div class="catalog-view__listHeader">
+                                        <span class="catalog-view__listBrand">{vehicle.oem_name}</span>
+                                        <span class="catalog-view__listCategory">
+                                            {getCategoryLabel(vehicle.category)}
+                                        </span>
+                                    </div>
+                                    <h3 class="catalog-view__listTitle">
+                                        {#if vehicle.model_year}{vehicle.model_year}{/if}
+                                        {vehicle.model_name}
+                                    </h3>
+                                    {#if vehicle.description}
+                                        <p class="catalog-view__listDesc">{vehicle.description}</p>
+                                    {/if}
+                                </div>
+                                <div class="catalog-view__listActions">
+                                    {#if showPrices && vehicle.msrp}
+                                        <span class="catalog-view__listPrice">
+                                            {formatPrice(vehicle.msrp, vehicle.currency)}
+                                        </span>
+                                    {/if}
+                                    <button class="catalog-view__listBtn">
+                                        View Details
+                                    </button>
+                                </div>
+                            </article>
+                        {/each}
+                    </div>
+                {/if}
+
+                <!-- Pagination -->
+                {#if showPagination && totalPages > 1}
+                    <nav class="catalog-view__pagination">
+                        <button
+                            class="catalog-view__pageBtn"
+                            disabled={currentPage === 1}
+                            onclick={() => currentPage = Math.max(1, currentPage - 1)}
+                        >
+                            <ChevronLeft size={18} />
+                            Previous
+                        </button>
+
+                        <div class="catalog-view__pageNumbers">
+                            {#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
+                                {#if page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)}
+                                    <button
+                                        class="catalog-view__pageNum"
+                                        class:active={page === currentPage}
+                                        onclick={() => currentPage = page}
+                                    >
+                                        {page}
+                                    </button>
+                                {:else if page === currentPage - 2 || page === currentPage + 2}
+                                    <span class="catalog-view__pageEllipsis">...</span>
+                                {/if}
+                            {/each}
+                        </div>
+
+                        <button
+                            class="catalog-view__pageBtn"
+                            disabled={currentPage === totalPages}
+                            onclick={() => currentPage = Math.min(totalPages, currentPage + 1)}
+                        >
+                            Next
+                            <ChevronRight size={18} />
+                        </button>
+                    </nav>
+                {/if}
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .catalog-view {
+        position: relative;
+        padding: var(--section-padding-y, 3rem) var(--section-padding-x, 1.5rem);
+        background: var(--section-bg, #ffffff);
+    }
+
+    .catalog-view__container {
+        max-width: var(--section-max-width, 1400px);
+        margin: 0 auto;
+    }
+
+    /* Header */
+    .catalog-view__header {
+        margin-bottom: 2rem;
+    }
+
+    .catalog-view__title {
+        margin: 0 0 0.5rem;
+        font-size: 2rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .catalog-view__subtitle {
+        margin: 0;
+        font-size: 1rem;
+        color: #64748b;
+    }
+
+    /* Top Bar */
+    .catalog-view__topbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__search {
+        flex: 1;
+        min-width: 200px;
+        max-width: 400px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        color: #64748b;
+    }
+
+    .catalog-view__search input {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 0.9375rem;
+        color: #0f172a;
+        outline: none;
+    }
+
+    .catalog-view__search input::placeholder {
+        color: #94a3b8;
+    }
+
+    .catalog-view__searchClear {
+        padding: 0.25rem;
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        cursor: pointer;
+        border-radius: 0.25rem;
+    }
+
+    .catalog-view__searchClear:hover {
+        color: #64748b;
+        background: #e2e8f0;
+    }
+
+    .catalog-view__topbarActions {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-left: auto;
+    }
+
+    .catalog-view__mobileFilterBtn {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1rem;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #374151;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .catalog-view__filterBadge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 10px;
+        height: 10px;
+        background: #3b82f6;
+        border-radius: 50%;
+    }
+
+    .catalog-view__viewToggle {
+        display: flex;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+
+    .catalog-view__viewBtn {
+        padding: 0.5rem 0.75rem;
+        border: none;
+        background: #ffffff;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .catalog-view__viewBtn:first-child {
+        border-right: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__viewBtn:hover {
+        background: #f8fafc;
+    }
+
+    .catalog-view__viewBtn.active {
+        background: #0f172a;
+        color: #ffffff;
+    }
+
+    .catalog-view__count {
+        font-size: 0.875rem;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    /* Top Filters */
+    .catalog-view__filtersTop {
+        margin-bottom: 1.5rem;
+    }
+
+    .catalog-view__filterRow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .catalog-view__select {
+        padding: 0.625rem 1rem;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        color: #0f172a;
+        cursor: pointer;
+        min-width: 140px;
+    }
+
+    .catalog-view__clearBtn {
+        padding: 0.625rem 1rem;
+        background: transparent;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .catalog-view__clearBtn:hover {
+        background: #f8fafc;
+        color: #0f172a;
+    }
+
+    /* Main Layout */
+    .catalog-view__main {
+        display: flex;
+        gap: 2rem;
+    }
+
+    .catalog-view__main.has-sidebar[data-filter-position="right"] {
+        flex-direction: row-reverse;
+    }
+
+    /* Sidebar */
+    .catalog-view__sidebar {
+        flex-shrink: 0;
+        width: 260px;
+    }
+
+    .catalog-view__sidebarHeader {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__sidebarHeader h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .catalog-view__clearLink {
+        margin-left: auto;
+        padding: 0;
+        border: none;
+        background: transparent;
+        font-size: 0.8125rem;
+        color: #3b82f6;
+        cursor: pointer;
+    }
+
+    .catalog-view__clearLink:hover {
+        text-decoration: underline;
+    }
+
+    .catalog-view__sidebarClose {
+        display: none;
+        padding: 0.25rem;
+        border: none;
+        background: transparent;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .catalog-view__filterGroup {
+        margin-bottom: 1.5rem;
+    }
+
+    .catalog-view__filterGroup h4 {
+        margin: 0 0 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #374151;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .catalog-view__filterOptions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .catalog-view__filterOption {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        color: #374151;
+        cursor: pointer;
+    }
+
+    .catalog-view__filterOption input {
+        accent-color: #3b82f6;
+    }
+
+    .catalog-view__priceInputs {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .catalog-view__priceInputs span {
+        font-size: 0.875rem;
+        color: #64748b;
+    }
+
+    .catalog-view__priceInput {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        width: 80px;
+    }
+
+    .catalog-view__overlay {
+        display: none;
+    }
+
+    /* Content */
+    .catalog-view__content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* Empty State */
+    .catalog-view__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        padding: 4rem 2rem;
+        text-align: center;
+        color: #94a3b8;
+    }
+
+    .catalog-view__empty p {
+        margin: 0;
+        font-size: 1.125rem;
+    }
+
+    .catalog-view__emptyBtn {
+        padding: 0.625rem 1.25rem;
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        cursor: pointer;
+    }
+
+    /* Grid View */
+    .catalog-view__grid {
+        display: grid;
+        grid-template-columns: repeat(var(--columns, 3), 1fr);
+        gap: 1.5rem;
+    }
+
+    .catalog-view__card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        transition: all 0.2s ease;
+    }
+
+    .catalog-view__card:hover {
+        box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .catalog-view__cardImage {
+        position: relative;
+        aspect-ratio: 4/3;
+        background: #f8fafc;
+    }
+
+    .catalog-view__cardImage img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .catalog-view__cardPlaceholder {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        color: #cbd5e1;
+    }
+
+    .catalog-view__cardCategory {
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        padding: 0.25rem 0.625rem;
+        background: rgba(0, 0, 0, 0.7);
+        color: #ffffff;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 0.25rem;
+    }
+
+    .catalog-view__cardContent {
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .catalog-view__cardBrand {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #3b82f6;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .catalog-view__cardTitle {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .catalog-view__cardPrice {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #059669;
+        margin-top: 0.25rem;
+    }
+
+    .catalog-view__cardBtn {
+        margin-top: 0.75rem;
+        padding: 0.625rem 1rem;
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+
+    .catalog-view__cardBtn:hover {
+        background: #1e293b;
+    }
+
+    /* List View */
+    .catalog-view__list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .catalog-view__listItem {
+        display: flex;
+        gap: 1.5rem;
+        padding: 1.25rem;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        transition: all 0.2s ease;
+    }
+
+    .catalog-view__listItem:hover {
+        box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.08);
+    }
+
+    .catalog-view__listImage {
+        flex-shrink: 0;
+        width: 180px;
+        aspect-ratio: 4/3;
+        background: #f8fafc;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+
+    .catalog-view__listImage img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .catalog-view__listPlaceholder {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        color: #cbd5e1;
+    }
+
+    .catalog-view__listContent {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .catalog-view__listHeader {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .catalog-view__listBrand {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #3b82f6;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .catalog-view__listCategory {
+        padding: 0.125rem 0.5rem;
+        background: #f1f5f9;
+        color: #64748b;
+        font-size: 0.6875rem;
+        font-weight: 500;
+        border-radius: 0.25rem;
+    }
+
+    .catalog-view__listTitle {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .catalog-view__listDesc {
+        margin: 0;
+        font-size: 0.875rem;
+        color: #64748b;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .catalog-view__listActions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .catalog-view__listPrice {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #059669;
+    }
+
+    .catalog-view__listBtn {
+        padding: 0.625rem 1.25rem;
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .catalog-view__listBtn:hover {
+        background: #1e293b;
+    }
+
+    /* Pagination */
+    .catalog-view__pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__pageBtn {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 1rem;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        color: #374151;
+        cursor: pointer;
+    }
+
+    .catalog-view__pageBtn:hover:not(:disabled) {
+        background: #f8fafc;
+    }
+
+    .catalog-view__pageBtn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .catalog-view__pageNumbers {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .catalog-view__pageNum {
+        min-width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        background: transparent;
+        border: none;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        color: #374151;
+        cursor: pointer;
+    }
+
+    .catalog-view__pageNum:hover {
+        background: #f1f5f9;
+    }
+
+    .catalog-view__pageNum.active {
+        background: #0f172a;
+        color: #ffffff;
+    }
+
+    .catalog-view__pageEllipsis {
+        padding: 0 0.25rem;
+        color: #94a3b8;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+        .catalog-view__grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .catalog-view__sidebar {
+            width: 220px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .catalog-view__mobileFilterBtn {
+            display: flex;
+        }
+
+        .catalog-view__main.has-sidebar {
+            display: block;
+        }
+
+        .catalog-view__sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            max-width: 320px;
+            background: #ffffff;
+            z-index: 1000;
+            padding: 1.5rem;
+            overflow-y: auto;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .catalog-view__sidebar[data-position="right"] {
+            left: auto;
+            transform: translateX(100%);
+        }
+
+        .catalog-view__sidebar.mobile-open {
+            transform: translateX(0);
+        }
+
+        .catalog-view__sidebarClose {
+            display: block;
+        }
+
+        .catalog-view__overlay {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .catalog-view__grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .catalog-view__listItem {
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .catalog-view__listImage {
+            width: 100%;
+        }
+
+        .catalog-view__listActions {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .catalog-view__pagination {
+            flex-wrap: wrap;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .catalog-view__grid {
+            grid-template-columns: 1fr;
+        }
+
+        .catalog-view__topbar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .catalog-view__search {
+            max-width: none;
+        }
+
+        .catalog-view__topbarActions {
+            justify-content: space-between;
+        }
+    }
+</style>

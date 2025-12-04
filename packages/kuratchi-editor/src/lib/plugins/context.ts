@@ -160,6 +160,7 @@ export const EXT = {
     SITE_LAYOUT: 'site-layout',
     THEMES: 'themes',
     FORMS: 'forms',
+    CATALOG: 'catalog',
     BLOG: 'blog',
 } as const;
 

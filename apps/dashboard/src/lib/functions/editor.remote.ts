@@ -61,6 +61,8 @@ export interface SiteEditorResult {
 	site: SiteSummary;
 	page: PageData;
 	forms: AttachedForm[];
+	catalogOems: any[];
+	catalogVehicles: any[];
 }
 
 export interface SaveSitePageResult {
@@ -218,6 +220,35 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 		// Continue without forms - they may not exist yet
 	}
 
+	// Load catalog data (OEMs and vehicles) from org database
+	let catalogOems: any[] = [];
+	let catalogVehicles: any[] = [];
+	try {
+		const orgDb = await getDatabase(locals);
+		
+		// Get OEMs
+		const oemsResult = await orgDb.catalogOems
+			.orderBy('name', 'asc')
+			.many();
+		
+		if (oemsResult.success && oemsResult.data) {
+			catalogOems = oemsResult.data;
+		}
+
+		// Get published vehicles
+		const vehiclesResult = await orgDb.catalogVehicles
+			.where({ status: 'published' })
+			.orderBy('model_name', 'asc')
+			.many();
+		
+		if (vehiclesResult.success && vehiclesResult.data) {
+			catalogVehicles = vehiclesResult.data;
+		}
+	} catch (err) {
+		console.error('[loadSiteEditor] Failed to load catalog:', err);
+		// Continue without catalog - it may not exist yet
+	}
+
 	return {
 		site: {
 			id: site.id,
@@ -230,7 +261,9 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 			metadata: siteMetadata
 		},
 		page: toPageData(pageRow, site),
-		forms
+		forms,
+		catalogOems,
+		catalogVehicles
 	};
 });
 

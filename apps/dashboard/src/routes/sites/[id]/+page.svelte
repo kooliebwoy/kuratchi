@@ -52,11 +52,17 @@
   // Forms attached to this site
   let siteForms = $state<any[]>([]);
   
+  // Catalog data
+  let catalogOems = $state<any[]>([]);
+  let catalogVehicles = $state<any[]>([]);
+  
   const initialData = await editorQuery;
 
   site = initialData.site;
   pageData = clone(initialData.page);
   siteForms = initialData.forms || [];
+  catalogOems = initialData.catalogOems || [];
+  catalogVehicles = initialData.catalogVehicles || [];
 
   // Extract site-level data from site.metadata
   if (site?.metadata) {
@@ -68,7 +74,7 @@
     siteFooter = (meta.footer as Record<string, unknown>) ?? null;
     console.log('[Dashboard] Initialized siteHeader:', siteHeader);
     console.log('[Dashboard] Initialized siteFooter:', siteFooter);
-    siteMetadata = { ...meta, forms: siteForms };
+    siteMetadata = { ...meta, forms: siteForms, catalogOems, catalogVehicles };
     delete siteMetadata.header;
     delete siteMetadata.footer;
   }
