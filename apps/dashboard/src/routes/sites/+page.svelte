@@ -130,7 +130,6 @@
     {/if}
   </header>
 
-  <Card class="kui-panel">
     <div class="kui-table-scroll">
       {#if sites.loading}
         <div class="kui-center"><Loading size="md" /></div>
@@ -202,7 +201,6 @@
         </div>
       {/if}
     </div>
-  </Card>
 </div>
 
 <Dialog bind:open={createDialogOpen} bind:this={createDialog} size="md">

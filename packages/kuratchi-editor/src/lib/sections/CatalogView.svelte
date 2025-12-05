@@ -1,7 +1,15 @@
 <script lang="ts">
+    import { onMount, getContext } from 'svelte';
     import { Bike, Search, Grid, List, ChevronLeft, ChevronRight, SlidersHorizontal, X } from '@lucide/svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
+
+    // Get catalog data from context (provided by Editor)
+    const siteMetadata = getContext<{
+        catalogOems: CatalogOem[];
+        catalogVehicles: CatalogVehicle[];
+    }>('siteMetadata');
 
     interface CatalogOem {
         id: string;
@@ -24,6 +32,11 @@
     }
 
     interface Props {
+        // Identity
+        id?: string;
+        type?: string;
+        editable?: boolean;
+        
         // Data
         vehicles?: CatalogVehicle[];
         oems?: CatalogOem[];
@@ -56,8 +69,11 @@
     }
 
     let {
-        vehicles = [],
-        oems = [],
+        id = crypto.randomUUID(),
+        type = 'catalog-view',
+        editable = true,
+        vehicles: vehiclesProp = [],
+        oems: oemsProp = [],
         viewMode = 'grid',
         gridColumns = 3,
         itemsPerPage = 12,
@@ -78,6 +94,44 @@
 
     // State
     let currentViewMode = $state(viewMode);
+
+    // Use context data if props are empty, otherwise use props
+    const vehicles = $derived(
+        vehiclesProp.length > 0 ? vehiclesProp : (siteMetadata?.catalogVehicles || [])
+    );
+    const oems = $derived(
+        oemsProp.length > 0 ? oemsProp : (siteMetadata?.catalogOems || [])
+    );
+
+    // Block registry for editor persistence
+    let component = $state<HTMLElement>();
+    const componentRef = {};
+    
+    // Don't save vehicles/oems to content - they come from context
+    const content = $derived({
+        id,
+        type,
+        viewMode: currentViewMode,
+        gridColumns,
+        itemsPerPage,
+        showFilters,
+        filterPosition,
+        collapsibleFilters,
+        showSearch,
+        showViewToggle,
+        showPrices,
+        showPagination,
+        title,
+        subtitle,
+        showHeader,
+        layout
+    });
+
+    onMount(() => {
+        if (!editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
     let searchQuery = $state('');
     let selectedOem = $state<string>('all');
     let selectedCategory = $state<string>('all');
@@ -200,7 +254,7 @@
     };
 </script>
 
-<section class="catalog-view" style={layoutStyles} data-filter-position={filterPosition}>
+<section class="catalog-view" class:editor-item={editable} style={layoutStyles} data-filter-position={filterPosition} bind:this={component}>
     {#if isEditing}
         <SectionLayoutControls
             layout={mergedLayout}

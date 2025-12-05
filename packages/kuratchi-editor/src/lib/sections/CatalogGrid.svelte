@@ -1,22 +1,9 @@
 <script lang="ts">
+    import { onMount, getContext } from 'svelte';
     import { Bike, Search, Filter, ChevronDown } from '@lucide/svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
-
-    interface Props {
-        oemId?: string;
-        category?: string;
-        columns?: number;
-        showFilters?: boolean;
-        showPrices?: boolean;
-        title?: string;
-        subtitle?: string;
-        layout?: Partial<SectionLayout>;
-        vehicles?: CatalogVehicle[];
-        oems?: CatalogOem[];
-        isEditing?: boolean;
-        onLayoutChange?: (layout: SectionLayout) => void;
-    }
 
     interface CatalogOem {
         id: string;
@@ -38,7 +25,34 @@
         status: string;
     }
 
+    // Get catalog data from context (provided by Editor)
+    const siteMetadata = getContext<{
+        catalogOems: CatalogOem[];
+        catalogVehicles: CatalogVehicle[];
+    }>('siteMetadata');
+
+    interface Props {
+        id?: string;
+        type?: string;
+        editable?: boolean;
+        oemId?: string;
+        category?: string;
+        columns?: number;
+        showFilters?: boolean;
+        showPrices?: boolean;
+        title?: string;
+        subtitle?: string;
+        layout?: Partial<SectionLayout>;
+        vehicles?: CatalogVehicle[];
+        oems?: CatalogOem[];
+        isEditing?: boolean;
+        onLayoutChange?: (layout: SectionLayout) => void;
+    }
+
     let {
+        id = crypto.randomUUID(),
+        type = 'catalog-grid',
+        editable = true,
         oemId,
         category,
         columns = 3,
@@ -47,11 +61,43 @@
         title = 'Our Vehicles',
         subtitle = 'Browse our selection of powersport vehicles',
         layout = {},
-        vehicles = [],
-        oems = [],
+        vehicles: vehiclesProp = [],
+        oems: oemsProp = [],
         isEditing = false,
         onLayoutChange
     }: Props = $props();
+
+    // Use context data if props are empty, otherwise use props
+    const vehicles = $derived(
+        vehiclesProp.length > 0 ? vehiclesProp : (siteMetadata?.catalogVehicles || [])
+    );
+    const oems = $derived(
+        oemsProp.length > 0 ? oemsProp : (siteMetadata?.catalogOems || [])
+    );
+
+    // Block registry for editor persistence
+    let component = $state<HTMLElement>();
+    const componentRef = {};
+    
+    // Don't save vehicles/oems to content - they come from context
+    const content = $derived({
+        id,
+        type,
+        oemId,
+        category,
+        columns,
+        showFilters,
+        showPrices,
+        title,
+        subtitle,
+        layout
+    });
+
+    onMount(() => {
+        if (!editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 
     // Merge layout with defaults
     const mergedLayout = $derived(mergeLayoutWithDefaults(layout));
@@ -120,7 +166,7 @@
     };
 </script>
 
-<section class="catalog-grid" style={layoutStyles}>
+<section class="catalog-grid" class:editor-item={editable} style={layoutStyles} bind:this={component}>
     {#if isEditing}
         <SectionLayoutControls
             layout={mergedLayout}

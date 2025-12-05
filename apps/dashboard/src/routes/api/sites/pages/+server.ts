@@ -54,7 +54,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const siteMapping = JSON.parse(kvData);
 		console.log('[api/sites/pages] Found site mapping:', siteMapping);
 
-		// Step 2: Get org database and fetch site
+		// Step 2: Get org database and fetch site + catalog data
 		const orgDb = await locals.kuratchi?.orgDatabaseClient?.(siteMapping.orgId);
 		if (!orgDb) {
 			console.error('[api/sites/pages] Org database not available:', siteMapping.orgId);
@@ -71,6 +71,49 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 
 		const site = siteResult.data;
+
+		// Fetch catalog data from org database (OEMs and published vehicles)
+		let catalogOems: any[] = [];
+		let catalogVehicles: any[] = [];
+
+		try {
+			console.log('[api/sites/pages] Fetching catalog data...');
+			
+			// Fetch OEMs
+			const oemsResult = await orgDb.catalogOems
+				.where({ deleted_at: { isNullish: true } })
+				.all();
+			console.log('[api/sites/pages] OEMs result:', oemsResult);
+			
+			if (oemsResult.success && oemsResult.data) {
+				catalogOems = oemsResult.data;
+			}
+
+			// Fetch published vehicles
+			const vehiclesResult = await orgDb.catalogVehicles
+				.where({ status: 'published', deleted_at: { isNullish: true } })
+				.all();
+			console.log('[api/sites/pages] Vehicles result:', vehiclesResult);
+			
+			if (vehiclesResult.success && vehiclesResult.data) {
+				// Join with OEM names
+				catalogVehicles = vehiclesResult.data.map((vehicle: any) => {
+					const oem = catalogOems.find(o => o.id === vehicle.oem_id);
+					return {
+						...vehicle,
+						oem_name: oem?.name || vehicle.oem_name || 'Unknown'
+					};
+				});
+			}
+			
+			console.log('[api/sites/pages] Catalog data:', { 
+				oemsCount: catalogOems.length, 
+				vehiclesCount: catalogVehicles.length 
+			});
+		} catch (catalogErr) {
+			console.error('[api/sites/pages] Error fetching catalog data:', catalogErr);
+			// Continue without catalog data - tables may not be migrated yet
+		}
 
 		// Step 3: Get site database token from admin DB using site's databaseId
 		const adminOrm = await locals.kuratchi?.getAdminDb?.();
@@ -182,12 +225,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                 .where({ slug: 'homepage', deleted_at: { isNullish: true } })
                 .first();
             if (existingHome.success && existingHome.data) {
-                return json({ page: existingHome.data });
+                return json({ page: existingHome.data, catalogOems, catalogVehicles });
             }
 
             const inserted = await orm.pages.insert(insertPayload as any);
             if (inserted.success && inserted.data) {
-                return json({ page: inserted.data });
+                return json({ page: inserted.data, catalogOems, catalogVehicles });
             }
 
             // As a last resort, still return the theme template (non-persisted)
@@ -198,11 +241,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                     isSpecialPage: true,
                     status: true,
                     data: insertPayload.data
-                }
+                },
+                catalogOems,
+                catalogVehicles
             });
         }
 
-		return json({ page: pageResult.data });
+		return json({ page: pageResult.data, catalogOems, catalogVehicles });
 	} catch (err) {
 		console.error('[api/sites/pages] Error:', err);
 		error(500, 'Internal server error');

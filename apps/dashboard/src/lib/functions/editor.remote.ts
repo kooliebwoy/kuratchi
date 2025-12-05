@@ -249,6 +249,11 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 		// Continue without catalog - it may not exist yet
 	}
 
+	console.log('[loadSiteEditor] Catalog data loaded:', {
+		oemsCount: catalogOems.length,
+		vehiclesCount: catalogVehicles.length
+	});
+
 	return {
 		site: {
 			id: site.id,

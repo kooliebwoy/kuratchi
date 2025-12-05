@@ -375,7 +375,7 @@ export const updateVehicle = guardedCommand(
     oemId: v.optional(v.string()),
     modelName: v.optional(v.string()),
     modelYear: v.optional(v.number()),
-    category: v.optional(v.picklist(['atv', 'utv', 'dirtbike', 'pitbike', 'motorcycle', 'electric', 'other'])),
+    category: v.optional(v.string()), // Dynamic categories - accepts any slug
     msrp: v.optional(v.number()),
     currency: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
@@ -526,6 +526,198 @@ export const importScrapedVehicle = guardedCommand(
     } catch (err: any) {
       console.error('[catalog.importScrapedVehicle] error:', err);
       error(500, err.message || 'Failed to import vehicle');
+    }
+  }
+);
+
+// ============== CATEGORIES ==============
+
+// Types
+export interface CatalogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  color: string;
+  icon: string;
+  vehicle_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Helper to create slug from name
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Get all categories with vehicle counts
+export const getCategories = guardedQuery(async () => {
+  try {
+    const { locals } = getRequestEvent();
+    const db = await getDatabase(locals);
+    if (!db) {
+      console.log('[catalog.getCategories] No database available');
+      return [];
+    }
+
+    const categoriesTable = db.catalogCategories as any;
+    if (!categoriesTable) {
+      console.log('[catalog.getCategories] No catalogCategories table');
+      return [];
+    }
+
+    const result = await categoriesTable.orderBy('sort_order', 'asc').many();
+    console.log('[catalog.getCategories] Query result:', result);
+    
+    const categories = result?.data || result;
+    if (!Array.isArray(categories)) return [];
+
+    // Get vehicle counts per category
+    const vehiclesTable = db.catalogVehicles as any;
+    const vehicleCounts: Record<string, number> = {};
+    
+    if (vehiclesTable) {
+      const vehicles = await vehiclesTable.many();
+      const vehicleList = vehicles?.data || vehicles || [];
+      for (const v of vehicleList) {
+        if (v.category) {
+          vehicleCounts[v.category] = (vehicleCounts[v.category] || 0) + 1;
+        }
+      }
+    }
+
+    return categories.map((cat: any) => ({
+      ...cat,
+      vehicle_count: vehicleCounts[cat.slug] || 0
+    }));
+  } catch (err) {
+    console.error('[catalog.getCategories] error:', err);
+    return [];
+  }
+});
+
+// Create category
+export const createCategory = guardedCommand(
+  v.object({
+    name: v.pipe(v.string(), v.nonEmpty()),
+    description: v.optional(v.string()),
+    color: v.pipe(v.string(), v.nonEmpty()),
+    icon: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async ({ name, description, color, icon }) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const categoriesTable = db.catalogCategories as any;
+      if (!categoriesTable) error(500, 'Categories table not available');
+
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+      const slug = slugify(name);
+
+      console.log('[catalog.createCategory] Inserting category:', { id, name, slug });
+
+      const result = await categoriesTable.insert({
+        id,
+        name,
+        slug,
+        description: description || null,
+        color,
+        icon,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now
+      });
+
+      console.log('[catalog.createCategory] Insert result:', result);
+
+      if (!result.success) {
+        console.error('[catalog.createCategory] Insert failed:', result.error);
+        error(500, result.error || 'Failed to create category');
+      }
+
+      return { success: true, id };
+    } catch (err: any) {
+      console.error('[catalog.createCategory] error:', err);
+      error(500, err.message || 'Failed to create category');
+    }
+  }
+);
+
+// Update category
+export const updateCategory = guardedCommand(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty()),
+    name: v.optional(v.pipe(v.string(), v.nonEmpty())),
+    description: v.optional(v.string()),
+    color: v.optional(v.pipe(v.string(), v.nonEmpty())),
+    icon: v.optional(v.pipe(v.string(), v.nonEmpty()))
+  }),
+  async ({ id, name, description, color, icon }) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const categoriesTable = db.catalogCategories as any;
+      if (!categoriesTable) error(500, 'Categories table not available');
+
+      const updates: Record<string, any> = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (name !== undefined) {
+        updates.name = name;
+        updates.slug = slugify(name);
+      }
+      if (description !== undefined) updates.description = description;
+      if (color !== undefined) updates.color = color;
+      if (icon !== undefined) updates.icon = icon;
+
+      console.log('[catalog.updateCategory] Updating category:', { id, updates });
+
+      const result = await categoriesTable.where({ id }).update(updates);
+
+      if (!result.success) {
+        console.error('[catalog.updateCategory] Update failed:', result.error);
+        error(500, result.error || 'Failed to update category');
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.updateCategory] error:', err);
+      error(500, err.message || 'Failed to update category');
+    }
+  }
+);
+
+// Delete category
+export const deleteCategory = guardedCommand(
+  v.object({ id: v.pipe(v.string(), v.nonEmpty()) }),
+  async ({ id }) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const categoriesTable = db.catalogCategories as any;
+      if (!categoriesTable) error(500, 'Categories table not available');
+
+      console.log('[catalog.deleteCategory] Deleting category:', { id });
+
+      const result = await categoriesTable.where({ id }).delete();
+
+      if (!result.success) {
+        console.error('[catalog.deleteCategory] Delete failed:', result.error);
+        error(500, result.error || 'Failed to delete category');
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.deleteCategory] error:', err);
+      error(500, err.message || 'Failed to delete category');
     }
   }
 );

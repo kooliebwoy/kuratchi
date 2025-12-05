@@ -1,5 +1,7 @@
 <script lang="ts">
+    import { onMount, getContext } from 'svelte';
     import { Bike, ChevronLeft, ChevronRight } from '@lucide/svelte';
+    import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
 
@@ -18,6 +20,11 @@
     }
 
     interface Props {
+        // Identity
+        id?: string;
+        type?: string;
+        editable?: boolean;
+        
         // Featured vehicle IDs or filter criteria
         vehicleIds?: string[];
         oemId?: string;
@@ -51,12 +58,20 @@
         onLayoutChange?: (layout: SectionLayout) => void;
     }
 
+    // Get catalog data from context (provided by Editor)
+    const siteMetadata = getContext<{
+        catalogVehicles: CatalogVehicle[];
+    }>('siteMetadata');
+
     let {
+        id = crypto.randomUUID(),
+        type = 'featured-vehicles',
+        editable = true,
         vehicleIds = [],
         oemId,
         category,
         limit = 4,
-        vehicles = [],
+        vehicles: vehiclesProp = [],
         displayMode = 'grid',
         columns = 4,
         showPrices = true,
@@ -76,6 +91,44 @@
 
     // Carousel state
     let carouselIndex = $state(0);
+
+    // Use context data if props are empty, otherwise use props
+    const vehicles = $derived(
+        vehiclesProp.length > 0 ? vehiclesProp : (siteMetadata?.catalogVehicles || [])
+    );
+
+    // Block registry for editor persistence
+    let component = $state<HTMLElement>();
+    const componentRef = {};
+    
+    // Don't save vehicles to content - they come from context
+    const content = $derived({
+        id,
+        type,
+        vehicleIds,
+        oemId,
+        category,
+        limit,
+        displayMode,
+        columns,
+        showPrices,
+        showCategory,
+        showDescription,
+        title,
+        subtitle,
+        showHeader,
+        headerAlign,
+        ctaText,
+        ctaLink,
+        showCta,
+        layout
+    });
+
+    onMount(() => {
+        if (!editable) return;
+        blockRegistry.register(componentRef, () => ({ ...content, region: 'content' }), 'content', component);
+        return () => blockRegistry.unregister(componentRef);
+    });
 
     // Layout
     const mergedLayout = $derived(mergeLayoutWithDefaults(layout));
@@ -143,7 +196,7 @@
     };
 </script>
 
-<section class="featured-vehicles" style={layoutStyles}>
+<section class="featured-vehicles" class:editor-item={editable} style={layoutStyles} bind:this={component}>
     {#if isEditing}
         <SectionLayoutControls
             layout={mergedLayout}

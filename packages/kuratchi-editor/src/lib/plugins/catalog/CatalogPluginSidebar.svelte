@@ -142,6 +142,7 @@
     };
 
     // Insert Full Catalog View (inventory page)
+    // Note: vehicles/oems come from context, not props
     const insertCatalogView = () => {
         ctx.addBlock('catalog-view', {
             viewMode: catalogConfig.viewMode,
@@ -159,6 +160,7 @@
     };
 
     // Insert Featured Vehicles Section
+    // Note: vehicles come from context, not props
     const insertFeaturedVehicles = () => {
         ctx.addBlock('featured-vehicles', {
             vehicleIds: Array.from(selectedVehicles),
@@ -176,6 +178,7 @@
     };
 
     // Insert Catalog Grid (simpler version)
+    // Note: vehicles/oems come from context, not props
     const insertCatalogGrid = () => {
         ctx.addBlock('catalog-grid', {
             oemId: selectedOemId || undefined,

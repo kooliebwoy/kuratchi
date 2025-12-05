@@ -9,7 +9,9 @@ export const load = async ({ locals, params }: RequestEvent) => {
 	if (!site) {
 		return {
 			site: null,
-			page: null
+			page: null,
+			catalogOems: [],
+			catalogVehicles: []
 		};
 	}
 
@@ -17,7 +19,9 @@ export const load = async ({ locals, params }: RequestEvent) => {
 	if (!subdomain) {
 		return {
 			site,
-			page: null
+			page: null,
+			catalogOems: [],
+			catalogVehicles: []
 		};
 	}
 
@@ -61,7 +65,7 @@ export const load = async ({ locals, params }: RequestEvent) => {
 
 		if (!apiToken) {
 			console.error('[site-renderer] SITE_RENDERER_API_TOKEN not configured');
-			return { site, page: null };
+			return { site, page: null, catalogOems: [], catalogVehicles: [] };
 		}
 
 		const response = await fetch(`${dashboardUrl}/api/sites/pages`, {
@@ -79,16 +83,22 @@ export const load = async ({ locals, params }: RequestEvent) => {
 
 		if (!response.ok) {
 			console.error('[site-renderer] API error fetching page:', response.status);
-			return { site, page: null };
+			return { site, page: null, catalogOems: [], catalogVehicles: [] };
 		}
 
 		const data = await response.json();
+		console.log('[site-renderer] Received catalog data:', {
+			oemsCount: data.catalogOems?.length || 0,
+			vehiclesCount: data.catalogVehicles?.length || 0
+		});
 		return {
 			site,
-			page: data.page
+			page: data.page,
+			catalogOems: data.catalogOems || [],
+			catalogVehicles: data.catalogVehicles || []
 		};
 	} catch (err) {
 		console.error('[site-renderer] Error loading page:', err);
-		return { site, page: null };
+		return { site, page: null, catalogOems: [], catalogVehicles: [] };
 	}
 };

@@ -73,7 +73,7 @@ registry.register(sitePlugin);
 registry.register(themesPlugin);
 registry.register(formsPlugin);
 registry.register(catalogPlugin);
-// registry.register(blogPlugin);
+registry.register(blogPlugin);
 
 // Future plugins:
 // registry.register(navigationPlugin);

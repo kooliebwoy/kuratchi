@@ -1,5 +1,5 @@
 export { default as Editor } from './Editor.svelte';
-export { defaultPageData } from './types';
+export { defaultPageData, createDefaultBlogData } from './types';
 export type { PageData, EditorOptions, EditorState, BlogData, BlogPost, BlogSettings, BlockSnapshot, SiteRegionState } from './types';
 export { themes, getTheme, getAllThemes, getThemeMetadata, getThemeHomepage, getThemeTemplate, DEFAULT_THEME_ID } from './themes';
 export type { ThemeMetadata, ThemeTemplate } from './themes';

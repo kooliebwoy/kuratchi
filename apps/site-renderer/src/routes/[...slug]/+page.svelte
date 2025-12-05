@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getBlock } from '@kuratchi/editor';
+  import { setContext } from 'svelte';
+  import { getBlock, getSection } from '@kuratchi/editor';
 
   interface PagePayload {
     content?: Array<Record<string, unknown>>;
@@ -18,10 +19,31 @@
   const pageData = (page?.data ?? null) as PagePayload | null;
   const contentBlocks = (pageData?.content ?? []) as Array<Record<string, unknown>>;
 
+  // Catalog data for CatalogGrid and FeaturedVehicles sections
+  const catalogOems = data?.catalogOems ?? [];
+  const catalogVehicles = data?.catalogVehicles ?? [];
+
+  // Provide siteMetadata context for catalog sections (matches Editor's context shape)
+  setContext('siteMetadata', {
+    get catalogOems() { return catalogOems; },
+    get catalogVehicles() { return catalogVehicles; }
+  });
+
   const blockKey = (block: Record<string, unknown>, index: number) => {
     if (typeof block.id === 'string' && block.id.length > 0) return block.id;
     if (typeof block.type === 'string' && block.type.length > 0) return `${block.type}-${index}`;
     return `block-${index}`;
+  };
+
+  // Helper to get component from either blocks or sections registry
+  const getComponent = (type: string) => {
+    const block = getBlock(type);
+    if (block?.component) return block.component;
+    
+    const section = getSection(type);
+    if (section?.component) return section.component;
+    
+    return null;
   };
 </script>
 
@@ -32,9 +54,8 @@
         {#each contentBlocks as block, index (blockKey(block, index))}
           {@const blockType = typeof block.type === 'string' ? block.type : null}
           {#if blockType}
-            {@const blockEntry = getBlock(blockType)}
-            {#if blockEntry?.component}
-              {@const Component = blockEntry.component}
+            {@const Component = getComponent(blockType)}
+            {#if Component}
               {@const props = { ...block, editable: false } satisfies Record<string, unknown>}
               <Component {...props} />
             {/if}

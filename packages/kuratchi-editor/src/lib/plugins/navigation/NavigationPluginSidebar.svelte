@@ -439,7 +439,7 @@
 			</div>
 		{:else}
 			<ul class="tree-list" role="tree">
-				{#each currentItems as item, index (item.id)}
+				{#each currentItems as item, index (item.id ?? `${index}-${item.label}`)}
 					{@render treeItem(item, activeRegion, null, 0)}
 				{/each}
 			</ul>
@@ -553,7 +553,7 @@
 		<!-- Children -->
 		{#if item.children?.length && expandedItems.has(item.id)}
 			<ul class="tree-list tree-list-nested" role="group">
-				{#each item.children as child (child.id)}
+				{#each item.children as child, childIndex (child.id ?? `${childIndex}-${child.label}`)}
 					{@render treeItem(child, region, item.id, depth + 1)}
 				{/each}
 			</ul>

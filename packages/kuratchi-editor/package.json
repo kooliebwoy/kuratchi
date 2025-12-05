@@ -17,6 +17,14 @@
       "types": "./src/lib/index.ts",
       "svelte": "./src/lib/index.ts",
       "default": "./src/lib/index.ts"
+    },
+    "./plugins/BlogManager.svelte": {
+      "svelte": "./src/lib/plugins/BlogManager.svelte",
+      "default": "./src/lib/plugins/BlogManager.svelte"
+    },
+    "./plugins/blog/blogThemes": {
+      "types": "./src/lib/plugins/blog/blogThemes.ts",
+      "default": "./src/lib/plugins/blog/blogThemes.ts"
     }
   },
   "files": [

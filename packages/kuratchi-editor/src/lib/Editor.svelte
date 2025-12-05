@@ -82,13 +82,15 @@ let {
         ...((siteMetadata as any)?.themeSettings || {})
     });
 
-    // Provide siteMetadata context for sections that need it (ContactCTA, Modal, etc.)
+    // Provide siteMetadata context for sections that need it (ContactCTA, Modal, Catalog sections, etc.)
     // We need to use a reactive getter so sections always get the latest metadata
     const siteMetadataContext = {
         get forms() { return (siteMetadata as any)?.forms || []; },
         get themeId() { return (siteMetadata as any)?.themeId; },
         get backgroundColor() { return (siteMetadata as any)?.backgroundColor; },
-        get blog() { return (siteMetadata as any)?.blog; }
+        get blog() { return (siteMetadata as any)?.blog; },
+        get catalogOems() { return (siteMetadata as any)?.catalogOems || []; },
+        get catalogVehicles() { return (siteMetadata as any)?.catalogVehicles || []; }
     };
     setContext('siteMetadata', siteMetadataContext);
 

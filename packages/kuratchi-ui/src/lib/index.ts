@@ -20,6 +20,7 @@ export { default as Loading } from './Loading.svelte';
 export { default as MetricCard } from './MetricCard.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as Progress } from './Progress.svelte';
+export { default as SlidePanel } from './SlidePanel.svelte';
 export { default as StatsCard } from './StatsCard.svelte';
 export { default as Table } from './Table.svelte';
 export { default as TableFilters } from './TableFilters.svelte';

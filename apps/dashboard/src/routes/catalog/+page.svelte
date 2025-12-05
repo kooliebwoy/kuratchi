@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { Button, Card, Dialog, FormField, FormInput, FormSelect, FormTextarea, Badge, Tabs, Loading } from '@kuratchi/ui';
+  import { Button, Card, Dialog, Badge, Loading, SlidePanel } from '@kuratchi/ui';
+  import { Bike, Building2, Plus, Search, Grid3x3, List, Pencil, Trash2, FileText, AlertCircle, ChevronRight, X, Loader2, Check, Tag } from '@lucide/svelte';
   import { 
-    Bike, Plus, Link, FileText, Pencil, Trash2, X, Search, 
-    Building2, Upload, Loader2, ExternalLink, Check, AlertCircle, ChevronLeft
-  } from '@lucide/svelte';
-  import { 
-    getVehicles, getOems, createVehicle, createOem, deleteVehicle, 
-    scrapeVehicleUrl, importScrapedVehicle 
+    getVehicles, getOems, deleteVehicle, updateVehicle,
+    scrapeVehicleUrl, importScrapedVehicle,
+    getCategories, type CatalogCategory as Category
   } from '$lib/functions/catalog.remote';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
@@ -14,46 +12,75 @@
   // Data
   const vehicles = getVehicles();
   const oems = getOems();
+  const categories = getCategories();
   const vehiclesData = $derived(vehicles.current || []);
   const oemsData = $derived(oems.current || []);
+  const categoriesData = $derived(categories.current || []);
 
   // Get OEM filter from URL
   const selectedOemId = $derived(page.url.searchParams.get('oem'));
   const selectedOem = $derived(selectedOemId ? oemsData.find((o: any) => o.id === selectedOemId) : null);
 
   // State
+  let viewMode = $state<'grid' | 'list'>('grid');
   let showAddModal = $state(false);
-  let showOemModal = $state(false);
-  let showScrapeModal = $state(false);
   let showDeleteModal = $state(false);
+  let showVehicleDrawer = $state(false);
   let activeTab = $state<'url' | 'manual' | 'pdf'>('url');
   let selectedVehicle = $state<any>(null);
   let searchQuery = $state('');
   let categoryFilter = $state<string>('all');
+  let isEditingVehicle = $state(false);
+  let editableVehicle = $state<any>(null);
+  let isSavingVehicle = $state(false);
 
+  // Dynamic categories from category management system
+  interface CategoryOption {
+    value: string;
+    label: string;
+    count: number;
+    color: string;
+    icon: string;
+  }
+
+  const availableCategories: CategoryOption[] = $derived.by(() => {
+    // Count vehicles by category slug
+    const categoryMap = new Map<string, number>();
+    vehiclesData.forEach(vehicle => {
+      if (vehicle.category) {
+        categoryMap.set(vehicle.category, (categoryMap.get(vehicle.category) || 0) + 1);
+      }
+    });
+
+    // Use categories from management system with vehicle counts
+    const categoriesWithCounts = categoriesData.map(category => ({
+      value: category.slug,
+      label: category.name,
+      count: categoryMap.get(category.slug) || 0,
+      color: category.color,
+      icon: category.icon
+    })) as CategoryOption[];
+
+    // Add "All Vehicles" at the beginning
+    return [
+      { value: 'all', label: 'All Vehicles', count: vehiclesData.length, color: '#6b7280', icon: 'list' },
+      ...categoriesWithCounts.sort((a, b) => b.count - a.count)
+    ];
+  });
+
+  
   // Scraping state
   let scrapeUrl = $state('');
   let scrapeLoading = $state(false);
   let scrapeError = $state<string | null>(null);
   let scrapedData = $state<any>(null);
   let selectedOemForImport = $state('');
-
-  // Form state for OEM
-  let newOemName = $state('');
-  let newOemWebsite = $state('');
-  let newOemLogo = $state('');
-  let oemSubmitting = $state(false);
-  let oemError = $state<string | null>(null);
-
-  // Form state for import
   let importSubmitting = $state(false);
   let importError = $state<string | null>(null);
-
-  // Form state for delete
   let deleteSubmitting = $state(false);
 
   // Filtered vehicles
-  const filteredVehicles = $derived(() => {
+  const filteredVehicles = $derived.by(() => {
     let result = vehiclesData;
     
     // Filter by OEM if selected
@@ -69,6 +96,7 @@
       );
     }
     
+    // Filter by category slug
     if (categoryFilter !== 'all') {
       result = result.filter((v: any) => v.category === categoryFilter);
     }
@@ -91,91 +119,58 @@
     scrapeError = null;
   }
 
-  function openOemModal() {
-    showOemModal = true;
-    newOemName = '';
-    newOemWebsite = '';
-    newOemLogo = '';
-    oemError = null;
+  function openVehicleDrawer(vehicle: any) {
+    selectedVehicle = vehicle;
+    editableVehicle = { ...vehicle }; 
+    showVehicleDrawer = true;
+    isEditingVehicle = false;
   }
 
-  function closeOemModal() {
-    showOemModal = false;
-    newOemName = '';
-    newOemWebsite = '';
-    newOemLogo = '';
-    oemError = null;
+  function closeVehicleDrawer() {
+    showVehicleDrawer = false;
+    selectedVehicle = null;
+    isEditingVehicle = false;
+    editableVehicle = null;
   }
 
-  // Add OEM handler
-  async function handleAddOem() {
-    if (!newOemName.trim()) {
-      oemError = 'Name is required';
-      return;
-    }
+  function startEditingVehicle() {
+    isEditingVehicle = true;
+    editableVehicle = { ...selectedVehicle };
+  }
 
-    oemSubmitting = true;
-    oemError = null;
+  function cancelEditingVehicle() {
+    isEditingVehicle = false;
+    editableVehicle = { ...selectedVehicle };
+  }
 
+  async function saveVehicleChanges() {
+    if (isSavingVehicle) return;
+    isSavingVehicle = true;
+    
     try {
-      await createOem({
-        name: newOemName.trim(),
-        websiteUrl: newOemWebsite.trim() || undefined,
-        logoUrl: newOemLogo.trim() || undefined
+      console.log('Saving vehicle:', editableVehicle);
+      
+      await updateVehicle({
+        id: editableVehicle.id,
+        modelName: editableVehicle.model_name,
+        modelYear: editableVehicle.model_year ? parseInt(editableVehicle.model_year) : undefined,
+        category: editableVehicle.category || undefined,
+        msrp: editableVehicle.msrp ? parseInt(editableVehicle.msrp) : undefined,
+        currency: editableVehicle.currency,
+        description: editableVehicle.description,
+        status: editableVehicle.status
       });
       
-      await oems.refresh();
-      closeOemModal();
-    } catch (err: any) {
-      console.error('[handleAddOem] error:', err);
-      oemError = err.message || 'Failed to add OEM';
-    } finally {
-      oemSubmitting = false;
-    }
-  }
-
-  // Import scraped vehicle handler
-  async function handleImportVehicle() {
-    if (!selectedOemForImport || !scrapedData) {
-      importError = 'Please select an OEM';
-      return;
-    }
-
-    importSubmitting = true;
-    importError = null;
-
-    try {
-      await importScrapedVehicle({
-        oemId: selectedOemForImport,
-        scrapedData: JSON.stringify(scrapedData)
-      });
+      // Refresh vehicles list
+      await vehicles.refresh();
       
-      await vehicles.refresh();
-      scrapedData = null;
-      selectedOemForImport = '';
-      closeAddModal();
-    } catch (err: any) {
-      console.error('[handleImportVehicle] error:', err);
-      importError = err.message || 'Failed to import vehicle';
+      selectedVehicle = { ...editableVehicle };
+      isEditingVehicle = false;
+      console.log('Vehicle saved successfully');
+    } catch (error) {
+      console.error('Error saving vehicle:', error);
     } finally {
-      importSubmitting = false;
-    }
-  }
-
-  // Delete vehicle handler
-  async function handleDeleteVehicle() {
-    if (!selectedVehicle) return;
-
-    deleteSubmitting = true;
-
-    try {
-      await deleteVehicle({ id: selectedVehicle.id });
-      await vehicles.refresh();
-      closeDeleteModal();
-    } catch (err: any) {
-      console.error('[handleDeleteVehicle] error:', err);
-    } finally {
-      deleteSubmitting = false;
+      isSavingVehicle = false;
     }
   }
 
@@ -206,6 +201,50 @@
     }
   }
 
+  async function handleImportVehicle() {
+    if (!selectedOemForImport || !scrapedData) {
+      importError = 'Please select an OEM';
+      return;
+    }
+
+    importSubmitting = true;
+    importError = null;
+
+    try {
+      await importScrapedVehicle({
+        oemId: selectedOemForImport,
+        scrapedData: JSON.stringify(scrapedData)
+      });
+      
+      await vehicles.refresh();
+      scrapedData = null;
+      selectedOemForImport = '';
+      closeAddModal();
+    } catch (err: any) {
+      console.error('[handleImportVehicle] error:', err);
+      importError = err.message || 'Failed to import vehicle';
+    } finally {
+      importSubmitting = false;
+    }
+  }
+
+  async function handleDeleteVehicle() {
+    if (!selectedVehicle) return;
+
+    deleteSubmitting = true;
+
+    try {
+      await deleteVehicle({ id: selectedVehicle.id });
+      await vehicles.refresh();
+      closeDeleteModal();
+      closeVehicleDrawer(); // Close the drawer after successful deletion
+    } catch (err: any) {
+      console.error('[handleDeleteVehicle] error:', err);
+    } finally {
+      deleteSubmitting = false;
+    }
+  }
+
   function formatPrice(amount: number | null, currency: string = 'USD') {
     if (!amount) return 'N/A';
     return new Intl.NumberFormat('en-US', {
@@ -216,17 +255,14 @@
     }).format(amount);
   }
 
-  function getCategoryLabel(category: string) {
-    const labels: Record<string, string> = {
-      atv: 'ATV',
-      utv: 'UTV / Side-by-Side',
-      dirtbike: 'Dirt Bike',
-      pitbike: 'Pit Bike',
-      motorcycle: 'Motorcycle',
-      electric: 'Electric',
-      other: 'Other'
-    };
-    return labels[category] || category;
+  function getCategoryLabel(category: string): string {
+    const foundCategory = categoriesData.find(cat => cat.slug === category);
+    return foundCategory ? foundCategory.name : category;
+  }
+
+  function getCategoryInfo(category: string) {
+    const foundCategory = categoriesData.find(cat => cat.slug === category);
+    return foundCategory || { name: category, color: '#6b7280', icon: 'tag' };
   }
 
   function getStatusColor(status: string) {
@@ -248,182 +284,193 @@
     }
     return specs || {};
   }
-
-  function parseFeatures(features: string | string[]) {
-    if (typeof features === 'string') {
-      try {
-        return JSON.parse(features);
-      } catch {
-        return [];
-      }
-    }
-    return features || [];
-  }
-
-  function parseImages(images: string | string[]) {
-    if (typeof images === 'string') {
-      try {
-        return JSON.parse(images);
-      } catch {
-        return [];
-      }
-    }
-    return images || [];
-  }
 </script>
 
 <svelte:head>
-  <title>OEM Catalog - Kuratchi Dashboard</title>
+  <title>{selectedOem ? `${selectedOem.name} Vehicles` : 'Vehicles'} - Catalog Management</title>
 </svelte:head>
 
-<div class="kui-catalog">
-  <header class="kui-catalog__header">
-    <div class="kui-inline">
-      {#if selectedOem}
-        <Button variant="ghost" size="sm" onclick={() => goto('/catalog')} class="back-btn">
-          <ChevronLeft class="kui-icon" />
-        </Button>
-      {/if}
-      <div class="kui-icon-box">
-        <Bike />
-      </div>
-      <div>
-        <p class="kui-eyebrow">Data Management</p>
-        {#if selectedOem}
-          <h1>{selectedOem.name} - Vehicles</h1>
-          <p class="kui-subtext">{filteredVehicles().length} vehicle{filteredVehicles().length !== 1 ? 's' : ''}</p>
-        {:else}
-          <h1>OEM Catalog</h1>
-          <p class="kui-subtext">Manage powersport vehicle data from OEMs</p>
-        {/if}
+<div class="vehicles-page">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- Search -->
+    <div class="search-section">
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <Search class="search-icon" />
+          <input 
+            type="text" 
+            placeholder="Search vehicles..." 
+            bind:value={searchQuery}
+            class="search-input"
+          />
+          {#if searchQuery}
+            <button 
+              class="search-clear"
+              onclick={() => searchQuery = ''}
+              title="Clear search"
+            >
+              <X class="search-clear-icon" />
+            </button>
+          {/if}
+        </div>
       </div>
     </div>
-    <div class="kui-inline gap">
-      <Button variant="ghost" size="sm" href="/catalog/oems">
-        <Building2 class="kui-icon" />
-        Manage OEMs
-      </Button>
-      <Button variant="primary" size="sm" onclick={openAddModal}>
-        <Plus class="kui-icon" />
+
+    <!-- Categories -->
+    <div class="categories">
+      <h3 class="categories-title">Categories</h3>
+      {#each availableCategories as category}
+        <button
+          onclick={() => categoryFilter = category.value}
+          class={`category-btn ${categoryFilter === category.value ? 'active' : ''}`}
+          style="--category-color: {category.color};"
+        >
+          <span>{category.label}</span>
+          <span class="count">{category.count}</span>
+        </button>
+      {/each}
+    </div>
+
+    <!-- Add Vehicle Button -->
+    <div class="add-section">
+      <Button variant="primary" size="sm" onclick={openAddModal} class="add-btn">
+        <Plus class="icon" />
         Add Vehicle
       </Button>
     </div>
-  </header>
+  </div>
 
-  <!-- Filters -->
-  <div class="kui-filters">
-    <div class="kui-search">
-      <Search class="kui-search__icon" />
-      <input 
-        type="text" 
-        placeholder="Search vehicles..." 
-        bind:value={searchQuery}
-        class="kui-search__input"
-      />
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Header -->
+    <div class="content-header">
+      <div class="header-info">
+        <h2>
+          {selectedOem ? `${selectedOem.name} Vehicles` : 'All Vehicles'}
+        </h2>
+        <p class="subtext">
+          {filteredVehicles.length} of {vehiclesData.length} vehicles
+        </p>
+      </div>
+      
+      <!-- View Toggle -->
+      <div class="view-toggle">
+        <button
+          onclick={() => viewMode = 'grid'}
+          class={`view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+          title="Grid view"
+        >
+          <Grid3x3 class="icon" />
+        </button>
+        <button
+          onclick={() => viewMode = 'list'}
+          class={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
+          title="List view"
+        >
+          <List class="icon" />
+        </button>
+      </div>
     </div>
-    <select bind:value={categoryFilter} class="kui-select">
-      <option value="all">All Categories</option>
-      <option value="atv">ATV</option>
-      <option value="utv">UTV / Side-by-Side</option>
-      <option value="dirtbike">Dirt Bike</option>
-      <option value="pitbike">Pit Bike</option>
-      <option value="motorcycle">Motorcycle</option>
-      <option value="electric">Electric</option>
-      <option value="other">Other</option>
-    </select>
-  </div>
 
-  <!-- Stats -->
-  <div class="kui-stats">
-    <Card class="kui-stat">
-      <p class="kui-stat__value">{vehiclesData.length}</p>
-      <p class="kui-stat__label">Total Vehicles</p>
-    </Card>
-    <Card class="kui-stat">
-      <p class="kui-stat__value">{oemsData.length}</p>
-      <p class="kui-stat__label">OEMs</p>
-    </Card>
-    <Card class="kui-stat">
-      <p class="kui-stat__value">{vehiclesData.filter((v: any) => v.status === 'published').length}</p>
-      <p class="kui-stat__label">Published</p>
-    </Card>
-  </div>
-
-  <!-- Vehicle Grid -->
-  {#if filteredVehicles().length === 0}
-    <Card class="kui-empty-card">
-      <div class="kui-empty">
-        <div class="kui-icon-hero">
-          <Bike />
-        </div>
-        <h3>No vehicles yet</h3>
-        <p class="kui-subtext">Add your first vehicle by scraping an OEM URL or entering data manually.</p>
+  <!-- Empty State -->
+  {#if filteredVehicles.length === 0}
+    <Card>
+      <div class="empty-state">
+        <Bike class="empty-icon" />
+        <h3>No vehicles found</h3>
+        <p class="subtext">Add your first vehicle to get started</p>
         <Button variant="primary" size="sm" onclick={openAddModal}>
-          <Plus class="kui-icon" />
+          <Plus class="icon" />
           Add Vehicle
         </Button>
       </div>
     </Card>
-  {:else}
-    <div class="kui-vehicle-grid">
-      {#each filteredVehicles() as vehicle}
-        <Card class="kui-vehicle">
-          <div class="kui-vehicle__image">
+  {:else if viewMode === 'grid'}
+    <!-- Grid View -->
+    <div class="vehicles-grid">
+      {#each filteredVehicles as vehicle}
+        <div class="vehicle-card-wrapper" onclick={() => openVehicleDrawer(vehicle)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openVehicleDrawer(vehicle)}>
+          <Card class="vehicle-card">
+            <!-- Image with overlay actions -->
+            <div class="vehicle-image">
             {#if vehicle.thumbnail_url}
               <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
             {:else}
-              <div class="kui-vehicle__placeholder">
-                <Bike />
+              <div class="vehicle-placeholder">
+                <Bike class="icon" />
               </div>
             {/if}
-            <Badge variant={getStatusColor(vehicle.status)} size="xs" class="kui-vehicle__badge">
+            <!-- Status Badge -->
+            <Badge variant={getStatusColor(vehicle.status)} size="xs" class="status-badge">
               {vehicle.status}
             </Badge>
+                      </div>
+
+          <!-- Content -->
+          <div class="vehicle-content">
+            <div class="vehicle-info">
+              <p class="vehicle-oem">{vehicle.oem_name}</p>
+              <h3 class="vehicle-name">{vehicle.model_name}</h3>
+            </div>
+
+            <div class="vehicle-meta">
+              {#if vehicle.category}
+                {@const categoryInfo = getCategoryInfo(vehicle.category)}
+                <div class="category-badge" style="--category-color: {categoryInfo.color};">
+                  <Tag class="category-icon" />
+                  <span>{categoryInfo.name}</span>
+                </div>
+              {/if}
+              <span class="vehicle-price">{formatPrice(vehicle.msrp, vehicle.currency)}</span>
+            </div>
           </div>
-          
-          <div class="kui-vehicle__content">
-            <div class="kui-vehicle__header">
-              <div>
-                <p class="kui-eyebrow">{vehicle.oem_name}</p>
-                <h3>{vehicle.model_name}</h3>
+          </Card>
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <!-- List View -->
+    <div class="vehicles-list">
+      {#each filteredVehicles as vehicle}
+        <div class="vehicle-list-wrapper" onclick={() => openVehicleDrawer(vehicle)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openVehicleDrawer(vehicle)}>
+          <Card class="vehicle-list-item">
+            <div class="vehicle-list-content">
+            <!-- Thumbnail -->
+            <div class="vehicle-thumbnail">
+              {#if vehicle.thumbnail_url}
+                <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+              {:else}
+                <div class="vehicle-placeholder">
+                  <Bike class="icon" />
+                </div>
+              {/if}
+            </div>
+
+            <!-- Info -->
+            <div class="vehicle-details">
+              <div class="vehicle-header">
+                <h3 class="vehicle-name">{vehicle.model_name}</h3>
                 {#if vehicle.model_year}
                   <Badge variant="secondary" size="xs">{vehicle.model_year}</Badge>
                 {/if}
-              </div>
-              <div class="kui-inline gap-sm">
-                <Button variant="ghost" size="xs" href={`/catalog/${vehicle.id}`}>
-                  <Pencil class="kui-icon" />
-                </Button>
-                <Button variant="ghost" size="xs" onclick={() => openDeleteModal(vehicle)}>
-                  <Trash2 class="kui-icon" />
-                </Button>
-              </div>
-            </div>
-
-            <div class="kui-vehicle__meta">
-              <Badge variant="neutral" size="xs">{getCategoryLabel(vehicle.category)}</Badge>
-              <span class="kui-vehicle__price">{formatPrice(vehicle.msrp, vehicle.currency)}</span>
-            </div>
-
-            {#if Object.keys(parseSpecs(vehicle.specifications)).length > 0}
-              <div class="kui-vehicle__specs">
-                {#each Object.entries(parseSpecs(vehicle.specifications)).slice(0, 4) as [key, value]}
-                  <div class="kui-spec">
-                    <span class="kui-spec__label">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    <span class="kui-spec__value">{value}</span>
+                {#if vehicle.category}
+                  {@const categoryInfo = getCategoryInfo(vehicle.category)}
+                  <div class="category-badge-sm" style="--category-color: {categoryInfo.color};">
+                    <Tag class="category-icon-sm" />
+                    <span>{categoryInfo.name}</span>
                   </div>
-                {/each}
+                {/if}
+                <Badge variant={getStatusColor(vehicle.status)} size="xs">
+                  {vehicle.status}
+                </Badge>
               </div>
-            {/if}
-
-            {#if vehicle.source_url}
-              <a href={vehicle.source_url} target="_blank" rel="noopener" class="kui-source-link">
-                <ExternalLink class="kui-icon" />
-                View Source
-              </a>
-            {/if}
+              <p class="vehicle-subtitle">{vehicle.oem_name}</p>
+              <p class="vehicle-price">{formatPrice(vehicle.msrp, vehicle.currency)}</p>
+            </div>
           </div>
-        </Card>
+            </Card>
+        </div>
       {/each}
     </div>
   {/if}
@@ -433,52 +480,52 @@
 {#if showAddModal}
   <Dialog bind:open={showAddModal} size="lg" onClose={closeAddModal}>
     {#snippet header()}
-      <div class="kui-modal-header">
+      <div class="modal-header">
         <h3>Add Vehicle</h3>
         <Button variant="ghost" size="xs" onclick={closeAddModal}>
-          <X class="kui-icon" />
+          <X class="icon" />
         </Button>
       </div>
     {/snippet}
     {#snippet children()}
-      <div class="kui-add-tabs">
-        <button 
-          class={`kui-tab ${activeTab === 'url' ? 'is-active' : ''}`} 
-          onclick={() => activeTab = 'url'}
-        >
-          <Link class="kui-icon" />
-          From URL
-        </button>
-        <button 
-          class={`kui-tab ${activeTab === 'manual' ? 'is-active' : ''}`} 
-          onclick={() => activeTab = 'manual'}
-        >
-          <Pencil class="kui-icon" />
-          Manual Entry
-        </button>
-        <button 
-          class={`kui-tab ${activeTab === 'pdf' ? 'is-active' : ''}`} 
-          onclick={() => activeTab = 'pdf'}
-        >
-          <FileText class="kui-icon" />
-          From PDF
-        </button>
-      </div>
+      <div class="modal-content">
+        <!-- Tabs -->
+        <div class="modal-tabs">
+          <button 
+            onclick={() => activeTab = 'url'}
+            class={`modal-tab ${activeTab === 'url' ? 'active' : ''}`}
+          >
+            From URL
+          </button>
+          <button 
+            onclick={() => activeTab = 'manual'}
+            class={`modal-tab ${activeTab === 'manual' ? 'active' : ''}`}
+          >
+            Manual
+          </button>
+          <button 
+            onclick={() => activeTab = 'pdf'}
+            class={`modal-tab ${activeTab === 'pdf' ? 'active' : ''}`}
+          >
+            PDF
+          </button>
+        </div>
 
-      {#if activeTab === 'url'}
-        <div class="kui-scrape-section">
-          <p class="kui-help-text">
-            Paste an OEM product page URL and we'll automatically extract the vehicle data using advanced web scraping.
-          </p>
-          
-          <div class="kui-url-input">
-            <FormField label="Product URL">
-              <div class="kui-input-group">
+        {#if activeTab === 'url'}
+          <div class="modal-section">
+            <p class="modal-text">
+              Paste an OEM product page URL and we'll automatically extract the vehicle data.
+            </p>
+            
+            <div class="modal-field">
+              <label for="scrape-url" class="modal-label">Product URL</label>
+              <div class="modal-input-group">
                 <input 
+                  id="scrape-url"
                   type="url" 
                   placeholder="https://www.ridekayo.com/ts-90" 
                   bind:value={scrapeUrl}
-                  class="kui-input"
+                  class="modal-input"
                 />
                 <Button 
                   variant="primary" 
@@ -487,219 +534,265 @@
                   disabled={!scrapeUrl || scrapeLoading}
                 >
                   {#if scrapeLoading}
-                    <Loader2 class="kui-icon kui-spin" />
-                    Scraping...
+                    <Loader2 class="icon spinning" />
                   {:else}
-                    <Search class="kui-icon" />
-                    Scrape
+                    <Search class="icon" />
                   {/if}
+                  Scrape
                 </Button>
               </div>
-            </FormField>
-          </div>
-
-          {#if scrapeError}
-            <div class="kui-error">
-              <AlertCircle class="kui-icon" />
-              {scrapeError}
             </div>
-          {/if}
 
-          {#if scrapedData}
-            <div class="kui-scraped-preview">
-              <div class="kui-scraped-header">
-                <Check class="kui-icon kui-success" />
-                <span>Data extracted successfully!</span>
+            {#if scrapeError}
+              <div class="modal-alert error">
+                <AlertCircle class="alert-icon" />
+                {scrapeError}
               </div>
+            {/if}
 
-              <div class="kui-scraped-content">
-                {#if scrapedData.thumbnailUrl}
-                  <img src={scrapedData.thumbnailUrl} alt="Preview" class="kui-scraped-image" />
-                {/if}
-
-                <div class="kui-scraped-details">
-                  <h4>{scrapedData.modelName || 'Unknown Model'}</h4>
-                  {#if scrapedData.msrp}
-                    <p class="kui-price">{formatPrice(scrapedData.msrp)}</p>
-                  {/if}
-                  {#if scrapedData.category}
-                    <Badge variant="neutral" size="xs">{getCategoryLabel(scrapedData.category)}</Badge>
-                  {/if}
-
-                  {#if Object.keys(scrapedData.specifications || {}).length > 0}
-                    <div class="kui-scraped-specs">
-                      <p class="kui-eyebrow">Specifications Found</p>
-                      {#each Object.entries(scrapedData.specifications).slice(0, 6) as [key, value]}
-                        <div class="kui-spec-row">
-                          <span>{key}</span>
-                          <span>{value}</span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if (scrapedData.features || []).length > 0}
-                    <div class="kui-scraped-features">
-                      <p class="kui-eyebrow">Features Found: {scrapedData.features.length}</p>
-                    </div>
-                  {/if}
+            {#if scrapedData}
+              <div class="modal-card">
+                <div class="modal-card-header success">
+                  <Check class="alert-icon" />
+                  Data extracted successfully!
                 </div>
-              </div>
 
-              <div class="kui-import-form">
-                <FormField label="Select OEM">
-                  <select class="kui-native-select" bind:value={selectedOemForImport} required>
-                    <option value="">-- Select OEM --</option>
-                    {#each oemsData as oem}
-                      <option value={oem.id}>{oem.name}</option>
-                    {/each}
-                  </select>
-                  {#if oemsData.length === 0}
-                    <p class="kui-help-text kui-warning">
-                      No OEMs found. <button type="button" class="kui-link" onclick={openOemModal}>Add an OEM first</button>
-                    </p>
-                  {/if}
-                </FormField>
-
-                {#if importError}
-                  <div class="kui-callout error">{importError}</div>
-                {/if}
-
-                <div class="kui-import-actions">
-                  <Button variant="ghost" type="button" onclick={() => { scrapedData = null; importError = null; }}>
-                    Cancel
-                  </Button>
-                  <Button variant="primary" onclick={handleImportVehicle} disabled={importSubmitting || !selectedOemForImport}>
-                    {#if importSubmitting}
-                      <Loading size="sm" /> Importing...
-                    {:else}
-                      Import Vehicle
+                <div class="modal-card-content">
+                  <div class="scrape-preview">
+                    {#if scrapedData.thumbnailUrl}
+                      <img src={scrapedData.thumbnailUrl} alt="Preview" class="preview-image" />
                     {/if}
-                  </Button>
+                    <div class="preview-info">
+                      <h4 class="preview-title">{scrapedData.modelName || 'Unknown Model'}</h4>
+                      {#if scrapedData.msrp}
+                        <p class="preview-price">{formatPrice(scrapedData.msrp)}</p>
+                      {/if}
+                      {#if scrapedData.category}
+                        <Badge variant="neutral" size="xs" class="preview-badge">{getCategoryLabel(scrapedData.category)}</Badge>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="modal-field">
+                    <label for="oem-select" class="modal-label">Select OEM</label>
+                    <select id="oem-select" class="modal-input" bind:value={selectedOemForImport} required>
+                      <option value="">-- Select OEM --</option>
+                      {#each oemsData as oem}
+                        <option value={oem.id}>{oem.name}</option>
+                      {/each}
+                    </select>
+                    {#if oemsData.length === 0}
+                      <p class="modal-help-text warning">
+                        No OEMs found. Create an OEM first to import vehicles.
+                      </p>
+                    {/if}
+                  </div>
+
+                  {#if importError}
+                    <div class="modal-alert error">{importError}</div>
+                  {/if}
+
+                  <div class="modal-actions">
+                    <Button variant="ghost" type="button" onclick={() => { scrapedData = null; importError = null; }} class="flex-1">
+                      Cancel
+                    </Button>
+                    <Button variant="primary" onclick={handleImportVehicle} disabled={importSubmitting || !selectedOemForImport} class="flex-1">
+                      {#if importSubmitting}
+                        <Loading size="sm" /> Importing...
+                      {:else}
+                        Import
+                      {/if}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          {/if}
-        </div>
-      {:else if activeTab === 'manual'}
-        <div class="kui-coming-soon-section">
-          <div class="kui-coming-soon">
-            <AlertCircle class="kui-icon" />
-            Manual entry form is coming soon. Use URL scraping for now.
+            {/if}
           </div>
-        </div>
-      {:else}
-        <div class="kui-pdf-section">
-          <div class="kui-upload-zone">
-            <Upload class="kui-upload-icon" />
-            <h4>Upload OEM Specification PDF</h4>
-            <p class="kui-subtext">
-              Drag and drop a PDF or click to browse. We'll extract vehicle specifications automatically.
-            </p>
-            <input type="file" accept=".pdf" class="kui-file-input" />
-            <Button variant="ghost" size="sm">
-              <FileText class="kui-icon" />
-              Select PDF
-            </Button>
+        {:else if activeTab === 'manual'}
+          <div class="modal-empty">
+            <AlertCircle class="empty-icon" />
+            <p class="modal-text">Manual entry form is coming soon. Use URL scraping for now.</p>
           </div>
-          <p class="kui-coming-soon">
-            <AlertCircle class="kui-icon" />
-            PDF parsing is coming soon. Use URL scraping for now.
-          </p>
+        {:else}
+          <div class="modal-empty">
+            <AlertCircle class="empty-icon" />
+            <p class="modal-text">PDF parsing is coming soon. Use URL scraping for now.</p>
+          </div>
+        {/if}
+      </div>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Vehicle Details SlidePanel -->
+<SlidePanel
+  bind:open={showVehicleDrawer}
+  title={selectedVehicle?.model_name || 'Vehicle Details'}
+  subtitle={selectedVehicle?.oem_name || ''}
+  size="md"
+  closeOnBackdrop={!isEditingVehicle}
+  onclose={closeVehicleDrawer}
+>
+  {#snippet children()}
+    {#if selectedVehicle}
+      <!-- Vehicle Image -->
+      {#if selectedVehicle.thumbnail_url}
+        <div class="drawer-image">
+          <img src={selectedVehicle.thumbnail_url} alt={selectedVehicle.model_name} />
         </div>
       {/if}
-    {/snippet}
-  </Dialog>
-{/if}
 
-<!-- OEM Management Modal -->
-{#if showOemModal}
-  <Dialog bind:open={showOemModal} size="md" onClose={closeOemModal}>
-    {#snippet header()}
-      <div class="kui-modal-header">
-        <h3>Manage OEMs</h3>
-        <Button variant="ghost" size="xs" onclick={closeOemModal}>
-          <X class="kui-icon" />
-        </Button>
-      </div>
-    {/snippet}
-    {#snippet children()}
-      <div class="kui-oem-section">
-        <div class="kui-oem-list">
-          {#if oemsData.length === 0}
-            <p class="kui-subtext">No OEMs added yet.</p>
-          {:else}
-            {#each oemsData as oem}
-              <div class="kui-oem-item">
-                {#if oem.logo_url}
-                  <img src={oem.logo_url} alt={oem.name} class="kui-oem-logo" />
-                {:else}
-                  <div class="kui-oem-placeholder">
-                    <Building2 />
-                  </div>
-                {/if}
-                <div class="kui-oem-info">
-                  <h4>{oem.name}</h4>
-                  {#if oem.website_url}
-                    <a href={oem.website_url} target="_blank" rel="noopener" class="kui-subtext">
-                      {oem.website_url}
-                    </a>
-                  {/if}
-                </div>
+      <!-- Vehicle Info -->
+      <div class="drawer-info">
+        {#if isEditingVehicle}
+          <!-- Edit Mode -->
+          <div class="edit-form">
+            <div class="form-group">
+              <label class="form-label" for="category">Category</label>
+              <select id="category" bind:value={editableVehicle.category} class="form-input">
+                <option value="">Select category...</option>
+                {#each categoriesData as category}
+                  <option value={category.slug}>
+                    {category.name}
+                  </option>
+                {/each}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="status">Status</label>
+              <select id="status" bind:value={editableVehicle.status} class="form-input">
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="model-year">Model Year</label>
+              <input 
+                id="model-year"
+                type="number" 
+                bind:value={editableVehicle.model_year} 
+                class="form-input"
+                placeholder="2024"
+              />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="price">Price</label>
+                <input 
+                  id="price"
+                  type="number" 
+                  bind:value={editableVehicle.msrp} 
+                  class="form-input"
+                  placeholder="0"
+                />
               </div>
-            {/each}
-          {/if}
-        </div>
+              <div class="form-group">
+                <label class="form-label" for="currency">Currency</label>
+                <select id="currency" bind:value={editableVehicle.currency} class="form-input">
+                  <option value="USD">USD</option>
+                  <option value="CAD">CAD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                </select>
+              </div>
+            </div>
 
-        <div class="kui-divider"></div>
-
-        <div class="kui-oem-form">
-          <h4>Add New OEM</h4>
-          <FormField label="Name">
-            <input type="text" class="kui-input" bind:value={newOemName} placeholder="Kayo USA" required />
-          </FormField>
-          <FormField label="Website URL">
-            <input type="url" class="kui-input" bind:value={newOemWebsite} placeholder="https://www.ridekayo.com" />
-          </FormField>
-          <FormField label="Logo URL">
-            <input type="url" class="kui-input" bind:value={newOemLogo} placeholder="https://..." />
-          </FormField>
-          
-          {#if oemError}
-            <div class="kui-callout error">{oemError}</div>
-          {/if}
-          
-          <Button variant="primary" size="sm" onclick={handleAddOem} disabled={oemSubmitting}>
-            {#if oemSubmitting}
-              <Loading size="sm" /> Adding...
-            {:else}
-              <Plus class="kui-icon" />
-              Add OEM
+            <div class="form-group">
+              <label class="form-label" for="description">Description</label>
+              <textarea 
+                id="description"
+                bind:value={editableVehicle.description} 
+                class="form-textarea"
+                rows="3"
+                placeholder="Vehicle description..."
+              ></textarea>
+            </div>
+          </div>
+        {:else}
+          <!-- View Mode -->
+          <div class="drawer-badges">
+            <Badge variant="neutral">{getCategoryLabel(selectedVehicle.category)}</Badge>
+            <Badge variant={getStatusColor(selectedVehicle.status)}>{selectedVehicle.status}</Badge>
+            {#if selectedVehicle.model_year}
+              <Badge variant="secondary">{selectedVehicle.model_year}</Badge>
             {/if}
-          </Button>
-        </div>
+          </div>
+
+          <div class="detail-field">
+            <p class="detail-label">Price</p>
+            <p class="detail-price">{formatPrice(selectedVehicle.msrp, selectedVehicle.currency)}</p>
+          </div>
+
+          {#if selectedVehicle.description}
+            <div class="detail-field">
+              <p class="detail-label">Description</p>
+              <p class="detail-description">{selectedVehicle.description}</p>
+            </div>
+          {/if}
+
+          {#if Object.keys(parseSpecs(selectedVehicle.specifications)).length > 0}
+            <div class="specifications">
+              <p class="detail-label">Specifications</p>
+              <div class="specs-grid">
+                {#each Object.entries(parseSpecs(selectedVehicle.specifications)) as [key, value]}
+                  <div class="spec-item">
+                    <p class="spec-key">{key}</p>
+                    <p class="spec-value">{value}</p>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/if}
       </div>
-    {/snippet}
-  </Dialog>
-{/if}
+    {/if}
+  {/snippet}
+
+  {#snippet footer()}
+    {#if isEditingVehicle}
+      <!-- Edit Mode Actions -->
+      <Button variant="ghost" onclick={cancelEditingVehicle}>
+        Cancel
+      </Button>
+      <Button variant="primary" onclick={saveVehicleChanges} disabled={isSavingVehicle}>
+        {#if isSavingVehicle}
+          <Loader2 class="icon spinning" />
+          Saving...
+        {:else}
+          <Check class="icon" />
+          Save Changes
+        {/if}
+      </Button>
+    {:else}
+      <!-- View Mode Actions -->
+      <Button variant="error" onclick={() => openDeleteModal(selectedVehicle)}>
+        <Trash2 class="icon" />
+        Delete
+      </Button>
+      <Button variant="primary" onclick={startEditingVehicle}>
+        <Pencil class="icon" />
+        Edit
+      </Button>
+    {/if}
+  {/snippet}
+</SlidePanel>
 
 <!-- Delete Confirmation Modal -->
 {#if showDeleteModal && selectedVehicle}
   <Dialog bind:open={showDeleteModal} size="sm" onClose={closeDeleteModal}>
     {#snippet header()}
-      <div class="kui-modal-header">
-        <h3>Delete Vehicle</h3>
-        <Button variant="ghost" size="xs" onclick={closeDeleteModal}>
-          <X class="kui-icon" />
-        </Button>
-      </div>
+      <h3 class="font-bold">Delete Vehicle</h3>
     {/snippet}
     {#snippet children()}
-      <div class="kui-stack">
+      <div class="space-y-4">
         <p>Are you sure you want to delete <strong>{selectedVehicle.model_name}</strong>? This action cannot be undone.</p>
-        <div class="kui-modal-actions">
-          <Button variant="ghost" onclick={closeDeleteModal}>Cancel</Button>
-          <Button variant="error" onclick={handleDeleteVehicle} disabled={deleteSubmitting}>
+        <div class="flex gap-2">
+          <Button variant="ghost" onclick={closeDeleteModal} class="flex-1">Cancel</Button>
+          <Button variant="error" onclick={handleDeleteVehicle} disabled={deleteSubmitting} class="flex-1">
             {#if deleteSubmitting}
               <Loading size="sm" /> Deleting...
             {:else}
@@ -711,734 +804,871 @@
     {/snippet}
   </Dialog>
 {/if}
+</div>
 
 <style>
-  .kui-catalog {
+  .vehicles-page {
     display: flex;
-    flex-direction: column;
-    gap: 20px;
+    gap: var(--kui-spacing-lg);
+    height: 100%;
   }
 
-  .kui-catalog__header {
+  /* Sidebar */
+  .sidebar {
+    width: 256px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .search-section {
+    margin-bottom: var(--kui-spacing-lg);
+  }
+
+  .search-container {
+    position: relative;
+  }
+
+  .search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 0.875rem;
+    width: 1rem;
+    height: 1rem;
+    color: var(--kui-color-muted);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 0.75rem 2.5rem 0.75rem 2.5rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    font-size: 0.875rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kui-color-primary) 10%, transparent);
+  }
+
+  .search-input::placeholder {
+    color: var(--kui-color-muted);
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 0.75rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    background: transparent;
+    color: var(--kui-color-muted);
+    border-radius: var(--kui-radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 1;
+  }
+
+  .search-clear:hover {
+    background: var(--kui-color-surface-muted);
+    color: var(--kui-color-text);
+  }
+
+  .search-clear-icon {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .categories {
+    flex: 1;
+  }
+
+  .categories-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--kui-color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--kui-spacing-sm);
+  }
+
+  .category-btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
-  .kui-inline {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .kui-inline.gap {
-    gap: 8px;
-  }
-
-  .kui-inline.gap-sm {
-    gap: 4px;
-  }
-
-  .kui-icon-box {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #fde68a, #fbbf24);
-    color: #78350f;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 28px;
-  }
-
-  h3 {
-    margin: 0;
-    font-size: 18px;
-  }
-
-  h4 {
-    margin: 0;
-    font-size: 16px;
-  }
-
-  .kui-eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #6b7280;
-    margin: 0 0 4px;
-  }
-
-  .kui-subtext {
-    color: #6b7280;
-    margin: 0;
-    font-size: 14px;
-  }
-
-  .kui-icon {
-    width: 16px;
-    height: 16px;
-  }
-
-  /* Filters */
-  .kui-filters {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .kui-search {
-    position: relative;
-    flex: 1;
-    min-width: 200px;
-    max-width: 400px;
-  }
-
-  .kui-search__icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
-    color: #9ca3af;
-  }
-
-  .kui-search__input {
     width: 100%;
-    padding: 10px 12px 10px 40px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    font-size: 14px;
-    background: white;
-    transition: border-color 0.2s;
-  }
-
-  .kui-search__input:focus {
-    outline: none;
-    border-color: var(--kui-color-primary);
-  }
-
-  .kui-select {
-    padding: 10px 32px 10px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    font-size: 14px;
-    background: white;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-sm);
+    background: transparent;
+    color: var(--kui-color-text);
+    font-size: 0.8125rem;
+    font-weight: 400;
     cursor: pointer;
+    transition: all 0.2s ease;
+    --category-color: var(--kui-color-primary);
   }
 
-  /* Stats */
-  .kui-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+  .category-btn:hover {
+    background: color-mix(in srgb, var(--category-color) 8%, transparent);
+    border-color: var(--category-color);
   }
 
-  .kui-stat {
-    text-align: center;
-    padding: 16px;
+  .category-btn.active {
+    background: color-mix(in srgb, var(--category-color) 15%, transparent);
+    color: var(--category-color);
+    border-color: var(--category-color);
+    font-weight: 500;
   }
 
-  .kui-stat__value {
-    font-size: 32px;
+  .category-btn .count {
+    font-size: 0.7rem;
+    color: var(--kui-color-muted);
+    margin-left: 0.25rem;
+  }
+
+  .category-btn.active .count {
+    color: var(--category-color);
+  }
+
+  .add-section {
+    margin-top: var(--kui-spacing-lg);
+    padding-top: var(--kui-spacing-lg);
+    border-top: 1px solid var(--kui-color-border);
+  }
+
+  .add-btn {
+    width: 100%;
+  }
+
+  /* Main Content */
+  .main-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .content-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--kui-spacing-lg);
+  }
+
+  .header-info h2 {
+    font-size: 1.25rem;
     font-weight: 700;
-    color: var(--kui-color-primary);
     margin: 0;
   }
 
-  .kui-stat__label {
-    font-size: 13px;
-    color: #6b7280;
-    margin: 4px 0 0;
+  .subtext {
+    color: var(--kui-color-muted);
+    font-size: 0.875rem;
+    margin: 0.25rem 0 0;
   }
 
-  /* Vehicle Grid */
-  .kui-vehicle-grid {
+  .view-toggle {
+    display: flex;
+    gap: 0.25rem;
+    border-radius: var(--kui-radius-md);
+    border: 1px solid var(--kui-color-border);
+    padding: 0.25rem;
+  }
+
+  .view-btn {
+    padding: 0.5rem;
+    border-radius: var(--kui-radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--kui-color-text);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  .view-btn:hover {
+    background: var(--kui-color-surface-muted);
+  }
+
+  .view-btn.active {
+    background: var(--kui-color-primary);
+    color: white;
+  }
+
+  .icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  /* Empty State */
+  .empty-state {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
+    place-items: center;
+    gap: var(--kui-spacing-md);
+    text-align: center;
+    padding: var(--kui-spacing-xl);
   }
 
-  .kui-vehicle {
+  .empty-icon {
+    width: 3rem;
+    height: 3rem;
+    color: var(--kui-color-muted);
+  }
+
+  /* Grid View */
+  .vehicles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--kui-spacing-md);
+  }
+
+  .vehicle-card-wrapper {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: 100%;
+  }
+
+  .vehicle-card-wrapper:hover {
+    transform: translateY(-2px);
+  }
+
+  :global(.vehicle-card) {
+    overflow: hidden;
+    transition: all 0.2s ease;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    height: 100%;
   }
 
-  .kui-vehicle__image {
+  :global(.vehicle-card:hover) {
+    box-shadow: var(--kui-shadow-md);
+  }
+
+  .vehicle-image {
     position: relative;
-    height: 180px;
-    background: #f4f4f5;
+    height: 160px;
+    background: var(--kui-color-surface-muted);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .vehicle-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s ease;
+  }
+
+  .vehicle-card-wrapper:hover .vehicle-image img {
+    transform: scale(1.05);
+  }
+
+  .vehicle-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--kui-color-muted);
+  }
+
+  .status-badge {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+  }
+
+  .vehicle-content {
+    padding: var(--kui-spacing-md);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  .vehicle-info {
+    margin-bottom: var(--kui-spacing-sm);
+    flex: 1;
+  }
+
+  .vehicle-oem {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--kui-color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  .vehicle-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin: 0.25rem 0 0;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
     overflow: hidden;
   }
 
-  .kui-vehicle__image img {
+  .vehicle-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+    margin-top: auto;
+    padding-top: var(--kui-spacing-sm);
+    border-top: 1px solid var(--kui-color-border);
+  }
+
+  .vehicle-price {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--kui-color-primary);
+  }
+
+  /* Category Badges */
+  .category-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: color-mix(in srgb, var(--category-color) 10%, transparent);
+    color: var(--category-color);
+    border: 1px solid color-mix(in srgb, var(--category-color) 30%, transparent);
+    border-radius: var(--kui-radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    --category-color: var(--kui-color-primary);
+  }
+
+  .category-icon {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .category-badge-sm {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.375rem;
+    background: color-mix(in srgb, var(--category-color) 10%, transparent);
+    color: var(--category-color);
+    border: 1px solid color-mix(in srgb, var(--category-color) 30%, transparent);
+    border-radius: var(--kui-radius-sm);
+    font-size: 0.625rem;
+    font-weight: 500;
+    --category-color: var(--kui-color-primary);
+  }
+
+  .category-icon-sm {
+    width: 0.625rem;
+    height: 0.625rem;
+  }
+
+  /* List View */
+  .vehicles-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .vehicle-list-wrapper {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .vehicle-list-wrapper:hover {
+    transform: translateY(-1px);
+  }
+
+  :global(.vehicle-list-item) {
+    transition: all 0.2s ease;
+  }
+
+  :global(.vehicle-list-item:hover) {
+    box-shadow: var(--kui-shadow-md);
+  }
+
+  .vehicle-list-content {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md);
+  }
+
+  .vehicle-thumbnail {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface-muted);
+    overflow: hidden;
+  }
+
+  .vehicle-thumbnail img {
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
 
-  .kui-vehicle__placeholder {
+  .vehicle-details {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .vehicle-header {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+    margin-bottom: 0.25rem;
+  }
+
+  .vehicle-header .vehicle-name {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .vehicle-subtitle {
+    font-size: 0.875rem;
+    color: var(--kui-color-muted);
+    margin: 0 0 0.25rem;
+  }
+
+  .vehicle-details .vehicle-price {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--kui-color-primary);
+    margin: 0;
+  }
+
+  .vehicle-actions {
+    display: flex;
+    gap: var(--kui-spacing-sm);
+    flex-shrink: 0;
+  }
+
+  /* Vehicle Details SlidePanel Content */
+  .drawer-image {
+    aspect-ratio: 16/9;
+    border-radius: var(--kui-radius-md);
+    overflow: hidden;
+    background: var(--kui-color-surface-muted);
+    margin-bottom: var(--kui-spacing-lg);
+  }
+
+  .drawer-image img {
     width: 100%;
     height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #d4d4d8;
+    object-fit: cover;
   }
 
-  .kui-vehicle__placeholder :global(svg) {
-    width: 48px;
-    height: 48px;
-  }
-
-  .kui-vehicle__badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-  }
-
-  .kui-vehicle__content {
-    padding: 16px;
+  .drawer-info {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--kui-spacing-lg);
   }
 
-  .kui-vehicle__header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .kui-vehicle__meta {
+  .drawer-badges {
     display: flex;
     align-items: center;
-    gap: 8px;
-    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+    flex-wrap: wrap;
   }
 
-  .kui-vehicle__price {
-    font-size: 18px;
+  .detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .detail-label {
+    font-size: 0.875rem;
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .detail-price {
+    font-size: 1.125rem;
     font-weight: 700;
-    color: #059669;
+    color: var(--kui-color-primary);
+    margin: 0;
   }
 
-  .kui-vehicle__specs {
+  .detail-description {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .specifications {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kui-spacing-md);
+  }
+
+  .specs-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    padding: 12px;
-    background: #f9fafb;
-    border-radius: 8px;
+    gap: var(--kui-spacing-sm);
   }
 
-  .kui-spec {
+  @media (max-width: 480px) {
+    .specs-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .spec-item {
+    background: var(--kui-color-surface-muted);
+    border-radius: var(--kui-radius-md);
+    padding: var(--kui-spacing-sm);
+  }
+
+  .spec-key {
+    font-size: 0.75rem;
+    color: var(--kui-color-muted);
+    margin: 0;
+  }
+
+  .spec-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0.25rem 0 0;
+  }
+
+  /* Edit Form Styles */
+  .edit-form {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--kui-spacing-md);
   }
 
-  .kui-spec__label {
-    font-size: 10px;
-    text-transform: uppercase;
-    color: #9ca3af;
-    letter-spacing: 0.05em;
-  }
-
-  .kui-spec__value {
-    font-size: 13px;
-    font-weight: 500;
-  }
-
-  .kui-source-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--kui-color-primary);
-    text-decoration: none;
-  }
-
-  .kui-source-link:hover {
-    text-decoration: underline;
-  }
-
-  /* Empty State */
-  .kui-empty-card {
-    padding: 48px 24px;
-  }
-
-  .kui-empty {
-    display: grid;
-    gap: 12px;
-    justify-items: center;
-    text-align: center;
-  }
-
-  .kui-icon-hero {
-    width: 80px;
-    height: 80px;
-    border-radius: 20px;
-    background: linear-gradient(135deg, #fde68a, #fbbf24);
-    display: grid;
-    place-items: center;
-    color: #78350f;
-  }
-
-  .kui-icon-hero :global(svg) {
-    width: 40px;
-    height: 40px;
-  }
-
-  /* Modal */
-  .kui-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  /* Tabs */
-  .kui-add-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    background: #f4f4f5;
-    border-radius: 10px;
-    margin-bottom: 20px;
-  }
-
-  .kui-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 16px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    font-size: 14px;
-    font-weight: 500;
-    color: #6b7280;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .kui-tab:hover {
-    color: #374151;
-  }
-
-  .kui-tab.is-active {
-    background: white;
-    color: var(--kui-color-primary);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  }
-
-  /* Scrape Section */
-  .kui-scrape-section {
+  .form-group {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 0.5rem;
   }
 
-  .kui-help-text {
-    font-size: 14px;
-    color: #6b7280;
-    background: #f9fafb;
-    padding: 12px;
-    border-radius: 8px;
+  .form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--kui-spacing-md);
   }
 
-  .kui-input-group {
-    display: flex;
-    gap: 8px;
+  @media (max-width: 480px) {
+    .form-row {
+      grid-template-columns: 1fr;
+    }
   }
 
-  .kui-input-group .kui-input {
-    flex: 1;
+  .form-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+    margin: 0;
   }
 
-  .kui-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
+  .form-input,
+  .form-textarea {
+    padding: 0.75rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    font-size: 0.875rem;
+    transition: border-color 0.2s ease;
   }
 
-  .kui-input:focus {
+  .form-input:focus,
+  .form-textarea:focus {
     outline: none;
     border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kui-color-primary) 10%, transparent);
   }
 
-  .kui-error {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    color: #dc2626;
-    font-size: 14px;
+  .form-textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
   }
 
-  .kui-spin {
-    animation: spin 1s linear infinite;
-  }
-
+  /* Animations */
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
 
-  /* Scraped Preview */
-  .kui-scraped-preview {
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    overflow: hidden;
+  .spinning {
+    animation: spin 1s linear infinite;
   }
 
-  .kui-scraped-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background: #ecfdf5;
-    color: #059669;
-    font-weight: 500;
-  }
-
-  .kui-success {
-    color: #059669;
-  }
-
-  .kui-scraped-content {
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 16px;
-    padding: 16px;
-  }
-
-  .kui-scraped-image {
-    width: 160px;
-    height: 120px;
-    object-fit: cover;
-    border-radius: 8px;
-  }
-
-  .kui-scraped-details {
+  /* Modal Styles */
+  .modal-content {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--kui-spacing-md);
   }
 
-  .kui-price {
-    font-size: 20px;
-    font-weight: 700;
-    color: #059669;
+  .modal-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.25rem;
+    background: var(--kui-color-surface-muted);
+    padding: 0.25rem;
+    border-radius: var(--kui-radius-md);
+  }
+
+  .modal-tab {
+    padding: 0.75rem;
+    border: none;
+    background: transparent;
+    color: var(--kui-color-text);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: var(--kui-radius-sm);
+    transition: all 0.2s ease;
+  }
+
+  .modal-tab:hover {
+    background: var(--kui-color-surface);
+  }
+
+  .modal-tab.active {
+    background: var(--kui-color-surface);
+    color: var(--kui-color-primary);
+    box-shadow: var(--kui-shadow-sm);
+  }
+
+  .modal-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kui-spacing-md);
+  }
+
+  .modal-text {
+    font-size: 0.875rem;
+    color: var(--kui-color-muted);
     margin: 0;
   }
 
-  .kui-scraped-specs {
-    margin-top: 8px;
-  }
-
-  .kui-spec-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13px;
-    padding: 4px 0;
-    border-bottom: 1px solid #f4f4f5;
-  }
-
-  .kui-import-form {
-    padding: 16px;
-    border-top: 1px solid #e5e7eb;
+  .modal-field {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.5rem;
   }
 
-  .kui-import-actions {
+  .modal-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--kui-color-text);
+    margin: 0;
+  }
+
+  .modal-input-group {
     display: flex;
-    gap: 8px;
-    justify-content: flex-end;
+    gap: var(--kui-spacing-sm);
+    align-items: center;
   }
 
-  /* Manual Form */
-  .kui-manual-form {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+  .modal-input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-color-surface);
+    color: var(--kui-color-text);
+    font-size: 0.875rem;
+    transition: border-color 0.2s ease;
   }
 
-  .kui-form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+  .modal-input:focus {
+    outline: none;
+    border-color: var(--kui-color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--kui-color-primary) 10%, transparent);
   }
 
-  .kui-input-prefix {
+  .modal-input::placeholder {
+    color: var(--kui-color-muted);
+  }
+
+  .modal-alert {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-md);
+    border-radius: var(--kui-radius-md);
+    font-size: 0.875rem;
   }
 
-  .kui-input-prefix :global(input) {
-    border: none;
-    padding: 10px 0;
+  .modal-alert.error {
+    background: color-mix(in srgb, #ef4444 10%, transparent);
+    color: #dc2626;
+    border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
   }
 
-  .back-btn {
-    margin-right: 0.5rem;
+  .alert-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
   }
 
-  .font-mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    font-size: 13px;
+  .modal-card {
+    border: 1px solid var(--kui-color-border);
+    border-radius: var(--kui-radius-md);
+    overflow: hidden;
   }
 
-  /* PDF Section */
-  .kui-pdf-section {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .kui-upload-zone {
-    border: 2px dashed #e5e7eb;
-    border-radius: 12px;
-    padding: 48px 24px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .kui-upload-icon {
-    width: 48px;
-    height: 48px;
-    color: #9ca3af;
-  }
-
-  .kui-file-input {
-    display: none;
-  }
-
-  .kui-coming-soon {
+  .modal-card-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px;
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 8px;
-    color: #b45309;
-    font-size: 14px;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: color-mix(in srgb, #10b981 10%, transparent);
+    color: #059669;
+    border-bottom: 1px solid color-mix(in srgb, #10b981 30%, transparent);
   }
 
-  /* OEM Section */
-  .kui-oem-section {
+  .modal-card-header.success {
+    background: color-mix(in srgb, #10b981 10%, transparent);
+    color: #059669;
+    border-bottom: 1px solid color-mix(in srgb, #10b981 30%, transparent);
+  }
+
+  .modal-card-content {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md);
   }
 
-  .kui-oem-list {
+  .scrape-preview {
+    display: flex;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md);
+    background: var(--kui-color-surface-muted);
+    border-radius: var(--kui-radius-md);
+  }
+
+  .preview-image {
+    width: 96px;
+    height: 96px;
+    flex-shrink: 0;
+    border-radius: var(--kui-radius-md);
+    object-fit: cover;
+  }
+
+  .preview-info {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    max-height: 240px;
-    overflow-y: auto;
+    gap: 0.5rem;
   }
 
-  .kui-oem-item {
+  .preview-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .preview-price {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--kui-color-primary);
+    margin: 0;
+  }
+
+  .preview-badge {
+    align-self: flex-start;
+  }
+
+  .modal-help-text {
+    font-size: 0.75rem;
+    margin: 0;
+  }
+
+  .modal-help-text.warning {
+    color: #d97706;
+  }
+
+  .modal-actions {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: #f9fafb;
-    border-radius: 8px;
+    gap: var(--kui-spacing-sm);
+    padding-top: var(--kui-spacing-md);
+    border-top: 1px solid var(--kui-color-border);
   }
 
-  .kui-oem-logo {
-    width: 48px;
-    height: 48px;
-    object-fit: contain;
-    border-radius: 8px;
-    background: white;
-  }
-
-  .kui-oem-placeholder {
-    width: 48px;
-    height: 48px;
+  .modal-empty {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #e5e7eb;
-    border-radius: 8px;
-    color: #9ca3af;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-xl);
+    text-align: center;
   }
 
-  .kui-oem-info {
+  .empty-icon {
+    width: 2rem;
+    height: 2rem;
+    color: var(--kui-color-muted);
+  }
+
+  .flex-1 {
     flex: 1;
   }
 
-  .kui-oem-info a {
-    font-size: 13px;
-    color: var(--kui-color-primary);
-    text-decoration: none;
-  }
-
-  .kui-divider {
-    height: 1px;
-    background: #e5e7eb;
-  }
-
-  .kui-oem-form {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  /* Native input styling */
-  .kui-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
-    background: white;
-    color: #374151;
-  }
-
-  .kui-input:focus {
-    outline: none;
-    border-color: var(--kui-color-primary, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  .kui-input::placeholder {
-    color: #9ca3af;
-  }
-
-  /* Native Select for import form */
-  .kui-native-select {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
-    background: white;
-    color: #374151;
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 8px center;
-    background-repeat: no-repeat;
-    background-size: 20px;
-    padding-right: 36px;
-  }
-
-  .kui-native-select:focus {
-    outline: none;
-    border-color: var(--kui-color-primary, #3b82f6);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  .kui-native-select:invalid {
-    color: #9ca3af;
-  }
-
-  .kui-help-text {
-    font-size: 12px;
-    color: #f59e0b;
-    margin-top: 4px;
+  .modal-header {
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
   }
 
-  .kui-help-text.kui-warning {
-    color: #f59e0b;
+  .modal-header h3 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0;
   }
 
-  .kui-link {
-    color: var(--kui-color-primary, #3b82f6);
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: inherit;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  .kui-link:hover {
-    color: var(--kui-color-primary-dark, #2563eb);
-  }
-
-  .kui-callout {
-    border: 1px solid var(--kui-color-border);
-    border-radius: 8px;
-    padding: 12px;
-    background: var(--kui-color-surface-muted);
-    color: var(--kui-color-text);
-    font-size: 14px;
-  }
-
-  .kui-callout.error {
-    border-color: rgba(239, 68, 68, 0.3);
-    background: rgba(239, 68, 68, 0.08);
-    color: #dc2626;
-  }
-
-  .kui-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .kui-modal-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 8px;
-  }
-
-  .kui-coming-soon-section {
-    padding: 24px;
-    text-align: center;
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .vehicles-grid {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
   }
 
   @media (max-width: 768px) {
-    .kui-form-grid {
-      grid-template-columns: 1fr;
+    .vehicles-page {
+      flex-direction: column;
     }
 
-    .kui-scraped-content {
-      grid-template-columns: 1fr;
-    }
-
-    .kui-scraped-image {
+    .sidebar {
       width: 100%;
-      height: 160px;
+    }
+
+    .vehicles-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .specs-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

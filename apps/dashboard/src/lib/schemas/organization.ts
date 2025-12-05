@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 9,
+  version: 10,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -384,6 +384,8 @@ export const organizationSchema: SchemaDsl = {
       name: 'text not null',
       slug: 'text not null unique',
       description: 'text',
+      color: 'text default #6b7280',
+      icon: 'text default tag',
       parent_id: 'text',
       sort_order: 'integer default 0',
       '...timestamps': true,

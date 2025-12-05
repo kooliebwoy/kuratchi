@@ -1,9 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { Button, Card, Dialog, FormField, Badge } from '@kuratchi/ui';
+  import { Button, Card, Dialog, FormField, Badge, SlidePanel } from '@kuratchi/ui';
   import { 
     Bike, ArrowLeft, Pencil, Trash2, X, ExternalLink, Save, 
-    Check, Building2 
+    Check, Building2, Loader2 
   } from '@lucide/svelte';
   import { getVehicles, getOems, updateVehicle, deleteVehicle } from '$lib/functions/catalog.remote';
 
@@ -21,6 +21,71 @@
   let isEditing = $state(false);
   let showDeleteModal = $state(false);
   let activeImageIndex = $state(0);
+  let isSaving = $state(false);
+  let saveError = $state('');
+
+  // Edit form state (initialized when entering edit mode)
+  let editOemId = $state('');
+  let editModelName = $state('');
+  let editModelYear = $state<number | null>(null);
+  let editCategory = $state('other');
+  let editMsrp = $state<number | null>(null);
+  let editStatus = $state('draft');
+  let editDescription = $state('');
+  let editSourceUrl = $state('');
+  let editFeatures = $state('');
+  let editSpecifications = $state('');
+
+  // Initialize edit form when editing starts
+  function startEditing() {
+    if (!vehicle) return;
+    editOemId = vehicle.oem_id || '';
+    editModelName = vehicle.model_name || '';
+    editModelYear = vehicle.model_year || null;
+    editCategory = vehicle.category || 'other';
+    editMsrp = vehicle.msrp || null;
+    editStatus = vehicle.status || 'draft';
+    editDescription = vehicle.description || '';
+    editSourceUrl = vehicle.source_url || '';
+    editFeatures = features().join('\n');
+    editSpecifications = JSON.stringify(specifications(), null, 2);
+    isEditing = true;
+  }
+
+  // Save changes handler
+  async function handleSave() {
+    if (!vehicle) return;
+    
+    isSaving = true;
+    saveError = '';
+    
+    try {
+      const result = await updateVehicle({
+        id: vehicle.id,
+        oemId: editOemId || undefined,
+        modelName: editModelName || undefined,
+        modelYear: editModelYear || undefined,
+        category: editCategory || undefined,
+        msrp: editMsrp || undefined,
+        status: editStatus as 'draft' | 'published' | 'archived' || undefined,
+        description: editDescription || undefined,
+        sourceUrl: editSourceUrl || undefined,
+        features: editFeatures || undefined,
+        specifications: editSpecifications || undefined
+      });
+      
+      if (result?.success) {
+        isEditing = false;
+      } else {
+        saveError = 'Failed to save changes';
+      }
+    } catch (err: any) {
+      console.error('Save error:', err);
+      saveError = err.message || 'Failed to save changes';
+    } finally {
+      isSaving = false;
+    }
+  }
 
   // Parsed data
   const specifications = $derived(() => {
@@ -128,107 +193,18 @@
         Back to Catalog
       </Button>
       <div class="kui-header__actions">
-        {#if isEditing}
-          <Button variant="ghost" size="sm" onclick={() => isEditing = false}>
-            Cancel
-          </Button>
-        {:else}
-          <Button variant="secondary" size="sm" onclick={() => isEditing = true}>
-            <Pencil class="kui-icon" />
-            Edit
-          </Button>
-        {/if}
+        <Button variant="secondary" size="sm" onclick={startEditing}>
+          <Pencil class="kui-icon" />
+          Edit
+        </Button>
         <Button variant="ghost" size="sm" onclick={() => showDeleteModal = true}>
           <Trash2 class="kui-icon" />
         </Button>
       </div>
     </header>
 
-    {#if isEditing}
-      <!-- Edit Mode -->
-      <form {...updateVehicle} class="kui-edit-form">
-        <input type="hidden" name="id" value={vehicle.id} />
-        
-        <Card class="kui-section">
-          <h3>Basic Information</h3>
-          <div class="kui-form-grid">
-            <FormField label="OEM">
-              <select name="oemId" class="kui-native-select">
-                {#each oemsData as oem}
-                  <option value={oem.id} selected={oem.id === vehicle.oem_id}>{oem.name}</option>
-                {/each}
-              </select>
-            </FormField>
-
-            <FormField label="Model Name">
-              <input type="text" name="modelName" value={vehicle.model_name} class="kui-native-input" />
-            </FormField>
-
-            <FormField label="Model Year">
-              <input type="number" name="modelYear" value={vehicle.model_year || ''} class="kui-native-input" />
-            </FormField>
-
-            <FormField label="Category">
-              <select name="category" class="kui-native-select">
-                <option value="atv" selected={vehicle.category === 'atv'}>ATV</option>
-                <option value="utv" selected={vehicle.category === 'utv'}>UTV / Side-by-Side</option>
-                <option value="dirtbike" selected={vehicle.category === 'dirtbike'}>Dirt Bike</option>
-                <option value="pitbike" selected={vehicle.category === 'pitbike'}>Pit Bike</option>
-                <option value="motorcycle" selected={vehicle.category === 'motorcycle'}>Motorcycle</option>
-                <option value="electric" selected={vehicle.category === 'electric'}>Electric</option>
-                <option value="other" selected={vehicle.category === 'other'}>Other</option>
-              </select>
-            </FormField>
-
-            <FormField label="MSRP">
-              <input type="number" name="msrp" value={vehicle.msrp || ''} class="kui-native-input" />
-            </FormField>
-
-            <FormField label="Status">
-              <select name="status" class="kui-native-select">
-                <option value="draft" selected={vehicle.status === 'draft'}>Draft</option>
-                <option value="published" selected={vehicle.status === 'published'}>Published</option>
-                <option value="archived" selected={vehicle.status === 'archived'}>Archived</option>
-              </select>
-            </FormField>
-          </div>
-
-          <FormField label="Description">
-            <textarea name="description" rows={3} class="kui-native-textarea">{vehicle.description || ''}</textarea>
-          </FormField>
-
-          <FormField label="Source URL">
-            <input type="url" name="sourceUrl" value={vehicle.source_url || ''} class="kui-native-input" />
-          </FormField>
-        </Card>
-
-        <Card class="kui-section">
-          <h3>Features</h3>
-          <FormField label="Features (one per line)">
-            <textarea name="features" rows={6} class="kui-native-textarea">{features().join('\n')}</textarea>
-          </FormField>
-        </Card>
-
-        <Card class="kui-section">
-          <h3>Specifications</h3>
-          <FormField label="Specifications (JSON)">
-            <textarea name="specifications" rows={10} class="kui-native-textarea font-mono">{JSON.stringify(specifications(), null, 2)}</textarea>
-          </FormField>
-        </Card>
-
-        <div class="kui-form-actions">
-          <Button variant="ghost" type="button" onclick={() => isEditing = false}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" disabled={!!updateVehicle.pending}>
-            <Save class="kui-icon" />
-            Save Changes
-          </Button>
-        </div>
-      </form>
-    {:else}
-      <!-- View Mode -->
-      <div class="kui-content">
+    <!-- View Mode (always visible) -->
+    <div class="kui-content">
         <div class="kui-main">
           <!-- Image Gallery -->
           <Card class="kui-gallery">
@@ -385,9 +361,109 @@
           </Card>
         </div>
       </div>
-    {/if}
   </div>
 {/if}
+
+<!-- Edit SlidePanel -->
+<SlidePanel
+  bind:open={isEditing}
+  title="Edit Vehicle"
+  subtitle={vehicle ? `${vehicle.model_year || ''} ${vehicle.model_name}`.trim() : ''}
+  size="lg"
+  closeOnBackdrop={false}
+>
+  {#snippet children()}
+    {#if saveError}
+      <div class="kui-error-banner">
+        <p>{saveError}</p>
+      </div>
+    {/if}
+    
+    <div class="kui-edit-sections">
+      <section class="kui-edit-section">
+        <h4>Basic Information</h4>
+        <div class="kui-form-grid">
+          <FormField label="OEM">
+            <select bind:value={editOemId} class="kui-native-select">
+              {#each oemsData as oem}
+                <option value={oem.id}>{oem.name}</option>
+              {/each}
+            </select>
+          </FormField>
+
+          <FormField label="Model Name">
+            <input type="text" bind:value={editModelName} class="kui-native-input" />
+          </FormField>
+
+          <FormField label="Model Year">
+            <input type="number" bind:value={editModelYear} class="kui-native-input" />
+          </FormField>
+
+          <FormField label="Category">
+            <select bind:value={editCategory} class="kui-native-select">
+              <option value="atv">ATV</option>
+              <option value="utv">UTV / Side-by-Side</option>
+              <option value="dirtbike">Dirt Bike</option>
+              <option value="pitbike">Pit Bike</option>
+              <option value="motorcycle">Motorcycle</option>
+              <option value="electric">Electric</option>
+              <option value="other">Other</option>
+            </select>
+          </FormField>
+
+          <FormField label="MSRP">
+            <input type="number" bind:value={editMsrp} class="kui-native-input" />
+          </FormField>
+
+          <FormField label="Status">
+            <select bind:value={editStatus} class="kui-native-select">
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </FormField>
+        </div>
+
+        <FormField label="Description">
+          <textarea bind:value={editDescription} rows={3} class="kui-native-textarea"></textarea>
+        </FormField>
+
+        <FormField label="Source URL">
+          <input type="url" bind:value={editSourceUrl} class="kui-native-input" />
+        </FormField>
+      </section>
+
+      <section class="kui-edit-section">
+        <h4>Features</h4>
+        <FormField label="Features (one per line)">
+          <textarea bind:value={editFeatures} rows={6} class="kui-native-textarea"></textarea>
+        </FormField>
+      </section>
+
+      <section class="kui-edit-section">
+        <h4>Specifications</h4>
+        <FormField label="Specifications (JSON)">
+          <textarea bind:value={editSpecifications} rows={10} class="kui-native-textarea font-mono"></textarea>
+        </FormField>
+      </section>
+    </div>
+  {/snippet}
+
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => isEditing = false} disabled={isSaving}>
+      Cancel
+    </Button>
+    <Button variant="primary" onclick={handleSave} disabled={isSaving}>
+      {#if isSaving}
+        <Loader2 class="kui-icon kui-spin" />
+        Saving...
+      {:else}
+        <Save class="kui-icon" />
+        Save Changes
+      {/if}
+    </Button>
+  {/snippet}
+</SlidePanel>
 
 <!-- Delete Modal -->
 {#if showDeleteModal}
@@ -814,6 +890,32 @@
     gap: 12px;
   }
 
+  /* Edit sections in slide panel */
+  .kui-edit-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .kui-edit-section {
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .kui-edit-section:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .kui-edit-section h4 {
+    margin: 0 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+  }
+
   @media (max-width: 1024px) {
     .kui-content {
       grid-template-columns: 1fr;
@@ -831,5 +933,34 @@
     .kui-form-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* Spinner animation */
+  .kui-spin {
+    animation: kui-spin 1s linear infinite;
+  }
+
+  @keyframes kui-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Error banner */
+  .kui-error-banner {
+    padding: 12px 16px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+
+  .kui-error-banner p {
+    margin: 0;
   }
 </style>

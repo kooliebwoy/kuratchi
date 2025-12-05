@@ -162,31 +162,21 @@
 </svelte:head>
 
 <div class="oems-page">
-  <header class="page-header">
-    <div>
-      <p class="eyebrow">Catalog</p>
-      <h1>OEM Management</h1>
-      <p class="subtext">Manage manufacturers and brands in your catalog.</p>
+  <!-- Search and Add Button -->
+  <div class="search-header">
+    <div class="search-bar">
+      <Search class="search-icon" />
+      <input 
+        type="text" 
+        placeholder="Search OEMs..." 
+        bind:value={searchQuery}
+        class="search-input"
+      />
     </div>
-    <div class="header-actions">
-      <Button variant="ghost" size="sm" href="/catalog">
-        <Bike class="icon" /> View Vehicles
-      </Button>
-      <Button variant="primary" size="sm" onclick={openAddModal}>
-        <Plus class="icon" /> Add OEM
-      </Button>
-    </div>
-  </header>
-
-  <!-- Search -->
-  <div class="search-bar">
-    <Search class="search-icon" />
-    <input 
-      type="text" 
-      placeholder="Search OEMs..." 
-      bind:value={searchQuery}
-      class="search-input"
-    />
+    <Button variant="primary" size="sm" onclick={openAddModal} class="add-btn">
+      <Plus class="icon" />
+      Add OEM
+    </Button>
   </div>
 
   <!-- OEMs Grid -->
@@ -384,31 +374,23 @@
     gap: var(--kui-spacing-md);
   }
 
-  .page-header {
+  .search-header {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--kui-spacing-md);
-    flex-wrap: wrap;
-  }
-
-  .header-actions {
-    display: flex;
+    flex-direction: column;
     gap: var(--kui-spacing-sm);
   }
 
-  h1 { margin: 0.1rem 0 0.2rem; font-size: 1.6rem; }
+  @media (min-width: 640px) {
+    .search-header {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+  }
+
+  
   h2 { margin: 0; font-size: 1.25rem; }
   h3 { margin: 0; }
-
-  .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--kui-color-muted);
-    font-weight: 700;
-    margin: 0;
-    font-size: 0.8rem;
-  }
 
   .subtext {
     color: var(--kui-color-muted);
@@ -674,15 +656,6 @@
   }
 
   @media (max-width: 768px) {
-    .page-header {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .header-actions {
-      justify-content: flex-end;
-    }
-
     .oems-grid {
       grid-template-columns: 1fr;
     }
