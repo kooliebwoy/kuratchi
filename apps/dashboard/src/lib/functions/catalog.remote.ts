@@ -62,7 +62,6 @@ export const getOems = guardedQuery(async () => {
     const { locals } = getRequestEvent();
     const db = await getDatabase(locals);
     if (!db) {
-      console.log('[catalog.getOems] No database available');
       return [];
     }
 
@@ -73,7 +72,6 @@ export const getOems = guardedQuery(async () => {
     }
 
     const result = await oemsTable.orderBy('name', 'asc').many();
-    console.log('[catalog.getOems] Query result:', result);
     
     // Handle { success, data } pattern
     const oems = result?.data || result;
@@ -440,7 +438,7 @@ export const deleteVehicle = guardedCommand(
       const vehiclesTable = db.catalogVehicles as any;
       if (!vehiclesTable) error(500, 'Vehicles table not available');
 
-      await vehiclesTable.where({ id }).delete();
+      await vehiclesTable.delete({ id });
 
       await getVehicles().refresh();
       return { success: true };
@@ -473,10 +471,12 @@ export const scrapeVehicleUrl = guardedCommand(
 );
 
 // Import vehicle from scraped data
+// Step 1: Save vehicle data immediately
+// Step 2: Upload images and update vehicle (same request, but vehicle is saved first)
 export const importScrapedVehicle = guardedCommand(
   v.object({
     oemId: v.pipe(v.string(), v.nonEmpty()),
-    scrapedData: v.pipe(v.string(), v.nonEmpty()) // JSON string of scraped data
+    scrapedData: v.pipe(v.string(), v.nonEmpty()), // JSON string of scraped data
   }),
   async ({ oemId, scrapedData }) => {
     try {
@@ -497,6 +497,7 @@ export const importScrapedVehicle = guardedCommand(
       const now = new Date().toISOString();
       const id = crypto.randomUUID();
 
+      // Step 1: Save vehicle immediately (so it exists even if image upload fails)
       const result = await vehiclesTable.insert({
         id,
         oem_id: oemId,
@@ -509,6 +510,8 @@ export const importScrapedVehicle = guardedCommand(
         source_url: data.sourceUrl || null,
         thumbnail_url: data.thumbnailUrl || null,
         images: JSON.stringify(data.images || []),
+        cdn_thumbnail_url: null,
+        cdn_images: '[]',
         specifications: JSON.stringify(data.specifications || {}),
         features: JSON.stringify(data.features || []),
         description: data.description || null,
@@ -522,10 +525,126 @@ export const importScrapedVehicle = guardedCommand(
         error(500, result.error || 'Failed to import vehicle');
       }
 
-      return { success: true, id };
+      console.log('[catalog.importScrapedVehicle] Vehicle saved:', id);
+
+      // Step 2: Upload images to CDN (vehicle is already saved, so this is safe to fail)
+      let cdnThumbnailUrl: string | null = null;
+      let cdnImages: string[] = [];
+      let imageErrors: string[] = [];
+
+      if (data.thumbnailUrl || (data.images && data.images.length > 0)) {
+        console.log('[catalog.importScrapedVehicle] Uploading images to CDN...');
+        
+        try {
+          const { processVehicleImages } = await import('$lib/server/catalog-images');
+          const imageResult = await processVehicleImages(
+            locals,
+            oem.name,
+            data.modelName || 'Unknown Model',
+            data.category || 'other',
+            data.thumbnailUrl || null,
+            data.images || []
+          );
+
+          cdnThumbnailUrl = imageResult.cdnThumbnailUrl;
+          cdnImages = imageResult.cdnImages;
+          imageErrors = imageResult.errors;
+
+          console.log('[catalog.importScrapedVehicle] CDN upload result:', {
+            cdnThumbnailUrl,
+            cdnImagesCount: cdnImages.length,
+            errors: imageErrors
+          });
+
+          // Update vehicle with CDN URLs
+          if (cdnThumbnailUrl || cdnImages.length > 0) {
+            await vehiclesTable.where({ id }).update({
+              cdn_thumbnail_url: cdnThumbnailUrl,
+              cdn_images: JSON.stringify(cdnImages),
+              updated_at: new Date().toISOString()
+            });
+            console.log('[catalog.importScrapedVehicle] Vehicle updated with CDN URLs');
+          }
+        } catch (uploadErr: any) {
+          console.error('[catalog.importScrapedVehicle] Image upload failed:', uploadErr);
+          imageErrors.push(uploadErr.message || 'Image upload failed');
+          // Don't throw - vehicle is already saved
+        }
+      }
+
+      return { 
+        success: true, 
+        id,
+        cdnThumbnailUrl,
+        cdnImagesCount: cdnImages.length,
+        imageErrors: imageErrors.length > 0 ? imageErrors : undefined
+      };
     } catch (err: any) {
       console.error('[catalog.importScrapedVehicle] error:', err);
       error(500, err.message || 'Failed to import vehicle');
+    }
+  }
+);
+
+// Upload images for an existing vehicle (can be called to retry failed uploads)
+export const uploadVehicleImages = guardedCommand(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty()),
+  }),
+  async ({ vehicleId }) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const vehiclesTable = db.catalogVehicles as any;
+      if (!vehiclesTable) error(500, 'Table not available');
+
+      // Get vehicle
+      const vehicleResult = await vehiclesTable.where({ id: vehicleId }).first();
+      const vehicle = vehicleResult?.data || vehicleResult;
+      if (!vehicle) error(404, 'Vehicle not found');
+
+      // Parse original URLs
+      const thumbnailUrl = vehicle.thumbnail_url;
+      let images: string[] = [];
+      try {
+        images = vehicle.images ? JSON.parse(vehicle.images) : [];
+      } catch {
+        images = [];
+      }
+
+      if (!thumbnailUrl && images.length === 0) {
+        return { success: true, message: 'No images to upload' };
+      }
+
+      // Upload images
+      const { processVehicleImages } = await import('$lib/server/catalog-images');
+      const imageResult = await processVehicleImages(
+        locals,
+        vehicle.oem_name,
+        vehicle.model_name,
+        vehicle.category || 'other',
+        thumbnailUrl,
+        images
+      );
+
+      // Update vehicle
+      await vehiclesTable.where({ id: vehicleId }).update({
+        cdn_thumbnail_url: imageResult.cdnThumbnailUrl || null,
+        cdn_images: JSON.stringify(imageResult.cdnImages),
+        updated_at: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        cdnThumbnailUrl: imageResult.cdnThumbnailUrl,
+        cdnImagesCount: imageResult.cdnImages.length,
+        errors: imageResult.errors.length > 0 ? imageResult.errors : undefined
+      };
+    } catch (err: any) {
+      console.error('[catalog.uploadVehicleImages] error:', err);
+      error(500, err.message || 'Failed to upload images');
     }
   }
 );
@@ -567,7 +686,6 @@ export const getCategories = guardedQuery(async () => {
     }
 
     const result = await categoriesTable.orderBy('sort_order', 'asc').many();
-    console.log('[catalog.getCategories] Query result:', result);
     
     const categories = result?.data || result;
     if (!Array.isArray(categories)) return [];
@@ -707,7 +825,7 @@ export const deleteCategory = guardedCommand(
 
       console.log('[catalog.deleteCategory] Deleting category:', { id });
 
-      const result = await categoriesTable.where({ id }).delete();
+      const result = await categoriesTable.delete({ id });
 
       if (!result.success) {
         console.error('[catalog.deleteCategory] Delete failed:', result.error);
@@ -721,3 +839,451 @@ export const deleteCategory = guardedCommand(
     }
   }
 );
+
+// ============== VEHICLE IMAGE MANAGEMENT ==============
+
+export interface VehicleImage {
+  id: string;
+  vehicle_id: string;
+  url: string;
+  cdn_url: string | null;
+  alt_text: string | null;
+  is_primary: boolean;
+  sort_order: number;
+  image_source: 'stock' | 'custom';
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get all images for a vehicle
+ */
+export const getVehicleImages = guardedQuery(async () => {
+  // This is called without params - we'll return empty and let the component filter
+  return [];
+});
+
+/**
+ * Get images for a specific vehicle
+ */
+export const getVehicleImagesByVehicleId = query('unchecked', async (vehicleId: string) => {
+  try {
+    const { locals } = getRequestEvent();
+    if (!locals.session?.user) error(401, 'Unauthorized');
+    
+    const db = await getDatabase(locals);
+    if (!db) return [];
+    
+    const imagesTable = db.catalogVehicleImages as any;
+    if (!imagesTable) return [];
+    
+    const result = await imagesTable
+      .where({ vehicle_id: vehicleId })
+      .orderBy('sort_order', 'asc')
+      .many();
+    
+    return (result?.data || result || []).map((img: any) => ({
+      ...img,
+      is_primary: img.is_primary === 1 || img.is_primary === true,
+      image_source: img.image_source || 'stock'
+    }));
+  } catch (err) {
+    console.error('[catalog.getVehicleImagesByVehicleId] error:', err);
+    return [];
+  }
+});
+
+/**
+ * Add an image to a vehicle
+ */
+export const addVehicleImage = guardedCommand(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty()),
+    url: v.pipe(v.string(), v.nonEmpty()),
+    cdnUrl: v.optional(v.string()),
+    altText: v.optional(v.string()),
+    isPrimary: v.optional(v.boolean()),
+    sortOrder: v.optional(v.number()),
+    imageSource: v.optional(v.picklist(['stock', 'custom']))
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!imagesTable) error(500, 'Images table not available');
+
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+
+      // If setting as primary, unset other primary images
+      if (data.isPrimary) {
+        await imagesTable
+          .where({ vehicle_id: data.vehicleId, is_primary: true })
+          .update({ is_primary: false, updated_at: now });
+      }
+
+      // Get max sort order if not provided
+      let sortOrder = data.sortOrder;
+      if (sortOrder === undefined) {
+        const existing = await imagesTable
+          .where({ vehicle_id: data.vehicleId })
+          .orderBy('sort_order', 'desc')
+          .first();
+        const maxOrder = existing?.data?.sort_order || existing?.sort_order || 0;
+        sortOrder = maxOrder + 1;
+      }
+
+      await imagesTable.insert({
+        id,
+        vehicle_id: data.vehicleId,
+        url: data.url,
+        cdn_url: data.cdnUrl || null,
+        alt_text: data.altText || null,
+        is_primary: data.isPrimary ? 1 : 0,
+        sort_order: sortOrder,
+        image_source: data.imageSource || 'custom',
+        created_at: now,
+        updated_at: now
+      });
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      return { success: true, id };
+    } catch (err: any) {
+      console.error('[catalog.addVehicleImage] error:', err);
+      error(500, err.message || 'Failed to add image');
+    }
+  }
+);
+
+/**
+ * Update a vehicle image (primary status, order, alt text)
+ */
+export const updateVehicleImage = guardedCommand(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty()),
+    vehicleId: v.pipe(v.string(), v.nonEmpty()),
+    isPrimary: v.optional(v.boolean()),
+    sortOrder: v.optional(v.number()),
+    altText: v.optional(v.string()),
+    imageSource: v.optional(v.picklist(['stock', 'custom']))
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!imagesTable) error(500, 'Images table not available');
+
+      const now = new Date().toISOString();
+      const updates: Record<string, any> = { updated_at: now };
+
+      // If setting as primary, unset other primary images first
+      if (data.isPrimary === true) {
+        await imagesTable
+          .where({ vehicle_id: data.vehicleId, is_primary: true })
+          .update({ is_primary: false, updated_at: now });
+        updates.is_primary = 1;
+      } else if (data.isPrimary === false) {
+        updates.is_primary = 0;
+      }
+
+      if (data.sortOrder !== undefined) updates.sort_order = data.sortOrder;
+      if (data.altText !== undefined) updates.alt_text = data.altText;
+      if (data.imageSource !== undefined) updates.image_source = data.imageSource;
+
+      await imagesTable.where({ id: data.id }).update(updates);
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.updateVehicleImage] error:', err);
+      error(500, err.message || 'Failed to update image');
+    }
+  }
+);
+
+/**
+ * Delete a vehicle image
+ */
+export const deleteVehicleImage = guardedCommand(
+  v.object({
+    id: v.pipe(v.string(), v.nonEmpty()),
+    vehicleId: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!imagesTable) error(500, 'Images table not available');
+
+      await imagesTable.where({ id: data.id }).delete();
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.deleteVehicleImage] error:', err);
+      error(500, err.message || 'Failed to delete image');
+    }
+  }
+);
+
+/**
+ * Reorder vehicle images
+ */
+export const reorderVehicleImages = guardedCommand(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty()),
+    imageIds: v.array(v.string())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!imagesTable) error(500, 'Images table not available');
+
+      const now = new Date().toISOString();
+
+      // Update sort_order for each image
+      for (let i = 0; i < data.imageIds.length; i++) {
+        await imagesTable.where({ id: data.imageIds[i] }).update({
+          sort_order: i,
+          updated_at: now
+        });
+      }
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.reorderVehicleImages] error:', err);
+      error(500, err.message || 'Failed to reorder images');
+    }
+  }
+);
+
+/**
+ * Delete all images for a vehicle
+ */
+export const deleteAllVehicleImages = guardedCommand(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!imagesTable) error(500, 'Images table not available');
+
+      await imagesTable.where({ vehicle_id: data.vehicleId }).delete();
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      return { success: true };
+    } catch (err: any) {
+      console.error('[catalog.deleteAllVehicleImages] error:', err);
+      error(500, err.message || 'Failed to delete images');
+    }
+  }
+);
+
+/**
+ * Upload a new image to storage and add to vehicle
+ */
+export const uploadVehicleImageFile = command(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty()),
+    file: v.any(),
+    isPrimary: v.optional(v.boolean()),
+    imageSource: v.optional(v.picklist(['stock', 'custom']))
+  }),
+  async (data) => {
+    const { locals } = getRequestEvent();
+    if (!locals.session?.user) error(401, 'Unauthorized');
+
+    try {
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      // Get vehicle info for path generation
+      const vehiclesTable = db.catalogVehicles as any;
+      const vehicle = await vehiclesTable.where({ id: data.vehicleId }).first();
+      const vehicleData = vehicle?.data || vehicle;
+      
+      if (!vehicleData) error(404, 'Vehicle not found');
+
+      // Upload to catalog storage
+      const { uploadCatalogImage, slugify } = await import('$lib/server/catalog-images');
+      
+      const file = data.file as File;
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // Get existing image count for index
+      const imagesTable = db.catalogVehicleImages as any;
+      const existingImages = await imagesTable
+        .where({ vehicle_id: data.vehicleId })
+        .many();
+      const imageCount = (existingImages?.data || existingImages || []).length;
+      
+      const result = await uploadCatalogImage(locals, arrayBuffer, {
+        oemSlug: slugify(vehicleData.oem_name),
+        modelSlug: slugify(vehicleData.model_name),
+        category: vehicleData.category || 'other',
+        imageType: 'gallery',
+        index: imageCount + 1
+      }, file.type);
+
+      if (!result.success || !result.key) {
+        error(500, result.error || 'Failed to upload image');
+      }
+
+      // Add to vehicle images table
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+
+      // If setting as primary, unset other primary images
+      if (data.isPrimary) {
+        await imagesTable
+          .where({ vehicle_id: data.vehicleId, is_primary: true })
+          .update({ is_primary: false, updated_at: now });
+      }
+
+      await imagesTable.insert({
+        id,
+        vehicle_id: data.vehicleId,
+        url: result.key, // Store the key as the URL reference
+        cdn_url: result.cdnUrl || null,
+        alt_text: vehicleData.model_name,
+        is_primary: data.isPrimary ? 1 : 0,
+        sort_order: imageCount,
+        image_source: data.imageSource || 'custom',
+        created_at: now,
+        updated_at: now
+      });
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      
+      return { 
+        success: true, 
+        id,
+        cdnUrl: result.cdnUrl,
+        key: result.key
+      };
+    } catch (err: any) {
+      console.error('[catalog.uploadVehicleImageFile] error:', err);
+      error(500, err.message || 'Failed to upload image');
+    }
+  }
+);
+
+/**
+ * Sync images from vehicle.images JSON to catalogVehicleImages table
+ * Useful for migrating existing vehicles that have images in the JSON field
+ */
+export const syncVehicleImagesFromJson = guardedCommand(
+  v.object({
+    vehicleId: v.pipe(v.string(), v.nonEmpty())
+  }),
+  async (data) => {
+    try {
+      const { locals } = getRequestEvent();
+      const db = await getDatabase(locals);
+      if (!db) error(500, 'Database not available');
+
+      const vehiclesTable = db.catalogVehicles as any;
+      const imagesTable = db.catalogVehicleImages as any;
+      if (!vehiclesTable || !imagesTable) error(500, 'Tables not available');
+
+      // Get vehicle
+      const vehicleResult = await vehiclesTable.where({ id: data.vehicleId }).first();
+      const vehicle = vehicleResult?.data || vehicleResult;
+      if (!vehicle) error(404, 'Vehicle not found');
+
+      // Parse images from JSON fields
+      let originalImages: string[] = [];
+      let cdnImages: string[] = [];
+      
+      try {
+        originalImages = vehicle.images ? JSON.parse(vehicle.images) : [];
+      } catch { originalImages = []; }
+      
+      try {
+        cdnImages = vehicle.cdn_images ? JSON.parse(vehicle.cdn_images) : [];
+      } catch { cdnImages = []; }
+
+      const now = new Date().toISOString();
+      let addedCount = 0;
+
+      // Check existing images
+      const existingResult = await imagesTable
+        .where({ vehicle_id: data.vehicleId })
+        .many();
+      const existingUrls = new Set(
+        (existingResult?.data || existingResult || []).map((img: any) => img.url)
+      );
+
+      // Add thumbnail first if not already added
+      if (vehicle.thumbnail_url && !existingUrls.has(vehicle.thumbnail_url)) {
+        await imagesTable.insert({
+          id: crypto.randomUUID(),
+          vehicle_id: data.vehicleId,
+          url: vehicle.thumbnail_url,
+          cdn_url: vehicle.cdn_thumbnail_url || null,
+          alt_text: vehicle.model_name,
+          is_primary: 1,
+          sort_order: 0,
+          image_source: 'stock',
+          created_at: now,
+          updated_at: now
+        });
+        addedCount++;
+      }
+
+      // Add other images
+      for (let i = 0; i < originalImages.length; i++) {
+        const url = originalImages[i];
+        if (!existingUrls.has(url)) {
+          const cdnUrl = cdnImages[i] || null;
+          await imagesTable.insert({
+            id: crypto.randomUUID(),
+            vehicle_id: data.vehicleId,
+            url,
+            cdn_url: cdnUrl,
+            alt_text: `${vehicle.model_name} - Image ${i + 1}`,
+            is_primary: 0,
+            sort_order: addedCount,
+            image_source: 'stock',
+            created_at: now,
+            updated_at: now
+          });
+          addedCount++;
+        }
+      }
+
+      await getVehicleImagesByVehicleId(data.vehicleId).refresh();
+      
+      return { 
+        success: true, 
+        addedCount,
+        totalOriginal: originalImages.length + (vehicle.thumbnail_url ? 1 : 0)
+      };
+    } catch (err: any) {
+      console.error('[catalog.syncVehicleImagesFromJson] error:', err);
+      error(500, err.message || 'Failed to sync images');
+    }
+  }
+);
+
+//org-krysten-gillett-fbeec2ad
+//kuratchi-d1-org-krysten-gillett-fbeec2ad

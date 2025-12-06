@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 10,
+  version: 13,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -362,8 +362,10 @@ export const organizationSchema: SchemaDsl = {
       msrp: 'integer',
       currency: 'text default USD',
       source_url: 'text',
-      thumbnail_url: 'text',
-      images: 'json default (json_array())',
+      thumbnail_url: 'text',        // Original scraped URL
+      cdn_thumbnail_url: 'text',    // R2 CDN URL (preferred)
+      images: 'json default (json_array())',           // Original image URLs
+      cdn_images: 'json default (json_array())',       // R2 CDN image URLs
       specifications: 'json default (json_object())',
       features: 'json default (json_array())',
       description: 'text',
@@ -373,10 +375,12 @@ export const organizationSchema: SchemaDsl = {
     catalogVehicleImages: {
       id: 'text primary key not null',
       vehicle_id: 'text not null -> catalogVehicles.id cascade',
-      url: 'text not null',
+      url: 'text not null',         // Original source URL
+      cdn_url: 'text',              // R2 CDN URL (preferred)
       alt_text: 'text',
       is_primary: 'boolean default 0',
       sort_order: 'integer default 0',
+      image_source: 'text default stock',  // 'stock' or 'custom'
       '...timestamps': true,
     },
     catalogCategories: {

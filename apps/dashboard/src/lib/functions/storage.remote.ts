@@ -140,7 +140,176 @@ export const listCloudflareR2Buckets = query('unchecked', async () => {
 });
 
 /**
+ * Get organization R2 bucket (single bucket per organization)
+ * Returns bucket info from the primary database record
+ */
+export const getOrganizationBucket = query('unchecked', async () => {
+	const { locals } = getRequestEvent();
+	const session = locals.session;
+	const activeOrgId = session?.organizationId;
+
+	if (!activeOrgId) {
+		return {
+			success: false,
+			error: 'Organization not found',
+			bucket: null
+		};
+	}
+
+	try {
+		const adminDb = await getAdminDatabase(locals);
+		
+		// Get the primary database record for this organization (has the R2 bucket)
+		const dbResult = await adminDb.databases
+			.where({ 
+				organizationId: activeOrgId, 
+				isPrimary: true,
+				deleted_at: { isNullish: true } 
+			})
+			.first();
+
+		if (!dbResult.success || !dbResult.data) {
+			// Fallback: try to get any database with R2 bucket for this org
+			const anyDbResult = await adminDb.databases
+				.where({ 
+					organizationId: activeOrgId,
+					deleted_at: { isNullish: true }
+				})
+				.many();
+			
+			const dbWithBucket = anyDbResult.data?.find((db: any) => db.r2BucketName);
+			
+			if (!dbWithBucket) {
+				return {
+					success: false,
+					error: 'No storage bucket configured for this organization',
+					bucket: null
+				};
+			}
+			
+			// Use the found bucket
+			const bucket = {
+				name: dbWithBucket.r2BucketName,
+				binding: dbWithBucket.r2Binding || 'STORAGE',
+				storageDomain: dbWithBucket.r2StorageDomain || null,
+				organizationId: activeOrgId,
+				databaseId: dbWithBucket.id,
+				workerName: dbWithBucket.workerName,
+				creation_date: dbWithBucket.created_at
+			};
+			
+			return {
+				success: true,
+				bucket
+			};
+		}
+
+		const dbRecord = dbResult.data;
+		
+		if (!dbRecord.r2BucketName) {
+			return {
+				success: false,
+				error: 'Organization bucket not provisioned',
+				bucket: null
+			};
+		}
+
+		const bucket = {
+			name: dbRecord.r2BucketName,
+			binding: dbRecord.r2Binding || 'STORAGE',
+			storageDomain: dbRecord.r2StorageDomain || null,
+			organizationId: activeOrgId,
+			databaseId: dbRecord.id,
+			workerName: dbRecord.workerName,
+			creation_date: dbRecord.created_at
+		};
+
+		return {
+			success: true,
+			bucket
+		};
+	} catch (error: any) {
+		console.error('[getOrganizationBucket] Error:', error);
+		return {
+			success: false,
+			error: error.message,
+			bucket: null
+		};
+	}
+});
+
+/**
+ * Update the storage domain for the current organization's R2 bucket
+ * This should be called after manually setting up the DNS record in Cloudflare
+ */
+export const updateStorageDomain = command(
+	v.object({
+		storageDomain: v.pipe(v.string(), v.nonEmpty())
+	}),
+	async ({ storageDomain }) => {
+		const { locals } = getRequestEvent();
+		const session = locals.session;
+		
+		if (!session?.user) {
+			error(401, 'Unauthorized');
+		}
+		
+		const activeOrgId = session?.organizationId;
+		if (!activeOrgId) {
+			error(400, 'Organization not found');
+		}
+
+		try {
+			const adminDb = await getAdminDatabase(locals);
+			
+			// Get the primary database record for this organization
+			const dbResult = await adminDb.databases
+				.where({ 
+					organizationId: activeOrgId, 
+					isPrimary: true,
+					deleted_at: { isNullish: true } 
+				})
+				.first();
+
+			if (!dbResult.success || !dbResult.data) {
+				error(404, 'No database record found for this organization');
+			}
+
+			const dbRecord = dbResult.data;
+			
+			if (!dbRecord.r2BucketName) {
+				error(400, 'No R2 bucket configured for this organization');
+			}
+
+			// Update the storage domain
+			await adminDb.databases
+				.where({ id: dbRecord.id })
+				.update({ 
+					r2StorageDomain: storageDomain,
+					updated_at: new Date().toISOString()
+				});
+
+			console.log('[updateStorageDomain] Updated storage domain:', {
+				organizationId: activeOrgId,
+				bucketName: dbRecord.r2BucketName,
+				storageDomain
+			});
+
+			return {
+				success: true,
+				bucketName: dbRecord.r2BucketName,
+				storageDomain
+			};
+		} catch (err: any) {
+			console.error('[updateStorageDomain] Error:', err);
+			error(500, err.message || 'Failed to update storage domain');
+		}
+	}
+);
+
+/**
  * Get all R2 buckets for this organization from our database
+ * @deprecated Use getOrganizationBucket instead - we now have one bucket per org
  */
 export const getAllBuckets = query('unchecked', async () => {
 	const { locals } = getRequestEvent();
@@ -159,16 +328,13 @@ export const getAllBuckets = query('unchecked', async () => {
 	}
 
 	try {
-		const orgDb = await getDatabase(locals);
+		// Get organization bucket from primary database
+		const orgBucketResult = await getOrganizationBucket();
 		
-		const siteRecords = await orgDb.sites
-			.where({ deleted_at: { isNullish: true } })
-			.many();
-
-		if (!siteRecords.success) {
+		if (!orgBucketResult.success || !orgBucketResult.bucket) {
 			return {
 				success: false,
-				error: 'Failed to load sites',
+				error: orgBucketResult.error || 'No bucket found',
 				buckets: [],
 				orgBuckets: [],
 				siteBuckets: [],
@@ -176,65 +342,45 @@ export const getAllBuckets = query('unchecked', async () => {
 			};
 		}
 		
-		const buckets = [];
+		const bucket = orgBucketResult.bucket;
 		
-		// Fetch domain status for each bucket
-		for (const site of siteRecords.data || []) {
-			if (site.r2BucketName) {
-				// Try to get public domain status (R2.dev managed domain)
-				let publicDomain = null;
-				
-				try {
-					const domainStatus = await r2.getPublicDomain(site.r2BucketName);
-					if (domainStatus?.success && domainStatus?.result) {
-						publicDomain = {
-							enabled: domainStatus.result.enabled,
-							domain: domainStatus.result.domain
-						};
-					}
-				} catch (err) {
-					console.warn(`[getAllBuckets] Failed to get domain status for ${site.r2BucketName}:`, err);
-				}
-				
-				// Use actual custom storage domain from site record (e.g., subdomain.kuratchi.cloud)
-				const customDomain = site.r2StorageDomain || null;
-				
-				buckets.push({
-					name: site.r2BucketName,
-					binding: site.r2Binding || 'STORAGE',
-					type: 'site',
-					metadata: {
-						type: 'site',
-						name: site.name,
-						subdomain: site.subdomain,
-						id: site.id,
-						status: site.status,
-						databaseId: site.databaseId
-					},
-					publicDomain,
-					customDomain, // Actual configured custom domain from kuratchi.cloud zone
-					suggestedCustomDomain: site.subdomain ? `${site.subdomain}.kuratchi.cloud` : null,
-					isManaged: true,
-					organizationId: activeOrgId,
-					creation_date: site.created_at
-				});
+		// Get public domain status
+		let publicDomain = null;
+		try {
+			const domainStatus = await r2.getPublicDomain(bucket.name);
+			if (domainStatus?.success && domainStatus?.result) {
+				publicDomain = {
+					enabled: domainStatus.result.enabled,
+					domain: domainStatus.result.domain
+				};
 			}
+		} catch (err) {
+			console.warn(`[getAllBuckets] Failed to get domain status for ${bucket.name}:`, err);
 		}
-
-		const siteBuckets = buckets.filter((b: any) => b.metadata?.type === 'site');
-		const orgBuckets: any[] = [];
+		
+		const bucketWithDomain = {
+			...bucket,
+			publicDomain,
+			customDomain: bucket.storageDomain,
+			type: 'organization',
+			isManaged: true,
+			metadata: {
+				type: 'organization',
+				organizationId: activeOrgId
+			}
+		};
 
 		return {
 			success: true,
-			buckets,
-			orgBuckets,
-			siteBuckets,
+			buckets: [bucketWithDomain],
+			orgBuckets: [bucketWithDomain],
+			siteBuckets: [], // No more site-level buckets
 			stats: {
-				total: buckets.length,
-				managed: buckets.length,
+				total: 1,
+				managed: 1,
 				unmanaged: 0,
-				orgLevel: orgBuckets.length,
-				siteLevel: siteBuckets.length
+				orgLevel: 1,
+				siteLevel: 0
 			}
 		};
 	} catch (error: any) {
@@ -257,56 +403,58 @@ export const getAllBuckets = query('unchecked', async () => {
 /**
  * Get R2 bucket info for a specific bucket name
  * Returns the binding name and worker config to use with SDK methods
+ * Now uses organization-level bucket from primary database record
  */
 async function getBucketInfo(bucketName: string) {
 	const { locals } = getRequestEvent();
-	const orgDb = await getDatabase(locals);
+	const adminDb = await getAdminDatabase(locals);
+	const session = locals.session;
+	const activeOrgId = session?.organizationId;
 	
-	// Find the site with this bucket
-	const siteResult = await orgDb.sites
-		.where({ r2BucketName: bucketName, deleted_at: { isNullish: true } })
-		.one();
-	
-	if (!siteResult.success || !siteResult.data) {
-		error(404, 'Bucket not found');
+	if (!activeOrgId) {
+		error(401, 'Organization not found');
 	}
 	
-	const site = siteResult.data;
-	const binding = site.r2Binding || 'STORAGE';
+	// Find the database record with this bucket (organization-level)
+	const dbResult = await adminDb.databases
+		.where({ 
+			r2BucketName: bucketName, 
+			organizationId: activeOrgId,
+			deleted_at: { isNullish: true } 
+		})
+		.one();
 	
-	// Get worker config from the site's database
+	if (!dbResult.success || !dbResult.data) {
+		error(404, 'Bucket not found for this organization');
+	}
+	
+	const dbRecord = dbResult.data;
+	const binding = dbRecord.r2Binding || 'STORAGE';
+	
+	// Get worker config from the database record
 	let workerConfig: any = null;
 	try {
-		// Get database record to access worker name
-		const adminDb = await getAdminDatabase(locals);
-		const dbResult = await adminDb.databases
-			.where({ siteId: site.id, deleted_at: { isNullish: true } })
-			.one();
+		const workerName = dbRecord.workerName;
 		
-		if (dbResult.success && dbResult.data) {
-			const dbRecord = dbResult.data;
-			const workerName = dbRecord.workerName || site.workerName;
+		if (workerName) {
+			// Get token for authentication
+			const tokenResult = await adminDb.dbApiTokens
+				.where({
+					databaseId: dbRecord.id,
+					revoked: false,
+					deleted_at: { isNullish: true }
+				})
+				.first();
 			
-			if (workerName) {
-				// Get token for authentication
-				const tokenResult = await adminDb.dbApiTokens
-					.where({
-						databaseId: dbRecord.id,
-						revoked: false,
-						deleted_at: { isNullish: true }
-					})
-					.first();
+			if (tokenResult.success && tokenResult.data) {
+				const gatewayKey = env.KURATCHI_GATEWAY_KEY;
 				
-				if (tokenResult.success && tokenResult.data) {
-					const gatewayKey = env.KURATCHI_GATEWAY_KEY;
-					
-					workerConfig = {
-						workerName,
-						gatewayKey,
-						token: tokenResult.data.token,
-						databaseName: dbRecord.name || dbRecord.dbuuid
-					};
-				}
+				workerConfig = {
+					workerName,
+					gatewayKey,
+					token: tokenResult.data.token,
+					databaseName: dbRecord.name || dbRecord.dbuuid
+				};
 			}
 		}
 	} catch (err) {
@@ -315,13 +463,13 @@ async function getBucketInfo(bucketName: string) {
 	
 	// Log if no worker config found
 	if (!workerConfig) {
-		console.warn(`[getBucketInfo] No worker config available for bucket ${bucketName}. R2 operations will fail. Site may need worker deployment.`);
+		console.warn(`[getBucketInfo] No worker config available for bucket ${bucketName}. R2 operations will fail.`);
 	}
 	
 	// Get storage URL - prefer custom storage domain
 	let publicUrl = null;
-	if (site.r2StorageDomain) {
-		publicUrl = `https://${site.r2StorageDomain}`;
+	if (dbRecord.r2StorageDomain) {
+		publicUrl = `https://${dbRecord.r2StorageDomain}`;
 	} else {
 		// Fallback to R2.dev public domain
 		try {
@@ -334,8 +482,289 @@ async function getBucketInfo(bucketName: string) {
 		}
 	}
 	
-	return { bucketName, binding, site, publicUrl, workerConfig };
+	return { bucketName, binding, publicUrl, workerConfig };
 }
+
+/**
+ * Get organization bucket info (internal helper)
+ * Resolves bucket from organization's primary database
+ */
+async function getOrgBucketInfo() {
+	const { locals } = getRequestEvent();
+	const adminDb = await getAdminDatabase(locals);
+	const session = locals.session;
+	const activeOrgId = session?.organizationId;
+	
+	if (!activeOrgId) {
+		throw new Error('Organization not found');
+	}
+	
+	// Get the primary database record for this organization
+	let dbResult = await adminDb.databases
+		.where({ 
+			organizationId: activeOrgId, 
+			isPrimary: true,
+			deleted_at: { isNullish: true } 
+		})
+		.first();
+
+	// Fallback: try to get any database with R2 bucket
+	if (!dbResult.success || !dbResult.data) {
+		const anyDbResult = await adminDb.databases
+			.where({ 
+				organizationId: activeOrgId,
+				deleted_at: { isNullish: true }
+			})
+			.many();
+		
+		const dbWithBucket = anyDbResult.data?.find((db: any) => db.r2BucketName);
+		if (dbWithBucket) {
+			dbResult = { success: true, data: dbWithBucket };
+		}
+	}
+	
+	if (!dbResult?.success || !dbResult?.data?.r2BucketName) {
+		throw new Error('No storage bucket configured for this organization');
+	}
+	
+	const dbRecord = dbResult.data;
+	const bucketName = dbRecord.r2BucketName;
+	const binding = dbRecord.r2Binding || 'STORAGE';
+	
+	// Get worker config
+	let workerConfig: any = null;
+	const workerName = dbRecord.workerName;
+	
+	if (workerName) {
+		const tokenResult = await adminDb.dbApiTokens
+			.where({
+				databaseId: dbRecord.id,
+				revoked: false,
+				deleted_at: { isNullish: true }
+			})
+			.first();
+		
+		if (tokenResult.success && tokenResult.data) {
+			workerConfig = {
+				workerName,
+				gatewayKey: env.KURATCHI_GATEWAY_KEY,
+				token: tokenResult.data.token,
+				databaseName: dbRecord.name || dbRecord.dbuuid
+			};
+		}
+	}
+	
+	// Get public URL
+	let publicUrl = null;
+	if (dbRecord.r2StorageDomain) {
+		publicUrl = `https://${dbRecord.r2StorageDomain}`;
+	} else {
+		try {
+			const domainStatus = await r2.getPublicDomain(bucketName);
+			if (domainStatus?.success && domainStatus?.result?.enabled) {
+				publicUrl = `https://${domainStatus.result.domain}`;
+			}
+		} catch (err) {
+			console.warn(`[getOrgBucketInfo] Failed to get domain status:`, err);
+		}
+	}
+	
+	return { bucketName, binding, publicUrl, workerConfig, storageDomain: dbRecord.r2StorageDomain };
+}
+
+// ============================================
+// ORGANIZATION STORAGE (no bucket param needed)
+// ============================================
+
+/**
+ * Storage path patterns:
+ * - sites/{subdomain}/{folder}/...     - Site-specific uploads
+ * - catalog/{oem}/{category}/{model}/... - Catalog vehicle images  
+ * - uploads/...                         - General organization uploads
+ * - emails/...                          - Email attachments
+ */
+type StorageSource = 'sites' | 'catalog' | 'uploads' | 'emails' | 'other';
+
+/**
+ * Get all storage media for the organization
+ * Supports filtering by source type and site
+ */
+export const getStorageMedia = query('unchecked', async (sourceFilter?: string) => {
+	try {
+		const { locals } = getRequestEvent();
+		if (!locals.session?.user) error(401, 'Unauthorized');
+		
+		const { binding, publicUrl, workerConfig } = await getOrgBucketInfo();
+		
+		// Determine prefix based on filter
+		// sourceFilter can be: 'sites', 'sites/{subdomain}', 'catalog', 'uploads', 'emails', or undefined for all
+		let prefix = '';
+		if (sourceFilter) {
+			prefix = sourceFilter.endsWith('/') ? sourceFilter : `${sourceFilter}/`;
+		}
+		
+		const result = await r2.list(binding, { prefix }, workerConfig);
+		
+		return {
+			success: true,
+			media: result?.objects?.map((obj: any) => {
+				const pathParts = obj.key.split('/');
+				const rootFolder = pathParts[0];
+				
+				// Determine source type
+				let source: StorageSource = 'other';
+				let site: string | null = null;
+				let folder: string | null = null;
+				let catalogInfo: { oem?: string; category?: string; model?: string } | null = null;
+				
+				if (rootFolder === 'sites' && pathParts.length > 1) {
+					source = 'sites';
+					site = pathParts[1];
+					if (pathParts.length > 3) {
+						folder = pathParts.slice(2, -1).join('/');
+					}
+				} else if (rootFolder === 'catalog') {
+					source = 'catalog';
+					// catalog/{oem}/{category}/{model}/filename
+					if (pathParts.length >= 4) {
+						catalogInfo = {
+							oem: pathParts[1],
+							category: pathParts[2],
+							model: pathParts[3]
+						};
+					}
+				} else if (rootFolder === 'uploads') {
+					source = 'uploads';
+					if (pathParts.length > 2) {
+						folder = pathParts.slice(1, -1).join('/');
+					}
+				} else if (rootFolder === 'emails') {
+					source = 'emails';
+					if (pathParts.length > 2) {
+						folder = pathParts.slice(1, -1).join('/');
+					}
+				}
+				
+				return {
+					id: obj.key,
+					key: obj.key,
+					filename: pathParts[pathParts.length - 1] || obj.key,
+					size: obj.size,
+					uploaded: obj.uploaded,
+					mimeType: obj.httpMetadata?.contentType || inferMimeTypeFromKey(obj.key),
+					url: publicUrl ? `${publicUrl}/${obj.key}` : null,
+					source,
+					site,
+					folder,
+					catalogInfo
+				};
+			}).filter((obj: any) => !obj.filename.startsWith('.')) ?? [],
+			publicUrl
+		};
+	} catch (err: any) {
+		console.error('[getStorageMedia] error:', err);
+		return { success: false, error: err.message, media: [], publicUrl: null };
+	}
+});
+
+/**
+ * Get storage details for the organization bucket
+ */
+export const getStorageDetails = query('unchecked', async () => {
+	try {
+		const { locals } = getRequestEvent();
+		if (!locals.session?.user) error(401, 'Unauthorized');
+		
+		const { bucketName, publicUrl, storageDomain } = await getOrgBucketInfo();
+		
+		return {
+			success: true,
+			bucket: bucketName,
+			publicUrl,
+			storageDomain
+		};
+	} catch (err: any) {
+		console.error('[getStorageDetails] error:', err);
+		return { success: false, error: err.message, bucket: null, publicUrl: null, storageDomain: null };
+	}
+});
+
+/**
+ * Upload media to organization storage
+ * 
+ * Storage paths:
+ * - With site: sites/{subdomain}/{folder}/{filename}
+ * - Without site: uploads/{folder}/{filename}
+ */
+export const uploadStorageMedia = guardedForm(
+	v.object({
+		file: v.any(),
+		siteSubdomain: v.optional(v.string()),
+		folder: v.optional(v.string())
+	}),
+	async (data) => {
+		try {
+			const { binding, publicUrl, workerConfig } = await getOrgBucketInfo();
+			
+			// Build path with consistent structure
+			let path = '';
+			if (data.siteSubdomain) {
+				// Site-specific: sites/{subdomain}/{folder}/
+				path = `sites/${data.siteSubdomain}/`;
+				if (data.folder) {
+					path += `${data.folder}/`;
+				} else {
+					path += 'uploads/';
+				}
+			} else {
+				// Organization-level: uploads/{folder}/
+				path = 'uploads/';
+				if (data.folder) {
+					path += `${data.folder}/`;
+				}
+			}
+			
+			const file = data.file as File;
+			const key = `${path}${file.name}`;
+			const arrayBuffer = await file.arrayBuffer();
+			
+			await r2.put(binding, key, arrayBuffer, {
+				httpMetadata: { contentType: file.type }
+			}, workerConfig);
+			
+			await getStorageMedia(undefined).refresh();
+			
+			return {
+				success: true,
+				key,
+				url: publicUrl ? `${publicUrl}/${key}` : null
+			};
+		} catch (err: any) {
+			console.error('[uploadStorageMedia] error:', err);
+			return { success: false, error: err.message };
+		}
+	}
+);
+
+/**
+ * Delete media from organization storage
+ */
+export const deleteStorageMedia = guardedForm(
+	v.object({ key: v.string() }),
+	async (data) => {
+		try {
+			const { binding, workerConfig } = await getOrgBucketInfo();
+			
+			await r2.delete(binding, data.key, workerConfig);
+			await getStorageMedia(undefined).refresh();
+			
+			return { success: true };
+		} catch (err: any) {
+			console.error('[deleteStorageMedia] error:', err);
+			return { success: false, error: err.message };
+		}
+	}
+);
 
 /**
  * Get bucket details including public URL

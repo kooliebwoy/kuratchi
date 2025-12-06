@@ -96,14 +96,37 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			console.log('[api/sites/pages] Vehicles result:', vehiclesResult);
 			
 			if (vehiclesResult.success && vehiclesResult.data) {
-				// Join with OEM names
-				catalogVehicles = vehiclesResult.data.map((vehicle: any) => {
-					const oem = catalogOems.find(o => o.id === vehicle.oem_id);
-					return {
-						...vehicle,
-						oem_name: oem?.name || vehicle.oem_name || 'Unknown'
-					};
-				});
+				// Join with OEM names - ONLY use CDN URLs (no fallback to source URLs)
+				catalogVehicles = vehiclesResult.data
+					.filter((vehicle: any) => {
+						// Only include vehicles that have CDN images uploaded
+						// Skip vehicles still processing images
+						return vehicle.cdn_thumbnail_url || (vehicle.cdn_images && vehicle.cdn_images !== '[]');
+					})
+					.map((vehicle: any) => {
+						const oem = catalogOems.find(o => o.id === vehicle.oem_id);
+					
+						// ONLY use CDN URLs - never expose source URLs to public site
+						let cdnImages = [];
+						try {
+							cdnImages = vehicle.cdn_images ? 
+								(typeof vehicle.cdn_images === 'string' ? JSON.parse(vehicle.cdn_images) : vehicle.cdn_images) : 
+								[];
+						} catch {
+							cdnImages = [];
+						}
+					
+						return {
+							...vehicle,
+							oem_name: oem?.name || vehicle.oem_name || 'Unknown',
+							thumbnail_url: vehicle.cdn_thumbnail_url || null, // CDN only
+							images: cdnImages, // CDN only
+							// Remove source URLs from public response
+							source_url: undefined,
+							cdn_thumbnail_url: undefined,
+							cdn_images: undefined
+						};
+					});
 			}
 			
 			console.log('[api/sites/pages] Catalog data:', { 

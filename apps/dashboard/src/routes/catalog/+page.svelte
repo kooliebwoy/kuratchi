@@ -255,6 +255,45 @@
     }).format(amount);
   }
 
+  /**
+   * Get the CDN thumbnail URL for a vehicle
+   * Only returns R2 CDN URL - no fallback to source URLs
+   */
+  function getThumbnailUrl(vehicle: any): string | null {
+    return vehicle.cdn_thumbnail_url || null;
+  }
+
+  /**
+   * Get CDN images array for a vehicle  
+   * Only returns R2 CDN URLs - no fallback to source URLs
+   */
+  function getImages(vehicle: any): string[] {
+    return parseArray(vehicle.cdn_images);
+  }
+
+  /**
+   * Check if vehicle images are still being processed
+   */
+  function isProcessingImages(vehicle: any): boolean {
+    const hasSources = vehicle.thumbnail_url || parseArray(vehicle.images).length > 0;
+    const hasCdn = vehicle.cdn_thumbnail_url || parseArray(vehicle.cdn_images).length > 0;
+    return hasSources && !hasCdn;
+  }
+
+  /**
+   * Parse JSON array or return array directly
+   */
+  function parseArray(value: any): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   function getCategoryLabel(category: string): string {
     const foundCategory = categoriesData.find(cat => cat.slug === category);
     return foundCategory ? foundCategory.name : category;
@@ -394,8 +433,13 @@
           <Card class="vehicle-card">
             <!-- Image with overlay actions -->
             <div class="vehicle-image">
-            {#if vehicle.thumbnail_url}
-              <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+            {#if getThumbnailUrl(vehicle)}
+              <img src={getThumbnailUrl(vehicle)} alt={vehicle.model_name} />
+            {:else if isProcessingImages(vehicle)}
+              <div class="vehicle-placeholder processing">
+                <Loader2 class="icon spinning" />
+                <span class="processing-text">Processing...</span>
+              </div>
             {:else}
               <div class="vehicle-placeholder">
                 <Bike class="icon" />
@@ -438,8 +482,12 @@
             <div class="vehicle-list-content">
             <!-- Thumbnail -->
             <div class="vehicle-thumbnail">
-              {#if vehicle.thumbnail_url}
-                <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+              {#if getThumbnailUrl(vehicle)}
+                <img src={getThumbnailUrl(vehicle)} alt={vehicle.model_name} />
+              {:else if isProcessingImages(vehicle)}
+                <div class="vehicle-placeholder processing">
+                  <Loader2 class="icon spinning" />
+                </div>
               {:else}
                 <div class="vehicle-placeholder">
                   <Bike class="icon" />
@@ -636,9 +684,16 @@
   {#snippet children()}
     {#if selectedVehicle}
       <!-- Vehicle Image -->
-      {#if selectedVehicle.thumbnail_url}
+      {#if getThumbnailUrl(selectedVehicle)}
         <div class="drawer-image">
-          <img src={selectedVehicle.thumbnail_url} alt={selectedVehicle.model_name} />
+          <img src={getThumbnailUrl(selectedVehicle)} alt={selectedVehicle.model_name} />
+        </div>
+      {:else if isProcessingImages(selectedVehicle)}
+        <div class="drawer-image processing">
+          <div class="processing-indicator">
+            <Loader2 class="icon spinning" />
+            <span>Uploading images...</span>
+          </div>
         </div>
       {/if}
 
@@ -1079,9 +1134,30 @@
     width: 100%;
     height: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     color: var(--kui-color-muted);
+    gap: 0.5rem;
+  }
+
+  .vehicle-placeholder.processing {
+    background: linear-gradient(135deg, var(--kui-color-surface) 0%, var(--kui-color-muted-bg) 100%);
+  }
+
+  .vehicle-placeholder .processing-text {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .status-badge {
@@ -1268,6 +1344,25 @@
     overflow: hidden;
     background: var(--kui-color-surface-muted);
     margin-bottom: var(--kui-spacing-lg);
+  }
+
+  .drawer-image.processing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--kui-color-surface) 0%, var(--kui-color-muted-bg) 100%);
+  }
+
+  .drawer-image .processing-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--kui-color-muted);
+  }
+
+  .drawer-image .processing-indicator span {
+    font-size: 0.875rem;
   }
 
   .drawer-image img {

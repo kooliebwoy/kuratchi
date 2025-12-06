@@ -247,40 +247,8 @@ export const createSite = guardedForm(
 				subdomain,
 			});
 			
-			// Provision R2 bucket for site storage
-			const r2BucketName = `site-${subdomain}-${crypto.randomUUID().substring(0, 8)}`;
-			const r2Binding = 'STORAGE';
-			
-			let r2Created = false;
-			try {
-				const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
-				const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
-				
-				console.log('[createSite] R2 credentials check:', {
-					hasApiToken: !!apiToken,
-					hasAccountId: !!accountId,
-					accountId: accountId ? `${accountId.substring(0, 8)}...` : 'none'
-				});
-				
-				if (apiToken && accountId) {
-					console.log('[createSite] Creating R2 bucket:', r2BucketName);
-					const r2Result = await r2.createBucket(r2BucketName, { apiToken, accountId });
-					console.log('[createSite] R2 result:', r2Result);
-					if (r2Result.success) {
-						console.log('[createSite] ✓ R2 bucket created:', r2BucketName);
-						r2Created = true;
-					} else {
-						console.warn('[createSite] R2 bucket creation failed:', r2Result.errors);
-					}
-				} else {
-					console.warn('[createSite] Cloudflare credentials not available, skipping R2 provisioning');
-				}
-			} catch (r2Error: any) {
-				console.error('[createSite] Failed to create R2 bucket - Full error:', r2Error);
-				console.error('[createSite] Error message:', r2Error.message);
-				console.error('[createSite] Error stack:', r2Error.stack);
-				// Non-fatal: continue without R2
-			}
+			// NOTE: R2 bucket is now at organization level, not site level
+			// Storage uses paths like: sites/{subdomain}/... within the org bucket
 
 			// Step 1: Create the site database with sites schema
 			// Use siteId prefix (first 8 chars) + subdomain to keep under 63 char limit
@@ -299,91 +267,18 @@ export const createSite = guardedForm(
 				workerName: created.workerName
 			});
 
-			// Step 1.5: If R2 bucket was created, bind it to the worker and redeploy
-			let r2StorageDomain: string | null = null;
-			if (r2Created && created.workerName && created.databaseId) {
-				try {
-					console.log('[createSite] Binding R2 bucket to worker:', {
-						workerName: created.workerName,
-						bucketName: r2BucketName,
-						binding: r2Binding,
-						databaseId: created.databaseId
-					});
-					
-					const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
-					const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
-					const gatewayKey = env.KURATCHI_GATEWAY_KEY;
-					
-					if (apiToken && accountId && gatewayKey) {
-						// Add R2 binding to worker using r2 namespace
-						const bindResult = await r2.addWorkerBinding(
-							created.workerName,
-							r2BucketName,
-							r2Binding,
-							created.databaseId,
-							gatewayKey,
-							{ apiToken, accountId }
-						);
-						
-						if (bindResult?.success) {
-							console.log('[createSite] ✓ R2 bucket bound to worker successfully');
-						} else {
-							console.warn('[createSite] Failed to bind R2 bucket to worker:', bindResult);
-						}
-						
-						// Step 1.6: Add custom domain from kuratchi.cloud zone for storage
-						// This allows serving media directly via {subdomain}.kuratchi.cloud
-						const bucketOriginHost = env.KURATCHI_BUCKET_ORIGIN_HOST;
-						const bucketZoneId = env.KURATCHI_BUCKET_ZONE_ID;
-						if (bucketOriginHost && bucketZoneId) {
-							const storageDomain = `${subdomain}.${bucketOriginHost}`;
-							console.log('[createSite] Adding custom storage domain:', storageDomain);
-							
-							try {
-								const domainResult = await r2.addCustomDomain(r2BucketName, storageDomain, { 
-									apiToken, 
-									accountId,
-									zoneId: bucketZoneId,
-									enabled: true
-								});
-								
-								if (domainResult?.success) {
-									console.log('[createSite] ✓ Custom storage domain added:', storageDomain);
-									r2StorageDomain = storageDomain;
-								} else {
-									console.warn('[createSite] Failed to add custom storage domain:', domainResult?.errors);
-									// Non-fatal: bucket works, just without custom domain
-								}
-							} catch (domainError) {
-								console.error('[createSite] Error adding custom storage domain:', domainError);
-								// Non-fatal: bucket works, just without custom domain
-							}
-						} else {
-							console.warn('[createSite] KURATCHI_BUCKET_ORIGIN_HOST or KURATCHI_BUCKET_ZONE_ID not configured, skipping custom storage domain');
-						}
-					} else {
-						console.warn('[createSite] Missing credentials for R2 binding:', {
-							hasApiToken: !!apiToken,
-							hasAccountId: !!accountId,
-							hasGatewayKey: !!gatewayKey
-						});
-					}
-				} catch (bindError) {
-					console.error('[createSite] Error binding R2 bucket to worker:', bindError);
-					// Non-fatal: worker exists, just without R2 for now
-				}
-			}
-
 			// Step 2: Store database info in admin databases table
+			// NOTE: R2 bucket is at organization level (in databases table for primary org DB)
+			// Site-level storage uses paths like: sites/{subdomain}/...
 			const adminDb = await getAdminDatabase(locals);
 			const newDB = await adminDb.databases.insert({
 				id: dbId,
 				name: created.databaseName,
 				dbuuid: created.databaseId || created.databaseName,
 				workerName: created.workerName,
-				r2BucketName: r2Created ? r2BucketName : null,
-				r2Binding: r2Created ? r2Binding : null,
-				r2StorageDomain: r2StorageDomain, // Custom storage domain (e.g., subdomain.kuratchi.cloud)
+				r2BucketName: null, // Organization bucket is used instead
+				r2Binding: null,
+				r2StorageDomain: null,
 				organizationId: activeOrgId,
 				siteId: siteId,
 				isArchived: false,
@@ -431,9 +326,9 @@ export const createSite = guardedForm(
 				databaseId: dbId,
 				dbuuid: created.databaseId || created.databaseName,
 				workerName: created.workerName,
-				r2BucketName: r2Created ? r2BucketName : null,
-				r2Binding: r2Created ? r2Binding : null,
-				r2StorageDomain: r2StorageDomain, // Custom domain for storage (e.g., subdomain.kuratchi.cloud)
+				r2BucketName: null, // Organization bucket is used instead
+				r2Binding: null,
+				r2StorageDomain: null,
 				metadata: { themeId },
 				created_at: now,
 				updated_at: now,

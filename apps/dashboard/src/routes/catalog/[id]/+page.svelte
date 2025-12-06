@@ -3,9 +3,16 @@
   import { Button, Card, Dialog, FormField, Badge, SlidePanel } from '@kuratchi/ui';
   import { 
     Bike, ArrowLeft, Pencil, Trash2, X, ExternalLink, Save, 
-    Check, Building2, Loader2 
+    Check, Building2, Loader2, Star, GripVertical, Upload, 
+    Image as ImageIcon, Images, Package, Palette, RefreshCw, AlertCircle
   } from '@lucide/svelte';
-  import { getVehicles, getOems, updateVehicle, deleteVehicle } from '$lib/functions/catalog.remote';
+  import { 
+    getVehicles, getOems, updateVehicle, deleteVehicle,
+    getVehicleImagesByVehicleId, addVehicleImage, updateVehicleImage, 
+    deleteVehicleImage, reorderVehicleImages, deleteAllVehicleImages,
+    uploadVehicleImageFile, syncVehicleImagesFromJson
+  } from '$lib/functions/catalog.remote';
+  import type { VehicleImage } from '$lib/functions/catalog.remote';
 
   // Data
   const vehicles = getVehicles();
@@ -17,12 +24,26 @@
   const vehicleId = $derived(page.params.id);
   const vehicle = $derived(vehiclesData.find((v: any) => v.id === vehicleId));
 
+  // Get vehicle images from dedicated table
+  const vehicleImagesQuery = $derived(vehicleId ? getVehicleImagesByVehicleId(vehicleId) : null);
+  const vehicleImages = $derived<VehicleImage[]>(vehicleImagesQuery?.current || []);
+
   // State
   let isEditing = $state(false);
   let showDeleteModal = $state(false);
   let activeImageIndex = $state(0);
   let isSaving = $state(false);
   let saveError = $state('');
+
+  // Image management state
+  let showImageManager = $state(false);
+  let imageSourceFilter = $state<'all' | 'stock' | 'custom'>('all');
+  let isUploadingImage = $state(false);
+  let isDeletingImage = $state<string | null>(null);
+  let isSyncingImages = $state(false);
+  let showDeleteAllConfirm = $state(false);
+  let uploadError = $state('');
+  let draggedImageId = $state<string | null>(null);
 
   // Edit form state (initialized when entering edit mode)
   let editOemId = $state('');
@@ -35,6 +56,37 @@
   let editSourceUrl = $state('');
   let editFeatures = $state('');
   let editSpecifications = $state('');
+
+  // Filtered images based on source
+  const filteredImages = $derived(() => {
+    if (imageSourceFilter === 'all') return vehicleImages;
+    return vehicleImages.filter(img => img.image_source === imageSourceFilter);
+  });
+
+  // Get display images (prefer CDN URL, fallback to original)
+  const displayImages = $derived(() => {
+    return filteredImages().map(img => ({
+      ...img,
+      displayUrl: img.cdn_url || img.url
+    }));
+  });
+
+  // Primary image for hero display
+  const primaryImage = $derived(() => {
+    const primary = vehicleImages.find(img => img.is_primary);
+    if (primary) return primary.cdn_url || primary.url;
+    if (vehicleImages.length > 0) return vehicleImages[0].cdn_url || vehicleImages[0].url;
+    return vehicle?.cdn_thumbnail_url || vehicle?.thumbnail_url || null;
+  });
+
+  // All display URLs for gallery
+  const galleryUrls = $derived(() => {
+    if (vehicleImages.length > 0) {
+      return vehicleImages.map(img => img.cdn_url || img.url);
+    }
+    // Fallback to JSON images
+    return images();
+  });
 
   // Initialize edit form when editing starts
   function startEditing() {
@@ -87,7 +139,131 @@
     }
   }
 
-  // Parsed data
+  // Image management handlers
+  async function handleSetPrimary(imageId: string) {
+    if (!vehicleId) return;
+    try {
+      await updateVehicleImage({
+        id: imageId,
+        vehicleId,
+        isPrimary: true
+      });
+    } catch (err) {
+      console.error('Failed to set primary:', err);
+    }
+  }
+
+  async function handleToggleImageSource(imageId: string, currentSource: string) {
+    if (!vehicleId) return;
+    const newSource = currentSource === 'stock' ? 'custom' : 'stock';
+    try {
+      await updateVehicleImage({
+        id: imageId,
+        vehicleId,
+        imageSource: newSource as 'stock' | 'custom'
+      });
+    } catch (err) {
+      console.error('Failed to toggle source:', err);
+    }
+  }
+
+  async function handleDeleteImage(imageId: string) {
+    if (!vehicleId) return;
+    isDeletingImage = imageId;
+    try {
+      await deleteVehicleImage({ id: imageId, vehicleId });
+    } catch (err) {
+      console.error('Failed to delete image:', err);
+    } finally {
+      isDeletingImage = null;
+    }
+  }
+
+  async function handleDeleteAllImages() {
+    if (!vehicleId) return;
+    try {
+      await deleteAllVehicleImages({ vehicleId });
+      showDeleteAllConfirm = false;
+    } catch (err) {
+      console.error('Failed to delete all images:', err);
+    }
+  }
+
+  async function handleSyncImages() {
+    if (!vehicleId) return;
+    isSyncingImages = true;
+    try {
+      const result = await syncVehicleImagesFromJson({ vehicleId });
+      console.log('Sync result:', result);
+    } catch (err) {
+      console.error('Failed to sync images:', err);
+    } finally {
+      isSyncingImages = false;
+    }
+  }
+
+  async function handleImageUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length || !vehicleId) return;
+
+    isUploadingImage = true;
+    uploadError = '';
+
+    try {
+      for (const file of Array.from(input.files)) {
+        await uploadVehicleImageFile({
+          vehicleId,
+          file,
+          imageSource: 'custom'
+        });
+      }
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      uploadError = err.message || 'Failed to upload image';
+    } finally {
+      isUploadingImage = false;
+      input.value = '';
+    }
+  }
+
+  // Drag and drop reordering
+  function handleDragStart(imageId: string) {
+    draggedImageId = imageId;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+  }
+
+  async function handleDrop(targetImageId: string) {
+    if (!draggedImageId || draggedImageId === targetImageId || !vehicleId) {
+      draggedImageId = null;
+      return;
+    }
+
+    const currentOrder = vehicleImages.map(img => img.id);
+    const draggedIndex = currentOrder.indexOf(draggedImageId);
+    const targetIndex = currentOrder.indexOf(targetImageId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      draggedImageId = null;
+      return;
+    }
+
+    // Reorder array
+    currentOrder.splice(draggedIndex, 1);
+    currentOrder.splice(targetIndex, 0, draggedImageId);
+
+    try {
+      await reorderVehicleImages({ vehicleId, imageIds: currentOrder });
+    } catch (err) {
+      console.error('Failed to reorder:', err);
+    }
+
+    draggedImageId = null;
+  }
+
+  // Parsed data from JSON fields (fallback)
   const specifications = $derived(() => {
     if (!vehicle?.specifications) return {};
     if (typeof vehicle.specifications === 'string') {
@@ -208,26 +384,45 @@
         <div class="kui-main">
           <!-- Image Gallery -->
           <Card class="kui-gallery">
+            <div class="kui-gallery__header">
+              <div class="kui-gallery__info">
+                <Images class="kui-icon" />
+                <span>{vehicleImages.length || galleryUrls().length} images</span>
+              </div>
+              <Button variant="secondary" size="xs" onclick={() => showImageManager = true}>
+                <ImageIcon class="kui-icon" />
+                Manage Images
+              </Button>
+            </div>
             <div class="kui-gallery__main">
-              {#if images().length > 0}
-                <img src={images()[activeImageIndex]} alt={vehicle.model_name} />
-              {:else if vehicle.thumbnail_url}
-                <img src={vehicle.thumbnail_url} alt={vehicle.model_name} />
+              {#if galleryUrls().length > 0}
+                <img src={galleryUrls()[activeImageIndex]} alt={vehicle.model_name} />
+              {:else if primaryImage()}
+                <img src={primaryImage()} alt={vehicle.model_name} />
               {:else}
                 <div class="kui-gallery__placeholder">
                   <Bike />
                   <p>No images available</p>
+                  <Button variant="secondary" size="sm" onclick={() => showImageManager = true}>
+                    <Upload class="kui-icon" />
+                    Add Images
+                  </Button>
                 </div>
               {/if}
             </div>
-            {#if images().length > 1}
+            {#if galleryUrls().length > 1}
               <div class="kui-gallery__thumbs">
-                {#each images() as img, i}
+                {#each galleryUrls() as img, i}
                   <button 
                     class={`kui-thumb ${i === activeImageIndex ? 'is-active' : ''}`}
                     onclick={() => activeImageIndex = i}
                   >
                     <img src={img} alt="" />
+                    {#if vehicleImages[i]?.is_primary}
+                      <span class="kui-thumb__primary">
+                        <Star class="kui-icon-xs" />
+                      </span>
+                    {/if}
                   </button>
                 {/each}
               </div>
@@ -355,8 +550,18 @@
               </div>
               <div class="kui-meta-item">
                 <span>Images</span>
-                <span>{images().length}</span>
+                <span>{vehicleImages.length || images().length}</span>
               </div>
+              {#if vehicleImages.length > 0}
+                <div class="kui-meta-item">
+                  <span>Stock</span>
+                  <span>{vehicleImages.filter(i => i.image_source === 'stock').length}</span>
+                </div>
+                <div class="kui-meta-item">
+                  <span>Custom</span>
+                  <span>{vehicleImages.filter(i => i.image_source === 'custom').length}</span>
+                </div>
+              {/if}
             </div>
           </Card>
         </div>
@@ -487,6 +692,203 @@
           </Button>
         {/snippet}
       </form>
+    {/snippet}
+  </Dialog>
+{/if}
+
+<!-- Image Manager SlidePanel -->
+<SlidePanel
+  bind:open={showImageManager}
+  title="Manage Images"
+  subtitle={vehicle ? `${vehicle.model_year || ''} ${vehicle.model_name}`.trim() : ''}
+  size="lg"
+>
+  {#snippet children()}
+    <div class="kui-image-manager">
+      <!-- Toolbar -->
+      <div class="kui-image-toolbar">
+        <div class="kui-image-filters">
+          <button 
+            class={`kui-filter-btn ${imageSourceFilter === 'all' ? 'is-active' : ''}`}
+            onclick={() => imageSourceFilter = 'all'}
+          >
+            All ({vehicleImages.length})
+          </button>
+          <button 
+            class={`kui-filter-btn ${imageSourceFilter === 'stock' ? 'is-active' : ''}`}
+            onclick={() => imageSourceFilter = 'stock'}
+          >
+            <Package class="kui-icon-xs" />
+            Stock ({vehicleImages.filter(i => i.image_source === 'stock').length})
+          </button>
+          <button 
+            class={`kui-filter-btn ${imageSourceFilter === 'custom' ? 'is-active' : ''}`}
+            onclick={() => imageSourceFilter = 'custom'}
+          >
+            <Palette class="kui-icon-xs" />
+            Custom ({vehicleImages.filter(i => i.image_source === 'custom').length})
+          </button>
+        </div>
+        
+        <div class="kui-image-actions">
+          {#if images().length > 0 && vehicleImages.length === 0}
+            <Button variant="ghost" size="xs" onclick={handleSyncImages} disabled={isSyncingImages}>
+              {#if isSyncingImages}
+                <Loader2 class="kui-icon kui-spin" />
+              {:else}
+                <RefreshCw class="kui-icon" />
+              {/if}
+              Sync from JSON
+            </Button>
+          {/if}
+          
+          {#if vehicleImages.length > 0}
+            <Button variant="ghost" size="xs" onclick={() => showDeleteAllConfirm = true}>
+              <Trash2 class="kui-icon" />
+              Delete All
+            </Button>
+          {/if}
+          
+          <label class="kui-upload-btn">
+            <input 
+              type="file" 
+              accept="image/*" 
+              multiple 
+              onchange={handleImageUpload}
+              disabled={isUploadingImage}
+            />
+            {#if isUploadingImage}
+              <Loader2 class="kui-icon kui-spin" />
+              Uploading...
+            {:else}
+              <Upload class="kui-icon" />
+              Upload Images
+            {/if}
+          </label>
+        </div>
+      </div>
+
+      {#if uploadError}
+        <div class="kui-error-banner">
+          <AlertCircle class="kui-icon" />
+          <p>{uploadError}</p>
+        </div>
+      {/if}
+
+      <!-- Help text -->
+      {#if vehicleImages.length === 0 && images().length > 0}
+        <div class="kui-help-banner">
+          <AlertCircle class="kui-icon" />
+          <p>This vehicle has {images().length} images stored in JSON format. Click "Sync from JSON" to migrate them to the image manager.</p>
+        </div>
+      {/if}
+
+      <!-- Image Grid -->
+      {#if displayImages().length === 0}
+        <div class="kui-empty-images">
+          <ImageIcon class="kui-empty-icon" />
+          <h4>No images</h4>
+          <p>Upload images or sync from existing JSON data</p>
+        </div>
+      {:else}
+        <div class="kui-image-grid">
+          {#each displayImages() as image (image.id)}
+            <div 
+              class={`kui-image-card ${image.is_primary ? 'is-primary' : ''} ${draggedImageId === image.id ? 'is-dragging' : ''}`}
+              draggable="true"
+              ondragstart={() => handleDragStart(image.id)}
+              ondragover={handleDragOver}
+              ondrop={() => handleDrop(image.id)}
+              role="listitem"
+            >
+              <div class="kui-image-card__preview">
+                <img src={image.displayUrl} alt={image.alt_text || 'Vehicle image'} />
+                
+                <!-- Overlay actions -->
+                <div class="kui-image-card__overlay">
+                  <button 
+                    class="kui-image-action"
+                    onclick={() => handleSetPrimary(image.id)}
+                    title={image.is_primary ? 'Primary image' : 'Set as primary'}
+                  >
+                    <Star class={`kui-icon ${image.is_primary ? 'kui-filled' : ''}`} />
+                  </button>
+                  <button 
+                    class="kui-image-action"
+                    onclick={() => handleDeleteImage(image.id)}
+                    title="Delete image"
+                    disabled={isDeletingImage === image.id}
+                  >
+                    {#if isDeletingImage === image.id}
+                      <Loader2 class="kui-icon kui-spin" />
+                    {:else}
+                      <Trash2 class="kui-icon" />
+                    {/if}
+                  </button>
+                </div>
+                
+                <!-- Drag handle -->
+                <div class="kui-image-card__drag">
+                  <GripVertical class="kui-icon" />
+                </div>
+                
+                {#if image.is_primary}
+                  <div class="kui-image-card__badge">
+                    <Star class="kui-icon-xs" />
+                    Primary
+                  </div>
+                {/if}
+              </div>
+              
+              <div class="kui-image-card__footer">
+                <button 
+                  class={`kui-source-toggle ${image.image_source}`}
+                  onclick={() => handleToggleImageSource(image.id, image.image_source)}
+                  title={`Switch to ${image.image_source === 'stock' ? 'custom' : 'stock'}`}
+                >
+                  {#if image.image_source === 'stock'}
+                    <Package class="kui-icon-xs" />
+                    Stock
+                  {:else}
+                    <Palette class="kui-icon-xs" />
+                    Custom
+                  {/if}
+                </button>
+                <span class="kui-image-order">#{image.sort_order + 1}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/snippet}
+
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => showImageManager = false}>
+      Close
+    </Button>
+  {/snippet}
+</SlidePanel>
+
+<!-- Delete All Images Confirmation -->
+{#if showDeleteAllConfirm}
+  <Dialog bind:open={showDeleteAllConfirm} size="sm" onClose={() => showDeleteAllConfirm = false}>
+    {#snippet header()}
+      <div class="kui-modal-header">
+        <h3>Delete All Images</h3>
+        <Button variant="ghost" size="xs" onclick={() => showDeleteAllConfirm = false}>
+          <X class="kui-icon" />
+        </Button>
+      </div>
+    {/snippet}
+    {#snippet children()}
+      <p>Are you sure you want to delete all {vehicleImages.length} images? This action cannot be undone.</p>
+      <div class="kui-modal-actions">
+        <Button variant="ghost" onclick={() => showDeleteAllConfirm = false}>Cancel</Button>
+        <Button variant="error" onclick={handleDeleteAllImages}>
+          Delete All Images
+        </Button>
+      </div>
     {/snippet}
   </Dialog>
 {/if}
@@ -958,9 +1360,331 @@
     color: #dc2626;
     font-size: 14px;
     margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .kui-error-banner p {
     margin: 0;
+  }
+
+  /* Gallery Header */
+  .kui-gallery__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f4f4f5;
+  }
+
+  .kui-gallery__info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #6b7280;
+  }
+
+  .kui-thumb__primary {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #fbbf24;
+    color: white;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+  }
+
+  .kui-thumb {
+    position: relative;
+  }
+
+  .kui-icon-xs {
+    width: 10px;
+    height: 10px;
+  }
+
+  /* Image Manager */
+  .kui-image-manager {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .kui-image-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .kui-image-filters {
+    display: flex;
+    gap: 4px;
+  }
+
+  .kui-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .kui-filter-btn:hover {
+    background: #f9fafb;
+  }
+
+  .kui-filter-btn.is-active {
+    background: var(--kui-color-primary);
+    border-color: var(--kui-color-primary);
+    color: white;
+  }
+
+  .kui-image-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .kui-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--kui-color-primary);
+    color: white;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .kui-upload-btn:hover {
+    opacity: 0.9;
+  }
+
+  .kui-upload-btn input {
+    display: none;
+  }
+
+  .kui-help-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: #1d4ed8;
+    font-size: 14px;
+  }
+
+  .kui-help-banner p {
+    margin: 0;
+  }
+
+  .kui-empty-images {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    color: #9ca3af;
+  }
+
+  .kui-empty-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 12px;
+  }
+
+  .kui-empty-images h4 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    color: #6b7280;
+  }
+
+  .kui-empty-images p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  /* Image Grid */
+  .kui-image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+
+  .kui-image-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    background: white;
+    transition: all 0.2s;
+  }
+
+  .kui-image-card:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+
+  .kui-image-card.is-primary {
+    border-color: #fbbf24;
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+  }
+
+  .kui-image-card.is-dragging {
+    opacity: 0.5;
+  }
+
+  .kui-image-card__preview {
+    position: relative;
+    aspect-ratio: 4/3;
+    background: #f9fafb;
+    overflow: hidden;
+  }
+
+  .kui-image-card__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .kui-image-card__overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .kui-image-card:hover .kui-image-card__overlay {
+    opacity: 1;
+  }
+
+  .kui-image-action {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: all 0.2s;
+  }
+
+  .kui-image-action:hover {
+    background: #f3f4f6;
+  }
+
+  .kui-image-action .kui-filled {
+    fill: #fbbf24;
+    color: #fbbf24;
+  }
+
+  .kui-image-card__drag {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .kui-image-card:hover .kui-image-card__drag {
+    opacity: 1;
+  }
+
+  .kui-image-card__badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #fbbf24;
+    color: white;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 4px;
+  }
+
+  .kui-image-card__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-top: 1px solid #f4f4f5;
+  }
+
+  .kui-source-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    background: #f9fafb;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .kui-source-toggle:hover {
+    background: #f3f4f6;
+  }
+
+  .kui-source-toggle.stock {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #059669;
+  }
+
+  .kui-source-toggle.custom {
+    background: #fef3c7;
+    border-color: #fcd34d;
+    color: #d97706;
+  }
+
+  .kui-image-order {
+    font-size: 12px;
+    color: #9ca3af;
+    font-weight: 500;
+  }
+
+  .kui-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
   }
 </style>

@@ -2,7 +2,7 @@ import type { D1Client } from './core/types.js';
 import type { DatabaseSchema, Column, Table, Index } from './migrations/schema.js';
 import type { SchemaDsl } from '../utils/types.js';
 import { ensureNormalizedSchema } from './migrations/migration-utils.js';
-import { renderCreateTableSql, renderCreateIndexSql } from './migrations/generator.js';
+import { renderCreateTableSql, renderCreateIndexSql, renderColumnDef } from './migrations/generator.js';
 
 export interface SchemaSyncLogger {
   info?: (...args: any[]) => void;
@@ -243,6 +243,10 @@ const DEFAULT_NORMALIZATIONS = new Map<string, string>([
 function normalizeDefaultValue(def: Column['default'] | undefined): string | undefined {
   if (!def) return undefined;
   if (def.kind === 'value') {
+    // Normalize JSON literal strings to their function equivalents for backwards compatibility
+    // This handles databases that were created before proper table recreation was implemented
+    if (def.value === '[]') return 'JSON_ARRAY()';
+    if (def.value === '{}') return 'JSON_OBJECT()';
     return JSON.stringify(def.value);
   }
   const raw = def.sql.trim().toUpperCase();
@@ -299,6 +303,24 @@ interface SyncPlan {
   warnings: string[];
 }
 
+// Non-constant defaults that require table recreation instead of ALTER TABLE ADD COLUMN
+const NON_CONSTANT_DEFAULTS = new Set([
+  'JSON_ARRAY()',
+  '(JSON_ARRAY())',
+  'JSON_OBJECT()',
+  '(JSON_OBJECT())',
+  'CURRENT_TIMESTAMP',
+  '(CURRENT_TIMESTAMP)',
+  'DATETIME()',
+  '(DATETIME())',
+]);
+
+function hasNonConstantDefault(column: Column): boolean {
+  if (!column.default || column.default.kind !== 'raw') return false;
+  const sql = column.default.sql.toUpperCase().trim();
+  return NON_CONSTANT_DEFAULTS.has(sql);
+}
+
 function createAddColumnStatement(table: Table, column: Column): string {
   if (column.primaryKey || column.unique || column.references || (column.enum && column.enum.length)) {
     throw new Error(`Cannot auto-add constrained column ${table.name}.${column.name}.`);
@@ -309,8 +331,9 @@ function createAddColumnStatement(table: Table, column: Column): string {
   const parts: string[] = [`ALTER TABLE ${table.name} ADD COLUMN ${column.name}`];
   parts.push(mapSqliteType(column.type).type.toUpperCase());
   if (column.default) {
-    if (column.default.kind === 'raw') parts.push(`DEFAULT ${column.default.sql}`);
-    else {
+    if (column.default.kind === 'raw') {
+      parts.push(`DEFAULT ${column.default.sql}`);
+    } else {
       const v = column.default.value;
       if (v === null) parts.push('DEFAULT NULL');
       else if (typeof v === 'number') parts.push(`DEFAULT ${v}`);
@@ -320,6 +343,64 @@ function createAddColumnStatement(table: Table, column: Column): string {
   }
   if (column.notNull) parts.push('NOT NULL');
   return `${parts.join(' ')};`;
+}
+
+/**
+ * Generate SQL statements to recreate a table with new columns.
+ * This is the proper SQLite way to add columns with non-constant defaults.
+ * 
+ * Steps:
+ * 1. Create new table with target schema (temp name)
+ * 2. Copy data from old table (only columns that exist in both)
+ * 3. Drop old table
+ * 4. Rename new table to original name
+ * 5. Recreate indexes
+ */
+function createTableRecreationStatements(
+  existingTable: Table,
+  targetTable: Table,
+  newColumns: Column[]
+): string[] {
+  const statements: string[] = [];
+  const tempTableName = `${targetTable.name}_new`;
+  
+  // 1. Create new table with full target schema
+  const createSql = renderCreateTableSql(targetTable).replace(
+    `"${targetTable.name}"`,
+    `"${tempTableName}"`
+  );
+  statements.push(`${createSql};`);
+  
+  // 2. Copy data - only columns that exist in both tables
+  const existingColNames = new Set(existingTable.columns.map(c => c.name));
+  const columnsToPreserve = targetTable.columns
+    .filter(c => existingColNames.has(c.name))
+    .map(c => `"${c.name}"`);
+  
+  if (columnsToPreserve.length > 0) {
+    const columnList = columnsToPreserve.join(', ');
+    statements.push(`INSERT INTO "${tempTableName}" (${columnList}) SELECT ${columnList} FROM "${targetTable.name}";`);
+  }
+  
+  // 3. Drop old table
+  statements.push(`DROP TABLE "${targetTable.name}";`);
+  
+  // 4. Rename new table
+  statements.push(`ALTER TABLE "${tempTableName}" RENAME TO "${targetTable.name}";`);
+  
+  // 5. Recreate indexes
+  if (targetTable.indexes) {
+    for (const idx of targetTable.indexes) {
+      statements.push(renderCreateIndexSql(targetTable, idx) + ';');
+    }
+  }
+  
+  return statements;
+}
+
+function createDropColumnStatement(tableName: string, columnName: string): string {
+  // SQLite 3.35+ (which D1 uses) supports ALTER TABLE DROP COLUMN
+  return `ALTER TABLE ${tableName} DROP COLUMN ${columnName};`;
 }
 
 function buildSyncPlan(current: DatabaseSchema, target: DatabaseSchema): SyncPlan {
@@ -338,19 +419,50 @@ function buildSyncPlan(current: DatabaseSchema, target: DatabaseSchema): SyncPla
     }
 
     const currentCols = new Map(matching.columns.map((c) => [c.name, c]));
+    
+    // Collect new columns and check if any require table recreation
+    const newColumns: Column[] = [];
+    const newColumnsRequiringRecreation: Column[] = [];
+    
     for (const targetCol of targetTable.columns) {
       const existing = currentCols.get(targetCol.name);
       if (!existing) {
-        statements.push(createAddColumnStatement(targetTable, targetCol));
-        continue;
+        newColumns.push(targetCol);
+        if (hasNonConstantDefault(targetCol)) {
+          newColumnsRequiringRecreation.push(targetCol);
+        }
+      } else {
+        assertColumnCompatible(targetTable.name, targetCol, existing);
       }
-      assertColumnCompatible(targetTable.name, targetCol, existing);
     }
-
+    
+    // Collect columns to drop
+    const columnsToDrop: string[] = [];
     for (const existing of matching.columns) {
       if (!targetTable.columns.some((col) => col.name === existing.name)) {
-        warnings.push(`Column ${matching.name}.${existing.name} exists in DB but not schema. Manual cleanup required.`);
+        columnsToDrop.push(existing.name);
       }
+    }
+    
+    // If any new column has a non-constant default, we need to recreate the entire table
+    if (newColumnsRequiringRecreation.length > 0) {
+      const recreationStatements = createTableRecreationStatements(matching, targetTable, newColumns);
+      statements.push(...recreationStatements);
+      warnings.push(
+        `Table ${targetTable.name} recreated to add column(s) with non-constant defaults: ${newColumnsRequiringRecreation.map(c => c.name).join(', ')}`
+      );
+      // Skip the rest - table recreation handles everything including indexes
+      continue;
+    }
+    
+    // Otherwise, use simple ALTER TABLE statements
+    for (const col of newColumns) {
+      statements.push(createAddColumnStatement(targetTable, col));
+    }
+    
+    for (const colName of columnsToDrop) {
+      statements.push(createDropColumnStatement(matching.name, colName));
+      warnings.push(`Column ${matching.name}.${colName} dropped (removed from schema).`);
     }
 
     const currentIdx = new Map((matching.indexes ?? []).map((idx) => [idx.name, idx]));

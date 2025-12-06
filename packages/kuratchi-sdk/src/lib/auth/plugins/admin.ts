@@ -311,6 +311,8 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const r2Binding = 'STORAGE';
           
           let r2Created = false;
+          let r2StorageDomain: string | null = null;
+          
           try {
             console.log('[Admin] Creating R2 bucket:', r2BucketName);
             const { CloudflareClient } = await import('../../utils/cloudflare.js');
@@ -322,6 +324,34 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             if (r2Result.success) {
               console.log('[Admin] ✓ R2 bucket created:', r2BucketName);
               r2Created = true;
+              
+              // Add custom storage domain if configured
+              const bucketOriginHost = env.KURATCHI_BUCKET_ORIGIN_HOST;
+              const bucketZoneId = env.KURATCHI_BUCKET_ZONE_ID;
+              
+              if (bucketOriginHost && bucketZoneId) {
+                const storageDomain = `${sanitizedOrgName}.${bucketOriginHost}`;
+                console.log('[Admin] Adding custom storage domain:', storageDomain);
+                
+                try {
+                  // Use the r2 module's addCustomDomain function
+                  const { addCustomDomain } = await import('../../r2/index.js');
+                  const domainResult = await addCustomDomain(r2BucketName, storageDomain, {
+                    apiToken,
+                    accountId,
+                    zoneId: bucketZoneId,
+                    enabled: true
+                  });
+                  if (domainResult?.success) {
+                    console.log('[Admin] ✓ Custom storage domain added:', storageDomain);
+                    r2StorageDomain = storageDomain;
+                  } else {
+                    console.warn('[Admin] Failed to add custom storage domain:', domainResult?.errors);
+                  }
+                } catch (domainError) {
+                  console.error('[Admin] Error adding custom storage domain:', domainError);
+                }
+              }
             } else {
               console.warn('[Admin] R2 bucket creation failed:', r2Result.errors);
             }
@@ -343,7 +373,37 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const dbUuid = result.databaseId;
           const workerName = result.workerName;
           
-          // 3. Store database record in admin DB (matches schema: id, name, dbuuid, workerName, r2BucketName, r2Binding, organizationId)
+          // Bind R2 bucket to worker if created
+          if (r2Created && workerName && dbUuid) {
+            try {
+              console.log('[Admin] Binding R2 bucket to worker:', {
+                workerName,
+                bucketName: r2BucketName,
+                binding: r2Binding
+              });
+              
+              const { addWorkerBinding } = await import('../../r2/index.js');
+              const bindResult = await addWorkerBinding(
+                workerName,
+                r2BucketName,
+                r2Binding,
+                dbUuid,
+                gatewayKey,
+                { apiToken, accountId }
+              );
+              
+              if (bindResult?.success) {
+                console.log('[Admin] ✓ R2 bucket bound to worker successfully');
+              } else {
+                console.warn('[Admin] Failed to bind R2 bucket to worker:', bindResult);
+              }
+            } catch (bindError) {
+              console.error('[Admin] Error binding R2 bucket to worker:', bindError);
+              // Non-fatal: bucket exists, worker may need redeployment
+            }
+          }
+          
+          // 3. Store database record in admin DB (matches schema: id, name, dbuuid, workerName, r2BucketName, r2Binding, r2StorageDomain, organizationId)
           await adminDb.databases.insert({
             id: databaseId,
             name: databaseName,
@@ -351,6 +411,7 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             workerName: workerName,
             r2BucketName: r2Created ? r2BucketName : null,
             r2Binding: r2Created ? r2Binding : null,
+            r2StorageDomain: r2StorageDomain, // Custom domain for CDN access
             organizationId: organizationId,
             isPrimary: true,
             isActive: true,
