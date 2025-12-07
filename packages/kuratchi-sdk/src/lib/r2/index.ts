@@ -137,9 +137,9 @@ function getR2Bucket(name: string): R2Bucket {
 }
 
 export interface R2WorkerConfig {
-  workerName?: string;  // Worker name to construct URL (e.g., "db-abc-123")
+  workerName?: string;  // Worker name to construct URL (e.g., "kuratchi-d1-org-abc-123")
   workerUrl?: string;   // Or provide full URL directly
-  workersSubdomain?: string; // Workers subdomain (e.g., "kuratchi" for kuratchi.workers.dev)
+  workersSubdomain?: string; // Account's workers subdomain (e.g., "krys-gillett.workers.dev")
   gatewayKey: string;
   token: string;
   databaseName: string;
@@ -152,12 +152,13 @@ function getWorkerUrl(config: R2WorkerConfig): string {
   if (config.workerUrl) {
     return config.workerUrl;
   }
-  if (config.workerName) {
-    const subdomain = config.workersSubdomain || 'workers';
-    return `https://${config.workerName}.${subdomain}`;
+  if (config.workerName && config.workersSubdomain) {
+    // Construct workers.dev URL: {workerName}.{workersSubdomain}
+    // workersSubdomain already includes "workers.dev" (e.g., "krys-gillett.workers.dev")
+    return `https://${config.workerName}.${config.workersSubdomain}`;
   }
-  console.error('[Kuratchi R2] Worker config missing workerUrl and workerName:', config);
-  throw new Error('[Kuratchi R2] Either workerUrl or workerName must be provided in config');
+  console.error('[Kuratchi R2] Worker config missing workerUrl or workerName+workersSubdomain:', config);
+  throw new Error('[Kuratchi R2] Either workerUrl or (workerName + workersSubdomain) must be provided in config');
 }
 
 /**

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Card, Dialog, Badge, Loading, SlidePanel } from '@kuratchi/ui';
-  import { Bike, Building2, Plus, Search, Grid3x3, List, Pencil, Trash2, FileText, AlertCircle, ChevronRight, X, Loader2, Check, Tag } from '@lucide/svelte';
+  import { Bike, Building2, Plus, Search, Grid3x3, List, Pencil, Trash2, FileText, AlertCircle, ChevronRight, X, Loader2, Check, Tag, Maximize2 } from '@lucide/svelte';
   import { 
     getVehicles, getOems, deleteVehicle, updateVehicle,
     scrapeVehicleUrl, importScrapedVehicle,
@@ -828,9 +828,13 @@
         <Trash2 class="icon" />
         Delete
       </Button>
-      <Button variant="primary" onclick={startEditingVehicle}>
+      <Button variant="ghost" onclick={startEditingVehicle}>
         <Pencil class="icon" />
-        Edit
+        Quick Edit
+      </Button>
+      <Button variant="primary" onclick={() => goto(`/catalog/${selectedVehicle.id}`)}>
+        <Maximize2 class="icon" />
+        Full Edit
       </Button>
     {/if}
   {/snippet}

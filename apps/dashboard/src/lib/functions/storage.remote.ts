@@ -448,9 +448,11 @@ async function getBucketInfo(bucketName: string) {
 			
 			if (tokenResult.success && tokenResult.data) {
 				const gatewayKey = env.KURATCHI_GATEWAY_KEY;
+				const workersSubdomain = env.CLOUDFLARE_WORKERS_SUBDOMAIN;
 				
 				workerConfig = {
 					workerName,
+					workersSubdomain,
 					gatewayKey,
 					token: tokenResult.data.token,
 					databaseName: dbRecord.name || dbRecord.dbuuid
@@ -547,6 +549,7 @@ async function getOrgBucketInfo() {
 		if (tokenResult.success && tokenResult.data) {
 			workerConfig = {
 				workerName,
+				workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
 				gatewayKey: env.KURATCHI_GATEWAY_KEY,
 				token: tokenResult.data.token,
 				databaseName: dbRecord.name || dbRecord.dbuuid
