@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Zap, Users, TrendingUp, Clock, AlertCircle, CheckCircle2, Send } from '@lucide/svelte';
+  import { Mail, Zap, Users, TrendingUp, Clock, AlertCircle, CheckCircle2, Send, ShieldX } from '@lucide/svelte';
   import { getEmails, getEmailStats } from '$lib/functions/emails.remote';
   import { listDripCampaigns, listSegments } from '$lib/functions/newsletter.remote';
   import { getEmailDomains } from '$lib/functions/emailDomains.remote';
@@ -10,7 +10,20 @@
   const segmentsResource = listSegments();
   const domainsResource = getEmailDomains();
 
-  const statsData = $derived(stats.current || { total: 0, sent: 0, failed: 0, pending: 0, last24h: 0 });
+  const statsData = $derived(stats.current || { 
+    total: 0, 
+    sent: 0, 
+    delivered: 0,
+    failed: 0, 
+    pending: 0, 
+    bounced: 0,
+    complained: 0,
+    rejected: 0,
+    suppressed: 0,
+    bounceRate: 0,
+    complaintRate: 0,
+    last24h: 0 
+  });
   const campaigns = $derived(Array.isArray(dripResource.current) ? dripResource.current : []);
   const segments = $derived(Array.isArray(segmentsResource.current) ? segmentsResource.current : []);
   const domains = $derived(Array.isArray(domainsResource.current) ? domainsResource.current : []);
@@ -27,15 +40,25 @@
   // Calculate success rate
   const successRate = $derived(
     statsData.total > 0 
-      ? Math.round((statsData.sent / statsData.total) * 100) 
+      ? Math.round((statsData.delivered / statsData.total) * 100) 
       : 0
   );
+  const bounceRate = $derived(
+    statsData.bounceRate || (
+      statsData.total > 0 
+        ? Math.round((statsData.bounced / statsData.total) * 100)
+        : 0
+    )
+  );
+  const suppressedCount = $derived(statsData.suppressed || 0);
 
   // Check for issues that need attention
   const needsAttention = $derived([
     !hasVerifiedDomain && { type: 'warning', message: 'No verified domain', link: '/domains' },
     statsData.failed > 0 && { type: 'error', message: `${statsData.failed} failed emails`, link: '/emails/broadcast' },
     statsData.pending > 10 && { type: 'info', message: `${statsData.pending} emails pending`, link: '/emails/broadcast' },
+    bounceRate >= 5 && { type: 'error', message: `High bounce rate (${bounceRate}%)`, link: '/emails' },
+    suppressedCount > 0 && { type: 'info', message: `${suppressedCount} suppressed recipients`, link: '/emails' },
   ].filter(Boolean));
 </script>
 
@@ -75,6 +98,26 @@
       <div class="kui-metric-data">
         <span class="kui-metric-value">{successRate}%</span>
         <span class="kui-metric-label">Delivery Rate</span>
+      </div>
+    </div>
+
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--bounce">
+        <AlertCircle />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{bounceRate}%</span>
+        <span class="kui-metric-label">Bounce Rate</span>
+      </div>
+    </div>
+
+    <div class="kui-metric">
+      <div class="kui-metric-icon kui-metric-icon--suppressed">
+        <ShieldX />
+      </div>
+      <div class="kui-metric-data">
+        <span class="kui-metric-value">{suppressedCount.toLocaleString()}</span>
+        <span class="kui-metric-label">Suppressed</span>
       </div>
     </div>
 
@@ -215,7 +258,7 @@
   /* Metrics */
   .kui-metrics {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 1rem;
   }
 
@@ -262,6 +305,16 @@
   .kui-metric-icon--active {
     background: rgba(245, 158, 11, 0.12);
     color: #f59e0b;
+  }
+
+  .kui-metric-icon--bounce {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+  }
+
+  .kui-metric-icon--suppressed {
+    background: rgba(107, 114, 128, 0.12);
+    color: #6b7280;
   }
 
   .kui-metric-data {

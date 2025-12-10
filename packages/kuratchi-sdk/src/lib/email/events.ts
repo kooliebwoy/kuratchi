@@ -168,7 +168,18 @@ async function processSESEvent(sesEvent: any, event: RequestEvent) {
 	
 	// Update the email record
 	await table.where({ sesMessageId: messageId }).update(updates);
-	
+
+	// Maintain suppression list for bounces/complaints
+	if (['Bounce', 'Complaint'].includes(eventType)) {
+		const recipients = extractRecipients(sesEvent, emailRecord);
+		await upsertSuppressions(db, recipients, sesEvent);
+	}
+
+	// Roll up broadcast metrics if this email is tied to a broadcast
+	if (emailRecord?.metadata?.broadcastId) {
+		await updateBroadcastStats(db, emailRecord.metadata.broadcastId, eventType);
+	}
+
 	console.log('[Email Events] Updated email', messageId, 'with event:', eventType);
 }
 
@@ -241,4 +252,123 @@ async function findEmailByMessageId(messageId: string, event: RequestEvent): Pro
 	}
 	
 	return null;
+}
+
+/**
+ * Extract recipient emails from SES event payload or existing email record
+ */
+function extractRecipients(eventPayload: any, emailRecord: any): string[] {
+	const recipients: string[] = [];
+
+	// Prefer SES event recipient lists for precise addresses
+	if (eventPayload?.bounce?.bouncedRecipients) {
+		for (const recipient of eventPayload.bounce.bouncedRecipients) {
+			if (recipient.emailAddress) recipients.push(recipient.emailAddress.toLowerCase());
+		}
+	}
+
+	if (eventPayload?.complaint?.complainedRecipients) {
+		for (const recipient of eventPayload.complaint.complainedRecipients) {
+			if (recipient.emailAddress) recipients.push(recipient.emailAddress.toLowerCase());
+		}
+	}
+
+	// Fallback to tracked email record
+	if (recipients.length === 0 && emailRecord?.recipient) {
+		emailRecord.recipient
+			.split(',')
+			.map((r: string) => r.trim().toLowerCase())
+			.forEach((r: string) => { if (r) recipients.push(r); });
+	}
+
+	return recipients;
+}
+
+/**
+ * Upsert suppression entries for bounced/complained recipients
+ */
+async function upsertSuppressions(db: any, recipients: string[], sesEvent: any) {
+	if (!recipients.length || !db?.email_suppressions) return;
+
+	const now = new Date().toISOString();
+	const reason = sesEvent.eventType === 'Complaint' ? 'complaint' : 'bounce';
+	const bounceType = sesEvent?.bounce?.bounceType;
+	const bounceSubType = sesEvent?.bounce?.bounceSubType;
+	const complaintFeedbackType = sesEvent?.complaint?.complaintFeedbackType;
+	const timestamp = sesEvent?.bounce?.timestamp || sesEvent?.complaint?.timestamp || now;
+
+	for (const email of recipients) {
+		const existing = await (db.email_suppressions as any)
+			.where({ email })
+			.first();
+
+		if (existing?.data) {
+			await (db.email_suppressions as any)
+				.where({ id: existing.data.id })
+				.update({
+					reason,
+					bounceType,
+					bounceSubType,
+					complaintFeedbackType,
+					lastSeenAt: timestamp,
+					blocked: true,
+					updated_at: now,
+				});
+		} else {
+			await (db.email_suppressions as any).insert({
+				id: crypto.randomUUID(),
+				email,
+				reason,
+				source: 'ses',
+				bounceType,
+				bounceSubType,
+				complaintFeedbackType,
+				firstSeenAt: timestamp,
+				lastSeenAt: timestamp,
+				blocked: true,
+				metadata: sesEvent,
+				created_at: now,
+				updated_at: now,
+			});
+		}
+	}
+}
+
+/**
+ * Update broadcast aggregates when events relate to a broadcast email
+ */
+async function updateBroadcastStats(db: any, broadcastId: string, eventType: string) {
+	if (!db?.broadcasts) return;
+
+	try {
+		const existing = await db.broadcasts.where({ id: broadcastId }).first();
+		if (!existing?.data) return;
+
+		const updateData: any = { updated_at: new Date().toISOString() };
+
+		switch (eventType) {
+			case 'Delivery':
+				updateData.deliveredCount = (existing.data.deliveredCount || 0) + 1;
+				break;
+			case 'Open':
+				updateData.openedCount = (existing.data.openedCount || 0) + 1;
+				break;
+			case 'Click':
+				updateData.clickedCount = (existing.data.clickedCount || 0) + 1;
+				break;
+			case 'Bounce':
+				updateData.bouncedCount = (existing.data.bouncedCount || 0) + 1;
+				break;
+			case 'Complaint':
+				// Treat complaints similarly to bounce for aggregate visibility
+				updateData.bouncedCount = (existing.data.bouncedCount || 0) + 1;
+				break;
+		}
+
+		if (Object.keys(updateData).length > 1) {
+			await db.broadcasts.where({ id: broadcastId }).update(updateData);
+		}
+	} catch (error) {
+		console.warn('[Email Events] Failed to update broadcast stats:', error);
+	}
 }

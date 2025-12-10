@@ -29,6 +29,13 @@ export { sitePlugin } from './site';
 export { themesPlugin } from './themes';
 export { formsPlugin } from './forms';
 export { catalogPlugin } from './catalog';
+export { modalsPlugin } from './modals';
+
+// Modal system
+export * from './modals/modal-manager.svelte';
+export { default as ModalContainer } from './modals/ModalContainer.svelte';
+export { default as FormRenderer } from './modals/FormRenderer.svelte';
+export { default as LeadCTAButtons } from './modals/LeadCTAButtons.svelte';
 
 // Shared components
 export { default as MenuWidget } from './MenuWidget.svelte';

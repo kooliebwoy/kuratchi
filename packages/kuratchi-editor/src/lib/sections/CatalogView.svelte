@@ -4,11 +4,13 @@
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
+    import { openFormModal, openVehicleInquiryModal, type AfterSubmitAction } from '../plugins/modals/modal-manager.svelte.js';
 
     // Get catalog data from context (provided by Editor)
     const siteMetadata = getContext<{
         catalogOems: CatalogOem[];
         catalogVehicles: CatalogVehicle[];
+        forms?: any[];
     }>('siteMetadata');
 
     interface CatalogOem {
@@ -27,8 +29,24 @@
         msrp?: number;
         currency?: string;
         thumbnail_url?: string;
+        images?: string[];
+        specifications?: Record<string, string>;
+        features?: string[];
         description?: string;
         status: string;
+    }
+
+    // Lead CTA types
+    interface LeadCTA {
+        id: string;
+        label: string;
+        formId: string;
+        style: 'primary' | 'secondary' | 'outline' | 'ghost';
+        icon?: string;
+        afterSubmitAction: 'close' | 'message' | 'redirect';
+        afterSubmitMessage?: string;
+        afterSubmitUrl?: string;
+        prefillMapping?: Record<string, string>;
     }
 
     interface Props {
@@ -62,6 +80,15 @@
         subtitle?: string;
         showHeader?: boolean;
         
+        // Vehicle details configuration
+        detailsMode?: 'modal' | 'page' | 'none';
+        detailsPagePattern?: string; // e.g., '/vehicles/{id}' or '/inventory/{slug}'
+        detailsButtonText?: string;
+        
+        // Lead CTAs
+        listCTAs?: LeadCTA[];
+        detailCTAs?: LeadCTA[];
+        
         // Section layout
         layout?: Partial<SectionLayout>;
         isEditing?: boolean;
@@ -84,9 +111,14 @@
         showViewToggle = true,
         showPrices = true,
         showPagination = true,
-        title = 'Vehicle Inventory',
+        title = '',
         subtitle = '',
         showHeader = true,
+        detailsMode = 'modal',
+        detailsPagePattern = '/vehicles/{id}',
+        detailsButtonText = 'View Details',
+        listCTAs = [],
+        detailCTAs = [],
         layout = {},
         isEditing = false,
         onLayoutChange
@@ -94,6 +126,8 @@
 
     // State
     let currentViewMode = $state(viewMode);
+    let selectedVehicle = $state<CatalogVehicle | null>(null);
+    let showDetailsModal = $state(false);
 
     // Use context data if props are empty, otherwise use props
     const vehicles = $derived(
@@ -124,8 +158,86 @@
         title,
         subtitle,
         showHeader,
+        detailsMode,
+        detailsPagePattern,
+        detailsButtonText,
+        listCTAs,
+        detailCTAs,
         layout
     });
+
+    // Handle vehicle details view
+    const handleViewDetails = (vehicle: CatalogVehicle) => {
+        if (detailsMode === 'none') return;
+        
+        if (detailsMode === 'page') {
+            // Build URL from pattern
+            const url = detailsPagePattern
+                .replace('{id}', vehicle.id)
+                .replace('{slug}', vehicle.model_name.toLowerCase().replace(/\s+/g, '-'));
+            window.location.href = url;
+            return;
+        }
+        
+        // Default: modal
+        selectedVehicle = vehicle;
+        showDetailsModal = true;
+    };
+
+    const closeDetailsModal = () => {
+        showDetailsModal = false;
+        selectedVehicle = null;
+    };
+
+    // Handle Lead CTA click
+    const handleLeadCTA = (cta: LeadCTA, vehicle: CatalogVehicle) => {
+        const prefillData: Record<string, any> = {
+            vehicle_id: vehicle.id,
+            vehicle_name: `${vehicle.model_year || ''} ${vehicle.model_name}`.trim(),
+            vehicle_price: vehicle.msrp,
+            vehicle_category: vehicle.category,
+            vehicle_oem: vehicle.oem_name
+        };
+
+        // Apply any custom prefill mappings
+        if (cta.prefillMapping) {
+            Object.entries(cta.prefillMapping).forEach(([formField, contextField]) => {
+                if (contextField === 'vehicleId') prefillData[formField] = vehicle.id;
+                if (contextField === 'vehicleName') prefillData[formField] = `${vehicle.model_year || ''} ${vehicle.model_name}`.trim();
+                if (contextField === 'vehiclePrice') prefillData[formField] = vehicle.msrp;
+                if (contextField === 'vehicleCategory') prefillData[formField] = vehicle.category;
+                if (contextField === 'vehicleOem') prefillData[formField] = vehicle.oem_name;
+            });
+        }
+
+        // Build after submit action
+        let afterSubmit: AfterSubmitAction;
+        switch (cta.afterSubmitAction) {
+            case 'close':
+                afterSubmit = { type: 'close' };
+                break;
+            case 'redirect':
+                afterSubmit = { type: 'redirect', url: cta.afterSubmitUrl || '/' };
+                break;
+            case 'message':
+            default:
+                afterSubmit = { 
+                    type: 'message', 
+                    message: cta.afterSubmitMessage || 'Thank you! We\'ll be in touch soon.',
+                    messageType: 'success',
+                    autoCloseDelay: 3000
+                };
+        }
+
+        // Open the modal
+        openVehicleInquiryModal({
+            vehicleId: vehicle.id,
+            vehicleName: `${vehicle.model_year || ''} ${vehicle.model_name}`.trim(),
+            formId: cta.formId,
+            additionalData: prefillData,
+            afterSubmit
+        });
+    };
 
     onMount(() => {
         if (!editable) return;
@@ -542,9 +654,26 @@
                                             {formatPrice(vehicle.msrp, vehicle.currency)}
                                         </span>
                                     {/if}
-                                    <button class="catalog-view__cardBtn">
-                                        View Details
-                                    </button>
+                                    <div class="catalog-view__cardActions">
+                                        {#if detailsMode !== 'none'}
+                                            <button 
+                                                class="catalog-view__cardBtn"
+                                                onclick={() => handleViewDetails(vehicle)}
+                                            >
+                                                {detailsButtonText}
+                                            </button>
+                                        {/if}
+                                        {#if listCTAs.length > 0}
+                                            {#each listCTAs as cta (cta.id)}
+                                                <button 
+                                                    class="catalog-view__cardBtn catalog-view__cardBtn--{cta.style}"
+                                                    onclick={() => handleLeadCTA(cta, vehicle)}
+                                                >
+                                                    {cta.label}
+                                                </button>
+                                            {/each}
+                                        {/if}
+                                    </div>
                                 </div>
                             </article>
                         {/each}
@@ -583,9 +712,24 @@
                                             {formatPrice(vehicle.msrp, vehicle.currency)}
                                         </span>
                                     {/if}
-                                    <button class="catalog-view__listBtn">
-                                        View Details
-                                    </button>
+                                    {#if detailsMode !== 'none'}
+                                        <button 
+                                            class="catalog-view__listBtn"
+                                            onclick={() => handleViewDetails(vehicle)}
+                                        >
+                                            {detailsButtonText}
+                                        </button>
+                                    {/if}
+                                    {#if listCTAs.length > 0}
+                                        {#each listCTAs as cta (cta.id)}
+                                            <button 
+                                                class="catalog-view__listBtn catalog-view__listBtn--{cta.style}"
+                                                onclick={() => handleLeadCTA(cta, vehicle)}
+                                            >
+                                                {cta.label}
+                                            </button>
+                                        {/each}
+                                    {/if}
                                 </div>
                             </article>
                         {/each}
@@ -634,6 +778,117 @@
         </div>
     </div>
 </section>
+
+<!-- Vehicle Details Modal -->
+{#if showDetailsModal && selectedVehicle}
+    <div 
+        class="catalog-view__modalOverlay"
+        onclick={closeDetailsModal}
+        onkeydown={(e) => e.key === 'Escape' && closeDetailsModal()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vehicle-modal-title"
+        tabindex="-1"
+    >
+        <div 
+            class="catalog-view__modal"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="document"
+        >
+            <button 
+                class="catalog-view__modalClose"
+                onclick={closeDetailsModal}
+                aria-label="Close modal"
+            >
+                <X size={24} />
+            </button>
+            
+            <div class="catalog-view__modalContent">
+                <!-- Image Gallery -->
+                <div class="catalog-view__modalGallery">
+                    {#if selectedVehicle.thumbnail_url}
+                        <img 
+                            src={selectedVehicle.thumbnail_url} 
+                            alt={selectedVehicle.model_name}
+                            class="catalog-view__modalImage"
+                        />
+                    {:else}
+                        <div class="catalog-view__modalPlaceholder">
+                            <Bike size={64} />
+                        </div>
+                    {/if}
+                </div>
+                
+                <!-- Vehicle Info -->
+                <div class="catalog-view__modalInfo">
+                    <div class="catalog-view__modalHeader">
+                        <span class="catalog-view__modalBrand">{selectedVehicle.oem_name}</span>
+                        <span class="catalog-view__modalCategory">
+                            {getCategoryLabel(selectedVehicle.category)}
+                        </span>
+                    </div>
+                    
+                    <h2 id="vehicle-modal-title" class="catalog-view__modalTitle">
+                        {#if selectedVehicle.model_year}{selectedVehicle.model_year}{/if}
+                        {selectedVehicle.model_name}
+                    </h2>
+                    
+                    {#if showPrices && selectedVehicle.msrp}
+                        <div class="catalog-view__modalPrice">
+                            {formatPrice(selectedVehicle.msrp, selectedVehicle.currency)}
+                        </div>
+                    {/if}
+                    
+                    {#if selectedVehicle.description}
+                        <p class="catalog-view__modalDesc">{selectedVehicle.description}</p>
+                    {/if}
+                    
+                    <!-- Specifications if available -->
+                    {#if selectedVehicle.specifications && Object.keys(selectedVehicle.specifications).length > 0}
+                        <div class="catalog-view__modalSpecs">
+                            <h3 class="catalog-view__modalSpecsTitle">Specifications</h3>
+                            <dl class="catalog-view__modalSpecsList">
+                                {#each Object.entries(selectedVehicle.specifications) as [key, value]}
+                                    <div class="catalog-view__modalSpecItem">
+                                        <dt>{key}</dt>
+                                        <dd>{value}</dd>
+                                    </div>
+                                {/each}
+                            </dl>
+                        </div>
+                    {/if}
+                    
+                    <!-- Features if available -->
+                    {#if selectedVehicle.features && selectedVehicle.features.length > 0}
+                        <div class="catalog-view__modalFeatures">
+                            <h3 class="catalog-view__modalFeaturesTitle">Features</h3>
+                            <ul class="catalog-view__modalFeaturesList">
+                                {#each selectedVehicle.features as feature}
+                                    <li>{feature}</li>
+                                {/each}
+                            </ul>
+                        </div>
+                    {/if}
+
+                    <!-- Detail CTAs -->
+                    {#if detailCTAs.length > 0}
+                        <div class="catalog-view__modalCTAs">
+                            {#each detailCTAs as cta (cta.id)}
+                                <button 
+                                    class="catalog-view__modalCTA catalog-view__modalCTA--{cta.style}"
+                                    onclick={() => selectedVehicle && handleLeadCTA(cta, selectedVehicle)}
+                                >
+                                    {cta.label}
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .catalog-view {
@@ -1354,6 +1609,358 @@
 
         .catalog-view__topbarActions {
             justify-content: space-between;
+        }
+    }
+
+    /* Vehicle Details Modal */
+    .catalog-view__modalOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .catalog-view__modal {
+        position: relative;
+        width: 100%;
+        max-width: 900px;
+        max-height: 90vh;
+        overflow-y: auto;
+        background: #ffffff;
+        border-radius: 1rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .catalog-view__modalClose {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.9);
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .catalog-view__modalClose:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .catalog-view__modalContent {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+
+    .catalog-view__modalGallery {
+        aspect-ratio: 4/3;
+        background: #f8fafc;
+        border-radius: 1rem 0 0 1rem;
+        overflow: hidden;
+    }
+
+    .catalog-view__modalImage {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .catalog-view__modalPlaceholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5e1;
+    }
+
+    .catalog-view__modalInfo {
+        padding: 2rem 2rem 2rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .catalog-view__modalHeader {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .catalog-view__modalBrand {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #3b82f6;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .catalog-view__modalCategory {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        background: #f1f5f9;
+        border-radius: 9999px;
+    }
+
+    .catalog-view__modalTitle {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0f172a;
+        line-height: 1.2;
+    }
+
+    .catalog-view__modalPrice {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #059669;
+    }
+
+    .catalog-view__modalDesc {
+        margin: 0;
+        font-size: 1rem;
+        color: #64748b;
+        line-height: 1.6;
+    }
+
+    .catalog-view__modalSpecs,
+    .catalog-view__modalFeatures {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__modalSpecsTitle,
+    .catalog-view__modalFeaturesTitle {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+
+    .catalog-view__modalSpecsList {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .catalog-view__modalSpecItem {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem;
+        background: #f8fafc;
+        border-radius: 0.375rem;
+    }
+
+    .catalog-view__modalSpecItem dt {
+        font-size: 0.875rem;
+        color: #64748b;
+    }
+
+    .catalog-view__modalSpecItem dd {
+        margin: 0;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #0f172a;
+    }
+
+    .catalog-view__modalFeaturesList {
+        margin: 0;
+        padding-left: 1.25rem;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.375rem;
+    }
+
+    .catalog-view__modalFeaturesList li {
+        font-size: 0.875rem;
+        color: #475569;
+    }
+
+    /* Card Actions Container */
+    .catalog-view__cardActions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    /* CTA Button Styles */
+    .catalog-view__cardBtn--secondary {
+        background: #64748b;
+    }
+
+    .catalog-view__cardBtn--secondary:hover {
+        background: #475569;
+    }
+
+    .catalog-view__cardBtn--outline {
+        background: transparent;
+        color: #0f172a;
+        border: 1.5px solid #e2e8f0;
+    }
+
+    .catalog-view__cardBtn--outline:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+    }
+
+    .catalog-view__cardBtn--ghost {
+        background: transparent;
+        color: #3b82f6;
+    }
+
+    .catalog-view__cardBtn--ghost:hover {
+        background: #eff6ff;
+    }
+
+    /* List Button Styles */
+    .catalog-view__listBtn--secondary {
+        background: #64748b;
+    }
+
+    .catalog-view__listBtn--secondary:hover {
+        background: #475569;
+    }
+
+    .catalog-view__listBtn--outline {
+        background: transparent;
+        color: #0f172a;
+        border: 1.5px solid #e2e8f0;
+    }
+
+    .catalog-view__listBtn--outline:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+    }
+
+    .catalog-view__listBtn--ghost {
+        background: transparent;
+        color: #3b82f6;
+    }
+
+    .catalog-view__listBtn--ghost:hover {
+        background: #eff6ff;
+    }
+
+    /* Modal CTA Container */
+    .catalog-view__modalCTAs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .catalog-view__modalCTA {
+        flex: 1;
+        min-width: 140px;
+        padding: 0.75rem 1.25rem;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .catalog-view__modalCTA--primary {
+        background: #0f172a;
+        color: #ffffff;
+    }
+
+    .catalog-view__modalCTA--primary:hover {
+        background: #1e293b;
+    }
+
+    .catalog-view__modalCTA--secondary {
+        background: #64748b;
+        color: #ffffff;
+    }
+
+    .catalog-view__modalCTA--secondary:hover {
+        background: #475569;
+    }
+
+    .catalog-view__modalCTA--outline {
+        background: transparent;
+        color: #0f172a;
+        border: 1.5px solid #e2e8f0;
+    }
+
+    .catalog-view__modalCTA--outline:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+    }
+
+    .catalog-view__modalCTA--ghost {
+        background: transparent;
+        color: #3b82f6;
+    }
+
+    .catalog-view__modalCTA--ghost:hover {
+        background: #eff6ff;
+    }
+
+    @media (max-width: 768px) {
+        .catalog-view__modalContent {
+            grid-template-columns: 1fr;
+        }
+
+        .catalog-view__modalGallery {
+            border-radius: 1rem 1rem 0 0;
+        }
+
+        .catalog-view__modalInfo {
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        .catalog-view__modalSpecsList,
+        .catalog-view__modalFeaturesList {
+            grid-template-columns: 1fr;
+        }
+
+        .catalog-view__modalCTAs {
+            flex-direction: column;
+        }
+
+        .catalog-view__modalCTA {
+            min-width: auto;
         }
     }
 </style>

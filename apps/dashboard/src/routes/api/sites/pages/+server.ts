@@ -77,13 +77,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		let catalogVehicles: any[] = [];
 
 		try {
-			console.log('[api/sites/pages] Fetching catalog data...');
-			
 			// Fetch OEMs
 			const oemsResult = await orgDb.catalogOems
 				.where({ deleted_at: { isNullish: true } })
-				.all();
-			console.log('[api/sites/pages] OEMs result:', oemsResult);
+				.many();
 			
 			if (oemsResult.success && oemsResult.data) {
 				catalogOems = oemsResult.data;
@@ -92,21 +89,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// Fetch published vehicles
 			const vehiclesResult = await orgDb.catalogVehicles
 				.where({ status: 'published', deleted_at: { isNullish: true } })
-				.all();
-			console.log('[api/sites/pages] Vehicles result:', vehiclesResult);
+				.many();
 			
 			if (vehiclesResult.success && vehiclesResult.data) {
-				// Join with OEM names - ONLY use CDN URLs (no fallback to source URLs)
+				// Join with OEM names - Prefer CDN URLs but fall back to source URLs for vehicles without CDN images
 				catalogVehicles = vehiclesResult.data
-					.filter((vehicle: any) => {
-						// Only include vehicles that have CDN images uploaded
-						// Skip vehicles still processing images
-						return vehicle.cdn_thumbnail_url || (vehicle.cdn_images && vehicle.cdn_images !== '[]');
-					})
 					.map((vehicle: any) => {
 						const oem = catalogOems.find(o => o.id === vehicle.oem_id);
 					
-						// ONLY use CDN URLs - never expose source URLs to public site
+						// Parse CDN images
 						let cdnImages = [];
 						try {
 							cdnImages = vehicle.cdn_images ? 
@@ -116,12 +107,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 							cdnImages = [];
 						}
 					
+						// Use CDN URL if available, otherwise fall back to source URL
+						const thumbnailUrl = vehicle.cdn_thumbnail_url || vehicle.source_url || null;
+					
 						return {
 							...vehicle,
 							oem_name: oem?.name || vehicle.oem_name || 'Unknown',
-							thumbnail_url: vehicle.cdn_thumbnail_url || null, // CDN only
-							images: cdnImages, // CDN only
-							// Remove source URLs from public response
+							thumbnail_url: thumbnailUrl,
+							images: cdnImages.length > 0 ? cdnImages : (vehicle.source_url ? [vehicle.source_url] : []),
+							// Remove internal fields from public response
 							source_url: undefined,
 							cdn_thumbnail_url: undefined,
 							cdn_images: undefined

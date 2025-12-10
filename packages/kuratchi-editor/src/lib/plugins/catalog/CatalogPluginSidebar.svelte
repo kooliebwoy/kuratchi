@@ -52,7 +52,12 @@
         showFilters: true,
         showSearch: true,
         showPrices: true,
-        showPagination: true
+        showPagination: true,
+        title: '',
+        showHeader: true,
+        detailsMode: 'modal' as 'modal' | 'page' | 'none',
+        detailsPagePattern: '/vehicles/{id}',
+        detailsButtonText: 'View Details'
     });
 
     // Featured Vehicles Configuration
@@ -61,7 +66,12 @@
         columns: 4 as 2 | 3 | 4,
         limit: 4,
         showPrices: true,
-        showCategory: true
+        showCategory: true,
+        title: '',
+        showHeader: true,
+        showCta: true,
+        ctaText: 'View All',
+        ctaLink: '/catalog'
     });
 
     // Categories
@@ -154,8 +164,11 @@
             showPrices: catalogConfig.showPrices,
             showPagination: catalogConfig.showPagination,
             showViewToggle: true,
-            title: 'Vehicle Inventory',
-            showHeader: true
+            title: catalogConfig.title || '',
+            showHeader: catalogConfig.showHeader,
+            detailsMode: catalogConfig.detailsMode,
+            detailsPagePattern: catalogConfig.detailsPagePattern,
+            detailsButtonText: catalogConfig.detailsButtonText
         });
     };
 
@@ -169,11 +182,13 @@
             limit: featuredConfig.limit,
             showPrices: featuredConfig.showPrices,
             showCategory: featuredConfig.showCategory,
-            title: 'Featured Vehicles',
-            showHeader: true,
-            showCta: true,
-            ctaText: 'View All Vehicles',
-            ctaLink: '/catalog'
+            title: featuredConfig.title || '',
+            showHeader: featuredConfig.showHeader,
+            showCta: featuredConfig.showCta,
+            ctaText: featuredConfig.ctaText,
+            ctaLink: featuredConfig.ctaLink,
+            detailsMode: catalogConfig.detailsMode,
+            detailsPagePattern: catalogConfig.detailsPagePattern
         });
     };
 
@@ -186,7 +201,9 @@
             columns: 3,
             showFilters: true,
             showPrices: true,
-            title: 'Our Vehicles'
+            title: '',
+            detailsMode: catalogConfig.detailsMode,
+            detailsPagePattern: catalogConfig.detailsPagePattern
         });
     };
 
@@ -308,6 +325,58 @@
                             Show Prices
                         </label>
                     </div>
+                    <div class="catalog-plugin__configRow">
+                        <label class="catalog-plugin__checkbox">
+                            <input type="checkbox" bind:checked={catalogConfig.showHeader} />
+                            Show Header
+                        </label>
+                    </div>
+                    {#if catalogConfig.showHeader}
+                        <div class="catalog-plugin__configRow">
+                            <label>Title</label>
+                            <input 
+                                type="text" 
+                                bind:value={catalogConfig.title} 
+                                class="catalog-plugin__configInput"
+                                placeholder="Optional section title"
+                            />
+                        </div>
+                    {/if}
+                    
+                    <!-- Vehicle Details Configuration -->
+                    <div class="catalog-plugin__configRow">
+                        <label>Details Action</label>
+                        <select bind:value={catalogConfig.detailsMode} class="catalog-plugin__configSelect">
+                            <option value="modal">Open in Modal</option>
+                            <option value="page">Link to Page</option>
+                            <option value="none">No Action</option>
+                        </select>
+                    </div>
+                    {#if catalogConfig.detailsMode === 'page'}
+                        <div class="catalog-plugin__configRow">
+                            <label>Page URL Pattern</label>
+                            <input 
+                                type="text" 
+                                bind:value={catalogConfig.detailsPagePattern} 
+                                class="catalog-plugin__configInput"
+                                placeholder="/vehicles/{id}"
+                            />
+                        </div>
+                        <p class="catalog-plugin__configHint">
+                            Use {'{id}'} or {'{slug}'} as placeholders
+                        </p>
+                    {/if}
+                    {#if catalogConfig.detailsMode !== 'none'}
+                        <div class="catalog-plugin__configRow">
+                            <label>Button Text</label>
+                            <input 
+                                type="text" 
+                                bind:value={catalogConfig.detailsButtonText} 
+                                class="catalog-plugin__configInput"
+                                placeholder="View Details"
+                            />
+                        </div>
+                    {/if}
                 </div>
                 <button class="catalog-plugin__addBtn" onclick={insertCatalogView}>
                     <Plus size={14} />
@@ -350,6 +419,49 @@
                             <option value={8}>8</option>
                         </select>
                     </div>
+                    <div class="catalog-plugin__configRow">
+                        <label class="catalog-plugin__checkbox">
+                            <input type="checkbox" bind:checked={featuredConfig.showHeader} />
+                            Show Header
+                        </label>
+                    </div>
+                    {#if featuredConfig.showHeader}
+                        <div class="catalog-plugin__configRow">
+                            <label>Title</label>
+                            <input 
+                                type="text" 
+                                bind:value={featuredConfig.title} 
+                                class="catalog-plugin__configInput"
+                                placeholder="Optional section title"
+                            />
+                        </div>
+                    {/if}
+                    <div class="catalog-plugin__configRow">
+                        <label class="catalog-plugin__checkbox">
+                            <input type="checkbox" bind:checked={featuredConfig.showCta} />
+                            Show CTA Button
+                        </label>
+                    </div>
+                    {#if featuredConfig.showCta}
+                        <div class="catalog-plugin__configRow">
+                            <label>Button Text</label>
+                            <input 
+                                type="text" 
+                                bind:value={featuredConfig.ctaText} 
+                                class="catalog-plugin__configInput"
+                                placeholder="View All"
+                            />
+                        </div>
+                        <div class="catalog-plugin__configRow">
+                            <label>Button Link</label>
+                            <input 
+                                type="text" 
+                                bind:value={featuredConfig.ctaLink} 
+                                class="catalog-plugin__configInput"
+                                placeholder="/catalog"
+                            />
+                        </div>
+                    {/if}
                 </div>
 
                 {#if selectedVehicles.size > 0}
@@ -911,6 +1023,27 @@
         font-size: 0.75rem;
         color: var(--krt-editor-text-primary, #0f172a);
         cursor: pointer;
+    }
+
+    .catalog-plugin__configInput {
+        width: 100%;
+        padding: 0.375rem 0.5rem;
+        background: var(--krt-editor-bg, #ffffff);
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-sm, 0.375rem);
+        font-size: 0.75rem;
+        color: var(--krt-editor-text-primary, #0f172a);
+    }
+
+    .catalog-plugin__configInput::placeholder {
+        color: var(--krt-editor-text-muted, #94a3b8);
+    }
+
+    .catalog-plugin__configHint {
+        margin: -0.25rem 0 0.5rem;
+        font-size: 0.6875rem;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        font-style: italic;
     }
 
     .catalog-plugin__toggleGroup {

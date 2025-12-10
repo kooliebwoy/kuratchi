@@ -7,6 +7,7 @@ import { getRequestEvent, query, command } from '$app/server';
 import { error } from '@sveltejs/kit';
 import { getEmailHistory, getEmailById as getEmailByIdSDK, sendEmail } from 'kuratchi-sdk/email';
 import * as v from 'valibot';
+import { getDatabase } from '$lib/server/db-context';
 
 // Helpers
 const guardedQuery = <R>(fn: () => Promise<R>) => {
@@ -51,30 +52,64 @@ export const getEmails = guardedQuery(async () => {
  * Get email statistics from tracked emails
  */
 export const getEmailStats = guardedQuery(async () => {
+  let suppressed = 0;
   try {
     const event = getRequestEvent();
     const emails = await getEmailHistory(event, { 
       limit: 1000 
     });
 
+    try {
+      const orgDb = await getDatabase(event.locals);
+      if (orgDb?.email_suppressions) {
+        const suppressionCount = await orgDb.email_suppressions.count();
+        suppressed = typeof suppressionCount?.data === 'number'
+          ? suppressionCount.data
+          : suppressionCount?.data?.[0]?.count || 0;
+      }
+    } catch (suppressionErr) {
+      console.warn('[emails.getEmailStats] suppression lookup failed:', suppressionErr);
+    }
+
     if (!emails || emails.length === 0) {
       return {
         total: 0,
         sent: 0,
+        delivered: 0,
         failed: 0,
         pending: 0,
+        bounced: 0,
+        complained: 0,
+        rejected: 0,
+        suppressed,
+        bounceRate: 0,
+        complaintRate: 0,
         last24h: 0
       };
     }
 
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const delivered = emails.filter((e: any) => e.status === 'delivered').length;
+    const bounced = emails.filter((e: any) => e.status === 'bounced').length;
+    const complained = emails.filter((e: any) => e.status === 'complained').length;
+    const rejected = emails.filter((e: any) => e.status === 'rejected').length;
+    const totalSentAttempts = emails.length;
+    const bounceRate = totalSentAttempts > 0 ? Math.round((bounced / totalSentAttempts) * 100) : 0;
+    const complaintRate = totalSentAttempts > 0 ? Math.round((complained / totalSentAttempts) * 100) : 0;
 
     return {
       total: emails.length,
       sent: emails.filter((e: any) => e.status === 'sent').length,
+      delivered,
       failed: emails.filter((e: any) => e.status === 'failed').length,
       pending: emails.filter((e: any) => e.status === 'pending').length,
+      bounced,
+      complained,
+      rejected,
+      suppressed,
+      bounceRate,
+      complaintRate,
       last24h: emails.filter((e: any) => {
         const sentAt = new Date(e.sentAt).getTime();
         return sentAt > oneDayAgo;
@@ -85,8 +120,15 @@ export const getEmailStats = guardedQuery(async () => {
     return {
       total: 0,
       sent: 0,
+      delivered: 0,
       failed: 0,
       pending: 0,
+      bounced: 0,
+      complained: 0,
+      rejected: 0,
+      suppressed: 0,
+      bounceRate: 0,
+      complaintRate: 0,
       last24h: 0
     };
   }

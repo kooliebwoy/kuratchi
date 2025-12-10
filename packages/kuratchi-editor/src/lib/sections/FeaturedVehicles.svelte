@@ -1,9 +1,10 @@
 <script lang="ts">
     import { onMount, getContext } from 'svelte';
-    import { Bike, ChevronLeft, ChevronRight } from '@lucide/svelte';
+    import { Bike, ChevronLeft, ChevronRight, X } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { type SectionLayout, getSectionLayoutStyles, mergeLayoutWithDefaults } from './section-layout.js';
+    import { openFormModal, openVehicleInquiryModal, type AfterSubmitAction } from '../plugins/modals/modal-manager.svelte.js';
 
     interface CatalogVehicle {
         id: string;
@@ -15,8 +16,23 @@
         msrp?: number;
         currency?: string;
         thumbnail_url?: string;
+        images?: string[];
+        specifications?: Record<string, string>;
+        features?: string[];
         description?: string;
         status: string;
+    }
+
+    interface LeadCTA {
+        id: string;
+        label: string;
+        formId?: string;
+        style: 'primary' | 'secondary' | 'outline' | 'ghost';
+        icon?: string;
+        afterSubmitAction?: AfterSubmitAction;
+        afterSubmitMessage?: string;
+        afterSubmitUrl?: string;
+        prefillMapping?: Record<string, string>;
     }
 
     interface Props {
@@ -52,6 +68,15 @@
         ctaLink?: string;
         showCta?: boolean;
         
+        // Vehicle details configuration
+        detailsMode?: 'modal' | 'page' | 'none';
+        detailsPagePattern?: string;
+        detailsButtonText?: string;
+        
+        // Lead CTAs
+        listCTAs?: LeadCTA[];
+        detailCTAs?: LeadCTA[];
+        
         // Section layout
         layout?: Partial<SectionLayout>;
         isEditing?: boolean;
@@ -61,6 +86,7 @@
     // Get catalog data from context (provided by Editor)
     const siteMetadata = getContext<{
         catalogVehicles: CatalogVehicle[];
+        forms?: { id: string; name: string; fields: any[] }[];
     }>('siteMetadata');
 
     let {
@@ -77,13 +103,18 @@
         showPrices = true,
         showCategory = true,
         showDescription = false,
-        title = 'Featured Vehicles',
+        title = '',
         subtitle = '',
         showHeader = true,
         headerAlign = 'center',
         ctaText = 'View All Vehicles',
         ctaLink = '/catalog',
         showCta = true,
+        detailsMode = 'modal',
+        detailsPagePattern = '/vehicles/{id}',
+        detailsButtonText = 'View Details',
+        listCTAs = [],
+        detailCTAs = [],
         layout = {},
         isEditing = false,
         onLayoutChange
@@ -91,11 +122,89 @@
 
     // Carousel state
     let carouselIndex = $state(0);
+    let selectedVehicle = $state<CatalogVehicle | null>(null);
+    let showDetailsModal = $state(false);
 
     // Use context data if props are empty, otherwise use props
     const vehicles = $derived(
         vehiclesProp.length > 0 ? vehiclesProp : (siteMetadata?.catalogVehicles || [])
     );
+
+    // Handle vehicle details view
+    const handleViewDetails = (vehicle: CatalogVehicle) => {
+        if (detailsMode === 'none') return;
+        
+        if (detailsMode === 'page') {
+            const url = detailsPagePattern
+                .replace('{id}', vehicle.id)
+                .replace('{slug}', vehicle.model_name.toLowerCase().replace(/\s+/g, '-'));
+            window.location.href = url;
+            return;
+        }
+        
+        selectedVehicle = vehicle;
+        showDetailsModal = true;
+    };
+
+    const closeDetailsModal = () => {
+        showDetailsModal = false;
+        selectedVehicle = null;
+    };
+
+    // Handle Lead CTA click
+    const handleLeadCTA = (cta: LeadCTA, vehicle: CatalogVehicle) => {
+        const prefillData: Record<string, string> = {};
+        
+        // Build prefill data based on mapping
+        if (cta.prefillMapping) {
+            Object.entries(cta.prefillMapping).forEach(([formField, vehicleField]) => {
+                const value = vehicleField === 'name' 
+                    ? `${vehicle.model_year || ''} ${vehicle.oem_name} ${vehicle.model_name}`.trim()
+                    : vehicleField === 'price' 
+                        ? vehicle.msrp?.toString() || ''
+                        : vehicleField === 'category'
+                            ? vehicle.category
+                            : vehicleField === 'oem'
+                                ? vehicle.oem_name
+                                : (vehicle as any)[vehicleField] || '';
+                if (value) prefillData[formField] = value;
+            });
+        } else {
+            // Default prefill: vehicle name
+            prefillData['vehicle'] = `${vehicle.model_year || ''} ${vehicle.oem_name} ${vehicle.model_name}`.trim();
+            prefillData['vehicle_id'] = vehicle.id;
+        }
+
+        const afterSubmitAction: AfterSubmitAction = cta.afterSubmitAction || {
+            type: cta.afterSubmitUrl ? 'redirect' : cta.afterSubmitMessage ? 'message' : 'close',
+            url: cta.afterSubmitUrl,
+            message: cta.afterSubmitMessage
+        };
+
+        const vehicleName = `${vehicle.model_year || ''} ${vehicle.oem_name} ${vehicle.model_name}`.trim();
+
+        if (cta.formId) {
+            openFormModal({
+                formId: cta.formId,
+                title: `${cta.label} - ${vehicleName}`,
+                prefillData,
+                afterSubmit: afterSubmitAction
+            });
+        } else {
+            // Open generic vehicle inquiry modal with a default form
+            openVehicleInquiryModal({
+                vehicleId: vehicle.id,
+                vehicleName,
+                formId: 'vehicle-inquiry', // Default inquiry form ID
+                additionalData: {
+                    vehicle_price: vehicle.msrp?.toString() || '',
+                    vehicle_category: vehicle.category,
+                    vehicle_oem: vehicle.oem_name
+                },
+                afterSubmit: afterSubmitAction
+            });
+        }
+    };
 
     // Block registry for editor persistence
     let component = $state<HTMLElement>();
@@ -121,6 +230,11 @@
         ctaText,
         ctaLink,
         showCta,
+        detailsMode,
+        detailsPagePattern,
+        detailsButtonText,
+        listCTAs,
+        detailCTAs,
         layout
     });
 
@@ -263,7 +377,24 @@
                                 {formatPrice(mainVehicle.msrp, mainVehicle.currency)}
                             </span>
                         {/if}
-                        <button class="featured-vehicles__showcaseBtn">View Details</button>
+                        <div class="featured-vehicles__showcaseActions">
+                            {#if detailsMode !== 'none'}
+                                <button 
+                                    class="featured-vehicles__showcaseBtn"
+                                    onclick={() => handleViewDetails(mainVehicle)}
+                                >
+                                    {detailsButtonText}
+                                </button>
+                            {/if}
+                            {#each listCTAs as cta (cta.id)}
+                                <button 
+                                    class="featured-vehicles__showcaseBtn featured-vehicles__showcaseBtn--{cta.style}"
+                                    onclick={() => handleLeadCTA(cta, mainVehicle)}
+                                >
+                                    {cta.label}
+                                </button>
+                            {/each}
+                        </div>
                     </div>
                 </article>
 
@@ -388,7 +519,24 @@
                                     {formatPrice(vehicle.msrp, vehicle.currency)}
                                 </span>
                             {/if}
-                            <button class="featured-vehicles__cardBtn">View Details</button>
+                            <div class="featured-vehicles__cardActions">
+                                {#if detailsMode !== 'none'}
+                                    <button 
+                                        class="featured-vehicles__cardBtn"
+                                        onclick={() => handleViewDetails(vehicle)}
+                                    >
+                                        {detailsButtonText}
+                                    </button>
+                                {/if}
+                                {#each listCTAs as cta (cta.id)}
+                                    <button 
+                                        class="featured-vehicles__cardBtn featured-vehicles__cardBtn--{cta.style}"
+                                        onclick={() => handleLeadCTA(cta, vehicle)}
+                                    >
+                                        {cta.label}
+                                    </button>
+                                {/each}
+                            </div>
                         </div>
                     </article>
                 {/each}
@@ -405,6 +553,87 @@
         {/if}
     </div>
 </section>
+
+<!-- Vehicle Details Modal -->
+{#if showDetailsModal && selectedVehicle}
+    <div 
+        class="featured-vehicles__modalOverlay"
+        onclick={closeDetailsModal}
+        onkeydown={(e) => e.key === 'Escape' && closeDetailsModal()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vehicle-modal-title"
+        tabindex="-1"
+    >
+        <div 
+            class="featured-vehicles__modal"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="document"
+        >
+            <button 
+                class="featured-vehicles__modalClose"
+                onclick={closeDetailsModal}
+                aria-label="Close modal"
+            >
+                <X size={24} />
+            </button>
+            
+            <div class="featured-vehicles__modalContent">
+                <div class="featured-vehicles__modalGallery">
+                    {#if selectedVehicle.thumbnail_url}
+                        <img 
+                            src={selectedVehicle.thumbnail_url} 
+                            alt={selectedVehicle.model_name}
+                            class="featured-vehicles__modalImage"
+                        />
+                    {:else}
+                        <div class="featured-vehicles__modalPlaceholder">
+                            <Bike size={64} />
+                        </div>
+                    {/if}
+                </div>
+                
+                <div class="featured-vehicles__modalInfo">
+                    <div class="featured-vehicles__modalHeader">
+                        <span class="featured-vehicles__modalBrand">{selectedVehicle.oem_name}</span>
+                        <span class="featured-vehicles__modalCategory">
+                            {getCategoryLabel(selectedVehicle.category)}
+                        </span>
+                    </div>
+                    
+                    <h2 id="vehicle-modal-title" class="featured-vehicles__modalTitle">
+                        {#if selectedVehicle.model_year}{selectedVehicle.model_year}{/if}
+                        {selectedVehicle.model_name}
+                    </h2>
+                    
+                    {#if showPrices && selectedVehicle.msrp}
+                        <div class="featured-vehicles__modalPrice">
+                            {formatPrice(selectedVehicle.msrp, selectedVehicle.currency)}
+                        </div>
+                    {/if}
+                    
+                    {#if selectedVehicle.description}
+                        <p class="featured-vehicles__modalDesc">{selectedVehicle.description}</p>
+                    {/if}
+                    
+                    {#if detailCTAs.length > 0}
+                        <div class="featured-vehicles__modalCTAs">
+                            {#each detailCTAs as cta (cta.id)}
+                                <button 
+                                    class="featured-vehicles__modalCTA featured-vehicles__modalCTA--{cta.style}"
+                                    onclick={() => selectedVehicle && handleLeadCTA(cta, selectedVehicle)}
+                                >
+                                    {cta.label}
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .featured-vehicles {
@@ -840,6 +1069,318 @@
     @media (max-width: 480px) {
         .featured-vehicles__grid {
             grid-template-columns: 1fr;
+        }
+    }
+
+    /* Vehicle Details Modal */
+    .featured-vehicles__modalOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .featured-vehicles__modal {
+        position: relative;
+        width: 100%;
+        max-width: 900px;
+        max-height: 90vh;
+        overflow-y: auto;
+        background: #ffffff;
+        border-radius: 1rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .featured-vehicles__modalClose {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.9);
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .featured-vehicles__modalClose:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .featured-vehicles__modalContent {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+
+    .featured-vehicles__modalGallery {
+        aspect-ratio: 4/3;
+        background: #f8fafc;
+        border-radius: 1rem 0 0 1rem;
+        overflow: hidden;
+    }
+
+    .featured-vehicles__modalImage {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .featured-vehicles__modalPlaceholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5e1;
+    }
+
+    .featured-vehicles__modalInfo {
+        padding: 2rem 2rem 2rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .featured-vehicles__modalHeader {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .featured-vehicles__modalBrand {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #3b82f6;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .featured-vehicles__modalCategory {
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        background: #f1f5f9;
+        border-radius: 9999px;
+    }
+
+    .featured-vehicles__modalTitle {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #0f172a;
+        line-height: 1.2;
+    }
+
+    .featured-vehicles__modalPrice {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #059669;
+    }
+
+    .featured-vehicles__modalDesc {
+        margin: 0;
+        font-size: 1rem;
+        color: #64748b;
+        line-height: 1.6;
+    }
+
+    /* Lead CTA Buttons */
+    .featured-vehicles__cardActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: auto;
+        padding-top: 0.75rem;
+    }
+
+    .featured-vehicles__showcaseActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+    }
+
+    .featured-vehicles__modalCTAs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    /* Card Button Variants */
+    .featured-vehicles__cardBtn--primary {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__cardBtn--primary:hover {
+        background: #1d4ed8;
+    }
+
+    .featured-vehicles__cardBtn--secondary {
+        background: #64748b;
+        color: white;
+    }
+
+    .featured-vehicles__cardBtn--secondary:hover {
+        background: #475569;
+    }
+
+    .featured-vehicles__cardBtn--outline {
+        background: transparent;
+        border: 1px solid #2563eb;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__cardBtn--outline:hover {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__cardBtn--ghost {
+        background: transparent;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__cardBtn--ghost:hover {
+        background: #eff6ff;
+    }
+
+    /* Showcase Button Variants */
+    .featured-vehicles__showcaseBtn--primary {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__showcaseBtn--primary:hover {
+        background: #1d4ed8;
+    }
+
+    .featured-vehicles__showcaseBtn--secondary {
+        background: #64748b;
+        color: white;
+    }
+
+    .featured-vehicles__showcaseBtn--secondary:hover {
+        background: #475569;
+    }
+
+    .featured-vehicles__showcaseBtn--outline {
+        background: transparent;
+        border: 1px solid #2563eb;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__showcaseBtn--outline:hover {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__showcaseBtn--ghost {
+        background: transparent;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__showcaseBtn--ghost:hover {
+        background: #eff6ff;
+    }
+
+    /* Modal CTA Variants */
+    .featured-vehicles__modalCTA {
+        flex: 1;
+        min-width: 140px;
+        padding: 0.875rem 1.25rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+    }
+
+    .featured-vehicles__modalCTA--primary {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__modalCTA--primary:hover {
+        background: #1d4ed8;
+    }
+
+    .featured-vehicles__modalCTA--secondary {
+        background: #64748b;
+        color: white;
+    }
+
+    .featured-vehicles__modalCTA--secondary:hover {
+        background: #475569;
+    }
+
+    .featured-vehicles__modalCTA--outline {
+        background: transparent;
+        border: 1px solid #2563eb;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__modalCTA--outline:hover {
+        background: #2563eb;
+        color: white;
+    }
+
+    .featured-vehicles__modalCTA--ghost {
+        background: #f1f5f9;
+        color: #2563eb;
+    }
+
+    .featured-vehicles__modalCTA--ghost:hover {
+        background: #e2e8f0;
+    }
+
+    @media (max-width: 768px) {
+        .featured-vehicles__modalContent {
+            grid-template-columns: 1fr;
+        }
+
+        .featured-vehicles__modalGallery {
+            border-radius: 1rem 1rem 0 0;
+        }
+
+        .featured-vehicles__modalInfo {
+            padding: 0 1.5rem 1.5rem;
         }
     }
 </style>

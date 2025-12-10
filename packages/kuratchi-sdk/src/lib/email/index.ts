@@ -115,6 +115,52 @@ export async function sendEmail(
 		? `${options.fromName} <${options.from || pluginOptions.from}>`
 		: options.from || pluginOptions.from;
 
+	const recipients = Array.isArray(options.to) ? options.to : [options.to];
+	const normalizedRecipients = recipients.map((email) => email.toLowerCase());
+
+	// Block sending to suppressed recipients (org-level tracking only)
+	if (pluginOptions.trackingDb === 'org') {
+		const orgId = options.organizationId || (event.locals.session as any)?.organizationId;
+		if (orgId) {
+			try {
+				const orgDb = await event.locals.kuratchi?.orgDatabaseClient?.(orgId);
+				const suppressionTable = orgDb?.email_suppressions as any;
+
+				if (suppressionTable) {
+					const suppressed = await suppressionTable
+						.where({
+							email: { in: normalizedRecipients },
+							blocked: { is: true }
+						})
+						.many();
+
+					if (suppressed?.data?.length) {
+						const reasons = suppressed.data
+							.map((row: any) => row.reason || 'suppressed')
+							.join(', ');
+
+						const errorMessage = `Recipient suppressed (${reasons})`;
+
+						if (pluginOptions.trackEmails !== false) {
+							await trackEmail(event, {
+								...options,
+								from,
+								status: 'failed',
+								error: errorMessage,
+								organizationId: orgId
+							});
+						}
+
+						return { success: false, error: errorMessage };
+					}
+				}
+			} catch (suppressionError) {
+				console.warn('[Email] Suppression check failed:', suppressionError);
+				// Continue sending to avoid blocking legitimate traffic if suppression lookup fails
+			}
+		}
+	}
+
 	try {
 		// Prepare email content
 		const content: any = {
