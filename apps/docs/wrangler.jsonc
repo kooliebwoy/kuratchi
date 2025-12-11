@@ -1,0 +1,13 @@
+{
+  "name": "docs-kuratchi",
+  "compatibility_date": "2025-12-11",
+  "routes": [
+    {
+      "pattern": "docs.kuratchi.dev",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./dist"
+  }
+}
