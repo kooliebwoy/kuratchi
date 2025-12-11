@@ -1,0 +1,30 @@
+---
+title: Kuratchi SDK
+description: End-to-end auth and multi-tenant org databases for SvelteKit on Cloudflare.
+template: splash
+hero:
+  tagline: Authentication, storage, and multi-tenancy for SvelteKit apps on Cloudflare Workers.
+  actions:
+    - text: Get Started
+      link: /getting-started/introduction/
+      icon: right-arrow
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid>
+	<Card title="Authentication" icon="approve-check">
+		Magic links, OAuth (Google, GitHub), and email/password auth out of the box.
+	</Card>
+	<Card title="Multi-tenancy" icon="open-book">
+		Per-organization databases with Cloudflare D1 and Durable Objects.
+	</Card>
+	<Card title="Storage" icon="document">
+		Unified access to KV, R2, and D1 bindings.
+	</Card>
+	<Card title="Type-safe" icon="setting">
+		JSON schema-based ORM with full TypeScript support.
+	</Card>
+</CardGrid>
