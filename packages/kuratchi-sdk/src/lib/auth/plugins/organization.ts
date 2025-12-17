@@ -6,6 +6,7 @@
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
 import { KuratchiDatabase } from '../../database/index.js';
 import type { RequestEvent } from '@sveltejs/kit';
+import { getCache, getRequestCache, CacheManager } from '../../cache/index.js';
 
 export interface OrganizationPluginOptions {
   /**
@@ -14,6 +15,12 @@ export interface OrganizationPluginOptions {
    * See src/lib/schema/organization.ts for reference structure
    */
   organizationSchema: any;
+  
+  /**
+   * Skip schema synchronization on database access (default: false)
+   * Set to true in production after initial deployment to improve performance
+   */
+  skipMigrations?: boolean;
 }
 
 export function organizationPlugin(options: OrganizationPluginOptions): AuthPlugin {
@@ -25,7 +32,7 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
     );
   }
   
-  // Cache for DB service
+  // Cache for DB service (singleton across requests in same worker)
   let dbService: KuratchiDatabase | null = null;
   
   return {
@@ -35,10 +42,21 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
     async onRequest(ctx: PluginContext) {
       if (!ctx.locals.kuratchi) ctx.locals.kuratchi = {};
       
+      // Initialize cache with platform (for KV access)
+      const cache = getCache();
+      const platform = ctx.event.platform as any;
+      cache?.initializeKV(platform);
+      
+      // Get request-scoped cache for this request
+      const requestCache = getRequestCache(ctx.locals);
+      
+      // Cache for ORM clients within this request
+      const ormClientCache = new Map<string, any>();
+      
       // Helper to get organization DB client
       ctx.locals.kuratchi.orgDatabaseClient = async (
         orgIdOverride?: string,
-        callOptions?: { schema?: any }
+        callOptions?: { schema?: any; skipMigrations?: boolean }
       ) => {
         if (typeof window !== 'undefined') {
           throw new Error('[Kuratchi Organization] orgDatabaseClient() is server-only');
@@ -55,6 +73,12 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
             'User must be signed in with an organization.'
           );
           return null;
+        }
+        
+        // Check request-level ORM client cache first (fastest)
+        const ormCacheKey = `orm:${organizationId}`;
+        if (ormClientCache.has(ormCacheKey)) {
+          return ormClientCache.get(ormCacheKey);
         }
         
         const env = ctx.env;
@@ -80,48 +104,78 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
           return null;
         }
         
-        // Get admin DB to lookup organization token
-        const getAdminDb = ctx.locals.kuratchi.getAdminDb;
-        if (!getAdminDb) {
-          console.warn(
-            '[Kuratchi Organization] Admin plugin not loaded. ' +
-            'Add adminPlugin() before organizationPlugin()'
-          );
-          return null;
+        let databaseName: string;
+        let workerName: string;
+        let dbToken: string;
+        
+        // Try to get database metadata from cache
+        const cachedMeta = cache 
+          ? await cache.getOrgDatabaseMeta(organizationId, requestCache)
+          : null;
+        
+        if (cachedMeta) {
+          // Cache HIT - use cached metadata
+          databaseName = cachedMeta.databaseName;
+          workerName = cachedMeta.workerName;
+          dbToken = cachedMeta.token;
+          
+          if (cache?.getConfig().debug) {
+            console.log(`[Kuratchi Organization] Cache HIT for org: ${organizationId}`);
+          }
+        } else {
+          // Cache MISS - lookup from admin DB
+          const getAdminDb = ctx.locals.kuratchi.getAdminDb;
+          if (!getAdminDb) {
+            console.warn(
+              '[Kuratchi Organization] Admin plugin not loaded. ' +
+              'Add adminPlugin() before organizationPlugin()'
+            );
+            return null;
+          }
+          
+          const adminDb = await getAdminDb();
+          if (!adminDb) {
+            return null;
+          }
+          
+          // Lookup organization database record (using camelCase to match schema)
+          const { data: databases } = await adminDb.databases
+            .where({ organizationId: organizationId })
+            .first();
+          
+          if (!databases) {
+            console.warn(`[Kuratchi Organization] No database found for organization: ${organizationId}`);
+            return null;
+          }
+          
+          databaseName = databases.name;
+          workerName = databases.workerName;
+          
+          // Get token from dbApiTokens table (query for non-revoked token)
+          const { data: tokenRecord } = await adminDb.dbApiTokens
+            .where({ databaseId: databases.id, revoked: false })
+            .first();
+          
+          if (!tokenRecord || !tokenRecord.token) {
+            console.warn(`[Kuratchi Organization] No valid token found for database: ${databases.id}`);
+            return null;
+          }
+          
+          dbToken = tokenRecord.token;
+          
+          // Cache the metadata for future requests
+          if (cache) {
+            await cache.setOrgDatabaseMeta(organizationId, {
+              databaseName,
+              workerName,
+              token: dbToken
+            }, requestCache);
+          }
         }
-        
-        const adminDb = await getAdminDb();
-        if (!adminDb) {
-          return null;
-        }
-        
-        // Lookup organization database record (using camelCase to match schema)
-        const { data: databases } = await adminDb.databases
-          .where({ organizationId: organizationId })
-          .first();
-        
-        if (!databases) {
-          console.warn(`[Kuratchi Organization] No database found for organization: ${organizationId}`);
-          return null;
-        }
-        
-        const databaseName = databases.name;
-        const workerName = databases.workerName;
-        
-        // Get token from dbApiTokens table (query for non-revoked token)
-        const { data: tokenRecord } = await adminDb.dbApiTokens
-          .where({ databaseId: databases.id, revoked: false })
-          .first();
-        
-        if (!tokenRecord || !tokenRecord.token) {
-          console.warn(`[Kuratchi Organization] No valid token found for database: ${databases.id}`);
-          return null;
-        }
-        
-        const dbToken = tokenRecord.token;
         
         // Use schema from call options or plugin config
         const schema = callOptions?.schema || options.organizationSchema;
+        const skipMigrations = callOptions?.skipMigrations ?? options.skipMigrations ?? false;
         
         if (!dbService) {
           console.warn('[Kuratchi Organization] DB service not initialized');
@@ -134,8 +188,12 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
           dbToken,
           gatewayKey: gatewayKey || '',
           schema,
-          scriptName: workerName
+          scriptName: workerName,
+          skipMigrations
         });
+        
+        // Cache the ORM client for this request
+        ormClientCache.set(ormCacheKey, orgDb);
         
         return orgDb;
       };

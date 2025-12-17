@@ -3,6 +3,10 @@
   import { getActivities, clearOldActivities } from '$lib/functions/activity.remote';
   import { Badge, Button, Card, Loading } from '@kuratchi/ui';
 
+  // Performance tracking
+  const pageLoadStart = performance.now();
+  console.log('[Activity Page] 🚀 Page component loading at', new Date().toISOString());
+
   let expandedActivities = $state<Set<string>>(new Set());
 
   function toggleExpanded(activityId: string) {
@@ -15,7 +19,22 @@
     expandedActivities = next;
   }
 
+  const dataFetchStart = performance.now();
+  console.log('[Activity Page] ⚡ Starting getActivities fetch:', (dataFetchStart - pageLoadStart).toFixed(2), 'ms after page load');
+  
   const activities = getActivities();
+  
+  // Track when data arrives
+  $effect(() => {
+    if (!activities.loading && activities.current !== undefined) {
+      const dataLoadTime = performance.now() - dataFetchStart;
+      const totalPageTime = performance.now() - pageLoadStart;
+      console.log('[Activity Page] ✅ Data loaded:', dataLoadTime.toFixed(2), 'ms');
+      console.log('[Activity Page] ✅ Total page time:', totalPageTime.toFixed(2), 'ms (', (totalPageTime / 1000).toFixed(2), 's)');
+      console.log('[Activity Page] 📊 Activities count:', Array.isArray(activities.current) ? activities.current.length : 0);
+    }
+  });
+  
   const activitiesList = $derived(activities.current && Array.isArray(activities.current) ? activities.current : []);
 
   let searchQuery = $state('');
@@ -43,6 +62,7 @@
   });
 
   const filteredActivities = $derived.by(() => {
+    const filterStart = performance.now();
     let filtered = activitiesList;
 
     if (searchQuery) {
@@ -72,6 +92,11 @@
 
     if (filterType !== 'all') {
       filtered = filtered.filter((a: any) => filterType === 'admin' ? a.isAdminAction : !a.isAdminAction);
+    }
+
+    const filterTime = performance.now() - filterStart;
+    if (filterTime > 10) {
+      console.log(`[Activity Page] ⚡ Filter execution: ${filterTime.toFixed(2)}ms (filtered from ${activitiesList.length} to ${filtered.length})`);
     }
 
     return filtered;

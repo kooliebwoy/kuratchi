@@ -26,6 +26,7 @@ import {
   initTemplates,
   initPreferences,
 } from './notifications/index.js';
+import { initCache, type CacheConfig } from './cache/index.js';
 
 /**
  * Unified Kuratchi configuration object
@@ -83,6 +84,15 @@ export interface KuratchiConfig {
    * Notifications configuration
    */
   notifications?: NotificationPluginOptions;
+
+  /**
+   * Caching configuration for improved performance
+   * Uses KV for persistent cache with in-memory fallback
+   */
+  cache?: CacheConfig & {
+    /** Enable caching (default: true when KV namespace is provided) */
+    enabled?: boolean;
+  };
 }
 
 /**
@@ -129,6 +139,23 @@ export interface KuratchiSDK {
  * ```
  */
 export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
+  // Initialize cache if configured
+  if (config.cache?.enabled !== false) {
+    // Auto-enable caching if a KV namespace is provided in storage config
+    const cacheKvNamespace = config.cache?.kvNamespace || config.storage?.kv?.cache || config.storage?.kv?.default;
+    
+    if (cacheKvNamespace || config.cache?.enabled) {
+      initCache({
+        enabled: true,
+        kvNamespace: cacheKvNamespace,
+        defaultTtlSeconds: config.cache?.defaultTtlSeconds ?? 300,
+        metadataTtlSeconds: config.cache?.metadataTtlSeconds ?? 3600,
+        schemaSyncTtlSeconds: config.cache?.schemaSyncTtlSeconds ?? 86400,
+        debug: config.cache?.debug ?? false
+      });
+    }
+  }
+
   // Initialize email plugin if configured
   if (config.email) {
     initEmailPlugin(config.email);

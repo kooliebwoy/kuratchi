@@ -23,6 +23,7 @@ export { domains } from './domains/index.js';
 export { stripe } from './stripe/index.js';
 export * as notifications from './notifications/index.js';
 export * as spaces from './spaces/index.js';
+export * as cache from './cache/index.js';
 
 // === ACTIVITY ===
 // Activity action constants (auto-populated from DB)

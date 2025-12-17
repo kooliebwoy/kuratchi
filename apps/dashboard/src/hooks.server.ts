@@ -21,6 +21,14 @@ import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 
 export const { handle }: { handle: Handle } = kuratchi({
+  // Enable caching for improved performance
+  cache: {
+    enabled: true,
+    kvNamespace: 'KV',  // Use the default KV namespace for caching
+    metadataTtlSeconds: 3600,  // Cache org metadata for 1 hour
+    schemaSyncTtlSeconds: 86400,  // Cache schema sync status for 24 hours
+    debug: false  // Set to true to see cache hit/miss logs
+  },
   auth: {
     plugins: [
       rateLimitPlugin({
@@ -38,7 +46,10 @@ export const { handle }: { handle: Handle } = kuratchi({
         organizationSchema,
         adminDatabase: 'ADMIN_DB'
       }),
-      organizationPlugin({ organizationSchema }),
+      organizationPlugin({ 
+        organizationSchema,
+        skipMigrations: true  // Schema already deployed, skip sync for performance
+      }),
       credentialsPlugin(),
       oauthPlugin({
         providers: [
