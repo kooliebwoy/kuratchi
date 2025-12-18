@@ -1,11 +1,15 @@
 import type { EditorPlugin } from '../plugins/context';
 import { pagesPlugin } from '../plugins/pages';
-import { navigationPlugin } from '../plugins/navigation';
-import { formsPlugin } from '../plugins/forms';
-import { catalogPlugin } from '../plugins/catalog';
-import { blogPlugin } from '../plugins/blog';
 import { sitePlugin } from '../plugins/site';
 import { themesPlugin } from '../plugins/themes';
+
+// DEPRECATED - Removed in favor of contract-based architecture
+// Data is now managed in Dashboard and injected via siteMetadata
+// See: src/lib/contracts/site-metadata.ts
+// import { navigationPlugin } from '../plugins/navigation';
+// import { formsPlugin } from '../plugins/forms';
+// import { catalogPlugin } from '../plugins/catalog';
+// import { blogPlugin } from '../plugins/blog';
 
 /**
  * Plugin registry - similar to blocks registry
@@ -66,19 +70,11 @@ class PluginRegistry {
 // Singleton instance
 const registry = new PluginRegistry();
 
-// Register all available plugins
+// Register active plugins only
+// DEPRECATED plugins (navigation, forms, catalog, blog) removed - see contracts/ARCHITECTURE.md
 registry.register(pagesPlugin);
-registry.register(navigationPlugin);
 registry.register(sitePlugin);
 registry.register(themesPlugin);
-registry.register(formsPlugin);
-registry.register(catalogPlugin);
-registry.register(blogPlugin);
-
-// Future plugins:
-// registry.register(navigationPlugin);
-// registry.register(settingsPlugin);
-// registry.register(analyticsPlugin);
 
 /**
  * Array of all registered plugins (sorted by order)

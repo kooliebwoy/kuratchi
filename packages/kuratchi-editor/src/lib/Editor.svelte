@@ -69,6 +69,17 @@ let {
     // UI state
     let sidebarOpen = $state(false);
     let activeTab = $state('sections');
+    let sectionSearch = $state('');
+
+    // Filtered sections based on search
+    const filteredSections = $derived(
+        sectionSearch.trim() === ''
+            ? sections
+            : sections.filter(s => 
+                s.name.toLowerCase().includes(sectionSearch.toLowerCase()) ||
+                s.description?.toLowerCase().includes(sectionSearch.toLowerCase())
+            )
+    );
     let browserMockup: HTMLDivElement;
     let activeSize = $state(initialDeviceSize);
     let headerElement = $state<HTMLElement | undefined>(undefined);
@@ -619,6 +630,7 @@ let {
                 title="Sections"
             >
                 <PanelsTopLeft />
+                <span class="krt-editor__railLabel">Sections</span>
             </button>
             {#each activePlugins as plugin}
                 <button
@@ -627,6 +639,7 @@ let {
                     title={plugin.railButton?.title ?? plugin.name}
                 >
                     <plugin.icon />
+                    <span class="krt-editor__railLabel">{plugin.railButton?.title ?? plugin.name}</span>
                 </button>
             {/each}
         </div>
@@ -650,7 +663,13 @@ let {
                 {#if activeTab === 'sections'}
                         {#if editor}
                             <div class="krt-editor__sidebarSection">
-                                {#each sections as section}
+                                <input
+                                    type="text"
+                                    placeholder="Search sections..."
+                                    bind:value={sectionSearch}
+                                    class="krt-editor__searchInput"
+                                />
+                                {#each filteredSections as section}
                                     <button
                                         class="krt-editor__themeButton"
                                         onclick={() => addBlockToContent(section.type, { editable: true })}
@@ -661,6 +680,8 @@ let {
                                             <p>{section.description}</p>
                                         </div>
                                     </button>
+                                {:else}
+                                    <div class="krt-editor__emptySearch">No sections match "{sectionSearch}"</div>
                                 {/each}
                             </div>
                         {:else}
@@ -833,14 +854,18 @@ let {
     }
 
     .krt-editor__railButton {
-        width: 2.75rem;
-        height: 2.75rem;
+        width: 3.5rem;
+        min-height: 3.5rem;
+        padding: 0.5rem 0.25rem;
         border-radius: var(--krt-editor-radius-md);
         border: 1px solid transparent;
         background: transparent;
         color: var(--krt-editor-text-secondary);
-        display: grid;
-        place-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.125rem;
         cursor: pointer;
         transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
@@ -875,6 +900,47 @@ let {
     .krt-editor__railButton :global(svg) {
         width: 20px;
         height: 20px;
+    }
+
+    .krt-editor__railLabel {
+        font-size: 0.625rem;
+        font-weight: 500;
+        margin-top: 0.25rem;
+        text-align: center;
+        line-height: 1.2;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .krt-editor__searchInput {
+        width: 100%;
+        padding: 0.625rem 0.875rem;
+        border: 1px solid var(--krt-editor-border, #e2e8f0);
+        border-radius: var(--krt-editor-radius-md, 0.5rem);
+        background: var(--krt-editor-surface, #f8fafc);
+        font-size: 0.875rem;
+        color: var(--krt-editor-text-primary, #0f172a);
+        transition: border-color 150ms ease, box-shadow 150ms ease;
+        margin-bottom: 0.75rem;
+    }
+
+    .krt-editor__searchInput::placeholder {
+        color: var(--krt-editor-text-muted, #94a3b8);
+    }
+
+    .krt-editor__searchInput:focus {
+        outline: none;
+        border-color: var(--krt-editor-accent, #3b82f6);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    }
+
+    .krt-editor__emptySearch {
+        padding: 1.5rem 1rem;
+        text-align: center;
+        color: var(--krt-editor-text-muted, #94a3b8);
+        font-size: 0.875rem;
     }
 
     .krt-editor__sidebar {
