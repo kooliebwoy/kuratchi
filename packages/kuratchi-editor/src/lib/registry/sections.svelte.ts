@@ -15,13 +15,16 @@ import ContactCTA from '../sections/ContactCTA.svelte';
 import CatalogGrid from '../sections/CatalogGrid.svelte';
 import CatalogView from '../sections/CatalogView.svelte';
 import FeaturedVehicles from '../sections/FeaturedVehicles.svelte';
+import CategoryCards from '../sections/CategoryCards.svelte';
+import PromoBanner from '../sections/PromoBanner.svelte';
+import LogoCarousel from '../sections/LogoCarousel.svelte';
 // Blocks promoted to sections
 import Carousel from '../sections/Carousel.svelte';
 import HoverCard from '../sections/HoverCard.svelte';
 import Modal from '../sections/Modal.svelte';
 import ImageDifference from '../sections/ImageDifference.svelte';
 import type { Component } from 'svelte';
-import { BarChart3, Bike, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders, Star } from '@lucide/svelte';
+import { BarChart3, Bike, HelpCircle, Images, LayoutGrid, Sparkles, Square, Sliders, Star, Grid3X3, Megaphone, Building2 } from '@lucide/svelte';
 
 export interface SectionDefinition {
 	name: string;
@@ -178,6 +181,27 @@ export const sections: SectionDefinition[] = [
                 icon: Star,
                 description: 'Showcase selected vehicles in grid, carousel, or showcase layout',
                 component: FeaturedVehicles
+        },
+        {
+                name: 'Category Cards',
+                type: 'category-cards',
+                icon: Grid3X3,
+                description: 'Image cards with labels for product categories',
+                component: CategoryCards
+        },
+        {
+                name: 'Promo Banner',
+                type: 'promo-banner',
+                icon: Megaphone,
+                description: 'Full-width promotional banner with offers and CTA',
+                component: PromoBanner
+        },
+        {
+                name: 'Logo Carousel',
+                type: 'logo-carousel',
+                icon: Building2,
+                description: 'Horizontal scrolling brand/partner logos',
+                component: LogoCarousel
         }
 ];
 

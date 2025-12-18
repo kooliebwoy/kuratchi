@@ -125,11 +125,10 @@
                 <label class="themes-plugin__field">
                     <span>Max Width</span>
                     <select
-                        value={themeSettings.maxWidth}
                         onchange={(e) => handleSettingChange('maxWidth', e.currentTarget.value as ThemeSettings['maxWidth'])}
                     >
                         {#each maxWidthOptions as opt}
-                            <option value={opt.value}>{opt.label}</option>
+                            <option value={opt.value} selected={themeSettings.maxWidth === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
                 </label>
@@ -137,11 +136,10 @@
                 <label class="themes-plugin__field">
                     <span>Section Spacing</span>
                     <select
-                        value={themeSettings.sectionSpacing}
                         onchange={(e) => handleSettingChange('sectionSpacing', e.currentTarget.value as ThemeSettings['sectionSpacing'])}
                     >
                         {#each spacingOptions as opt}
-                            <option value={opt.value}>{opt.label}</option>
+                            <option value={opt.value} selected={themeSettings.sectionSpacing === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
                 </label>
@@ -149,11 +147,10 @@
                 <label class="themes-plugin__field">
                     <span>Border Radius</span>
                     <select
-                        value={themeSettings.borderRadius}
                         onchange={(e) => handleSettingChange('borderRadius', e.currentTarget.value as ThemeSettings['borderRadius'])}
                     >
                         {#each radiusOptions as opt}
-                            <option value={opt.value}>{opt.label}</option>
+                            <option value={opt.value} selected={themeSettings.borderRadius === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
                 </label>

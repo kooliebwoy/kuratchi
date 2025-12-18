@@ -15,17 +15,11 @@ const guardedForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals: { session } } = getRequestEvent();
     if (!session?.user) error(401, 'Unauthorized');
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[guardedForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
-
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -33,7 +27,7 @@ const guardedForm = <R>(
 export const getProducts = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
     if (!adminDb) return [];
 
     // Get products from database
@@ -116,7 +110,7 @@ export const createProduct = guardedForm(
       });
 
       // Save to database
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (adminDb) {
         const productsTable = adminDb.stripeProducts as any;
         if (productsTable) {
@@ -189,7 +183,7 @@ export const archiveProduct = guardedForm(
       await stripe.archiveProduct(event, productId);
 
       // Update database
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (adminDb) {
         const productsTable = adminDb.stripeProducts as any;
         if (productsTable) {
@@ -240,7 +234,7 @@ export const createPrice = guardedForm(
       });
 
       // Save to database
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (adminDb) {
         const pricesTable = adminDb.stripePrices as any;
         if (pricesTable) {
@@ -284,7 +278,7 @@ export const archivePrice = guardedForm(
       await stripe.archivePrice(event, priceId);
 
       // Update database
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (adminDb) {
         const pricesTable = adminDb.stripePrices as any;
         if (pricesTable) {

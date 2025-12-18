@@ -95,14 +95,13 @@
 <style>
     .krt-blockActions {
         position: absolute;
-        inset-block-start: 0;
-        inset-inline-end: 0;
-        transform: translateY(-50%);
+        inset-block-start: 0.5rem;
+        inset-inline-end: 0.5rem;
         display: flex;
         gap: var(--krt-space-xs, 0.25rem);
         opacity: 0;
         transition: opacity 150ms ease;
-        z-index: 4;
+        z-index: 10;
         background: #f8fafc;
         padding: 0.35rem;
         border-radius: var(--krt-radius-md, 0.5rem);

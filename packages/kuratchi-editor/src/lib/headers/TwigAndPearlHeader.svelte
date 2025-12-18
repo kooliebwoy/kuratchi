@@ -35,6 +35,7 @@
         editable?: boolean;
         useMobileMenuOnDesktop?: boolean;
         menuHidden?: boolean;
+        isSticky?: boolean;
         // New nav configuration props
         navDropdownTrigger?: DropdownTriggerOption;
         navDropdownAlign?: DropdownAlignOption;
@@ -85,6 +86,7 @@
         navDropdownTextColor: initialNavDropdownTextColor = '#ffffff',
         mobileNavStyle: initialMobileNavStyle = 'drawer' as MobileStyleOption,
         mobileDrawerPosition: initialMobileDrawerPosition = 'right' as DrawerPositionOption,
+        isSticky: initialIsSticky = false,
     }: Props = $props();
 
     // Normalize menu items to use 'children' and 'url' properties
@@ -121,6 +123,7 @@
     let mobileNavStyle = $state<MobileStyleOption>(initialMobileNavStyle);
     let mobileDrawerPosition = $state<DrawerPositionOption>(initialMobileDrawerPosition);
     let mobileMenuOpen = $state(false);
+    let isSticky = $state(initialIsSticky);
 
     // Computed desktop nav config
     const desktopNavConfig = $derived<DesktopNavConfig>({
@@ -199,6 +202,7 @@
         menu: localMenu,
         useMobileMenuOnDesktop,
         menuHidden,
+        isSticky,
         // Nav configuration
         navDropdownTrigger,
         navDropdownAlign,
@@ -257,6 +261,16 @@
             >
                 {#snippet inspector()}
                     <div class="krt-headerDrawer">
+                        <section class="krt-headerDrawer__section">
+                            <h3 class="krt-headerDrawer__title">Behavior</h3>
+                            <div class="krt-headerDrawer__cards">
+                                <label class="krt-headerDrawer__card">
+                                    <input type="checkbox" class="krt-switch" bind:checked={isSticky} />
+                                    <span>Sticky Header</span>
+                                </label>
+                            </div>
+                        </section>
+
                         <section class="krt-headerDrawer__section">
                             <h3 class="krt-headerDrawer__title">Layout</h3>
                             <div class="krt-headerDrawer__cards">
@@ -402,6 +416,7 @@
             id={id}
             data-type={type}
             class="krt-header krt-header--twig"
+            class:krt-header--sticky={isSticky}
             style:background-color={backgroundColor}
             style:color={textColor}
         >
@@ -504,6 +519,7 @@
         id={id}
         data-type={type}
         class="krt-header krt-header--twig"
+        class:krt-header--sticky={isSticky}
         style:background-color={backgroundColor}
         style:color={textColor}
         data-krt-serialized={serializeContent()}
@@ -751,6 +767,12 @@
 
     .krt-header {
         padding: 0 var(--krt-space-lg, 1rem);
+    }
+
+    .krt-header--sticky {
+        position: sticky;
+        top: 0;
+        z-index: 100;
     }
 
     .krt-header__bar {

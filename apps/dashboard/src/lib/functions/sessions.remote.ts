@@ -16,17 +16,11 @@ const guardedForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals: { session } } = getRequestEvent();
     if (!session?.user) error(401, 'Unauthorized');
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[guardedForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
-
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -51,7 +45,7 @@ export const getSessions = guardedQuery(async () => {
       .many();
     
     const users = usersResult?.data || [];
-    const userMap = new Map(users.map((u: any) => [u.id, u]));
+    const userMap = new Map<string, any>(users.map((u: any) => [u.id, u] as [string, any]));
 
     // Enrich sessions with user data
     const enrichedSessions = sessions.map((session: any) => {
@@ -89,7 +83,7 @@ export const getUserSessions = guardedQuery(async () => {
     const userId = url.searchParams.get('userId');
     if (!userId) error(400, 'User ID required');
 
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
     if (!adminDb) error(500, 'Admin database not configured');
 
     // Get sessions for specific user
@@ -138,7 +132,7 @@ export const getUserSessions = guardedQuery(async () => {
 export const getSessionStats = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
     if (!adminDb) error(500, 'Admin database not configured');
 
     const now = new Date().toISOString();
@@ -185,7 +179,7 @@ export const revokeSession = guardedForm(
   async ({ sessionToken }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       // Delete the session
@@ -207,7 +201,7 @@ export const revokeAllUserSessions = guardedForm(
   async ({ userId }) => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       // Delete all sessions for the user
@@ -229,7 +223,7 @@ export const cleanupExpiredSessions = guardedForm(
   async () => {
     try {
       const { locals } = getRequestEvent();
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await (locals.kuratchi as any)?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       const now = new Date().toISOString();

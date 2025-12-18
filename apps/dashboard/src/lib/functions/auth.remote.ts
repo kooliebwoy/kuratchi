@@ -1,6 +1,6 @@
 import { getRequestEvent, form, query } from '$app/server';
 import * as v from 'valibot';
-import { error, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 
 // ============================================================================
 // VALIDATION SCHEMAS
@@ -32,20 +32,14 @@ const acceptInviteSchema = v.object({
 /**
  * Sign in with email/password using SDK's credentials plugin
  */
-export const signInWithCredentials = form('unchecked', async (data: any) => {
-	// Validate input
-	const result = v.safeParse(signInSchema, data);
-	if (!result.success) {
-		const firstError = result.issues[0];
-		error(400, firstError?.message || 'Validation failed');
-	}
-
-	const { email, password } = result.output;
-	const { locals, event } = getRequestEvent();
+export const signInWithCredentials = form(signInSchema, async (data: v.InferOutput<typeof signInSchema>) => {
+	const { email, password, organizationId } = data;
+	const { locals } = getRequestEvent();
+	const kur = locals.kuratchi as any;
 
 	try {
 		// Check if credentials auth is available
-		if (!locals.kuratchi?.auth?.credentials?.signIn) {
+		if (!kur?.auth?.credentials?.signIn) {
 			error(500, 'Credentials authentication not configured');
 		}
 
@@ -54,15 +48,17 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
 		// - Verifying password
 		// - Creating session
 		// - Setting cookie
-		const authResult = await locals.kuratchi.auth.credentials.signIn(email, password);
+		const authResult = await (organizationId
+			? kur.auth.credentials.signIn(email, password, { organizationId })
+			: kur.auth.credentials.signIn(email, password));
 
 		console.log('Auth result:', authResult);
 
 		if (!authResult.success) {
 			// Log failed login attempt
-			if (locals.kuratchi?.activity?.log) {
+			if (kur?.activity?.log) {
 				try {
-					await locals.kuratchi.activity.log({
+					await kur.activity.log({
 						action: 'auth.failed_login',
 						status: false,
 						data: {
@@ -94,9 +90,9 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
 		// - Created session in database
 
 		// Log successful login
-		if (locals.kuratchi?.activity?.log) {
+		if (kur?.activity?.log) {
 			try {
-				await locals.kuratchi.activity.log({
+				await kur.activity.log({
 					action: 'auth.login',
 					organizationId: locals.session?.organizationId,
 					userId: authResult.user.id,
@@ -138,16 +134,17 @@ export const signInWithCredentials = form('unchecked', async (data: any) => {
  */
 export const signOut = form('unchecked', async () => {
 	const { locals } = getRequestEvent();
+	const kur = locals.kuratchi as any;
 
 	try {
-		if (!locals.kuratchi?.auth?.credentials?.signOut) {
+		if (!kur?.auth?.credentials?.signOut) {
 			error(500, 'Sign out not configured');
 		}
 
 		// Log logout before signing out (while we still have session)
-		if (locals.kuratchi?.activity?.log && locals.session?.user) {
+		if (kur?.activity?.log && locals.session?.user) {
 			try {
-				await locals.kuratchi.activity.log({
+				await kur.activity.log({
 					action: 'auth.logout',
 					organizationId: locals.session.organizationId,
 					userId: locals.session.user.id,
@@ -161,7 +158,7 @@ export const signOut = form('unchecked', async () => {
 			}
 		}
 
-		const result = await locals.kuratchi.auth.credentials.signOut();
+		const result = await kur.auth.credentials.signOut();
 
 		if (!result.success) {
 			error(500, result.error || 'Sign out failed');
@@ -188,25 +185,19 @@ export const signOut = form('unchecked', async () => {
 /**
  * Create a new organization with database and first user
  */
-export const signUp = form('unchecked', async (data: any) => {
-	// Validate input
-	const result = v.safeParse(signupSchema, data);
-	if (!result.success) {
-		const firstError = result.issues[0];
-		error(400, firstError?.message || 'Validation failed');
-	}
-
-	const { organizationName, email, password, userName } = result.output;
+export const signUp = form(signupSchema, async (data: v.InferOutput<typeof signupSchema>) => {
+	const { organizationName, email, password, userName } = data;
 	const { locals } = getRequestEvent();
+	const kur = locals.kuratchi as any;
 
 	try {
 		// Check if admin operations are available
-		if (!locals.kuratchi?.auth?.admin?.createOrganization) {
+		if (!kur?.auth?.admin?.createOrganization) {
 			error(500, 'Organization creation not configured');
 		}
 
 		// Create organization using SDK
-		const orgResult = await locals.kuratchi.auth.admin.createOrganization({
+		const orgResult = await kur.auth.admin.createOrganization({
 			organizationName,
 			email,
 			password,
@@ -215,9 +206,9 @@ export const signUp = form('unchecked', async (data: any) => {
 		});
 
 		// Log signup activity
-		if (locals.kuratchi?.activity?.log) {
+		if (kur?.activity?.log) {
 			try {
-				await locals.kuratchi.activity.log({
+				await kur.activity.log({
 					action: 'auth.signup',
 					organizationId: orgResult.organization.id,
 					data: {
@@ -320,14 +311,8 @@ export const getUserOrganizations = query(async () => {
  * - Optionally sets password if provided
  * - Creates session and signs user in
  */
-export const acceptInvite = form('unchecked', async (data: any) => {
-	const result = v.safeParse(acceptInviteSchema, data);
-	if (!result.success) {
-		const firstError = result.issues[0];
-		error(400, firstError?.message || 'Validation failed');
-	}
-	
-	const { inviteToken, organizationId, password } = result.output;
+export const acceptInvite = form(acceptInviteSchema, async (data: v.InferOutput<typeof acceptInviteSchema>) => {
+	const { inviteToken, organizationId, password } = data;
 	const { locals } = getRequestEvent();
 	
 	try {

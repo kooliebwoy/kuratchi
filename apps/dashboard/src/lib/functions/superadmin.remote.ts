@@ -1,7 +1,7 @@
 import { getRequestEvent, query, form } from '$app/server';
 import * as v from 'valibot';
 import { error } from '@sveltejs/kit';
-import { getSuperadminDatabase, getDatabase } from '$lib/server/db-context';
+import { getSuperadminDatabase, getDatabase, getAdminDatabase } from '$lib/server/db-context';
 import { env } from '$env/dynamic/private';
 
 // Helpers
@@ -22,7 +22,7 @@ const superadminForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals } = getRequestEvent();
     const isSuperadmin = locals.kuratchi?.superadmin?.isSuperadmin?.();
     
@@ -30,13 +30,8 @@ const superadminForm = <R>(
       error(403, 'Superadmin access required');
     }
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[superadminForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
 
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -429,7 +424,7 @@ export const createSuperadminUser = form(
   async ({ email, password, name, organizationName }) => {
     try {
       const { locals } = getRequestEvent();
-      const kuratchi = locals.kuratchi;
+      const kuratchi = locals.kuratchi as any; // Added type casting
       
       // Get admin database
       const adminDb = await getAdminDatabase(locals);
@@ -445,16 +440,16 @@ export const createSuperadminUser = form(
       
 
       // Create organization using SDK
-		const orgResult = await kuratchi.auth.admin.createSuperadmin({
-      name,
-			organizationName,
-			email,
-			password
-		});
+      const orgResult = await kuratchi.auth.admin.createSuperadmin({
+        name,
+        organizationName,
+        email,
+        password
+      });
 
-    if (!orgResult.success) {
-      error(orgResult.status || 500, orgResult.message || 'Failed to create organization');
-    }
+      if (!orgResult.success) {
+        error(orgResult.status || 500, orgResult.message || 'Failed to create organization');
+      }
 
       
       // Refresh the users and organizations lists
@@ -481,7 +476,7 @@ export const deleteSuperadmin = superadminForm(
     try {
       const { locals } = getRequestEvent();
       const adminDb = await getAdminDatabase(locals);
-      const kuratchi = locals.kuratchi;
+      const kuratchi = locals.kuratchi as any; // Added type casting
       
       // 1. Find the superadmin user in admin DB
       const userResult = await adminDb.users

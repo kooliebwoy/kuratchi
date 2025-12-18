@@ -17,17 +17,11 @@ const guardedForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals: { session } } = getRequestEvent();
     if (!session?.user) error(401, 'Unauthorized');
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[guardedForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
-
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -104,8 +98,9 @@ export const getUserDetails = guardedQuery(async () => {
         
         // Get role permissions if user has a role
         let permissions = [];
-        if (orgUser?.role && locals.kuratchi?.roles?.getRolePermissions) {
-          const rolePerms = await locals.kuratchi.roles.getRolePermissions(org.id);
+        const kur = locals.kuratchi as any;
+        if (orgUser?.role && kur?.roles?.getRolePermissions) {
+          const rolePerms = await kur.roles.getRolePermissions(org.id);
           permissions = rolePerms?.byRole?.[orgUser.role] || [];
         }
         
@@ -155,7 +150,8 @@ export const getOrganizationRoles = guardedQuery(async () => {
     const orgId = url.searchParams.get('orgId');
     if (!orgId) return [];
 
-    const roles = await locals.kuratchi?.roles?.getAllRoles?.(orgId);
+    const kur = locals.kuratchi as any;
+    const roles = await kur?.roles?.getAllRoles?.(orgId);
     return roles || [];
   } catch (err) {
     console.error('[users.getOrganizationRoles] error:', err);
@@ -771,7 +767,8 @@ export const addUserToOrganization = guardedForm(
         // Get role name if roleId provided
         let roleName = 'member';
         if (roleId) {
-          const roles = await locals.kuratchi?.roles?.getAllRoles?.(organizationId);
+          const kur = locals.kuratchi as any;
+          const roles = await kur?.roles?.getAllRoles?.(organizationId);
           const role = roles?.find((r: any) => r.id === roleId);
           roleName = role?.name || 'member';
         }
@@ -874,7 +871,8 @@ export const updateUserRole = guardedForm(
       if (!user) error(404, 'User not found');
 
       // Get role name
-      const roles = await locals.kuratchi?.roles?.getAllRoles?.(organizationId);
+      const kur = locals.kuratchi as any;
+      const roles = await kur?.roles?.getAllRoles?.(organizationId);
       const role = roles?.find((r: any) => r.id === roleId);
       if (!role) error(404, 'Role not found');
 

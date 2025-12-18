@@ -18,21 +18,15 @@ const guardedQuery = <R>(fn: () => Promise<R>) => {
 	});
 };
 
-const guardedForm = <R>(
-	schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
-	fn: (data: any) => Promise<R>
+const guardedForm = <Schema extends v.BaseSchema<any, any, any>, R>(
+	schema: Schema,
+	fn: (data: v.InferOutput<Schema>) => Promise<R>
 ) => {
-	return form('unchecked', async (data: any) => {
+	return form(schema as any, async (data: v.InferOutput<Schema>) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
 
-		const result = v.safeParse(schema, data);
-		if (!result.success) {
-			console.error('[guardedForm] Validation failed:', result.issues);
-			error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-		}
-
-		return fn(result.output);
+		return fn(data);
 	});
 };
 

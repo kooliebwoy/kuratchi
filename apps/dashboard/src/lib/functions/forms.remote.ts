@@ -528,13 +528,8 @@ export const detachFormFromSite = guardedCommand(
 /**
  * Submit form data (creates a lead) - PUBLIC endpoint for site renderer
  */
-export const submitForm = form('unchecked', async (data: any) => {
-	const result = v.safeParse(submitFormSchema, data);
-	if (!result.success) {
-		error(400, 'Invalid form submission');
-	}
-
-	const { formId, siteId, data: formData } = result.output;
+export const submitForm = form(submitFormSchema as any, async (data: any) => {
+	const { formId, siteId, data: formData } = data;
 	const { locals, request } = getRequestEvent();
 
 	// Get org database (forms are org-level)

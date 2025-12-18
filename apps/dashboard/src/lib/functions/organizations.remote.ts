@@ -26,20 +26,15 @@ const guardedQueryWithParams = <T, R>(
 };
 
 // Guarded form helper
-const guardedForm = <R>(
-	schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
-	fn: (data: any) => Promise<R>
+const guardedForm = <Schema extends v.BaseSchema<any, any, any>, R>(
+	schema: Schema,
+	fn: (data: v.InferOutput<Schema>) => Promise<R>
 ) => {
-	return form('unchecked', async (data: any) => {
+	return form(schema as any, async (data: v.InferOutput<Schema>) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
 
-		const result = v.safeParse(schema, data);
-		if (!result.success) {
-			error(400, 'Validation failed');
-		}
-
-		return fn(result.output);
+		return fn(data);
 	});
 };
 
@@ -86,7 +81,7 @@ export const createOrganization = guardedForm(
 	}),
 	async (data) => {
 		try {
-			const { orm: adminOrm } = await database.admin();
+			const { orm: adminOrm } = await (database as any).admin();
 			const now = new Date().toISOString();
 			const orgId = crypto.randomUUID();
 
@@ -144,7 +139,7 @@ export const updateOrganization = guardedForm(
 	}),
 	async (data) => {
 		try {
-			const { orm: adminOrm } = await database.admin();
+			const { orm: adminOrm } = await (database as any).admin();
 			const now = new Date().toISOString();
 
 			const updateData: any = { updated_at: now };
@@ -193,15 +188,16 @@ export const deleteOrganization = guardedForm(
 	async ({ id }) => {
 		try {
 			const { locals } = getRequestEvent();
+			const kur = locals.kuratchi as any;
 			
 			// Use SDK's deleteOrganization which handles:
 			// - Physical deletion of D1 database and worker
 			// - Soft delete of organization, databases, tokens, and user mappings
-			if (!locals.kuratchi?.auth?.admin?.deleteOrganization) {
+			if (!kur?.auth?.admin?.deleteOrganization) {
 				error(500, 'Organization deletion not configured');
 			}
 			
-			const result = await locals.kuratchi.auth.admin.deleteOrganization(id);
+			const result = await kur.auth.admin.deleteOrganization(id);
 			
 			if (!result.success) {
 				console.error('Failed to delete organization:', result);
@@ -232,8 +228,9 @@ export const getOrganizationNameById = guardedQueryWithParams(
 	v.pipe(v.string(), v.nonEmpty()),
 	async (id) => {
 		try {
-			const { locals: { kuratchi } } = getRequestEvent();
-			const org = await kuratchi?.auth?.admin?.getOrganization(id);
+			const { locals } = getRequestEvent();
+			const kur = locals.kuratchi as any;
+			const org = await kur?.auth?.admin?.getOrganization(id);
 			return org?.organizationName || 'Unknown Organization';
 		} catch (err) {
 			console.error('Error fetching organization name:', err);

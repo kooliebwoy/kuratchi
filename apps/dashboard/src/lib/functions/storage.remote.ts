@@ -43,17 +43,11 @@ const guardedForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals: { session } } = getRequestEvent();
     if (!session?.user) error(401, 'Unauthorized');
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[guardedForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
-
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -329,7 +323,7 @@ export const getAllBuckets = query('unchecked', async () => {
 
 	try {
 		// Get organization bucket from primary database
-		const orgBucketResult = await getOrganizationBucket();
+		const orgBucketResult = await getOrganizationBucket(undefined);
 		
 		if (!orgBucketResult.success || !orgBucketResult.bucket) {
 			return {
@@ -785,12 +779,7 @@ export const getBucketDetails = query('unchecked', async (bucketName: string) =>
     
     return {
       name: info.bucketName,
-      publicUrl: info.publicUrl,
-      site: {
-        id: info.site.id,
-        name: info.site.name,
-        subdomain: info.site.subdomain
-      }
+	  publicUrl: info.publicUrl
     };
   } catch (err) {
     console.error('[storage.getBucketDetails] error:', err);
@@ -1132,16 +1121,24 @@ export const addBucketCustomDomain = guardedForm(
   async ({ bucketName, customDomain }) => {
     try {
       console.log('[addBucketCustomDomain] Adding domain:', { bucketName, customDomain });
-      
-      const result = await r2.addCustomDomain(bucketName, customDomain);
-      
+
+      const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+      const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+      const zoneId = env.CF_ZONE_ID || env.CLOUDFLARE_ZONE_ID || env.KURATCHI_CF_ZONE_ID;
+
+      if (!apiToken || !accountId || !zoneId) {
+        error(500, 'Cloudflare credentials not configured');
+      }
+
+      const result = await r2.addCustomDomain(bucketName, customDomain, { apiToken, accountId, zoneId });
+
       if (!result.success) {
         console.error('[addBucketCustomDomain] Failed:', result.errors);
         error(500, result.errors?.[0]?.message || 'Failed to add custom domain');
       }
-      
+
       await getAllBuckets(undefined).refresh();
-      return { 
+      return {
         success: true,
         domain: customDomain
       };
@@ -1163,14 +1160,21 @@ export const removeBucketCustomDomain = guardedForm(
   async ({ bucketName, customDomain }) => {
     try {
       console.log('[removeBucketCustomDomain] Removing domain:', { bucketName, customDomain });
-      
-      const result = await r2.removeCustomDomain(bucketName, customDomain);
-      
+
+      const apiToken = env.CF_API_TOKEN || env.CLOUDFLARE_API_TOKEN || env.KURATCHI_CF_API_TOKEN;
+      const accountId = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.KURATCHI_CF_ACCOUNT_ID;
+
+      if (!apiToken || !accountId) {
+        error(500, 'Cloudflare credentials not configured');
+      }
+
+      const result = await r2.removeCustomDomain(bucketName, customDomain, { apiToken, accountId });
+
       if (!result.success) {
         console.error('[removeBucketCustomDomain] Failed:', result.errors);
         error(500, result.errors?.[0]?.message || 'Failed to remove custom domain');
       }
-      
+
       await getAllBuckets(undefined).refresh();
       return { success: true };
     } catch (err: any) {

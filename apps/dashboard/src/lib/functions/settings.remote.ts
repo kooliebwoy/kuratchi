@@ -15,17 +15,11 @@ const guardedForm = <R>(
   schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
   fn: (data: any) => Promise<R>
 ) => {
-  return form('unchecked', async (data: any) => {
+  return form(schema as any, async (data: any) => {
     const { locals: { session } } = getRequestEvent();
     if (!session?.user) error(401, 'Unauthorized');
 
-    const result = v.safeParse(schema, data);
-    if (!result.success) {
-      console.error('[guardedForm] Validation failed:', result.issues);
-      error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-    }
-
-    return fn(result.output);
+    return fn(data);
   });
 };
 
@@ -34,13 +28,14 @@ export const getAccountSettings = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
     const session = locals.session;
+    const kur = locals.kuratchi as any;
     
     if (!session?.user) {
       return null;
     }
 
     // Get user details from organization database
-    const orgDb = await locals.kuratchi?.orgDatabaseClient?.(session.organizationId);
+    const orgDb = await kur?.orgDatabaseClient?.(session.organizationId);
     if (!orgDb) {
       return {
         id: session.user.id,
@@ -70,12 +65,13 @@ export const getBillingInfo = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
     const session = locals.session;
+    const kur = locals.kuratchi as any;
     
     if (!session?.organizationId) {
       return null;
     }
 
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await kur?.getAdminDb?.();
     if (!adminDb) {
       return null;
     }
@@ -112,12 +108,13 @@ export const getSubscriptionDetails = guardedQuery(async () => {
   try {
     const { locals } = getRequestEvent();
     const session = locals.session;
+    const kur = locals.kuratchi as any;
     
     if (!session?.organizationId) {
       return null;
     }
 
-    const adminDb = await locals.kuratchi?.getAdminDb?.();
+    const adminDb = await kur?.getAdminDb?.();
     if (!adminDb) {
       return null;
     }
@@ -230,12 +227,13 @@ export const updateProfile = guardedForm(
     try {
       const { locals } = getRequestEvent();
       const session = locals.session;
+      const kur = locals.kuratchi as any;
       
       if (!session?.user?.id) {
         error(401, 'Not authenticated');
       }
 
-      const orgDb = await locals.kuratchi?.orgDatabaseClient?.(session.organizationId);
+      const orgDb = await kur?.orgDatabaseClient?.(session.organizationId);
       if (!orgDb) error(500, 'Organization database not configured');
 
       const updateData: any = { updated_at: new Date().toISOString() };
@@ -269,13 +267,14 @@ export const changePassword = guardedForm(
 
       const { locals } = getRequestEvent();
       const session = locals.session;
+      const kur = locals.kuratchi as any;
       
       if (!session?.user?.email) {
         error(401, 'Not authenticated');
       }
 
       // Verify current password using SDK auth
-      const authHelper = locals.kuratchi?.authHelper;
+      const authHelper = kur?.authHelper;
       if (!authHelper) {
         error(500, 'Authentication not configured');
       }
@@ -299,12 +298,13 @@ export const updateBillingEmail = guardedForm(
     try {
       const { locals } = getRequestEvent();
       const session = locals.session;
+      const kur = locals.kuratchi as any;
       
       if (!session?.organizationId) {
         error(401, 'Not authenticated');
       }
 
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await kur?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       await adminDb.organizations
@@ -332,12 +332,13 @@ export const cancelSubscription = guardedForm(
     try {
       const { locals } = getRequestEvent();
       const session = locals.session;
+      const kur = locals.kuratchi as any;
       
       if (!session?.organizationId) {
         error(401, 'Not authenticated');
       }
 
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await kur?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       // Update organization status
@@ -349,8 +350,8 @@ export const cancelSubscription = guardedForm(
         });
 
       // Log cancellation activity
-      if (locals.kuratchi?.activity?.logActivity) {
-        await locals.kuratchi.activity.logActivity({
+      if (kur?.activity?.logActivity) {
+        await kur.activity.logActivity({
           action: 'subscription.cancelled',
           data: { reason, feedback },
           organizationId: session.organizationId,
@@ -376,6 +377,7 @@ export const deleteAccount = guardedForm(
     try {
       const { locals } = getRequestEvent();
       const session = locals.session;
+      const kur = locals.kuratchi as any;
       
       if (!session?.organizationId) {
         error(401, 'Not authenticated');
@@ -388,7 +390,7 @@ export const deleteAccount = guardedForm(
       // Verify password
       // Note: You'd want to verify the password here using your auth system
 
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await kur?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       const now = new Date().toISOString();
@@ -403,8 +405,8 @@ export const deleteAccount = guardedForm(
         });
 
       // Log deletion activity
-      if (locals.kuratchi?.activity?.logActivity) {
-        await locals.kuratchi.activity.logActivity({
+      if (kur?.activity?.logActivity) {
+        await kur.activity.logActivity({
           action: 'account.deleted',
           data: { organizationId: session.organizationId },
           organizationId: session.organizationId,
@@ -413,8 +415,8 @@ export const deleteAccount = guardedForm(
       }
 
       // Sign out the user
-      if (locals.kuratchi?.auth?.credentials?.signOut) {
-        await locals.kuratchi.auth.credentials.signOut();
+      if (kur?.auth?.credentials?.signOut) {
+        await kur.auth.credentials.signOut();
       }
 
       return { success: true, message: 'Account deleted', redirect: '/auth/signin' };
@@ -434,13 +436,14 @@ export const upgradePlan = guardedForm(
       const { locals } = getRequestEvent();
       const session = locals.session;
       const event = getRequestEvent();
+      const kur = locals.kuratchi as any;
       
       if (!session?.organizationId) {
         error(401, 'Not authenticated');
       }
 
       const { stripe } = await import('kuratchi-sdk');
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await kur?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       // Get or create Stripe customer
@@ -493,13 +496,14 @@ export const manageBilling = guardedForm(
       const { locals } = getRequestEvent();
       const session = locals.session;
       const event = getRequestEvent();
+      const kur = locals.kuratchi as any;
       
       if (!session?.organizationId) {
         error(401, 'Not authenticated');
       }
 
       const { stripe } = await import('kuratchi-sdk');
-      const adminDb = await locals.kuratchi?.getAdminDb?.();
+      const adminDb = await kur?.getAdminDb?.();
       if (!adminDb) error(500, 'Admin database not configured');
 
       // Get Stripe customer

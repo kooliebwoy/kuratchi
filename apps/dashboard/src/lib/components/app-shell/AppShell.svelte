@@ -3,7 +3,7 @@
   import AppHeader from './AppHeader.svelte';
   import AppSidebar from './AppSidebar.svelte';
   import type { AppNavItem, AppUser } from './types';
-  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield, BookOpen, Bike, BarChart3 } from '@lucide/svelte';
+  import { Home, Layout, Mail, Database, GlobeLock, Folder, Activity, Settings, Shield, BookOpen, Bike, BarChart3, MenuIcon } from '@lucide/svelte';
 
   interface Props {
     workspace: string;
@@ -16,6 +16,7 @@
   const defaultMenu: AppNavItem[] = [
     { label: 'Overview', icon: Home, href: '/' },
     { label: 'Sites', icon: Layout, href: '/sites' },
+    { label: 'Menus', icon: MenuIcon, href: '/menus'},
     { label: 'Blog', icon: BookOpen, href: '/blog' },
     { label: 'Catalog', icon: Bike, href: '/catalog' },
     { label: 'Emails', icon: Mail, href: '/emails' },

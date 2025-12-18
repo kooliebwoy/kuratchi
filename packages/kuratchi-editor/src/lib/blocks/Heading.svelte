@@ -1,7 +1,7 @@
 <script lang="ts">
     import { handleEmojis } from "../utils/emojis.js";
     import EditorToolbar from "../widgets/EditorToolbar.svelte";
-    import { deleteElement, sanitizeContent, setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
+    import { setupSelectionListener, type SelectionState } from "../utils/editor.svelte.js";
     import { onDestroy, onMount } from "svelte";
     import { BLOCK_SPACING_VALUES, DragHandle, type BlockSpacing } from "../utils/index.js";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
@@ -21,7 +21,7 @@
 
     let {
         id = crypto.randomUUID(),
-        heading = 'Heading...',
+        heading = $bindable('Heading...'),
         type = 'heading',
         metadata = {
             color: '#000000',
@@ -32,7 +32,7 @@
         editable = true
     }: Props = $props();
 
-    let component: HTMLElement | undefined;
+    let component: HTMLElement | undefined = $state();
     const componentRef = {};
 
     // Selection state
@@ -42,7 +42,7 @@
     });
 
     let color = $state(metadata.color);
-    let size = $state(metadata.size);
+    let size = $state(metadata.size ?? 'h2');
     let spacingTop = $state<BlockSpacing>(metadata.spacingTop ?? 'normal');
     let spacingBottom = $state<BlockSpacing>(metadata.spacingBottom ?? 'normal');
 
@@ -51,7 +51,7 @@
         `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
     );
 
-    // Block context for toolbar - using function to get latest component ref
+    // Block context for toolbar
     function getBlockContext() {
         return {
             type: 'heading' as const,
@@ -68,14 +68,14 @@
     let content = $derived({
         id,
         type,
-        heading: heading,
-        metadata : {
+        heading,
+        metadata: {
             color,
             size,
             spacingTop,
             spacingBottom
         }
-    })
+    });
 
     let cleanup: (() => void) | undefined;
 
@@ -111,17 +111,17 @@
             <!-- JSON Data for this component -->
             <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             {#if size === 'h1'}
-                <h1 id="heading" class="krt-heading krt-heading--h1 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
+                <h1 class="krt-heading krt-heading--h1 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
             {:else if size === 'h2'}
-                <h2 id="heading" class="krt-heading krt-heading--h2 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h2>
+                <h2 class="krt-heading krt-heading--h2 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h2>
             {:else if size === 'h3'}
-                <h3 id="heading" class="krt-heading krt-heading--h3 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h3>
+                <h3 class="krt-heading krt-heading--h3 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h3>
             {:else if size === 'h4'}
-                <h4 id="heading" class="krt-heading krt-heading--h4 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h4>
+                <h4 class="krt-heading krt-heading--h4 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h4>
             {:else if size === 'h5'}
-                <h5 id="heading" class="krt-heading krt-heading--h5 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h5>
+                <h5 class="krt-heading krt-heading--h5 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h5>
             {:else}
-                <h6 id="heading" class="krt-heading krt-heading--h6 krt-heading--editable" contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h6>
+                <h6 class="krt-heading krt-heading--h6 krt-heading--editable" style:color={color || undefined} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h6>
             {/if}
         </div>
     </div>

@@ -22,6 +22,11 @@ export default defineConfig({
 						{ label: 'Credentials Auth', slug: 'examples/credentials-auth' },
 					],
 				},
+				{
+      label: 'ORM',
+      // Autogenerate a group of links for the 'constellations' directory.
+      autogenerate: { directory: 'orm' },
+    },
 			],
 		}),
 	],

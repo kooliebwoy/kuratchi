@@ -1,9 +1,10 @@
 <script lang="ts">
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
     import { ArrowRight } from '@lucide/svelte';
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { ImagePicker } from '../widgets/index.js';
-    import { BlockActions } from '../utils/index.js';
+    import { BlockActions, setupSelectionListener, type SelectionState, handleEmojis } from '../utils/index.js';
+    import EditorToolbar from '../widgets/EditorToolbar.svelte';
     import SectionLayoutControls from './SectionLayoutControls.svelte';
     import { 
         type SectionLayout, 
@@ -91,8 +92,36 @@
         metadata: { ...layoutMetadata }
     });
     let component = $state<HTMLElement>();
+    let contentContainer = $state<HTMLElement>();
     const componentRef = {};
     let mounted = $state(false);
+
+    // Selection state for toolbar
+    let selectionState: SelectionState = $state({
+        showToolbar: false,
+        position: { x: 0, y: 0 }
+    });
+
+    // Block context for toolbar (heading-style for inline text)
+    function getBlockContext() {
+        return {
+            type: 'heading' as const,
+            headingSize: 'h1',
+            onHeadingSizeChange: () => {} // No-op for sections
+        };
+    }
+
+    let cleanup: (() => void) | undefined;
+
+    $effect(() => {
+        if (!editable || !contentContainer) return;
+        if (cleanup) cleanup();
+        cleanup = setupSelectionListener(contentContainer, selectionState);
+    });
+
+    onDestroy(() => {
+        if (cleanup) cleanup();
+    });
 
     onMount(() => {
         if (!editable) return;
@@ -185,14 +214,16 @@
                     <div class="krt-heroFigure__placeholder">Add hero image</div>
                 {/if}
             </div>
-            <div class="krt-heroFigure__content">
-                <h1 class="krt-heroFigure__heading" contenteditable bind:innerHTML={heading}></h1>
-                <p class="krt-heroFigure__body" contenteditable bind:innerHTML={body}></p>
+            <div class="krt-heroFigure__content" bind:this={contentContainer}>
+                <EditorToolbar component={contentContainer} show={selectionState.showToolbar} position={selectionState.position} blockContext={getBlockContext()} />
+                <h1 class="krt-heroFigure__heading" style:color={layoutMetadata.headingColor} contenteditable bind:innerHTML={heading} oninput={handleEmojis}></h1>
+                <p class="krt-heroFigure__body" style:color={layoutMetadata.textColor} contenteditable bind:innerHTML={body} oninput={handleEmojis}></p>
                 <button class="krt-heroFigure__cta" type="button" onclick={(event) => event.preventDefault()}>
                     <span contenteditable bind:innerHTML={button.label}></span>
                     <ArrowRight aria-hidden="true" />
                 </button>
             </div>
+        </div>
     </section>
 </div>
 {:else}

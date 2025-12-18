@@ -190,6 +190,7 @@ class QueryBuilder<Row = any> {
   private offsetN?: number;
   private includeSpec?: IncludeSpec;
   private selectCols?: string[];
+  private pendingUpdateValues?: Record<string, any>;
 
   constructor(private readonly tableName: string, private readonly execute: SqlExecutor) {}
 
@@ -316,6 +317,31 @@ class QueryBuilder<Row = any> {
     return this;
   }
 
+  /**
+   * Get distinct values for a column
+   */
+  async distinct(column: string): Promise<QueryResult<any[]>> {
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+    const sql = `SELECT DISTINCT ${column} FROM ${this.tableName} ${w.sql}`.trim();
+    const ret = await this.execute(sql, w.params);
+    if (!ret || ret.success === false) return ret as any;
+    const rows = ((ret as any).data ?? (ret as any).results ?? []) as any[];
+    return { success: true, data: rows.map(r => r[column]) };
+  }
+
+  /**
+   * Count matching rows (chainable version)
+   */
+  async count(): Promise<QueryResult<number>> {
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+    const sql = `SELECT COUNT(*) as count FROM ${this.tableName} ${w.sql}`.trim();
+    const ret = await this.execute(sql, w.params);
+    if (!ret || ret.success === false) return ret as any;
+    const rows = ((ret as any).data ?? (ret as any).results ?? []) as any[];
+    const count = rows[0]?.count ?? 0;
+    return { success: true, data: count };
+  }
+
   async updateMany(values: Record<string, any>): Promise<QueryResult<any>> {
     const setCols = Object.keys(values || {});
     if (!setCols.length) return { success: true };
@@ -326,7 +352,14 @@ class QueryBuilder<Row = any> {
     return this.execute(sql, [...setParams, ...w.params]);
   }
 
-  async update(values: Record<string, any>): Promise<QueryResult<any>> {
+  async update(values?: Record<string, any>): Promise<QueryResult<any>> {
+    // If values provided, execute update immediately
+    // If no values, use pending values from .update(values).where() chain
+    const updateValues = values || this.pendingUpdateValues;
+    if (!updateValues || Object.keys(updateValues).length === 0) {
+      return { success: false, error: 'No update values provided' } as any;
+    }
+    
     // Single-row update: resolve first row, then update by id when present; otherwise fallback to current filter
     const one = await this.first();
     if (!one || (one as any).success === false) return one as any;
@@ -334,23 +367,46 @@ class QueryBuilder<Row = any> {
     if (!row) return { success: false, error: 'Not found' } as any;
     const id = (row as any)?.id;
     if (typeof id === 'undefined') {
-      return this.updateMany(values || {});
+      return this.updateMany(updateValues);
     }
-    const setCols = Object.keys(values || {});
+    const setCols = Object.keys(updateValues);
     if (!setCols.length) return { success: true } as any;
     const setSql = setCols.map((c) => `${c} = ?`).join(', ');
-    const setParams = setCols.map((c) => (values as any)[c]);
+    const setParams = setCols.map((c) => (updateValues as any)[c]);
     const sql = `UPDATE ${this.tableName} SET ${setSql} WHERE id = ?`;
     return this.execute(sql, [...setParams, id]);
   }
 
+  /**
+   * Set pending update values for deferred execution.
+   * Allows chaining: .update(values).where({...}) or .where({...}).update(values)
+   */
+  setPendingUpdate(values: Record<string, any>): this {
+    this.pendingUpdateValues = values;
+    return this;
+  }
+
+  /**
+   * Delete rows matching the accumulated where clauses.
+   * Allows chaining: .where({...}).delete() or .delete().where({...})
+   */
+  async delete(): Promise<QueryResult<any>> {
+    const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+    if (!w.sql) {
+      return { success: false, error: 'Delete requires a where clause for safety' } as any;
+    }
+    const sql = `DELETE FROM ${this.tableName} ${w.sql}`;
+    return this.execute(sql, w.params);
+  }
+
   async exists(): Promise<boolean> {
     const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
-    const sql = `SELECT 1 FROM ${this.tableName} ${w.sql} LIMIT 1`;
+    // Use EXISTS subquery for better performance on large tables
+    const sql = `SELECT EXISTS(SELECT 1 FROM ${this.tableName} ${w.sql} LIMIT 1) as e`;
     const ret = await this.execute(sql, w.params);
     if (!ret || ret.success === false) return false;
     const rows = (ret as any).data ?? (ret as any).results ?? [];
-    return Array.isArray(rows) && rows.length > 0;
+    return Array.isArray(rows) && rows.length > 0 && (rows[0]?.e === 1 || rows[0]?.e === true);
   }
 
   async many(): Promise<QueryResult<Row[]>> {
@@ -376,7 +432,10 @@ class QueryBuilder<Row = any> {
   }
 
   async first(): Promise<QueryResult<Row | undefined>> {
-    this.limitN = 1;
+    // Only set limit if not already set (allows .limit(5).first() to get first of 5)
+    if (typeof this.limitN !== 'number') {
+      this.limitN = 1;
+    }
     const res = await this.many();
     if (!res.success) return res as any;
     const rows = (res as any).data ?? (res as any).results;
@@ -520,11 +579,24 @@ export function createRuntimeOrm(execute: SqlExecutor, schema?: Pick<DatabaseSch
         const ret = await execute(baseSql, params);
         return ret as QueryResult<Row | Row[]>;
       },
-      // Updates are performed via the chainable builder only: where(...).update(values) or where(...).updateMany(values)
-      async delete(where: Where): Promise<QueryResult<any>> {
-        const w = compileWhere(where);
-        const sql = `DELETE FROM ${tableName} ${w.sql}`;
-        return execute(sql, w.params);
+      /**
+       * Delete with where object (original API)
+       */
+      async delete(where?: Where): Promise<QueryResult<any>> {
+        if (where) {
+          const w = compileWhere(where);
+          const sql = `DELETE FROM ${tableName} ${w.sql}`;
+          return execute(sql, w.params);
+        }
+        // No where = return builder for chaining
+        return { success: false, error: 'Delete requires a where clause. Use .where({...}).delete() or .delete({...})' } as any;
+      },
+      /**
+       * Start an update chain: .update(values).where({...})
+       * Returns a builder that will execute when .where() is followed by terminal or when update() is called
+       */
+      update(values: Record<string, any>) {
+        return builderFactory().setPendingUpdate(values);
       },
       async count(where?: Where): Promise<QueryResult<{ count: number }[]>> {
         const w = compileWhere(where);
@@ -564,9 +636,11 @@ export interface TableApi<Row = any> {
   one(): Promise<QueryResult<Row>>;
   exists(): Promise<boolean>;
   insert(values: Partial<Row> | Partial<Row>[]): Promise<QueryResult<Row | Row[]>>;
-  delete(where: Where): Promise<QueryResult<any>>;
+  delete(where?: Where): Promise<QueryResult<any>>;
   count(where?: Where): Promise<QueryResult<{ count: number }[]>>;
-  // New chainable builder
+  // Chainable update: .update(values).where({...})
+  update(values: Record<string, any>): TableQuery<Row>;
+  // Chainable builder methods
   where(filter: Where): TableQuery<Row>;
   whereIn(column: string, values: any[]): TableQuery<Row>;
   orWhere(filter: Where): TableQuery<Row>;
@@ -594,10 +668,15 @@ export interface TableQuery<Row = any> {
   first(): Promise<QueryResult<Row | undefined>>;
   one(): Promise<QueryResult<Row>>;
   exists(): Promise<boolean>;
+  count(): Promise<QueryResult<number>>;
+  distinct(column: string): Promise<QueryResult<any[]>>;
   updateMany(values: Record<string, any>): Promise<QueryResult<any>>;
-  // Single-row update convenience: updates the first matched row by primary key 'id';
+  // Single-row update: updates the first matched row by primary key 'id';
   // if no 'id' present, falls back to updateMany (may affect multiple rows)
-  update(values: Record<string, any>): Promise<QueryResult<any>>;
+  // Can be called with values or use pending values from .update(values).where() chain
+  update(values?: Record<string, any>): Promise<QueryResult<any>>;
+  // Chainable delete: .where({...}).delete() executes delete with accumulated where clauses
+  delete(): Promise<QueryResult<any>>;
 }
 
 export function createClientFromMapping<T extends Record<string, string>>(execute: SqlExecutor, mapping: T): { [K in keyof T]: TableApi } {
@@ -677,6 +756,7 @@ export function createClientFromJsonSchema(
       return {
         where: (f) => wrapQuery(q.where(f)),
         whereIn: (c, v) => wrapQuery(q.whereIn(c, v)),
+        whereAny: (conditions) => wrapQuery(q.whereAny(conditions)),
         orWhere: (f) => wrapQuery(q.orWhere(f)),
         orderBy: (o) => wrapQuery(q.orderBy(o)),
         limit: (n) => wrapQuery(q.limit(n)),
@@ -684,24 +764,29 @@ export function createClientFromJsonSchema(
         include: (s) => wrapQuery(q.include(s)),
         select: (cols) => wrapQuery(q.select(cols)),
         sql: (cond) => wrapQuery(q.sql(cond)),
-        async update(values: Record<string, any>) {
-          // Single-row update: fetch first row, then update by id when available
-          const one = await q.first();
-          if (!one || one.success === false) return one as any;
-          const row = (one as any).data as any | undefined;
-          if (!row) return { success: false, error: 'Not found' } as any;
-          const id = row?.id;
-          const v2 = serializeForTable(tableName, values || {});
-          if (typeof id === 'undefined') {
-            return q.updateMany(v2);
+        async update(values?: Record<string, any>) {
+          // If values provided, serialize and execute
+          // If no values, delegate to underlying query (uses pending values)
+          if (values) {
+            const one = await q.first();
+            if (!one || one.success === false) return one as any;
+            const row = (one as any).data as any | undefined;
+            if (!row) return { success: false, error: 'Not found' } as any;
+            const id = row?.id;
+            const v2 = serializeForTable(tableName, values);
+            if (typeof id === 'undefined') {
+              return q.updateMany(v2);
+            }
+            // Perform targeted update by id using an ad-hoc statement
+            const setCols = Object.keys(v2);
+            if (!setCols.length) return { success: true } as any;
+            const setSql = setCols.map((c) => `${c} = ?`).join(', ');
+            const setParams = setCols.map((c) => (v2 as any)[c]);
+            const sql = `UPDATE ${tableName} SET ${setSql} WHERE id = ?`;
+            return execute(sql, [...setParams, id]);
           }
-          // Perform targeted update by id using an ad-hoc statement
-          const setCols = Object.keys(v2 || {});
-          if (!setCols.length) return { success: true } as any;
-          const setSql = setCols.map((c) => `${c} = ?`).join(', ');
-          const setParams = setCols.map((c) => (v2 as any)[c]);
-          const sql = `UPDATE ${tableName} SET ${setSql} WHERE id = ?`;
-          return execute(sql, [...setParams, id]);
+          // No values - use pending values from .update(values).where() chain
+          return q.update();
         },
         async many() {
           const res = await q.many();
@@ -727,9 +812,18 @@ export function createClientFromJsonSchema(
         async exists() {
           return q.exists();
         },
+        async count() {
+          return q.count();
+        },
+        async distinct(column: string) {
+          return q.distinct(column);
+        },
         async updateMany(values: Record<string, any>) {
           const v2 = serializeForTable(tableName, values || {});
           return q.updateMany(v2);
+        },
+        async delete() {
+          return q.delete();
         }
       } as TableQuery<Row>;
     };
@@ -763,12 +857,17 @@ export function createClientFromJsonSchema(
         const payload = Array.isArray(values) ? transformed : transformed[0];
         return raw.insert(payload as any);
       },
-      // No direct updates on the table; use the chainable builder: where(...).update / updateMany
-      async delete(where: Where) { return raw.delete(where); },
+      // Chainable update: .update(values).where({...})
+      update(values: Record<string, any>) {
+        const v2 = serializeForTable(tableName, values || {});
+        return wrapQuery(raw.update(v2));
+      },
+      async delete(where?: Where) { return raw.delete(where); },
       async count(where?: Where) { return raw.count(where); },
       where(filter: Where) { return wrapQuery(raw.where(filter)); },
       whereIn(column: string, values: any[]) { return wrapQuery(raw.whereIn(column, values)); },
       orWhere(filter: Where) { return wrapQuery(raw.orWhere(filter)); },
+      whereAny(conditions: Where[]) { return wrapQuery(raw.whereAny(conditions)); },
       orderBy(order: OrderBy | string) { return wrapQuery(raw.orderBy(order)); },
       limit(n: number) { return wrapQuery(raw.limit(n)); },
       offset(n: number) { return wrapQuery(raw.offset(n)); },

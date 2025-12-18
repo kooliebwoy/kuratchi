@@ -28,6 +28,7 @@
         menu?: any;
         logo?: LogoData;
         editable?: boolean;
+        isSticky?: boolean;
         // Nav configuration props
         navDropdownTrigger?: DropdownTriggerOption;
         navDropdownAlign?: DropdownAlignOption;
@@ -78,6 +79,7 @@
         navDropdownTextColor: initialNavDropdownTextColor = '#1f2937',
         mobileNavStyle: initialMobileNavStyle = 'drawer' as MobileStyleOption,
         mobileDrawerPosition: initialMobileDrawerPosition = 'right' as DrawerPositionOption,
+        isSticky: initialIsSticky = false,
     }: Props = $props();
 
     // Normalize menu items to use 'children' and 'url' properties
@@ -115,6 +117,7 @@
     let mobileNavStyle = $state<MobileStyleOption>(initialMobileNavStyle);
     let mobileDrawerPosition = $state<DrawerPositionOption>(initialMobileDrawerPosition);
     let mobileMenuOpen = $state(false);
+    let isSticky = $state(initialIsSticky);
 
     let id = crypto.randomUUID();
     let localMenu = $state<NavMenuItem[]>(resolvedMenu);
@@ -203,6 +206,7 @@
         navDropdownTextColor,
         mobileNavStyle,
         mobileDrawerPosition,
+        isSticky,
     });
     const serializeContent = () => JSON.stringify(content);
     const componentRef = {};
@@ -232,6 +236,16 @@
         >
             {#snippet inspector()}
                 <div class="krt-headerDrawer">
+                    <section class="krt-headerDrawer__section">
+                        <h3 class="krt-headerDrawer__title">Behavior</h3>
+                        <div class="krt-headerDrawer__cards">
+                            <label class="krt-headerDrawer__card">
+                                <input type="checkbox" class="krt-switch" bind:checked={isSticky} />
+                                <span>Sticky Header</span>
+                            </label>
+                        </div>
+                    </section>
+
                     <section class="krt-headerDrawer__section">
                         <h3 class="krt-headerDrawer__title">Layout</h3>
                         <div class="krt-headerDrawer__cards">
@@ -353,6 +367,7 @@
     <div
         {id}
         class="krt-header krt-header--saige"
+        class:krt-header--sticky={isSticky}
         style:background-color={backgroundColor}
         style:color={textColor}
         data-type={type}
@@ -442,6 +457,7 @@
     <div
         {id}
         class="krt-header krt-header--saige"
+        class:krt-header--sticky={isSticky}
         style:background-color={backgroundColor}
         style:color={textColor}
         data-type={type}
@@ -681,6 +697,12 @@
 
     .krt-header {
         padding: 0 var(--krt-space-xl, 1.25rem);
+    }
+
+    .krt-header--sticky {
+        position: sticky;
+        top: 0;
+        z-index: 100;
     }
 
     .krt-header__bar {

@@ -2,7 +2,7 @@ import type { SchemaDsl } from 'kuratchi-sdk/database';
 
 export const organizationSchema: SchemaDsl = {
   name: 'organization',
-  version: 13,
+  version: 14,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -357,6 +357,28 @@ export const organizationSchema: SchemaDsl = {
       processedAt: 'text',
       '...timestamps': true,
     },
+    // =========== NAVIGATION MENUS ===========
+    // Organization-level menus (reusable across sites)
+    menus: {
+      id: 'text primary key not null',
+      name: 'text not null',
+      description: 'text',
+      items: 'json default (json_array())',  // Array of NavigationItem
+      status: 'boolean default true',
+      '...timestamps': true,
+    },
+    // Junction table: which menus are attached to which sites and regions
+    menuSites: {
+      id: 'text primary key not null',
+      menuId: 'text not null -> menus.id cascade',
+      siteId: 'text not null -> sites.id cascade',
+      region: 'text not null default header',  // 'header' | 'footer'
+      // Site-specific overrides (optional)
+      overrides: 'json default (json_object())',
+      status: 'boolean default true',
+      '...timestamps': true,
+    },
+
     // =========== OEM CATALOG TABLES ===========
     catalogOems: {
       id: 'text primary key not null',
@@ -464,6 +486,12 @@ export const organizationSchema: SchemaDsl = {
       idx_newsletter_branch_checks_campaign: { columns: ['campaignId'] },
       idx_newsletter_branch_checks_contact: { columns: ['contactId'] },
       idx_newsletter_branch_checks_evaluate: { columns: ['evaluateAt', 'processed'] },
+    },
+    // Menu indexes
+    menuSites: {
+      idx_menu_sites_menu: { columns: ['menuId'] },
+      idx_menu_sites_site: { columns: ['siteId'] },
+      idx_menu_sites_region: { columns: ['siteId', 'region'] },
     },
     // Catalog indexes
     catalogVehicles: {

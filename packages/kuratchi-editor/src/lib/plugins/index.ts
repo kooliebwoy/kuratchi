@@ -24,12 +24,17 @@ export { createPluginManager, type PluginManager, type PluginManagerOptions } fr
 
 // Plugins
 export { pagesPlugin } from './pages';
-export { navigationPlugin } from './navigation';
 export { sitePlugin } from './site';
 export { themesPlugin } from './themes';
-export { formsPlugin } from './forms';
-export { catalogPlugin } from './catalog';
 export { modalsPlugin } from './modals';
+
+// DEPRECATED - Removed in favor of contract-based architecture
+// Data is now managed in Dashboard and injected via siteMetadata
+// See: src/lib/contracts/site-metadata.ts
+// export { navigationPlugin } from './navigation';
+// export { formsPlugin } from './forms';
+// export { catalogPlugin } from './catalog';
+// export { blogPlugin } from './blog';
 
 // Modal system
 export * from './modals/modal-manager.svelte';

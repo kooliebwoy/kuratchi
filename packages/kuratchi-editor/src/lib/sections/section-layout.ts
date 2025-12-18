@@ -127,7 +127,8 @@ export function getSectionLayoutStyles(layout: Partial<SectionLayout> = {}): str
     const height = merged.heightMode === 'custom' && merged.customHeight 
         ? merged.customHeight 
         : HEIGHT_VALUES[merged.heightMode];
-    const radius = merged.roundedCorners ? 'var(--krt-radius-2xl, 1.5rem)' : '0';
+    // Use theme radius when rounded corners enabled, otherwise 0
+    const radius = merged.roundedCorners ? 'var(--krt-theme-radius, 0.5rem)' : '0';
 
     return [
         `--section-max-width: ${width}`,
@@ -148,7 +149,7 @@ export const SECTION_LAYOUT_CSS = `
     padding-inline: var(--section-padding-x, clamp(1.5rem, 4vw, 2.5rem));
     padding-block: var(--section-padding-y, clamp(1.5rem, 4vw, 2.5rem));
     min-height: var(--section-min-height, auto);
-    border-radius: var(--section-border-radius, var(--krt-radius-2xl, 1.5rem));
+    border-radius: var(--section-border-radius, var(--krt-theme-radius, 0.5rem));
 `;
 
 /**

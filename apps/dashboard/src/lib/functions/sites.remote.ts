@@ -66,7 +66,7 @@ const guardedForm = <R>(
 	fn: (data: any) => Promise<R>,
 	options?: { requireEmailVerification?: boolean }
 ) => {
-	return form('unchecked', async (data: any) => {
+	return form(schema as any, async (data: any) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
 
@@ -78,19 +78,12 @@ const guardedForm = <R>(
 		// Check permission
 		requirePermission(permission);
 
-		// Validate with valibot
-		const result = v.safeParse(schema, data);
-		if (!result.success) {
-			console.error('[guardedForm] Validation failed:', result.issues);
-			error(400, `Validation failed: ${result.issues.map((i: any) => `${i.path?.map((p: any) => p.key).join('.')}: ${i.message}`).join(', ')}`);
-		}
-
 		// Execute action
-		const output = await fn(result.output);
+		const output = await fn(data);
 
 		// Log activity
 		await logActivity(activityType, {
-			input: result.output,
+			input: data,
 			output
 		});
 

@@ -48,7 +48,7 @@ export const { handle }: { handle: Handle } = kuratchi({
       }),
       organizationPlugin({ 
         organizationSchema,
-        skipMigrations: true  // Schema already deployed, skip sync for performance
+        skipMigrations: true  // Temporarily enabled to apply menus/menuSites tables migration
       }),
       credentialsPlugin(),
       oauthPlugin({

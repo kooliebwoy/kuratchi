@@ -15,21 +15,15 @@ const guardedQuery = <R>(fn: () => Promise<R>) => {
 };
 
 // Guarded form helper - using unchecked validation
-const guardedForm = <R>(
-	schema: v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
-	fn: (data: any) => Promise<R>
+const guardedForm = <Schema extends v.BaseSchema<any, any, any>, R>(
+	schema: Schema,
+	fn: (data: v.InferOutput<Schema>) => Promise<R>
 ) => {
-	return form('unchecked', async (data: any) => {
+	return form(schema as any, async (data: v.InferOutput<Schema>) => {
 		const { locals: { session } } = getRequestEvent();
 		if (!session?.user) error(401, 'Unauthorized');
 
-		// Validate with valibot
-		const result = v.safeParse(schema, data);
-		if (!result.success) {
-			error(400, 'Validation failed');
-		}
-
-		return fn(result.output);
+		return fn(data);
 	});
 };
 

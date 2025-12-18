@@ -32,58 +32,74 @@ export const { handle }: { handle: Handle } = kuratchi({
 });
 ```
 
+## Remote Functions Pattern
+
+In Kuratchi apps, we typically implement auth flows using SvelteKit "remote functions":
+
+- Server code lives in `src/lib/functions/*.remote.ts`.
+- Pages import those functions directly and use them in `<form {...fn}>`.
+- Success/errors are read from `fn.result`.
+
+This matches how the dashboard implements credentials auth.
+
 ## Sign In Page
 
-### src/routes/auth/signin/+page.server.ts
+### src/lib/functions/auth.remote.ts
 
 ```ts
-import { fail, redirect } from '@sveltejs/kit';
+import { getRequestEvent, form } from '$app/server';
+import { error } from '@sveltejs/kit';
+import * as v from 'valibot';
 
-export const actions = {
-  default: async ({ request, locals }) => {
-    const data = await request.formData();
-    const email = data.get('email') as string;
-    const password = data.get('password') as string;
+const signInSchema = v.object({
+  email: v.pipe(v.string(), v.email('Invalid email address')),
+  password: v.pipe(v.string(), v.nonEmpty('Password is required'))
+});
 
-    if (!email || !password) {
-      return fail(400, { error: 'Email and password required' });
-    }
-
-    try {
-      const result = await locals.kuratchi.auth.credentials.signIn(email, password);
-
-      if (!result.success) {
-        return fail(401, {
-          error: result.error === 'too_many_attempts'
-            ? result.message
-            : 'Invalid email or password'
-        });
-      }
-
-      // Redirect to dashboard on success
-      throw redirect(303, '/dashboard');
-    } catch (err: any) {
-      if (err.status === 303) throw err; // Re-throw redirects
-      return fail(500, { error: 'Sign in failed' });
-    }
+export const signInWithCredentials = form('unchecked', async (data: any) => {
+  const parsed = v.safeParse(signInSchema, data);
+  if (!parsed.success) {
+    error(400, parsed.issues[0]?.message || 'Validation failed');
   }
-};
+
+  const { email, password } = parsed.output;
+  const { locals } = getRequestEvent();
+
+  if (!locals.kuratchi?.auth?.credentials?.signIn) {
+    error(500, 'Credentials authentication not configured');
+  }
+
+  const authResult = await locals.kuratchi.auth.credentials.signIn(email, password);
+
+  if (!authResult.success) {
+    const message =
+      authResult.error === 'too_many_attempts'
+        ? authResult.message
+        : 'Invalid email or password';
+    error(401, message);
+  }
+
+  return {
+    success: true,
+    user: {
+      id: authResult.user.id,
+      email: authResult.user.email,
+      name: authResult.user.name
+    }
+  };
+});
 ```
 
 ### src/routes/auth/signin/+page.svelte
 
 ```svelte
 <script lang="ts">
-  import { enhance } from '$app/forms';
-
-  let loading = false;
-  let error = '';
-
-  export let form;
+  import { signInWithCredentials } from '$lib/functions/auth.remote';
+  import { goto } from '$app/navigation';
 
   $effect(() => {
-    if (form?.error) {
-      error = form.error;
+    if (signInWithCredentials.result?.success) {
+      goto('/');
     }
   });
 </script>
@@ -96,17 +112,11 @@ export const actions = {
   <div class="signin-card">
     <h1>Sign In</h1>
     
-    {#if error}
-      <div class="error-message">{error}</div>
+    {#if signInWithCredentials.result && !signInWithCredentials.result.success}
+      <div class="error-message">{signInWithCredentials.result.message}</div>
     {/if}
 
-    <form method="POST" use:enhance={() => {
-      loading = true;
-      return async ({ update }) => {
-        loading = false;
-        update();
-      };
-    }}>
+    <form {...signInWithCredentials}>
       <div class="form-group">
         <label for="email">Email</label>
         <input
@@ -115,7 +125,6 @@ export const actions = {
           type="email"
           placeholder="you@example.com"
           required
-          disabled={loading}
         />
       </div>
 
@@ -127,13 +136,10 @@ export const actions = {
           type="password"
           placeholder="••••••••"
           required
-          disabled={loading}
         />
       </div>
 
-      <button type="submit" disabled={loading}>
-        {loading ? 'Signing in...' : 'Sign In'}
-      </button>
+      <button type="submit">Sign In</button>
     </form>
 
     <p class="signup-link">
@@ -248,31 +254,43 @@ export const actions = {
 
 ## Sign Out
 
-Add a sign out action to your route:
-
-### src/routes/+page.server.ts
+### src/lib/functions/auth.remote.ts
 
 ```ts
-import { redirect } from '@sveltejs/kit';
+import { getRequestEvent, form } from '$app/server';
+import { error } from '@sveltejs/kit';
 
-export const actions = {
-  logout: async ({ locals }) => {
-    if (locals.kuratchi?.auth?.credentials?.signOut) {
-      await locals.kuratchi.auth.credentials.signOut();
-    }
-    throw redirect(303, '/auth/signin');
+export const signOut = form('unchecked', async () => {
+  const { locals } = getRequestEvent();
+
+  if (!locals.kuratchi?.auth?.credentials?.signOut) {
+    error(500, 'Sign out not configured');
   }
-};
+
+  const result = await locals.kuratchi.auth.credentials.signOut();
+  if (!result.success) {
+    error(500, result.error || 'Sign out failed');
+  }
+
+  return { success: true };
+});
 ```
 
-### src/routes/+page.svelte
+### src/routes/+layout.svelte (or any component)
 
 ```svelte
 <script>
-  import { enhance } from '$app/forms';
+  import { signOut } from '$lib/functions/auth.remote';
+  import { goto } from '$app/navigation';
+
+  $effect(() => {
+    if (signOut.result?.success) {
+      goto('/auth/signin');
+    }
+  });
 </script>
 
-<form method="POST" action="?/logout" use:enhance>
+<form {...signOut}>
   <button type="submit">Sign Out</button>
 </form>
 ```
