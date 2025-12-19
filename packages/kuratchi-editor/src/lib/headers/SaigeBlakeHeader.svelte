@@ -1,8 +1,20 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { Pencil } from '@lucide/svelte';
     import { BlockActions } from '../utils/index.js';
-    import { IconPicker, ImagePicker, NavMenu, NavMenuMobile, type DesktopNavConfig, type MobileNavConfig, type NavMenuItem } from '../widgets/index.js';
+    import { 
+        NavMenu, 
+        NavMenuMobile, 
+        NavSettingsPanel, 
+        type DesktopNavConfig, 
+        type MobileNavConfig, 
+        type NavMenuItem,
+        // Inspector Widgets
+        InspectorSection,
+        ToggleControl,
+        ColorControl,
+        LogoEditor,
+        SocialLinksEditor
+    } from '../widgets/index.js';
     import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
     import { Menu } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
@@ -29,15 +41,24 @@
         logo?: LogoData;
         editable?: boolean;
         isSticky?: boolean;
+        menuHidden?: boolean;
         // Nav configuration props
         navDropdownTrigger?: DropdownTriggerOption;
         navDropdownAlign?: DropdownAlignOption;
         navSubmenuDirection?: SubmenuDirectionOption;
         navHoverBgColor?: string;
+        navHoverTextColor?: string;
         navDropdownBgColor?: string;
         navDropdownTextColor?: string;
+        navDropdownHoverBgColor?: string;
+        navDropdownHoverTextColor?: string;
         mobileNavStyle?: MobileStyleOption;
         mobileDrawerPosition?: DrawerPositionOption;
+        /** 
+         * Forced viewport for editor preview. 
+         * Overrides container queries to match selected device size.
+         */
+        forcedViewport?: 'phone' | 'tablet' | 'desktop';
     }
 
     const DEFAULT_MENU: NavMenuItem[] = [
@@ -70,16 +91,21 @@
             alt: 'Clutch CMS Logo'
         },
         editable = true,
-        // Nav configuration props
+        // Nav configuration props (initial values, become local state)
         navDropdownTrigger: initialNavDropdownTrigger = 'hover' as DropdownTriggerOption,
         navDropdownAlign: initialNavDropdownAlign = 'start' as DropdownAlignOption,
         navSubmenuDirection: initialNavSubmenuDirection = 'right' as SubmenuDirectionOption,
         navHoverBgColor: initialNavHoverBgColor = 'color-mix(in srgb, currentColor 8%, transparent)',
+        navHoverTextColor: initialNavHoverTextColor = '',
         navDropdownBgColor: initialNavDropdownBgColor = '',
         navDropdownTextColor: initialNavDropdownTextColor = '#1f2937',
+        navDropdownHoverBgColor: initialNavDropdownHoverBgColor = '',
+        navDropdownHoverTextColor: initialNavDropdownHoverTextColor = '',
         mobileNavStyle: initialMobileNavStyle = 'drawer' as MobileStyleOption,
         mobileDrawerPosition: initialMobileDrawerPosition = 'right' as DrawerPositionOption,
         isSticky: initialIsSticky = false,
+        menuHidden = false,
+        forcedViewport,
     }: Props = $props();
 
     // Normalize menu items to use 'children' and 'url' properties
@@ -92,9 +118,11 @@
         }));
     }
 
-    const resolvedMenu = (initialMenu?.length ?? 0) === 0
-        ? DEFAULT_MENU
-        : normalizeMenuItems(initialMenu);
+    // Menu items come from props (injected by Dashboard via siteMetadata.navigation.header.items)
+    // Navigation CRUD is handled in Dashboard, not editable in header component
+    const resolvedMenu = (initialMenu?.length ?? 0) > 0
+        ? normalizeMenuItems(initialMenu)
+        : DEFAULT_MENU;
 
     // Use local state for logo so changes trigger reactivity
     let logo = $state<LogoData>(initialLogo);
@@ -107,15 +135,20 @@
     let textColor = $state(initialTextColor);
     let reverseOrder = $state(initialReverseOrder);
 
-    // Nav configuration state
+    // Nav configuration state (saved with header)
     let navDropdownTrigger = $state<DropdownTriggerOption>(initialNavDropdownTrigger);
     let navDropdownAlign = $state<DropdownAlignOption>(initialNavDropdownAlign);
     let navSubmenuDirection = $state<SubmenuDirectionOption>(initialNavSubmenuDirection);
     let navHoverBgColor = $state(initialNavHoverBgColor);
+    let navHoverTextColor = $state(initialNavHoverTextColor);
     let navDropdownBgColor = $state(initialNavDropdownBgColor);
     let navDropdownTextColor = $state(initialNavDropdownTextColor);
+    let navDropdownHoverBgColor = $state(initialNavDropdownHoverBgColor);
+    let navDropdownHoverTextColor = $state(initialNavDropdownHoverTextColor);
     let mobileNavStyle = $state<MobileStyleOption>(initialMobileNavStyle);
     let mobileDrawerPosition = $state<DrawerPositionOption>(initialMobileDrawerPosition);
+
+    // Mobile menu state
     let mobileMenuOpen = $state(false);
     let isSticky = $state(initialIsSticky);
 
@@ -127,18 +160,18 @@
     // Computed desktop nav config - light theme style
     const desktopNavConfig = $derived<DesktopNavConfig>({
         orientation: 'horizontal',
-        dropdownTrigger: navDropdownTrigger,
-        dropdownAlign: navDropdownAlign,
-        submenuDirection: navSubmenuDirection,
+        dropdownTrigger: navDropdownTrigger ?? 'hover',
+        dropdownAlign: navDropdownAlign ?? 'start',
+        submenuDirection: navSubmenuDirection ?? 'right',
         colors: {
             background: 'transparent',
-            backgroundHover: navHoverBgColor,
-            backgroundActive: navHoverBgColor,
+            backgroundHover: navHoverBgColor || 'color-mix(in srgb, currentColor 8%, transparent)',
+            backgroundActive: navHoverBgColor || 'color-mix(in srgb, currentColor 8%, transparent)',
             text: textColor,
-            textHover: textColor,
+            textHover: navHoverTextColor || textColor,
             dropdownBackground: navDropdownBgColor || 'rgba(255, 255, 255, 0.96)',
-            dropdownItemHover: 'rgba(15, 23, 42, 0.08)',
-            dropdownText: navDropdownTextColor,
+            dropdownItemHover: navDropdownHoverBgColor || 'rgba(15, 23, 42, 0.08)',
+            dropdownText: navDropdownTextColor || '#1f2937',
             dropdownBorder: 'rgba(15, 23, 42, 0.12)',
             dropdownShadow: '0 18px 45px rgba(15, 23, 42, 0.15)',
         },
@@ -170,14 +203,14 @@
 
     // Computed mobile nav config
     const mobileNavConfig = $derived<MobileNavConfig>({
-        style: mobileNavStyle,
-        drawerPosition: mobileDrawerPosition,
+        style: mobileNavStyle ?? 'drawer',
+        drawerPosition: mobileDrawerPosition ?? 'right',
         colors: {
             background: 'rgba(255, 255, 255, 0.96)',
-            backgroundHover: 'rgba(15, 23, 42, 0.08)',
-            text: navDropdownTextColor,
+            backgroundHover: navDropdownHoverBgColor || 'rgba(15, 23, 42, 0.08)',
+            text: navDropdownTextColor || '#1f2937',
             dropdownBackground: 'rgba(15, 23, 42, 0.04)',
-            dropdownText: navDropdownTextColor,
+            dropdownText: navDropdownTextColor || '#1f2937',
         },
         typography: {
             fontSize: '1rem',
@@ -202,8 +235,11 @@
         navDropdownAlign,
         navSubmenuDirection,
         navHoverBgColor,
+        navHoverTextColor,
         navDropdownBgColor,
         navDropdownTextColor,
+        navDropdownHoverBgColor,
+        navDropdownHoverTextColor,
         mobileNavStyle,
         mobileDrawerPosition,
         isSticky,
@@ -235,131 +271,38 @@
             inspectorTitle="Header settings"
         >
             {#snippet inspector()}
-                <div class="krt-headerDrawer">
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Behavior</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <label class="krt-headerDrawer__card">
-                                <input type="checkbox" class="krt-switch" bind:checked={isSticky} />
-                                <span>Sticky Header</span>
-                            </label>
-                        </div>
-                    </section>
+                <div class="krt-headerInspector">
+                    <!-- Quick Settings -->
+                    <InspectorSection title="Quick Settings" icon="⚡" hint="Common adjustments" primary>
+                        <ToggleControl label="Sticky Header" bind:checked={isSticky} />
+                        <ToggleControl label="Swap Layout" bind:checked={reverseOrder} />
+                    </InspectorSection>
 
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Layout</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <label class="krt-headerDrawer__card">
-                                <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
-                                <span>Swap Icons and Nav Menu</span>
-                            </label>
-                        </div>
-                    </section>
+                    <!-- Logo -->
+                    <LogoEditor bind:logo={logo} />
 
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Styling</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                                <span>Background Color</span>
-                                <div class="krt-headerDrawer__colorControl">
-                                    <input type="color" bind:value={backgroundColor} />
-                                    <span>{backgroundColor}</span>
-                                </div>
-                            </label>
-                            <label class="krt-headerDrawer__card krt-headerDrawer__card--color">
-                                <span>Text Color</span>
-                                <div class="krt-headerDrawer__colorControl">
-                                    <input type="color" bind:value={textColor} />
-                                    <span>{textColor}</span>
-                                </div>
-                            </label>
-                        </div>
-                    </section>
+                    <!-- Colors -->
+                    <InspectorSection title="Colors" icon="🎨" hint="Header appearance">
+                        <ColorControl label="Background" bind:value={backgroundColor} />
+                        <ColorControl label="Text" bind:value={textColor} />
+                    </InspectorSection>
 
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Logo</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <div class="krt-headerDrawer__card krt-headerDrawer__card--media">
-                                <ImagePicker bind:selectedImage={logo} mode="single" />
-                            </div>
-                        </div>
-                    </section>
+                    <!-- Social Links -->
+                    <SocialLinksEditor bind:icons={icons} />
 
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Social Icons</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <div class="krt-headerDrawer__card">
-                                <IconPicker bind:selectedIcons={icons} />
-                            </div>
-
-                            {#each icons as icon}
-                                {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                                <label class="krt-headerDrawer__card krt-headerDrawer__card--icon">
-                                    <div class="krt-headerDrawer__iconHeading">
-                                        <Comp aria-hidden="true" />
-                                        <span>{icon.name}</span>
-                                    </div>
-                                    <input
-                                        type="text"
-                                        class="krt-headerDrawer__input"
-                                        placeholder="https://example.com"
-                                        value={icon.link}
-                                        onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
-                                    />
-                                </label>
-                            {/each}
-                        </div>
-                    </section>
-
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Navigation Style</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <label class="krt-headerDrawer__card">
-                                <span>Dropdown Trigger</span>
-                                <select class="krt-headerDrawer__select" bind:value={navDropdownTrigger}>
-                                    <option value="hover">Hover</option>
-                                    <option value="click">Click</option>
-                                </select>
-                            </label>
-                            <label class="krt-headerDrawer__card">
-                                <span>Dropdown Align</span>
-                                <select class="krt-headerDrawer__select" bind:value={navDropdownAlign}>
-                                    <option value="start">Left</option>
-                                    <option value="center">Center</option>
-                                    <option value="end">Right</option>
-                                </select>
-                            </label>
-                            <label class="krt-headerDrawer__card">
-                                <span>Submenu Direction</span>
-                                <select class="krt-headerDrawer__select" bind:value={navSubmenuDirection}>
-                                    <option value="right">Right</option>
-                                    <option value="left">Left</option>
-                                </select>
-                            </label>
-                        </div>
-                    </section>
-
-                    <section class="krt-headerDrawer__section">
-                        <h3 class="krt-headerDrawer__title">Mobile Menu</h3>
-                        <div class="krt-headerDrawer__cards">
-                            <label class="krt-headerDrawer__card">
-                                <span>Menu Style</span>
-                                <select class="krt-headerDrawer__select" bind:value={mobileNavStyle}>
-                                    <option value="drawer">Drawer</option>
-                                    <option value="fullscreen">Fullscreen</option>
-                                </select>
-                            </label>
-                            {#if mobileNavStyle === 'drawer'}
-                                <label class="krt-headerDrawer__card">
-                                    <span>Drawer Position</span>
-                                    <select class="krt-headerDrawer__select" bind:value={mobileDrawerPosition}>
-                                        <option value="right">Right</option>
-                                        <option value="left">Left</option>
-                                    </select>
-                                </label>
-                            {/if}
-                        </div>
-                    </section>
+                    <!-- Desktop Nav Settings -->
+                    <NavSettingsPanel
+                        bind:dropdownTrigger={navDropdownTrigger}
+                        bind:dropdownAlign={navDropdownAlign}
+                        bind:submenuDirection={navSubmenuDirection}
+                        bind:hoverBgColor={navHoverBgColor}
+                        bind:hoverTextColor={navHoverTextColor}
+                        bind:dropdownBgColor={navDropdownBgColor}
+                        bind:dropdownTextColor={navDropdownTextColor}
+                        bind:dropdownHoverBgColor={navDropdownHoverBgColor}
+                        bind:mobileStyle={mobileNavStyle}
+                        bind:mobileDrawerPosition={mobileDrawerPosition}
+                    />
                 </div>
             {/snippet}
         </BlockActions>
@@ -368,11 +311,14 @@
         {id}
         class="krt-header krt-header--saige"
         class:krt-header--sticky={isSticky}
+        class:krt-header--forceDesktop={forcedViewport === 'desktop'}
+        class:krt-header--forceTablet={forcedViewport === 'tablet'}
+        class:krt-header--forcePhone={forcedViewport === 'phone'}
         style:background-color={backgroundColor}
         style:color={textColor}
         data-type={type}
     >
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={"script"} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}
@@ -418,7 +364,7 @@
             <div class="krt-header__segment">
                 {#if reverseOrder}
                     <div class="krt-header__navShell">
-                        <a class="krt-header__logoLink" href="homepage">
+                        <a class="krt-header__logoLink" href="/">
                             {#if logoUrl}
                                 <img src={logoUrl} alt={logoAlt} />
                             {/if}
@@ -450,6 +396,7 @@
         config={mobileNavConfig}
         bind:isOpen={mobileMenuOpen}
         onClose={() => mobileMenuOpen = false}
+        useFixedPosition={false}
     />
 </div>
 
@@ -464,7 +411,7 @@
         data-krt-serialized={serializeContent()}
     >
         <div id="metadata-{id}" style="display: none;">{serializeContent()}</div>
-        <svelte:element this="script" type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
+        <svelte:element this={"script"} type="application/json" data-region-metadata>{serializeContent()}</svelte:element>
         <div class="krt-header__bar" class:krt-header__bar--reversed={reverseOrder}>
             <div class="krt-header__segment">
                 {#if reverseOrder}
@@ -478,7 +425,7 @@
                     </div>
                 {:else}
                     <div class="krt-header__navShell">
-                        <a class="krt-header__logoLink" href="homepage">
+                        <a class="krt-header__logoLink" href="/">
                             {#if logoUrl}
                                 <img src={logoUrl} alt={logoAlt} />
                             {/if}
@@ -510,7 +457,7 @@
             <div class="krt-header__segment">
                 {#if reverseOrder}
                     <div class="krt-header__navShell">
-                        <a class="krt-header__logoLink" href="homepage">
+                        <a class="krt-header__logoLink" href="/">
                             {#if logoUrl}
                                 <img src={logoUrl} alt={logoAlt} />
                             {/if}
@@ -535,168 +482,29 @@
                 {/if}
             </div>
         </div>
-    </div>
 
-    <NavMenuMobile
-        items={localMenu}
-        config={mobileNavConfig}
-        bind:isOpen={mobileMenuOpen}
-        onClose={() => mobileMenuOpen = false}
-    />
+        <NavMenuMobile
+            items={localMenu}
+            config={mobileNavConfig}
+            bind:isOpen={mobileMenuOpen}
+            onClose={() => mobileMenuOpen = false}
+        />
+    </div>
 {/if}
 
 <style>
-    .krt-headerDrawer {
+    /* Inspector container */
+    .krt-headerInspector {
         display: flex;
         flex-direction: column;
-        gap: var(--krt-space-lg, 1rem);
+        gap: var(--krt-space-xl, 1.5rem);
     }
 
-    .krt-headerDrawer__section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-md, 0.75rem);
-    }
-
-    .krt-headerDrawer__title {
-        margin: 0;
-        font-size: 0.8rem;
-        font-weight: 600;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-headerDrawer__cards {
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-sm, 0.5rem);
-    }
-
-    .krt-headerDrawer__card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--krt-space-sm, 0.5rem);
-        padding: var(--krt-space-md, 0.75rem) var(--krt-space-lg, 1rem);
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
-        background: var(--krt-color-surface, #ffffff);
-        font-size: 0.9rem;
-    }
-
-    .krt-headerDrawer__card span {
-        font-weight: 500;
-    }
-
-    .krt-headerDrawer__select {
-        padding: 0.4rem 0.6rem;
-        border-radius: var(--krt-radius-sm, 0.375rem);
-        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
-        background: var(--krt-color-bg, #fafafa);
-        font-size: 0.85rem;
-        color: var(--krt-color-text, #1f2937);
-        cursor: pointer;
-        min-width: 6rem;
-    }
-
-    .krt-headerDrawer__select:focus {
-        outline: 2px solid var(--krt-color-primary, #3b82f6);
-        outline-offset: 1px;
-    }
-
-    .krt-headerDrawer__card--color {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .krt-headerDrawer__card--media {
-        padding: var(--krt-space-lg, 1rem);
-    }
-
-    .krt-headerDrawer__colorControl {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-sm, 0.5rem);
-        font-family: 'SFMono-Regular', ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 0.75rem;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-headerDrawer__colorControl input[type='color'] {
-        width: 2.5rem;
-        height: 2.5rem;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 2px solid var(--krt-color-border-subtle, #e5e7eb);
-        background: none;
-        padding: 0;
-        cursor: pointer;
-    }
-
-    .krt-headerDrawer__card--icon {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--krt-space-sm, 0.5rem);
-    }
-
-    .krt-headerDrawer__iconHeading {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-sm, 0.5rem);
-        font-size: 0.75rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-headerDrawer__iconHeading :global(svg) {
-        width: 1.5rem;
-        height: 1.5rem;
-        color: var(--krt-color-accent, #4f46e5);
-    }
-
-    .krt-headerDrawer__input {
-        width: 100%;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
-        padding: 0.45rem 0.75rem;
-        font-size: 0.85rem;
-        background: #f9fafb;
-    }
-
-    .krt-switch {
-        inline-size: 2.25rem;
-        block-size: 1.25rem;
-        border-radius: 999px;
-        background: var(--krt-color-border-subtle, #e5e7eb);
-        position: relative;
-        appearance: none;
-        cursor: pointer;
-        transition: background 150ms ease;
-    }
-
-    .krt-switch::after {
-        content: '';
-        position: absolute;
-        inset-block: 0.1875rem;
-        inset-inline-start: 0.1875rem;
-        width: 0.875rem;
-        border-radius: 50%;
-        background: #ffffff;
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
-        transition: transform 150ms ease;
-    }
-
-    .krt-switch:checked {
-        background: var(--krt-color-primary, #111827);
-    }
-
-    .krt-switch:checked::after {
-        transform: translateX(1rem);
-    }
-
+    /* Header Component Styles */
     .krt-header {
         padding: 0 var(--krt-space-xl, 1.25rem);
+        container-type: inline-size;
+        container-name: header;
     }
 
     .krt-header--sticky {
@@ -713,10 +521,6 @@
         padding: var(--krt-space-md, 0.75rem) 0;
     }
 
-    .krt-header__bar--reversed {
-        flex-direction: row-reverse;
-    }
-
     .krt-header__segment {
         flex: 1 1 0;
         display: flex;
@@ -730,9 +534,19 @@
         width: 100%;
     }
 
-    @media (min-width: 64rem) {
+    /* Use container query so it works in editor preview */
+    @container header (min-width: 64rem) {
         .krt-header__navShell {
             display: flex;
+        }
+    }
+
+    /* Fallback for browsers without container query support */
+    @supports not (container-type: inline-size) {
+        @media (min-width: 64rem) {
+            .krt-header__navShell {
+                display: flex;
+            }
         }
     }
 
@@ -783,9 +597,19 @@
         transform: translateY(-1px);
     }
 
-    @media (min-width: 64rem) {
+    /* Use container query so it works in editor preview */
+    @container header (min-width: 64rem) {
         .krt-header__mobileTrigger {
             display: none;
+        }
+    }
+
+    /* Fallback for browsers without container query support */
+    @supports not (container-type: inline-size) {
+        @media (min-width: 64rem) {
+            .krt-header__mobileTrigger {
+                display: none;
+            }
         }
     }
 
@@ -821,6 +645,30 @@
     }
 
     .krt-header__editor {
-        position: relative;
+        position: static; /* Allow mobile menu to escape to canvas positioning context */
+    }
+
+    /* ============================================
+       FORCED VIEWPORT OVERRIDES
+       These override container queries when editor 
+       preview size buttons are used
+       ============================================ */
+    
+    /* Force Desktop: Always show desktop nav, hide mobile trigger */
+    .krt-header--forceDesktop .krt-header__navShell {
+        display: flex !important;
+    }
+    .krt-header--forceDesktop .krt-header__mobileTrigger {
+        display: none !important;
+    }
+
+    /* Force Tablet/Phone: Always show mobile trigger, hide desktop nav */
+    .krt-header--forceTablet .krt-header__navShell,
+    .krt-header--forcePhone .krt-header__navShell {
+        display: none !important;
+    }
+    .krt-header--forceTablet .krt-header__mobileTrigger,
+    .krt-header--forcePhone .krt-header__mobileTrigger {
+        display: inline-flex !important;
     }
 </style>

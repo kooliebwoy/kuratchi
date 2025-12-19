@@ -4,6 +4,7 @@
 export { default as NavMenu } from './NavMenu.svelte';
 export { default as NavItem } from './NavItem.svelte';
 export { default as NavMenuMobile } from './NavMenuMobile.svelte';
+export { default as NavSettingsPanel } from './NavSettingsPanel.svelte';
 
 // Footer Navigation Widgets
 export { default as FooterNavColumns } from './FooterNavColumns.svelte';

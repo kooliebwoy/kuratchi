@@ -5,3 +5,6 @@ export { default as EditorToolbar } from './EditorToolbar.svelte';
 
 // Navigation Widget System
 export * from './nav/index.js';
+
+// Inspector Widgets - Composable UI for building inspectors
+export * from './inspector/index.js';

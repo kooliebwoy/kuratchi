@@ -24,16 +24,16 @@
         classPrefix = 'krt-nav'
     }: Props = $props();
 
-    // Destructure config with defaults
-    const colors: NavColors = config.colors || {};
-    const typography: NavTypography = config.typography || {};
-    const spacing: NavSpacing = config.spacing || {};
-    const borders: NavBorders = config.borders || {};
-    const animation: NavAnimation = config.animation || {};
-    const caret: NavCaret = config.caret || {};
+    // Destructure config with defaults - use $derived for reactivity
+    const colors = $derived<NavColors>(config.colors || {});
+    const typography = $derived<NavTypography>(config.typography || {});
+    const spacing = $derived<NavSpacing>(config.spacing || {});
+    const borders = $derived<NavBorders>(config.borders || {});
+    const animation = $derived<NavAnimation>(config.animation || {});
+    const caret = $derived<NavCaret>(config.caret || {});
 
-    const dropdownTrigger = config.dropdownTrigger || 'hover';
-    const submenuDirection = config.submenuDirection || 'right';
+    const dropdownTrigger = $derived(config.dropdownTrigger || 'hover');
+    const submenuDirection = $derived(config.submenuDirection || 'right');
 
     // State for click-based dropdowns
     let isOpen = $state(false);

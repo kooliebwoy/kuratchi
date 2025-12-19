@@ -60,6 +60,7 @@
   siteForms = initialData.forms || [];
   catalogOems = initialData.catalogOems || [];
   catalogVehicles = initialData.catalogVehicles || [];
+  const siteNavigation = initialData.navigation || { header: { visible: true, items: [] }, footer: { visible: true, items: [] } };
 
   // Extract site-level data from site.metadata
   if (site?.metadata) {
@@ -67,13 +68,17 @@
     console.log('[Dashboard] Loading site.metadata:', meta);
     console.log('[Dashboard] Loading header from metadata:', meta.header);
     console.log('[Dashboard] Loading footer from metadata:', meta.footer);
+    console.log('[Dashboard] Loading navigation:', siteNavigation);
     siteHeader = (meta.header as SiteRegionState) ?? null;
     siteFooter = (meta.footer as SiteRegionState) ?? null;
     console.log('[Dashboard] Initialized siteHeader:', siteHeader);
     console.log('[Dashboard] Initialized siteFooter:', siteFooter);
-    siteMetadata = { ...meta, forms: siteForms, catalogOems, catalogVehicles };
+    siteMetadata = { ...meta, forms: siteForms, catalogOems, catalogVehicles, navigation: siteNavigation };
     delete siteMetadata.header;
     delete siteMetadata.footer;
+  } else {
+    // Even without metadata, set navigation
+    siteMetadata = { forms: siteForms, catalogOems, catalogVehicles, navigation: siteNavigation };
   }
 
   loaded = true;

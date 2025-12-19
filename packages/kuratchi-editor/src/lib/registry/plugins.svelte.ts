@@ -4,8 +4,9 @@ import { sitePlugin } from '../plugins/site';
 import { themesPlugin } from '../plugins/themes';
 
 // DEPRECATED - Removed in favor of contract-based architecture
-// Data is now managed in Dashboard and injected via siteMetadata
-// See: src/lib/contracts/site-metadata.ts
+// Navigation settings are now embedded in each header component's inspector
+// Menu items are managed in Dashboard CRUD and injected via siteMetadata
+// See: src/lib/contracts/ARCHITECTURE.md
 // import { navigationPlugin } from '../plugins/navigation';
 // import { formsPlugin } from '../plugins/forms';
 // import { catalogPlugin } from '../plugins/catalog';
@@ -71,7 +72,8 @@ class PluginRegistry {
 const registry = new PluginRegistry();
 
 // Register active plugins only
-// DEPRECATED plugins (navigation, forms, catalog, blog) removed - see contracts/ARCHITECTURE.md
+// Navigation settings are now embedded in each header component's inspector
+// DEPRECATED plugins (forms, catalog, blog, navigation) removed - see contracts/ARCHITECTURE.md
 registry.register(pagesPlugin);
 registry.register(sitePlugin);
 registry.register(themesPlugin);

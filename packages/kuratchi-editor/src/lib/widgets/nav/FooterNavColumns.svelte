@@ -20,20 +20,20 @@
         ariaLabel = 'Footer navigation'
     }: Props = $props();
 
-    // Merge with defaults
-    const mergedConfig: FooterColumnsConfig = {
+    // Merge with defaults - use $derived for reactivity
+    const mergedConfig = $derived<FooterColumnsConfig>({
         ...defaultColumnsConfig,
         ...config,
         colors: { ...defaultColumnsConfig.colors, ...config.colors },
         typography: { ...defaultColumnsConfig.typography, ...config.typography },
         spacing: { ...defaultColumnsConfig.spacing, ...config.spacing },
         columns: { ...defaultColumnsConfig.columns, ...config.columns },
-    };
+    });
 
-    const colors = mergedConfig.colors!;
-    const typography = mergedConfig.typography!;
-    const spacing = mergedConfig.spacing!;
-    const gridCols = mergedConfig.columns!;
+    const colors = $derived(mergedConfig.colors!);
+    const typography = $derived(mergedConfig.typography!);
+    const spacing = $derived(mergedConfig.spacing!);
+    const gridCols = $derived(mergedConfig.columns!);
 </script>
 
 <nav 

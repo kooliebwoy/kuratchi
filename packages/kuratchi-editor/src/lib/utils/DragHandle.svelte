@@ -2,12 +2,6 @@
     import { GripVertical, Trash2 } from '@lucide/svelte';
     import { deleteElement } from './editor.svelte.js';
 
-    interface Props {
-        position?: 'left' | 'right';
-    }
-
-    let { position = 'left' }: Props = $props();
-
     function handleDelete(event: MouseEvent) {
         event.stopPropagation();
         // Find the closest editor-item parent and delete it
@@ -19,13 +13,9 @@
     }
 </script>
 
-<div
-    class="krt-dragHandle"
-    class:krt-dragHandle--left={position === 'left'}
-    class:krt-dragHandle--right={position === 'right'}
->
+<div class="krt-dragHandle">
     <button
-        class="krt-dragHandle__grip drag-handle handle"
+        class="krt-dragHandle__button krt-dragHandle__button--drag drag-handle handle"
         type="button"
         title="Drag to reorder"
         draggable="true"
@@ -33,7 +23,7 @@
         <GripVertical aria-hidden="true" />
     </button>
     <button
-        class="krt-dragHandle__delete"
+        class="krt-dragHandle__button krt-dragHandle__button--delete"
         type="button"
         title="Delete block"
         onclick={handleDelete}
@@ -45,23 +35,17 @@
 <style>
     .krt-dragHandle {
         position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
+        inset-block-start: 0.5rem;
+        inset-inline-end: 0.5rem;
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
+        gap: var(--krt-space-xs, 0.25rem);
         opacity: 0;
         transition: opacity 150ms ease;
-        z-index: 4;
-    }
-
-    .krt-dragHandle--left {
-        left: -2rem;
-    }
-
-    .krt-dragHandle--right {
-        right: -2rem;
+        z-index: 10;
+        background: #f8fafc;
+        padding: 0.35rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
     }
 
     :global(.editor-item:hover) .krt-dragHandle,
@@ -73,42 +57,48 @@
         opacity: 1;
     }
 
-    .krt-dragHandle__grip,
-    .krt-dragHandle__delete {
-        display: flex;
+    .krt-dragHandle__button {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.5rem;
-        height: 1.5rem;
-        border-radius: 0.25rem;
-        border: none;
-        background: transparent;
-        color: rgba(15, 23, 42, 0.4);
+        width: 2rem;
+        height: 2rem;
+        border-radius: var(--krt-radius-md, 0.5rem);
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        background: #ffffff;
+        color: rgba(15, 23, 42, 0.8);
         cursor: pointer;
-        transition: color 150ms ease, background 150ms ease;
+        transition: transform 150ms ease, background 150ms ease, border 150ms ease;
     }
 
-    .krt-dragHandle__grip {
+    .krt-dragHandle__button:hover {
+        transform: translateY(-1px);
+        background: rgba(99, 102, 241, 0.08);
+        border-color: rgba(99, 102, 241, 0.4);
+        color: rgba(99, 102, 241, 0.9);
+    }
+
+    .krt-dragHandle__button:focus-visible {
+        outline: 2px solid var(--krt-color-primary, #6366f1);
+        outline-offset: 2px;
+    }
+
+    .krt-dragHandle__button--drag {
         cursor: grab;
     }
 
-    .krt-dragHandle__grip:active {
+    .krt-dragHandle__button--drag:active {
         cursor: grabbing;
     }
 
-    .krt-dragHandle__grip:hover {
-        color: rgba(99, 102, 241, 0.8);
-        background: rgba(99, 102, 241, 0.08);
+    .krt-dragHandle__button--delete:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.4);
+        color: #dc2626;
     }
 
-    .krt-dragHandle__delete:hover {
-        color: rgba(239, 68, 68, 0.9);
-        background: rgba(239, 68, 68, 0.08);
-    }
-
-    .krt-dragHandle__grip :global(svg),
-    .krt-dragHandle__delete :global(svg) {
-        width: 0.875rem;
-        height: 0.875rem;
+    .krt-dragHandle__button :global(svg) {
+        width: 1rem;
+        height: 1rem;
     }
 </style>

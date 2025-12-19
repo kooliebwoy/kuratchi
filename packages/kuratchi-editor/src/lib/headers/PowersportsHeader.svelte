@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { BlockActions } from '../utils/index.js';
-    import { ImagePicker, NavMenu, NavMenuMobile, type DesktopNavConfig, type MobileNavConfig, type NavMenuItem } from '../widgets/index.js';
+    import { ImagePicker, NavMenu, NavMenuMobile, NavSettingsPanel, type DesktopNavConfig, type MobileNavConfig, type NavMenuItem } from '../widgets/index.js';
     import { Menu, Phone, MapPin, Clock } from '@lucide/svelte';
     import { blockRegistry } from '../stores/editorSignals.svelte.js';
 
@@ -30,6 +30,21 @@
         ctaLink?: string;
         isSticky?: boolean;
         editable?: boolean;
+        menuHidden?: boolean;
+        // Navigation settings from plugin
+        navDropdownTrigger?: 'hover' | 'click';
+        navDropdownAlign?: 'start' | 'center' | 'end';
+        navSubmenuDirection?: 'left' | 'right';
+        navHoverBgColor?: string;
+        navHoverTextColor?: string;
+        navDropdownBgColor?: string;
+        navDropdownTextColor?: string;
+        navDropdownHoverBgColor?: string;
+        navDropdownHoverTextColor?: string;
+        mobileNavStyle?: 'drawer' | 'fullscreen';
+        mobileDrawerPosition?: 'left' | 'right';
+        /** Forced viewport for editor preview */
+        forcedViewport?: 'phone' | 'tablet' | 'desktop';
     }
 
     const DEFAULT_MENU: NavMenuItem[] = [
@@ -73,6 +88,20 @@
         ctaLink: initialCtaLink = '/quote',
         isSticky: initialIsSticky = true,
         editable = true,
+        menuHidden = false,
+        // Navigation settings (initial values, become local state)
+        navDropdownTrigger: initialNavDropdownTrigger = 'hover' as 'hover' | 'click',
+        navDropdownAlign: initialNavDropdownAlign = 'start' as 'start' | 'center' | 'end',
+        navSubmenuDirection: initialNavSubmenuDirection = 'right' as 'left' | 'right',
+        navHoverBgColor: initialNavHoverBgColor = 'rgba(255, 255, 255, 0.1)',
+        navHoverTextColor: initialNavHoverTextColor = '',
+        navDropdownBgColor: initialNavDropdownBgColor = '#ffffff',
+        navDropdownTextColor: initialNavDropdownTextColor = '#1a1a1a',
+        navDropdownHoverBgColor: initialNavDropdownHoverBgColor = 'rgba(0, 0, 0, 0.05)',
+        navDropdownHoverTextColor: initialNavDropdownHoverTextColor = '',
+        mobileNavStyle: initialMobileNavStyle = 'drawer' as 'drawer' | 'fullscreen',
+        mobileDrawerPosition: initialMobileDrawerPosition = 'right' as 'left' | 'right',
+        forcedViewport,
     }: Props = $props();
 
     function normalizeMenuItems(items: any[]): NavMenuItem[] {
@@ -84,7 +113,11 @@
         }));
     }
 
-    const resolvedMenu = (initialMenu?.length ?? 0) === 0 ? DEFAULT_MENU : normalizeMenuItems(initialMenu);
+    // Menu items come from props (injected by Dashboard via siteMetadata.navigation.header.items)
+    // Navigation CRUD is handled in Dashboard, not editable in header component
+    const resolvedMenu = (initialMenu?.length ?? 0) > 0
+        ? normalizeMenuItems(initialMenu)
+        : DEFAULT_MENU;
 
     let logo = $state<LogoData>(initialLogo);
     let backgroundColor = $state(initialBackgroundColor);
@@ -98,23 +131,36 @@
     let isSticky = $state(initialIsSticky);
     let mobileMenuOpen = $state(false);
 
+    // Nav configuration state (saved with header)
+    let navDropdownTrigger = $state<'hover' | 'click'>(initialNavDropdownTrigger);
+    let navDropdownAlign = $state<'start' | 'center' | 'end'>(initialNavDropdownAlign);
+    let navSubmenuDirection = $state<'left' | 'right'>(initialNavSubmenuDirection);
+    let navHoverBgColor = $state(initialNavHoverBgColor);
+    let navHoverTextColor = $state(initialNavHoverTextColor);
+    let navDropdownBgColor = $state(initialNavDropdownBgColor);
+    let navDropdownTextColor = $state(initialNavDropdownTextColor);
+    let navDropdownHoverBgColor = $state(initialNavDropdownHoverBgColor);
+    let navDropdownHoverTextColor = $state(initialNavDropdownHoverTextColor);
+    let mobileNavStyle = $state<'drawer' | 'fullscreen'>(initialMobileNavStyle);
+    let mobileDrawerPosition = $state<'left' | 'right'>(initialMobileDrawerPosition);
+
     let id = crypto.randomUUID();
     let localMenu = $state<NavMenuItem[]>(resolvedMenu);
 
     const desktopNavConfig = $derived<DesktopNavConfig>({
         orientation: 'horizontal',
-        dropdownTrigger: 'hover',
-        dropdownAlign: 'start',
-        submenuDirection: 'right',
+        dropdownTrigger: navDropdownTrigger ?? 'hover',
+        dropdownAlign: navDropdownAlign ?? 'start',
+        submenuDirection: navSubmenuDirection ?? 'right',
         colors: {
             background: 'transparent',
-            backgroundHover: 'rgba(255, 255, 255, 0.1)',
-            backgroundActive: 'rgba(255, 255, 255, 0.1)',
+            backgroundHover: navHoverBgColor || 'rgba(255, 255, 255, 0.1)',
+            backgroundActive: navHoverBgColor || 'rgba(255, 255, 255, 0.1)',
             text: textColor,
-            textHover: accentColor,
-            dropdownBackground: '#ffffff',
-            dropdownItemHover: 'rgba(0, 0, 0, 0.05)',
-            dropdownText: '#1a1a1a',
+            textHover: navHoverTextColor || accentColor,
+            dropdownBackground: navDropdownBgColor || '#ffffff',
+            dropdownItemHover: navDropdownHoverBgColor || 'rgba(0, 0, 0, 0.05)',
+            dropdownText: navDropdownTextColor || '#1a1a1a',
             dropdownBorder: 'rgba(0, 0, 0, 0.1)',
             dropdownShadow: '0 10px 40px rgba(0, 0, 0, 0.2)',
         },
@@ -145,11 +191,11 @@
     });
 
     const mobileNavConfig = $derived<MobileNavConfig>({
-        style: 'drawer',
-        drawerPosition: 'right',
+        style: mobileNavStyle ?? 'drawer',
+        drawerPosition: mobileDrawerPosition ?? 'right',
         colors: {
             background: backgroundColor,
-            backgroundHover: 'rgba(255, 255, 255, 0.1)',
+            backgroundHover: navHoverBgColor || 'rgba(255, 255, 255, 0.1)',
             text: textColor,
             dropdownBackground: 'rgba(255, 255, 255, 0.05)',
             dropdownText: textColor,
@@ -178,6 +224,17 @@
         ctaLabel,
         ctaLink,
         isSticky,
+        navDropdownTrigger,
+        navDropdownAlign,
+        navSubmenuDirection,
+        navHoverBgColor,
+        navHoverTextColor,
+        navDropdownBgColor,
+        navDropdownTextColor,
+        navDropdownHoverBgColor,
+        navDropdownHoverTextColor,
+        mobileNavStyle,
+        mobileDrawerPosition,
     });
 
     const serializeContent = () => JSON.stringify(content);
@@ -271,6 +328,19 @@
                             </div>
                         {/each}
                     </section>
+
+                    <NavSettingsPanel
+                        bind:dropdownTrigger={navDropdownTrigger}
+                        bind:dropdownAlign={navDropdownAlign}
+                        bind:submenuDirection={navSubmenuDirection}
+                        bind:hoverBgColor={navHoverBgColor}
+                        bind:hoverTextColor={navHoverTextColor}
+                        bind:dropdownBgColor={navDropdownBgColor}
+                        bind:dropdownTextColor={navDropdownTextColor}
+                        bind:dropdownHoverBgColor={navDropdownHoverBgColor}
+                        bind:mobileStyle={mobileNavStyle}
+                        bind:mobileDrawerPosition={mobileDrawerPosition}
+                    />
                 </div>
             {/snippet}
         </BlockActions>
@@ -279,6 +349,9 @@
     <header
         class="krt-powersportsHeader"
         class:krt-powersportsHeader--sticky={isSticky}
+        class:krt-powersportsHeader--forceDesktop={forcedViewport === 'desktop'}
+        class:krt-powersportsHeader--forceTablet={forcedViewport === 'tablet'}
+        class:krt-powersportsHeader--forcePhone={forcedViewport === 'phone'}
         style="--header-bg: {backgroundColor}; --header-text: {textColor}; --header-topbar: {topBarColor}; --header-topbar-text: {topBarTextColor}; --header-accent: {accentColor};"
     >
         <!-- Top Bar -->
@@ -312,7 +385,7 @@
                 </a>
 
                 <nav class="krt-powersportsHeader__nav">
-                    <NavMenu items={localMenu} config={desktopNavConfig} editable={editable} />
+                    <NavMenu items={localMenu} config={desktopNavConfig} />
                 </nav>
 
                 <div class="krt-powersportsHeader__actions">
@@ -331,13 +404,16 @@
         items={localMenu}
         config={mobileNavConfig}
         bind:isOpen={mobileMenuOpen}
-        editable={editable}
+        useFixedPosition={false}
     />
 </div>
 {:else}
     <header
         class="krt-powersportsHeader"
         class:krt-powersportsHeader--sticky={isSticky}
+        class:krt-powersportsHeader--forceDesktop={forcedViewport === 'desktop'}
+        class:krt-powersportsHeader--forceTablet={forcedViewport === 'tablet'}
+        class:krt-powersportsHeader--forcePhone={forcedViewport === 'phone'}
         style="--header-bg: {backgroundColor}; --header-text: {textColor}; --header-topbar: {topBarColor}; --header-topbar-text: {topBarTextColor}; --header-accent: {accentColor};"
     >
         <div class="krt-powersportsHeader__topBar">
@@ -367,7 +443,7 @@
                 </a>
 
                 <nav class="krt-powersportsHeader__nav">
-                    <NavMenu items={localMenu} config={desktopNavConfig} editable={false} />
+                    <NavMenu items={localMenu} config={desktopNavConfig} />
                 </nav>
 
                 <div class="krt-powersportsHeader__actions">
@@ -383,7 +459,6 @@
             items={localMenu}
             config={mobileNavConfig}
             bind:isOpen={mobileMenuOpen}
-            editable={false}
         />
     </header>
 {/if}
@@ -393,6 +468,8 @@
         width: 100%;
         background: var(--header-bg, #1a1a1a);
         color: var(--header-text, #ffffff);
+        container-type: inline-size;
+        container-name: powersports-header;
     }
 
     .krt-powersportsHeader--sticky {
@@ -586,7 +663,8 @@
         font-size: 0.875rem;
     }
 
-    @media (max-width: 1024px) {
+    /* Use container query so it works in editor preview */
+    @container powersports-header (max-width: 1024px) {
         .krt-powersportsHeader__nav {
             display: none;
         }
@@ -600,10 +678,69 @@
         }
     }
 
-    @media (max-width: 640px) {
+    @container powersports-header (max-width: 640px) {
         .krt-powersportsHeader__topBarInner {
             justify-content: center;
             gap: 1rem;
         }
+    }
+
+    /* Fallback for browsers without container query support */
+    @supports not (container-type: inline-size) {
+        @media (max-width: 1024px) {
+            .krt-powersportsHeader__nav {
+                display: none;
+            }
+
+            .krt-powersportsHeader__cta {
+                display: none;
+            }
+
+            .krt-powersportsHeader__menuBtn {
+                display: flex;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .krt-powersportsHeader__topBarInner {
+                justify-content: center;
+                gap: 1rem;
+            }
+        }
+    }
+
+    .krt-powersportsHeader__editor {
+        position: static; /* Allow mobile menu to escape to canvas positioning context */
+    }
+
+    /* ============================================
+       FORCED VIEWPORT OVERRIDES
+       These override container queries when editor 
+       preview size buttons are used
+       ============================================ */
+    
+    /* Force Desktop: Show nav and CTA, hide mobile trigger */
+    .krt-powersportsHeader--forceDesktop .krt-powersportsHeader__nav {
+        display: flex !important;
+    }
+    .krt-powersportsHeader--forceDesktop .krt-powersportsHeader__cta {
+        display: flex !important;
+    }
+    .krt-powersportsHeader--forceDesktop .krt-powersportsHeader__menuBtn {
+        display: none !important;
+    }
+
+    /* Force Tablet/Phone: Hide nav and CTA, show mobile trigger */
+    .krt-powersportsHeader--forceTablet .krt-powersportsHeader__nav,
+    .krt-powersportsHeader--forcePhone .krt-powersportsHeader__nav {
+        display: none !important;
+    }
+    .krt-powersportsHeader--forceTablet .krt-powersportsHeader__cta,
+    .krt-powersportsHeader--forcePhone .krt-powersportsHeader__cta {
+        display: none !important;
+    }
+    .krt-powersportsHeader--forceTablet .krt-powersportsHeader__menuBtn,
+    .krt-powersportsHeader--forcePhone .krt-powersportsHeader__menuBtn {
+        display: flex !important;
     }
 </style>

@@ -93,7 +93,7 @@ let {
         ...((siteMetadata as any)?.themeSettings || {})
     });
 
-    // Provide siteMetadata context for sections that need it (ContactCTA, Modal, Catalog sections, etc.)
+    // Provide siteMetadata context for sections that need it (ContactCTA, Modal, Catalog sections, Headers, Footers, etc.)
     // We need to use a reactive getter so sections always get the latest metadata
     const siteMetadataContext = {
         get forms() { return (siteMetadata as any)?.forms || []; },
@@ -101,7 +101,8 @@ let {
         get backgroundColor() { return (siteMetadata as any)?.backgroundColor; },
         get blog() { return (siteMetadata as any)?.blog; },
         get catalogOems() { return (siteMetadata as any)?.catalogOems || []; },
-        get catalogVehicles() { return (siteMetadata as any)?.catalogVehicles || []; }
+        get catalogVehicles() { return (siteMetadata as any)?.catalogVehicles || []; },
+        get navigation() { return (siteMetadata as any)?.navigation || { header: { visible: true, items: [] }, footer: { visible: true, items: [] } }; }
     };
     setContext('siteMetadata', siteMetadataContext);
 
@@ -474,6 +475,7 @@ let {
 
     // ----- Navigation State -----
     // Navigation state is used by EditorCanvas for rendering
+    // Includes both menu items (from Dashboard CRUD) and settings (from Navigation plugin)
     const navDefaults = {
         header: { visible: true, useMobileMenuOnDesktop: false, items: [] as any[] },
         footer: { visible: true, items: [] as any[] },
@@ -488,24 +490,52 @@ let {
 
     function ensureNavigation(): NavigationState {
         const nav = (siteMetadata as any)?.navigation || {};
+        const navSettings = (siteMetadata as any)?.navigationSettings || {};
         const seededHeaderItems = (nav.header?.items && nav.header.items.length > 0)
             ? nav.header.items
             : extractMenu(siteHeader);
         const seededFooterItems = (nav.footer?.items && nav.footer.items.length > 0)
             ? nav.footer.items
             : extractMenu(siteFooter);
+        
+        // Merge navigation settings into header/footer state
+        const headerSettings = navSettings.header || {};
+        const footerSettings = navSettings.footer || {};
+        
         return {
-            header: { ...navDefaults.header, ...(nav.header || {}), items: seededHeaderItems },
-            footer: { ...navDefaults.footer, ...(nav.footer || {}), items: seededFooterItems },
+            header: { 
+                ...navDefaults.header, 
+                ...(nav.header || {}), 
+                items: seededHeaderItems,
+                // Navigation settings from plugin
+                dropdownTrigger: headerSettings.dropdownTrigger,
+                dropdownAlign: headerSettings.dropdownAlign,
+                submenuDirection: headerSettings.submenuDirection,
+                hoverBgColor: headerSettings.hoverBgColor,
+                hoverTextColor: headerSettings.hoverTextColor,
+                dropdownBgColor: headerSettings.dropdownBgColor,
+                dropdownTextColor: headerSettings.dropdownTextColor,
+                dropdownHoverBgColor: headerSettings.dropdownHoverBgColor,
+                dropdownHoverTextColor: headerSettings.dropdownHoverTextColor,
+                mobileNavStyle: headerSettings.mobileNavStyle,
+                mobileDrawerPosition: headerSettings.mobileDrawerPosition,
+            },
+            footer: { 
+                ...navDefaults.footer, 
+                ...(nav.footer || {}), 
+                items: seededFooterItems,
+                visible: footerSettings.visible ?? true,
+            },
             custom: { ...(nav.custom || {}) }
         };
     }
 
-    let navState = $state<NavigationState>(ensureNavigation());
+    // Make navState reactive to siteMetadata changes
+    let navState = $derived(ensureNavigation());
 
     async function saveNavigation(nextNav: NavigationState) {
         console.log('[Editor] saveNavigation called with:', nextNav);
-        navState = nextNav;
+        // Update siteMetadata which will trigger navState to recompute via $derived
         siteMetadata = { ...(siteMetadata || {}), navigation: nextNav };
         console.log('[Editor] siteMetadata updated:', siteMetadata);
         if (onSiteMetadataUpdate) {
@@ -771,6 +801,7 @@ let {
                                 onFooterChange={handleFooterChange}
                                 navigation={navState}
                                 {themeSettings}
+                                forcedViewport={activeSize}
                             />
                         {/key}
                     </div>
@@ -1432,15 +1463,18 @@ let {
         background: var(--krt-editor-surface);
         overflow: auto;
         padding: 2rem;
-        position: relative;
     }
 
     .krt-editor__canvasFrame {
         margin: 0 auto;
         width: 100%;
+        min-height: 100%;
         transition: max-width 200ms cubic-bezier(0.4, 0, 0.2, 1);
         border-radius: var(--krt-editor-radius-lg);
         box-shadow: var(--krt-editor-shadow-lg);
+        background: var(--krt-editor-bg);
+        overflow: hidden; /* Contain content within frame */
+        position: relative; /* Positioning context for mobile menu */
     }
 
     .krt-editor__inspector {

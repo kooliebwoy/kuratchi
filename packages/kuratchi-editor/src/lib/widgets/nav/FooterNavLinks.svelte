@@ -20,21 +20,21 @@
         ariaLabel = 'Footer links'
     }: Props = $props();
 
-    // Merge with defaults
-    const mergedConfig: FooterLinksConfig = {
+    // Merge with defaults - use $derived for reactivity
+    const mergedConfig = $derived<FooterLinksConfig>({
         ...defaultLinksConfig,
         ...config,
         colors: { ...defaultLinksConfig.colors, ...config.colors },
         typography: { ...defaultLinksConfig.typography, ...config.typography },
         spacing: { ...defaultLinksConfig.spacing, ...config.spacing },
-    };
+    });
 
-    const layout = mergedConfig.layout;
-    const showSeparator = mergedConfig.showSeparator;
-    const separator = mergedConfig.separator || '·';
-    const colors = mergedConfig.colors!;
-    const typography = mergedConfig.typography!;
-    const spacing = mergedConfig.spacing!;
+    const layout = $derived(mergedConfig.layout);
+    const showSeparator = $derived(mergedConfig.showSeparator);
+    const separator = $derived(mergedConfig.separator || '·');
+    const colors = $derived(mergedConfig.colors!);
+    const typography = $derived(mergedConfig.typography!);
+    const spacing = $derived(mergedConfig.spacing!);
 </script>
 
 <nav 

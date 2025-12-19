@@ -13,6 +13,8 @@
         onClose?: () => void;
         /** CSS class prefix */
         classPrefix?: string;
+        /** Use fixed positioning (true for production, false for editor canvas) */
+        useFixedPosition?: boolean;
     }
 
     let {
@@ -20,20 +22,21 @@
         config = {},
         isOpen = $bindable(false),
         onClose,
-        classPrefix = 'krt-nav-mobile'
+        classPrefix = 'krt-nav-mobile',
+        useFixedPosition = true
     }: Props = $props();
 
-    // Destructure config with defaults
-    const style = config.style || 'drawer';
-    const drawerPosition = config.drawerPosition || 'right';
-    const colors = config.colors || {};
-    const typography = config.typography || {};
-    const spacing = config.spacing || {};
-    const animation = config.animation || {};
-    const showCloseButton = config.showCloseButton !== false;
-    const showBackdrop = config.showBackdrop !== false;
-    const backdropOpacity = config.backdropOpacity ?? 0.5;
-    const accordionBehavior = config.accordionBehavior || 'single';
+    // Destructure config with defaults - use $derived for reactivity
+    const style = $derived(config.style || 'drawer');
+    const drawerPosition = $derived(config.drawerPosition || 'right');
+    const colors = $derived(config.colors || {});
+    const typography = $derived(config.typography || {});
+    const spacing = $derived(config.spacing || {});
+    const animation = $derived(config.animation || {});
+    const showCloseButton = $derived(config.showCloseButton !== false);
+    const showBackdrop = $derived(config.showBackdrop !== false);
+    const backdropOpacity = $derived(config.backdropOpacity ?? 0.5);
+    const accordionBehavior = $derived(config.accordionBehavior || 'single');
 
     // Track open accordion items
     let openItems = $state<Set<string>>(new Set());
@@ -109,6 +112,8 @@
     <div 
         class="{classPrefix}__backdrop"
         class:is-open={isOpen}
+        class:position-fixed={useFixedPosition}
+        class:position-absolute={!useFixedPosition}
         onclick={handleBackdropClick}
     ></div>
 {/if}
@@ -123,6 +128,8 @@
     class:position-right={drawerPosition === 'right'}
     class:position-top={drawerPosition === 'top'}
     class:position-bottom={drawerPosition === 'bottom'}
+    class:position-fixed={useFixedPosition}
+    class:position-absolute={!useFixedPosition}
     style={menuStyles}
     role="dialog"
     aria-modal="true"
@@ -190,7 +197,6 @@
 <style>
     /* Backdrop */
     .krt-nav-mobile__backdrop {
-        position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, var(--mobile-nav-backdrop-opacity));
         opacity: 0;
@@ -200,6 +206,14 @@
         z-index: 998;
     }
 
+    .krt-nav-mobile__backdrop.position-fixed {
+        position: fixed;
+    }
+
+    .krt-nav-mobile__backdrop.position-absolute {
+        position: absolute;
+    }
+
     .krt-nav-mobile__backdrop.is-open {
         opacity: 1;
         visibility: visible;
@@ -207,7 +221,6 @@
 
     /* Container */
     .krt-nav-mobile {
-        position: fixed;
         background: var(--mobile-nav-bg);
         color: var(--mobile-nav-color);
         z-index: 999;
@@ -217,12 +230,20 @@
         overflow-y: auto;
     }
 
+    .krt-nav-mobile.position-fixed {
+        position: fixed;
+    }
+
+    .krt-nav-mobile.position-absolute {
+        position: absolute;
+    }
+
     /* Drawer styles */
     .krt-nav-mobile.style-drawer.position-right {
         top: 0;
         right: 0;
         bottom: 0;
-        width: min(80vw, 320px);
+        width: min(80%, 320px);
         transform: translateX(100%);
     }
 
@@ -230,7 +251,7 @@
         top: 0;
         left: 0;
         bottom: 0;
-        width: min(80vw, 320px);
+        width: min(80%, 320px);
         transform: translateX(-100%);
     }
 
@@ -238,7 +259,7 @@
         top: 0;
         left: 0;
         right: 0;
-        max-height: 80vh;
+        max-height: 80%;
         transform: translateY(-100%);
     }
 
@@ -246,7 +267,7 @@
         bottom: 0;
         left: 0;
         right: 0;
-        max-height: 80vh;
+        max-height: 80%;
         transform: translateY(100%);
     }
 

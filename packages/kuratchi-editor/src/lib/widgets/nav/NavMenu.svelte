@@ -23,9 +23,9 @@
         class: className = ''
     }: Props = $props();
 
-    // Merge with defaults
-    const orientation = config.orientation || 'horizontal';
-    const spacing = config.spacing || {};
+    // Merge with defaults - use $derived for reactivity
+    const orientation = $derived(config.orientation || 'horizontal');
+    const spacing = $derived(config.spacing || {});
 
     // Build CSS custom properties
     const navStyles = $derived(`

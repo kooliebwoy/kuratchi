@@ -1,9 +1,15 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import { handleEmojis, setupSelectionListener, type SelectionState } from "../utils/index.js";
+    import { handleEmojis, setupSelectionListener, type SelectionState, BlockActions } from "../utils/index.js";
     import EditorToolbar from "../widgets/EditorToolbar.svelte";
-    import { BLOCK_SPACING_VALUES, DragHandle, type BlockSpacing } from "../utils/index.js";
     import { blockRegistry } from "../stores/editorSignals.svelte.js";
+    import SectionLayoutControls from "../sections/SectionLayoutControls.svelte";
+    import { 
+        type SectionLayout, 
+        DEFAULT_SECTION_LAYOUT, 
+        getSectionLayoutStyles,
+        mergeLayoutWithDefaults 
+    } from "../sections/section-layout.js";
 
     interface Props {
         id?: string;
@@ -12,8 +18,7 @@
         metadata?: {
             color?: string;
             fontSize?: string;
-            spacingTop?: BlockSpacing;
-            spacingBottom?: BlockSpacing;
+            layout?: Partial<SectionLayout>;
         };
         editable?: boolean;
     }
@@ -22,12 +27,11 @@
         id = crypto.randomUUID(),
         paragraph = $bindable('Hello world. This is some big testing.'),
         type = 'paragraph',
-        metadata = {
+        metadata = $bindable({
             color: '#000000',
             fontSize: '1rem',
-            spacingTop: 'normal',
-            spacingBottom: 'normal'
-        },
+            layout: { ...DEFAULT_SECTION_LAYOUT, horizontalSpacing: 'comfortable', verticalSpacing: 'tight' }
+        }),
         editable = true
     }: Props = $props();
 
@@ -35,13 +39,15 @@
     const componentRef = {};
     let color = $state(metadata.color);
     let fontSize = $state(metadata.fontSize ?? '1rem');
-    let spacingTop = $state<BlockSpacing>(metadata.spacingTop ?? 'normal');
-    let spacingBottom = $state<BlockSpacing>(metadata.spacingBottom ?? 'normal');
+    
+    // Layout state using section layout system
+    let blockLayout = $state<SectionLayout>(mergeLayoutWithDefaults(metadata.layout));
+    
+    $effect(() => {
+        metadata.layout = { ...blockLayout };
+    });
 
-    // Computed spacing styles
-    let spacingStyle = $derived(
-        `margin-top: ${BLOCK_SPACING_VALUES[spacingTop]}; margin-bottom: ${BLOCK_SPACING_VALUES[spacingBottom]};`
-    );
+    const layoutStyles = $derived(getSectionLayoutStyles(blockLayout));
 
     // Block context for toolbar
     function getBlockContext() {
@@ -49,11 +55,7 @@
             type: 'paragraph' as const,
             blockElement: component,
             fontSize,
-            onFontSizeChange: (newSize: string) => { fontSize = newSize; },
-            spacingTop,
-            spacingBottom,
-            onSpacingTopChange: (s: BlockSpacing) => { spacingTop = s; },
-            onSpacingBottomChange: (s: BlockSpacing) => { spacingBottom = s; }
+            onFontSizeChange: (newSize: string) => { fontSize = newSize; }
         };
     }
 
@@ -85,8 +87,7 @@
         metadata: {
             color,
             fontSize,
-            spacingTop,
-            spacingBottom
+            layout: { ...blockLayout }
         }
     });
 
@@ -100,20 +101,36 @@
 </script>
 
 {#if editable}
-    <div class="editor-item group relative krt-paragraph-block" bind:this={component} style={spacingStyle}>
+    <div class="editor-item group relative krt-paragraph-block" bind:this={component} style={layoutStyles}>
         {#if mounted}
-            <DragHandle />
+            <BlockActions {id} {type} element={component} inspectorTitle="Paragraph Settings">
+                {#snippet inspector()}
+                    <div class="krt-blockInspector">
+                        <section class="krt-blockInspector__section">
+                            <h3>Layout</h3>
+                            <SectionLayoutControls bind:layout={blockLayout} />
+                        </section>
+                        <section class="krt-blockInspector__section">
+                            <h3>Style</h3>
+                            <label class="krt-blockInspector__field">
+                                <span>Text Color</span>
+                                <input type="color" bind:value={color} />
+                            </label>
+                        </section>
+                    </div>
+                {/snippet}
+            </BlockActions>
             <EditorToolbar {component} show={selectionState.showToolbar} position={selectionState.position} blockContext={getBlockContext()} />
         {/if}
         
         <div data-type={type} id={id} class="krt-paragraph-body">
-            <!-- JSON Data for this component -->
             <div id="metadata-{id}" style="display: none;">{JSON.stringify(content)}</div>
             <p contenteditable bind:innerHTML={paragraph} oninput={handleEmojis} class="krt-paragraph krt-paragraph--editable" style:font-size={fontSize} style:color={color || undefined}></p>
         </div>
     </div>
 {:else}
-    <div data-type={type} id={id} class="krt-paragraph-block krt-paragraph-body" style={spacingStyle}>
+    {@const prodLayoutStyles = getSectionLayoutStyles(mergeLayoutWithDefaults(metadata.layout))}
+    <div data-type={type} id={id} class="krt-paragraph-block krt-paragraph-body" style={prodLayoutStyles}>
         <p class="krt-paragraph" style:color={color} style:font-size={fontSize}>
             {@html paragraph}
         </p>
@@ -144,5 +161,47 @@
     .krt-paragraph--editable:focus-visible {
         outline: 2px solid var(--krt-color-accent, #4f46e5);
         outline-offset: 2px;
+    }
+
+    /* Inspector styles */
+    .krt-blockInspector {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .krt-blockInspector__section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .krt-blockInspector__section h3 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(15, 23, 42, 0.6);
+        margin: 0;
+    }
+
+    .krt-blockInspector__field {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .krt-blockInspector__field span {
+        font-size: 0.875rem;
+        color: rgba(15, 23, 42, 0.8);
+    }
+
+    .krt-blockInspector__field input[type="color"] {
+        width: 2.5rem;
+        height: 2rem;
+        border: 1px solid rgba(15, 23, 42, 0.2);
+        border-radius: 0.375rem;
+        cursor: pointer;
     }
 </style>

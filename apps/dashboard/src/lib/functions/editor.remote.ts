@@ -57,12 +57,35 @@ export interface AttachedForm {
 	styling: any;
 }
 
+export interface NavigationItem {
+	id: string;
+	label: string;
+	url: string;
+	target?: '_self' | '_blank';
+	icon?: string;
+	children?: NavigationItem[];
+}
+
+export interface SiteNavigation {
+	header: {
+		visible: boolean;
+		menuId?: string;
+		items: NavigationItem[];
+	};
+	footer: {
+		visible: boolean;
+		menuId?: string;
+		items: NavigationItem[];
+	};
+}
+
 export interface SiteEditorResult {
 	site: SiteSummary;
 	page: PageData;
 	forms: AttachedForm[];
 	catalogOems: any[];
 	catalogVehicles: any[];
+	navigation: SiteNavigation;
 }
 
 export interface SaveSitePageResult {
@@ -254,6 +277,96 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 		vehiclesCount: catalogVehicles.length
 	});
 
+	// Load navigation menus attached to this site
+	let navigation: SiteNavigation = {
+		header: { visible: true, items: [] },
+		footer: { visible: true, items: [] }
+	};
+	try {
+		const orgDb = await getDatabase(locals);
+		
+		// Get menu attachments for this site
+		const menuAttachments = await orgDb.menuSites
+			.where({ siteId, status: true, deleted_at: { isNullish: true } })
+			.many();
+		
+		if (menuAttachments.success && menuAttachments.data?.length) {
+			// Get the menu IDs by region
+			const headerAttachment = menuAttachments.data.find((a: any) => a.region === 'header');
+			const footerAttachment = menuAttachments.data.find((a: any) => a.region === 'footer');
+			
+			// Get all unique menu IDs
+			const menuIds = [...new Set(
+				menuAttachments.data.map((a: any) => a.menuId).filter(Boolean)
+			)];
+			
+			if (menuIds.length > 0) {
+				// Fetch the menus
+				const menusResult = await orgDb.menus
+					.where({ deleted_at: { isNullish: true } })
+					.many();
+				
+				if (menusResult.success && menusResult.data) {
+					const menusMap = new Map(
+						menusResult.data
+							.filter((m: any) => menuIds.includes(m.id))
+							.map((m: any) => [m.id, m])
+					);
+					
+					// Transform menu items to NavigationItem format
+					const transformItems = (items: any[]): NavigationItem[] => {
+						return (items || []).map((item: any) => ({
+							id: item.id || crypto.randomUUID(),
+							label: item.label || item.name || '',
+							url: item.url || item.href || item.link || '#',
+							target: item.target || '_self',
+							icon: item.icon,
+							children: item.children?.length ? transformItems(item.children) : undefined
+						}));
+					};
+					
+					// Set header navigation
+					if (headerAttachment) {
+						const headerMenu = menusMap.get(headerAttachment.menuId) as any;
+						if (headerMenu) {
+							const items = typeof headerMenu.items === 'string' 
+								? JSON.parse(headerMenu.items) 
+								: headerMenu.items || [];
+							navigation.header = {
+								visible: true,
+								menuId: headerMenu.id,
+								items: transformItems(items)
+							};
+						}
+					}
+					
+					// Set footer navigation
+					if (footerAttachment) {
+						const footerMenu = menusMap.get(footerAttachment.menuId) as any;
+						if (footerMenu) {
+							const items = typeof footerMenu.items === 'string' 
+								? JSON.parse(footerMenu.items) 
+								: footerMenu.items || [];
+							navigation.footer = {
+								visible: true,
+								menuId: footerMenu.id,
+								items: transformItems(items)
+							};
+						}
+					}
+				}
+			}
+		}
+	} catch (err) {
+		console.error('[loadSiteEditor] Failed to load navigation:', err);
+		// Continue without navigation - it may not exist yet
+	}
+
+	console.log('[loadSiteEditor] Navigation loaded:', {
+		headerItems: navigation.header.items.length,
+		footerItems: navigation.footer.items.length
+	});
+
 	return {
 		site: {
 			id: site.id,
@@ -268,7 +381,8 @@ export const loadSiteEditor = query(async (): Promise<SiteEditorResult> => {
 		page: toPageData(pageRow, site),
 		forms,
 		catalogOems,
-		catalogVehicles
+		catalogVehicles,
+		navigation
 	};
 });
 

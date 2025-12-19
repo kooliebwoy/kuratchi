@@ -1,6 +1,15 @@
 <script lang="ts">
  import { onMount } from 'svelte';
- import { IconPicker, FooterNavColumns, type FooterLinkColumn, type FooterColumnsConfig } from '../widgets/index.js';
+ import { 
+    FooterNavColumns, 
+    type FooterLinkColumn, 
+    type FooterColumnsConfig,
+    // Inspector Widgets
+    InspectorSection,
+    ToggleControl,
+    ColorControl,
+    SocialLinksEditor
+ } from '../widgets/index.js';
  import { LucideIconMap, type LucideIconKey } from '../utils/lucide-icons.js';
  import { BlockActions } from '../utils/index.js';
  import { blockRegistry } from '../stores/editorSignals.svelte.js';
@@ -83,9 +92,13 @@
     const poweredBy = 'Powered by Clutch CMS';
     const componentRef = {};
 
-    // Compute menu once per prop change to avoid inline re-evaluation
+    // Menu items come from props (injected by Dashboard via siteMetadata.navigation.footer.items)
+    // Navigation CRUD is handled in Dashboard, not editable in footer component
     const footerMenu = $derived.by(() => {
-        return (localMenu && Array.isArray(localMenu) && localMenu.length > 0) ? localMenu : defaultFooterMenu;
+        if (localMenu && Array.isArray(localMenu) && localMenu.length > 0) {
+            return localMenu;
+        }
+        return defaultFooterMenu;
     });
 
     // Normalize menu to FooterLinkColumn format
@@ -152,62 +165,20 @@
                 inspectorTitle="Footer settings"
             >
                 {#snippet inspector()}
-                    <div class="krt-footerDrawer">
-                        <section class="krt-footerDrawer__section">
-                            <h3 class="krt-footerDrawer__title">Display Options</h3>
-                            <div class="krt-footerDrawer__cards">
-                                <label class="krt-footerDrawer__card">
-                                    <span>Swap Logo and Footer Menu</span>
-                                    <input type="checkbox" class="krt-switch" bind:checked={reverseOrder} />
-                                </label>
-                            </div>
-                        </section>
+                    <div class="krt-footerInspector">
+                        <!-- Quick Settings -->
+                        <InspectorSection title="Quick Settings" icon="⚡" hint="Common adjustments" primary>
+                            <ToggleControl label="Swap Layout" bind:checked={reverseOrder} />
+                        </InspectorSection>
 
-                        <section class="krt-footerDrawer__section">
-                            <h3 class="krt-footerDrawer__title">Colors</h3>
-                            <div class="krt-footerDrawer__cards">
-                                <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
-                                    <span>Component Background</span>
-                                    <div class="krt-footerDrawer__colorControl">
-                                        <input type="color" bind:value={backgroundColor} />
-                                        <span>{backgroundColor}</span>
-                                    </div>
-                                </label>
-                                <label class="krt-footerDrawer__card krt-footerDrawer__card--color">
-                                    <span>Text Color</span>
-                                    <div class="krt-footerDrawer__colorControl">
-                                        <input type="color" bind:value={textColor} />
-                                        <span>{textColor}</span>
-                                    </div>
-                                </label>
-                            </div>
-                        </section>
+                        <!-- Colors -->
+                        <InspectorSection title="Colors" icon="🎨" hint="Footer appearance">
+                            <ColorControl label="Background" bind:value={backgroundColor} />
+                            <ColorControl label="Text" bind:value={textColor} />
+                        </InspectorSection>
 
-                        <section class="krt-footerDrawer__section">
-                            <h3 class="krt-footerDrawer__title">Icons</h3>
-                            <div class="krt-footerDrawer__cards">
-                                <div class="krt-footerDrawer__card">
-                                    <IconPicker bind:selectedIcons={icons} />
-                                </div>
-
-                                {#each icons as icon}
-                                    {@const Comp = LucideIconMap[icon.icon as LucideIconKey]}
-                                    <label class="krt-footerDrawer__card krt-footerDrawer__card--icon">
-                                        <div class="krt-footerDrawer__iconHeading">
-                                            <Comp aria-hidden="true" />
-                                            <span>{icon.name}</span>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            class="krt-footerDrawer__input"
-                                            placeholder="https://example.com"
-                                            value={icon.link}
-                                            onchange={(e) => icon.link = (e.target as HTMLInputElement).value}
-                                        />
-                                    </label>
-                                {/each}
-                            </div>
-                        </section>
+                        <!-- Social Links -->
+                        <SocialLinksEditor bind:icons={icons} />
                     </div>
                 {/snippet}
             </BlockActions>
@@ -324,136 +295,14 @@
 {/if}
 
 <style>
-    .krt-footerDrawer {
+    /* Inspector container */
+    .krt-footerInspector {
         display: flex;
         flex-direction: column;
-        gap: var(--krt-space-lg, 1rem);
+        gap: var(--krt-space-xl, 1.5rem);
     }
 
-    .krt-footerDrawer__section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-md, 0.75rem);
-    }
-
-    .krt-footerDrawer__title {
-        margin: 0;
-        font-size: 0.8rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        font-weight: 600;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-footerDrawer__cards {
-        display: flex;
-        flex-direction: column;
-        gap: var(--krt-space-sm, 0.5rem);
-    }
-
-    .krt-footerDrawer__card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--krt-space-sm, 0.5rem);
-        padding: var(--krt-space-md, 0.75rem) var(--krt-space-lg, 1rem);
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
-        background: var(--krt-color-surface, #ffffff);
-        font-size: 0.9rem;
-    }
-
-    .krt-footerDrawer__card span {
-        font-weight: 500;
-    }
-
-    .krt-footerDrawer__card--color {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--krt-space-sm, 0.5rem);
-    }
-
-    .krt-footerDrawer__colorControl {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-sm, 0.5rem);
-        font-family: 'SFMono-Regular', ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 0.75rem;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-footerDrawer__colorControl input[type='color'] {
-        width: 2.5rem;
-        height: 2.5rem;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 2px solid var(--krt-color-border-subtle, #e5e7eb);
-        background: none;
-        padding: 0;
-        cursor: pointer;
-    }
-
-    .krt-footerDrawer__card--icon {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--krt-space-sm, 0.5rem);
-    }
-
-    .krt-footerDrawer__iconHeading {
-        display: flex;
-        align-items: center;
-        gap: var(--krt-space-sm, 0.5rem);
-        font-size: 0.75rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--krt-color-muted, #6b7280);
-    }
-
-    .krt-footerDrawer__iconHeading :global(svg) {
-        width: 1.5rem;
-        height: 1.5rem;
-        color: var(--krt-color-accent, #4f46e5);
-    }
-
-    .krt-footerDrawer__input {
-        width: 100%;
-        border-radius: var(--krt-radius-md, 0.5rem);
-        border: 1px solid var(--krt-color-border-subtle, #e5e7eb);
-        padding: 0.45rem 0.75rem;
-        font-size: 0.85rem;
-        background: #f9fafb;
-    }
-
-    .krt-switch {
-        inline-size: 2.25rem;
-        block-size: 1.25rem;
-        border-radius: 999px;
-        background: var(--krt-color-border-subtle, #e5e7eb);
-        position: relative;
-        appearance: none;
-        cursor: pointer;
-        transition: background 150ms ease;
-    }
-
-    .krt-switch::after {
-        content: '';
-        position: absolute;
-        inset-block: 0.1875rem;
-        inset-inline-start: 0.1875rem;
-        width: 0.875rem;
-        border-radius: 50%;
-        background: #ffffff;
-        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
-        transition: transform 150ms ease;
-    }
-
-    .krt-switch:checked {
-        background: var(--krt-color-primary, #111827);
-    }
-
-    .krt-switch:checked::after {
-        transform: translateX(1rem);
-    }
-
+    /* Footer Component Styles */
     .krt-footer {
         display: flex;
         flex-direction: column;

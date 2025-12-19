@@ -29,10 +29,31 @@ import { DEFAULT_THEME_SETTINGS } from "./plugins/context";
         onHeaderChange?: (header: SiteRegionState | null) => void;
         onFooterChange?: (footer: SiteRegionState | null) => void;
         navigation?: {
-            header?: { visible?: boolean; useMobileMenuOnDesktop?: boolean; items?: any[] };
+            header?: { 
+                visible?: boolean; 
+                useMobileMenuOnDesktop?: boolean; 
+                items?: any[];
+                dropdownTrigger?: 'hover' | 'click';
+                dropdownAlign?: 'start' | 'center' | 'end';
+                submenuDirection?: 'left' | 'right';
+                hoverBgColor?: string;
+                hoverTextColor?: string;
+                dropdownBgColor?: string;
+                dropdownTextColor?: string;
+                dropdownHoverBgColor?: string;
+                dropdownHoverTextColor?: string;
+                mobileNavStyle?: 'drawer' | 'fullscreen';
+                mobileDrawerPosition?: 'left' | 'right';
+            };
             footer?: { visible?: boolean; items?: any[] };
         };
         themeSettings?: ThemeSettings;
+        /** 
+         * Forced viewport mode for editor preview. 
+         * When set, container queries are overridden to match this size.
+         * Used to prevent responsive changes when inspector sidebar opens.
+         */
+        forcedViewport?: 'phone' | 'tablet' | 'desktop';
     }
 
     let { 
@@ -51,7 +72,8 @@ import { DEFAULT_THEME_SETTINGS } from "./plugins/context";
         onHeaderChange,
         onFooterChange,
         navigation,
-        themeSettings = DEFAULT_THEME_SETTINGS
+        themeSettings = DEFAULT_THEME_SETTINGS,
+        forcedViewport
     }: Props = $props();
 
     
@@ -262,6 +284,10 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
 
 <div 
     class="krt-editorCanvas" 
+    class:krt-editorCanvas--forceDesktop={forcedViewport === 'desktop'}
+    class:krt-editorCanvas--forceTablet={forcedViewport === 'tablet'}
+    class:krt-editorCanvas--forcePhone={forcedViewport === 'phone'}
+    data-forced-viewport={forcedViewport || undefined}
     style:background-color={themeSettings.backgroundColor || backgroundColor}
     style:color={themeSettings.textColor}
     style:--krt-theme-max-width={themeSettings.maxWidth === 'full' ? '100%' : themeSettings.maxWidth === 'wide' ? '1440px' : themeSettings.maxWidth === 'medium' ? '1200px' : '960px'}
@@ -289,6 +315,18 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
                         menu={navigation?.header?.items ?? (block as any)?.menu}
                         useMobileMenuOnDesktop={navigation?.header?.useMobileMenuOnDesktop ?? (block as any)?.useMobileMenuOnDesktop}
                         menuHidden={headerMenuHidden}
+                        navDropdownTrigger={navigation?.header?.dropdownTrigger}
+                        navDropdownAlign={navigation?.header?.dropdownAlign}
+                        navSubmenuDirection={navigation?.header?.submenuDirection}
+                        navHoverBgColor={navigation?.header?.hoverBgColor}
+                        navHoverTextColor={navigation?.header?.hoverTextColor}
+                        navDropdownBgColor={navigation?.header?.dropdownBgColor}
+                        navDropdownTextColor={navigation?.header?.dropdownTextColor}
+                        navDropdownHoverBgColor={navigation?.header?.dropdownHoverBgColor}
+                        navDropdownHoverTextColor={navigation?.header?.dropdownHoverTextColor}
+                        mobileNavStyle={navigation?.header?.mobileNavStyle}
+                        mobileDrawerPosition={navigation?.header?.mobileDrawerPosition}
+                        {forcedViewport}
                     />
                 {/if}
             {/each}
@@ -391,9 +429,8 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         display: flex;
         flex-direction: column;
         width: 100%;
-        border-radius: 1.5rem;
-        box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-        overflow: hidden;
+        position: relative; /* Positioning context for mobile menu overlays */
+        overflow: hidden; /* Contain the mobile menu within canvas bounds */
     }
 
     .krt-editorCanvas__header,
@@ -402,6 +439,7 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         display: flex;
         flex-direction: column;
         gap: 1rem;
+        position: static; /* Ensure no positioning context so NavMenuMobile finds canvas */
     }
 
     .krt-editorCanvas__emptyState {
@@ -433,7 +471,7 @@ function regionObserver(node: HTMLElement, params: RegionObserverParams) {
         width: 100%;
         max-width: var(--krt-theme-max-width, 100%);
         margin: 0 auto;
-        padding: 0 4rem;
+        padding: 0; /* No padding - blocks control their own spacing for full-width support */
     }
 
     .krt-editorCanvas__article {
