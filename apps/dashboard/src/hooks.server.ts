@@ -22,6 +22,9 @@ import { env } from '$env/dynamic/private';
 
 export const { handle }: { handle: Handle } = kuratchi({
   // Enable caching for improved performance
+  database: {
+    rpcBinding: 'KURATCHI_DATABASE',  // Enable RPC mode
+  },
   cache: {
     enabled: true,
     kvNamespace: 'KV',  // Use the default KV namespace for caching
@@ -48,7 +51,7 @@ export const { handle }: { handle: Handle } = kuratchi({
       }),
       organizationPlugin({ 
         organizationSchema,
-        skipMigrations: true  // Temporarily enabled to apply menus/menuSites tables migration
+        skipMigrations: false  // Temporarily enabled to apply menus/menuSites tables migration
       }),
       credentialsPlugin(),
       oauthPlugin({

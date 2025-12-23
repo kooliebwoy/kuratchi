@@ -32,6 +32,7 @@ await db.users.where({ id: '123' }).update({ name: 'New Name' });
 
 ## Documentation
 
+- [Automatic Migrations](/orm/migrations/) - How migrations are automatically accepted and run
 - [Query Builder](/orm/query-builder/) - Building queries with where, orderBy, limit, etc.
 - [Mutations](/orm/mutations/) - Insert, update, and delete operations
 - [Aggregates](/orm/aggregates/) - Count, exists, and distinct

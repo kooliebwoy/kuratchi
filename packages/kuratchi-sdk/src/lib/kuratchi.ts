@@ -27,6 +27,7 @@ import {
   initPreferences,
 } from './notifications/index.js';
 import { initCache, type CacheConfig } from './cache/index.js';
+import { setRpcConfig, type DatabaseAdapterType } from './database/rpc-config.js';
 
 /**
  * Unified Kuratchi configuration object
@@ -56,6 +57,19 @@ export interface KuratchiConfig {
     scriptName?: string;
     /** Gateway key for database access */
     gatewayKey?: string;
+    /**
+     * RPC service binding name for direct Worker-to-Worker calls
+     * When set, the SDK will use direct RPC instead of HTTP for database access
+     * This provides lower latency for same-account worker communication
+     * 
+     * @example 'BACKEND' - Uses env.BACKEND service binding
+     */
+    rpcBinding?: string;
+    /**
+     * Preferred database adapter (auto-detected by default)
+     * 'rpc' | 'do' | 'd1' | 'http' | 'auto'
+     */
+    adapter?: DatabaseAdapterType;
   };
 
   /**
@@ -139,6 +153,14 @@ export interface KuratchiSDK {
  * ```
  */
 export function kuratchi(config: KuratchiConfig = {}): KuratchiSDK {
+  // Initialize RPC config if database.rpcBinding is provided
+  if (config.database?.rpcBinding || config.database?.adapter) {
+    setRpcConfig({
+      bindingName: config.database.rpcBinding,
+      adapter: config.database.adapter
+    });
+  }
+
   // Initialize cache if configured
   if (config.cache?.enabled !== false) {
     // Auto-enable caching if a KV namespace is provided in storage config

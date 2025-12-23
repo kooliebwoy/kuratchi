@@ -23,8 +23,13 @@ export type FindManyOptions = {
 export type QueryResult<T = any> = {
   success: boolean;
   data?: T;
-  results?: any;
+  results?: T;
   error?: string;
+  meta?: {
+    rowsRead?: number;
+    rowsWritten?: number;
+    duration?: number;
+  };
 };
 
 export type SqlExecutor = (sql: string, params?: any[]) => Promise<QueryResult<any>>;

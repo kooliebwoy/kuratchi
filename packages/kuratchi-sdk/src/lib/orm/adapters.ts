@@ -7,24 +7,24 @@ import type { QueryResult } from './kuratchi-orm.js';
 
 /**
  * Adapter for D1 direct binding
- * Converts D1Result to QueryResult
+ * Passes through D1Result format directly
  */
 export function createD1Adapter(db: any) {
   return async (sql: string, params?: any[]): Promise<QueryResult<any>> => {
     try {
       let stmt = db.prepare(sql);
       if (params && params.length > 0) {
-        stmt = stmt.bind(...params);  // ✅ bind() returns a NEW statement
+        stmt = stmt.bind(...params);
       }
       const result = await stmt.all();
       
-      // D1 returns { success, results, error, meta }
-      // ORM expects { success, data, error }
+      // Pass through D1Result format directly
       return {
         success: result.success ?? true,
         data: result.results,
         results: result.results,
-        error: result.error
+        error: result.error,
+        meta: result.meta
       };
     } catch (error: any) {
       return {
@@ -37,7 +37,7 @@ export function createD1Adapter(db: any) {
 
 /**
  * Adapter for D1 HTTP client
- * Converts HTTP response to QueryResult
+ * Passes through D1Result format directly
  * Use this when accessing D1 via REST API (BaaS, remote workers)
  */
 export function createD1HttpAdapter(httpClient: any) {
@@ -45,13 +45,13 @@ export function createD1HttpAdapter(httpClient: any) {
     try {
       const result = await httpClient.query(sql, params || []);
       
-      // HTTP client returns { success, results, error }
-      // Already in QueryResult format, but ensure data field
+      // Pass through D1Result format directly
       return {
         success: result.success ?? true,
         data: result.results,
         results: result.results,
-        error: result.error
+        error: result.error,
+        meta: result.meta
       };
     } catch (error: any) {
       return {
@@ -72,20 +72,66 @@ export function createDoHttpAdapter(httpClient: any) {
 
 /**
  * Adapter for DO direct binding (when running inside Workers)
- * Converts DO SQL response to QueryResult
+ * Passes through D1-compatible format directly
  */
 export function createDoDirectAdapter(doBinding: any) {
   return async (sql: string, params?: any[]): Promise<QueryResult<any>> => {
     try {
       // When DO is accessed directly in Workers, it has .sql() method
-      // This is similar to D1's prepare().all() pattern
       const result = await doBinding.sql(sql, params);
+      
+      // Pass through D1-compatible format directly
+      return {
+        success: result.success ?? true,
+        data: result.results,
+        results: result.results,
+        error: result.error,
+        meta: result.meta
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error?.message || String(error)
+      };
+    }
+  };
+}
+
+/**
+ * Adapter for RPC service binding (Worker-to-Worker direct calls)
+ * Use this when accessing a database via a service binding to another worker
+ * 
+ * The service binding should expose RPC methods: run(request), exec(request), etc.
+ * The dbName is passed via x-db-name header to identify which DO instance to use.
+ * 
+ * @param serviceBinding - The service binding (e.g., env.BACKEND)
+ * @param dbName - Database name to pass in x-db-name header
+ */
+export function createRpcAdapter(serviceBinding: any, dbName: string) {
+  if (!serviceBinding) {
+    throw new Error('Service binding is required for RPC adapter');
+  }
+  if (!dbName) {
+    throw new Error('Database name is required for RPC adapter');
+  }
+  
+  return async (sql: string, params?: any[]): Promise<QueryResult<any>> => {
+    try {
+      const payload = {
+        dbName,
+        query: sql,
+        params: params || []
+      };
+      
+      // Call the service binding's run method directly via RPC
+      const result = await serviceBinding.run(payload);
       
       return {
         success: result.success ?? true,
         data: result.results,
         results: result.results,
-        error: result.error
+        error: result.error,
+        meta: result.meta
       };
     } catch (error: any) {
       return {
@@ -117,4 +163,16 @@ export function createAutoAdapter(binding: any) {
   }
   
   throw new Error('Unknown binding type. Expected D1Database, DO binding, or HTTP client');
+}
+
+/**
+ * Check if RPC binding exists
+ * Simple existence check - trust the config, Cloudflare will error if binding is invalid
+ */
+export function isRpcServiceBinding(binding: any): boolean {
+  const exists = binding != null;
+  if (exists) {
+    console.log('[Kuratchi] RPC binding available');
+  }
+  return exists;
 }

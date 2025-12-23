@@ -8,15 +8,16 @@ import type { RouteGuard } from '../utils/types.js';
 import { KuratchiDatabase } from '../../database/core/database.js';
 import { createSignedDbToken } from '../../utils/token.js';
 import { hashPassword } from '../../utils/auth.js';
+import { isRpcEnabled, getRpcBindingName } from '../../database/rpc-config.js';
+import { createOrmClient } from '../../database/clients/orm-client.js';
 
 export interface AdminPluginOptions {
   /**
-   * OPTIONAL: D1 database binding name
+   * REQUIRED: D1 database binding name
    * Pass the binding name as a string: adminDatabase: 'ADMIN_DB'
    * SDK will look it up from event.platform.env at runtime
-   * If not provided, defaults to 'DB', then falls back to HTTP mode
    */
-  adminDatabase?: string;
+  adminDatabase: string;
   
   /**
    * REQUIRED: Admin database schema
@@ -46,6 +47,12 @@ export interface AdminPluginOptions {
    * OPTIONAL: Seed key for creating superadmins (reads from KURATCHI_SUPERADMIN_KEY env by default)
    */
   seedKey?: string;
+  
+  /**
+   * OPTIONAL: Skip schema migrations for admin database (default: false)
+   * Set to true if you manage admin schema migrations separately
+   */
+  skipMigrations?: boolean;
 }
 
 export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
@@ -102,97 +109,57 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
       ctx.locals.kuratchi.getAdminDb = async () => {
         if (adminDbClient) return adminDbClient;
         
-        // Look up D1 binding from platform.env by name (SvelteKit dev mode)
+        // Admin DB uses native D1 binding directly (adminDatabase config)
         const platform = (ctx.event as any).platform;
-        const bindingName = options.adminDatabase || 'DB';
+        const bindingName = options.adminDatabase;
+        
+        if (!bindingName) {
+          throw new Error('[AdminPlugin] adminDatabase binding name is required');
+        }
+        
         const d1Binding = platform?.env?.[bindingName];
         
-        console.log('[AdminPlugin] Debug - platform:', !!platform);
-        console.log('[AdminPlugin] Debug - platform.env:', !!platform?.env);
-        console.log('[AdminPlugin] Debug - bindingName:', bindingName);
-        console.log('[AdminPlugin] Debug - d1Binding:', !!d1Binding);
-        console.log('[AdminPlugin] Debug - d1Binding.prepare:', typeof d1Binding?.prepare);
-        
-        // Check if D1 binding is available
-        if (d1Binding && typeof d1Binding.prepare === 'function') {
-          console.log('[AdminPlugin] Using D1 direct binding for', bindingName);
-          const { createOrmClient } = await import('../../database/clients/orm-client.js');
-          
-          // Wrap D1 binding in D1Client interface
-          const d1Client = {
-            query: async (sql: string, params?: any[]) => {
-              const stmt = d1Binding.prepare(sql).bind(...(params || []));
-              const result = await stmt.all();
-              return { success: true, results: result.results };
-            },
-            exec: async (sql: string) => {
-              await d1Binding.exec(sql);
-              return { success: true };
-            },
-            batch: async (queries: any[]) => {
-              const stmts = queries.map((q: any) => d1Binding.prepare(q.query).bind(...(q.params || [])));
-              await d1Binding.batch(stmts);
-              return { success: true };
-            },
-            raw: async (sql: string, params?: any[]) => {
-              const stmt = d1Binding.prepare(sql).bind(...(params || []));
-              const result = await stmt.raw();
-              return { success: true, results: result };
-            },
-            first: async (sql: string, params?: any[]) => {
-              const stmt = d1Binding.prepare(sql).bind(...(params || []));
-              const result = await stmt.first();
-              return { success: true, data: result };
-            }
-          };
-          
-          adminDbClient = await createOrmClient({
-            httpClient: d1Client,
-            schema: options.adminSchema,
-            databaseName: bindingName, // Use binding name as database name for consistency
-            bindingName: bindingName // Pass the actual binding name for detection
-          });
-          
-          return adminDbClient;
+        if (!d1Binding) {
+          throw new Error(`[AdminPlugin] D1 binding '${bindingName}' not found in platform.env`);
         }
         
-        // Auto-create from env (HTTP mode)
-        const env = ctx.env;
-        const adminDbName = env.KURATCHI_ADMIN_DB_NAME || 'kuratchi-admin';
-        const adminDbToken = env.KURATCHI_ADMIN_DB_TOKEN;
-        const workersSubdomain = env.CLOUDFLARE_WORKERS_SUBDOMAIN;
-        const gatewayKey = env.KURATCHI_GATEWAY_KEY;
+        console.log(`[AdminPlugin] Using D1 binding '${bindingName}'`);
+        const { createOrmClient } = await import('../../database/clients/orm-client.js');
         
-        // Validate required config for HTTP fallback
-        if (!adminDbToken || !workersSubdomain || !gatewayKey) {
-          console.warn(
-            '[Kuratchi Admin] Admin DB not configured. ' +
-            'Set KURATCHI_ADMIN_DB_TOKEN, CLOUDFLARE_WORKERS_SUBDOMAIN, and KURATCHI_GATEWAY_KEY, ' +
-            'or pass adminDatabase option'
-          );
-          return null;
-        }
+        // Wrap D1 binding in D1Client interface
+        const d1Client = {
+          query: async (sql: string, params?: any[]) => {
+            const stmt = d1Binding.prepare(sql).bind(...(params || []));
+            const result = await stmt.all();
+            return { success: true, results: result.results };
+          },
+          exec: async (sql: string) => {
+            await d1Binding.exec(sql);
+            return { success: true };
+          },
+          batch: async (queries: any[]) => {
+            const stmts = queries.map((q: any) => d1Binding.prepare(q.query).bind(...(q.params || [])));
+            await d1Binding.batch(stmts);
+            return { success: true };
+          },
+          raw: async (sql: string, params?: any[]) => {
+            const stmt = d1Binding.prepare(sql).bind(...(params || []));
+            const result = await stmt.raw();
+            return { success: true, results: result };
+          },
+          first: async (sql: string, params?: any[]) => {
+            const stmt = d1Binding.prepare(sql).bind(...(params || []));
+            const result = await stmt.first();
+            return { success: true, data: result };
+          }
+        };
         
-        // Initialize DB service if needed
-        if (!dbService && env.CLOUDFLARE_API_TOKEN && env.CLOUDFLARE_ACCOUNT_ID) {
-          dbService = new KuratchiDatabase({
-            apiToken: env.CLOUDFLARE_API_TOKEN,
-            accountId: env.CLOUDFLARE_ACCOUNT_ID,
-            workersSubdomain
-          });
-        }
-        
-        if (!dbService) {
-          console.warn('[Kuratchi Admin] Unable to initialize database service');
-          return null;
-        }
-        
-        // Get ORM client via HTTP
-        adminDbClient = await dbService.ormClient({
-          databaseName: adminDbName,
-          dbToken: adminDbToken,
-          gatewayKey,
-          schema: options.adminSchema
+        adminDbClient = await createOrmClient({
+          httpClient: d1Client,
+          schema: options.adminSchema,
+          databaseName: bindingName,
+          bindingName: bindingName,
+          skipMigrations: options.skipMigrations ?? false
         });
         
         return adminDbClient;
@@ -289,129 +256,93 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             throw new Error(`[Admin] Failed to insert organization: ${errorMsg}`);
           }
           
+          // Check if RPC mode is enabled (database.rpcBinding config)
+          const useRpc = isRpcEnabled();
+          const rpcBindingName = getRpcBindingName();
+          const platform = (ctx.event as any).platform;
+          const rpcBinding = useRpc && rpcBindingName ? platform?.env?.[rpcBindingName] : null;
           
-          // Try to provision via D1 if credentials available
-          if (!workersSubdomain || !accountId || !apiToken) {
-            throw new Error('[Admin] Cloudflare credentials not configured (CLOUDFLARE_WORKERS_SUBDOMAIN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)');
+          if (useRpc && !rpcBinding) {
+            throw new Error(`[Admin] RPC binding '${rpcBindingName}' not found in platform.env`);
           }
-          const dbService = new KuratchiDatabase({
-            workersSubdomain: workersSubdomain,
-            accountId: accountId,
-            apiToken: apiToken,
-            scriptName: 'kuratchi-d1'
-          });
           
-          // Provision R2 bucket for organization storage
-          const sanitizedOrgName = orgData.organizationName
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, '-')
-            .replace(/-+/g, '-')
-            .substring(0, 32);
-          const r2BucketName = `org-${sanitizedOrgName}-${crypto.randomUUID().substring(0, 8)}`;
-          const r2Binding = 'STORAGE';
+          if (useRpc) {
+            console.log(`[Admin] Using RPC for org database creation`);
+          }
           
-          let r2Created = false;
-          let r2StorageDomain: string | null = null;
+          // Variables for database provisioning results
+          let dbToken: string = '';
+          let dbUuid: string | undefined;
+          let workerName: string | undefined;
+          let orgDb: any;
           
-          try {
-            console.log('[Admin] Creating R2 bucket:', r2BucketName);
-            const { CloudflareClient } = await import('../../utils/cloudflare.js');
-            const cfClient = new CloudflareClient({
-              apiToken: apiToken,
-              accountId: accountId
+          if (useRpc) {
+            // RPC MODE: No D1/worker deployment needed - DO already exists via service binding
+            // Generate a placeholder token for record-keeping (not used for auth in RPC mode)
+            dbToken = `rpc-${crypto.randomUUID()}`;
+            dbUuid = undefined;
+            workerName = undefined;
+            
+            console.log('[Admin] Creating org DB client via RPC for:', databaseName);
+            
+            orgDb = await createOrmClient({
+              httpClient: undefined,
+              schema: options.organizationSchema,
+              databaseName,
+              skipMigrations: false,
+              bindingName: rpcBindingName!
             });
-            const r2Result = await cfClient.createR2Bucket(r2BucketName);
-            if (r2Result.success) {
-              console.log('[Admin] ✓ R2 bucket created:', r2BucketName);
-              r2Created = true;
-              
-              // Add custom storage domain if configured
-              const bucketOriginHost = env.KURATCHI_BUCKET_ORIGIN_HOST;
-              const bucketZoneId = env.KURATCHI_BUCKET_ZONE_ID;
-              
-              if (bucketOriginHost && bucketZoneId) {
-                const storageDomain = `${sanitizedOrgName}.${bucketOriginHost}`;
-                console.log('[Admin] Adding custom storage domain:', storageDomain);
-                
-                try {
-                  // Use the r2 module's addCustomDomain function
-                  const { addCustomDomain } = await import('../../r2/index.js');
-                  const domainResult = await addCustomDomain(r2BucketName, storageDomain, {
-                    apiToken,
-                    accountId,
-                    zoneId: bucketZoneId,
-                    enabled: true
-                  });
-                  if (domainResult?.success) {
-                    console.log('[Admin] ✓ Custom storage domain added:', storageDomain);
-                    r2StorageDomain = storageDomain;
-                  } else {
-                    console.warn('[Admin] Failed to add custom storage domain:', domainResult?.errors);
-                  }
-                } catch (domainError) {
-                  console.error('[Admin] Error adding custom storage domain:', domainError);
-                }
-              }
-            } else {
-              console.warn('[Admin] R2 bucket creation failed:', r2Result.errors);
+            
+            console.log('[Admin] ✓ RPC org DB client created');
+          } else {
+            // HTTP MODE: Deploy D1 database with dedicated worker
+            if (!workersSubdomain || !accountId || !apiToken) {
+              throw new Error('[Admin] Cloudflare credentials not configured (CLOUDFLARE_WORKERS_SUBDOMAIN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)');
             }
-          } catch (r2Error: any) {
-            console.error('[Admin] Failed to create R2 bucket:', r2Error.message);
-            // Non-fatal: continue without R2
+            
+            const dbService = new KuratchiDatabase({
+              workersSubdomain,
+              accountId,
+              apiToken,
+              scriptName: 'kuratchi-d1'
+            });
+            
+            const result = await dbService.createDatabase({
+              databaseName,
+              gatewayKey: gatewayKey!,
+              migrate: true,
+              schema: options.organizationSchema,
+              schemaName: 'organization'
+            });
+            
+            dbToken = result.token;
+            dbUuid = result.databaseId;
+            workerName = result.workerName;
+            
+            // Get ORM client via HTTP
+            console.log('[Admin] Getting org DB client with direct credentials:', { databaseName, organizationId });
+            orgDb = await dbService.ormClient({
+              databaseName,
+              dbToken,
+              gatewayKey: gatewayKey || '',
+              schema: options.organizationSchema
+            });
           }
           
-          // Create database with organization schema
-          const result = await dbService.createDatabase({
-            databaseName,
-            gatewayKey,
-            migrate: true,
-            schema: options.organizationSchema,
-            schemaName: 'organization'  // Loads from /migrations-organization
-          });
-          
-          const dbToken = result.token;
-          const dbUuid = result.databaseId;
-          const workerName = result.workerName;
-          
-          // Bind R2 bucket to worker if created
-          if (r2Created && workerName && dbUuid) {
-            try {
-              console.log('[Admin] Binding R2 bucket to worker:', {
-                workerName,
-                bucketName: r2BucketName,
-                binding: r2Binding
-              });
-              
-              const { addWorkerBinding } = await import('../../r2/index.js');
-              const bindResult = await addWorkerBinding(
-                workerName,
-                r2BucketName,
-                r2Binding,
-                dbUuid,
-                gatewayKey,
-                { apiToken, accountId }
-              );
-              
-              if (bindResult?.success) {
-                console.log('[Admin] ✓ R2 bucket bound to worker successfully');
-              } else {
-                console.warn('[Admin] Failed to bind R2 bucket to worker:', bindResult);
-              }
-            } catch (bindError) {
-              console.error('[Admin] Error binding R2 bucket to worker:', bindError);
-              // Non-fatal: bucket exists, worker may need redeployment
-            }
+          if (!orgDb) {
+            throw new Error('[Admin] Failed to get organization database client');
           }
           
-          // 3. Store database record in admin DB (matches schema: id, name, dbuuid, workerName, r2BucketName, r2Binding, r2StorageDomain, organizationId)
+          // 2. Store database record in admin DB
+          // R2 storage uses shared bucket with org-prefixed paths (/{organizationId}/...)
           await adminDb.databases.insert({
             id: databaseId,
             name: databaseName,
-            dbuuid: dbUuid,
-            workerName: workerName,
-            r2BucketName: r2Created ? r2BucketName : null,
-            r2Binding: r2Created ? r2Binding : null,
-            r2StorageDomain: r2StorageDomain, // Custom domain for CDN access
+            dbuuid: dbUuid || null,
+            workerName: workerName || null,
+            r2BucketName: null,  // Using shared R2 bucket with namespaced paths
+            r2Binding: null,
+            r2StorageDomain: null,
             organizationId: organizationId,
             isPrimary: true,
             isActive: true,
@@ -422,7 +353,7 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             updated_at: now
           });
           
-          // 4. Store database token in dbApiTokens table
+          // 3. Store database token in dbApiTokens table
           const tokenId = crypto.randomUUID();
           await adminDb.dbApiTokens.insert({
             id: tokenId,
@@ -434,21 +365,6 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             created_at: now,
             updated_at: now
           });
-          
-          // 5. Create first user in organization database
-          // Use the database credentials we just created instead of looking them up
-          // (avoids race condition with eventual consistency)
-          console.log('[Admin] Getting org DB client with direct credentials:', { databaseName, organizationId });
-          const orgDb = await dbService.ormClient({
-            databaseName,
-            dbToken,
-            gatewayKey: gatewayKey || '',
-            schema: options.organizationSchema
-          });
-          
-          if (!orgDb) {
-            throw new Error('[Admin] Failed to get organization database client');
-          }
           
           const userId = crypto.randomUUID();
           let password_hash: string | undefined;

@@ -6,6 +6,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
+    "dev:backend": "turbo run dev --filter=backend",
+    "dev:dashboard": "turbo run dev --filter=@kuratchi/dashboard",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",

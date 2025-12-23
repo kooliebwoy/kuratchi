@@ -51,6 +51,13 @@
   "browser": {
     "binding": "BROWSER"
   },
+  "services": [
+    {
+      "binding": "KURATCHI_DATABASE",
+      "service": "backend",
+      "entrypoint": "Database"
+    }
+  ],
   "vectorize": [
     {
       "binding": "VECTORIZE",

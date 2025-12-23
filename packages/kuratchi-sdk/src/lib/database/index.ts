@@ -29,6 +29,10 @@ export type { DatabaseInstanceConfig as DOOptions } from './core/types.js';
 export { createHttpClient, createValidatedHttpClient } from './clients/http-client.js';
 export { createOrmClient, createValidatedOrmClient } from './clients/orm-client.js';
 
+// RPC configuration (for direct Worker-to-Worker calls)
+export { setRpcConfig, getRpcConfig, isRpcEnabled, getRpcBindingName } from './rpc-config.js';
+export type { RpcConfig } from './rpc-config.js';
+
 // Deployment utilities
 export { deployWorker, isWorkerDeployed } from './deployment/worker-deployment.js';
 export { waitForWorker, isWorkerReady } from './deployment/worker-wait.js';

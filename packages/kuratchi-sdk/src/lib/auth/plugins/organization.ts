@@ -5,8 +5,9 @@
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
 import { KuratchiDatabase } from '../../database/index.js';
-import type { RequestEvent } from '@sveltejs/kit';
 import { getCache, getRequestCache, CacheManager } from '../../cache/index.js';
+import { isRpcEnabled, getRpcBindingName } from '../../database/rpc-config.js';
+import { createOrmClient } from '../../database/clients/orm-client.js';
 
 export interface OrganizationPluginOptions {
   /**
@@ -177,9 +178,32 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
         const schema = callOptions?.schema || options.organizationSchema;
         const skipMigrations = callOptions?.skipMigrations ?? options.skipMigrations ?? false;
         
+        // Use RPC if configured (database.rpcBinding defines the binding name)
+        if (isRpcEnabled()) {
+          const rpcBindingName = getRpcBindingName();
+          const rpcBinding = platform?.env?.[rpcBindingName!];
+          
+          if (!rpcBinding) {
+            throw new Error(`[Kuratchi Organization] RPC binding '${rpcBindingName}' not found in platform.env`);
+          }
+          
+          console.log(`[Kuratchi Organization] Using RPC for org: ${organizationId}`);
+
+          const orgDb = await createOrmClient({
+            httpClient: undefined,
+            schema,
+            databaseName,
+            skipMigrations,
+            bindingName: rpcBindingName!
+          });
+          
+          ormClientCache.set(ormCacheKey, orgDb);
+          return orgDb;
+        }
+        
+        // HTTP mode fallback (when no RPC configured)
         if (!dbService) {
-          console.warn('[Kuratchi Organization] DB service not initialized');
-          return null;
+          throw new Error('[Kuratchi Organization] No database config - set database.rpcBinding or provide HTTP credentials');
         }
         
         // Get ORM client (auto-detects D1, DO direct, or HTTP)

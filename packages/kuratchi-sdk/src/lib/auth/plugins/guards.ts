@@ -76,6 +76,11 @@ export function requireAuth(options: {
   };
 
   const shouldApplyToPath = (pathname: string): boolean => {
+    // Always skip SvelteKit internal routes (e.g., /_app/remote/*)
+    if (pathname.startsWith('/_app/')) {
+      return false;
+    }
+
     // If paths/exclude are provided, they take precedence
     if (hasPaths || hasExclude) {
       // Included by paths (or all paths if only exclude is specified)

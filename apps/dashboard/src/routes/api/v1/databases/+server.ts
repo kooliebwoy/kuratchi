@@ -1,5 +1,5 @@
 import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './query/$types';
+import type { RequestHandler } from './$types';
 import { authenticateApiRequest } from '$lib/server/api-auth';
 import { database } from 'kuratchi-sdk';
 import { env } from '$env/dynamic/private';
