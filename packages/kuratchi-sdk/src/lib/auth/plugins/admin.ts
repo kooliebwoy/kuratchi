@@ -1,24 +1,17 @@
 /**
  * Admin plugin - Kuratchi admin database management + superadmin capabilities
  * Multi-tenant organization management with superadmin role detection
+ * 
+ * Uses DatabaseContext abstraction for adapter-agnostic database access.
  */
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
 import type { RouteGuard } from '../utils/types.js';
-import { KuratchiDatabase } from '../../database/core/database.js';
-import { createSignedDbToken } from '../../utils/token.js';
 import { hashPassword } from '../../utils/auth.js';
-import { isRpcEnabled, getRpcBindingName } from '../../database/rpc-config.js';
-import { createOrmClient } from '../../database/clients/orm-client.js';
+import { createDatabaseContext, type DatabaseContext } from '../../adapters/database-context.js';
+import type { PluginAdapterConfig } from '../../adapters/types.js';
 
 export interface AdminPluginOptions {
-  /**
-   * REQUIRED: D1 database binding name
-   * Pass the binding name as a string: adminDatabase: 'ADMIN_DB'
-   * SDK will look it up from event.platform.env at runtime
-   */
-  adminDatabase: string;
-  
   /**
    * REQUIRED: Admin database schema
    * Must include tables: organizations, databases, dbApiTokens, organizationUsers, users
@@ -31,6 +24,27 @@ export interface AdminPluginOptions {
    * If not provided, organization databases won't be auto-provisioned
    */
   organizationSchema?: any;
+  
+  /**
+   * OPTIONAL: Explicit adapter configuration for admin database
+   * Use d1Adapter({ binding: 'ADMIN_DB' }) or rpcAdapter({ binding: 'BACKEND' })
+   * If not provided, falls back to adminDatabase binding name
+   * 
+   * @example
+   * ```ts
+   * adminPlugin({
+   *   adminSchema,
+   *   adapter: d1Adapter({ binding: 'ADMIN_DB' })
+   * })
+   * ```
+   */
+  adapter?: PluginAdapterConfig;
+  
+  /**
+   * @deprecated Use adapter: d1Adapter({ binding: 'ADMIN_DB' }) instead
+   * D1 database binding name - kept for backward compatibility
+   */
+  adminDatabase?: string;
   
   /**
    * OPTIONAL: Custom superadmin detection
@@ -64,9 +78,8 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
     );
   }
   
-  // Lazy admin DB cache
+  // Lazy admin DB cache (per-worker singleton)
   let adminDbClient: any = null;
-  let dbService: KuratchiDatabase | null = null;
   
   return {
     name: 'admin',
@@ -109,61 +122,40 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
       ctx.locals.kuratchi.getAdminDb = async () => {
         if (adminDbClient) return adminDbClient;
         
-        // Admin DB uses native D1 binding directly (adminDatabase config)
         const platform = (ctx.event as any).platform;
-        const bindingName = options.adminDatabase;
+        
+        // Determine binding name from explicit adapter or legacy adminDatabase option
+        const bindingName = options.adapter?.type !== 'http' 
+          ? (options.adapter as any)?.binding || options.adminDatabase
+          : options.adminDatabase;
         
         if (!bindingName) {
-          throw new Error('[AdminPlugin] adminDatabase binding name is required');
+          throw new Error('[AdminPlugin] adapter binding or adminDatabase is required');
         }
         
-        const d1Binding = platform?.env?.[bindingName];
+        const adapterType = options.adapter?.type || 'd1';
+        console.log(`[AdminPlugin] Using ${adapterType} adapter with binding '${bindingName}'`);
         
-        if (!d1Binding) {
-          throw new Error(`[AdminPlugin] D1 binding '${bindingName}' not found in platform.env`);
-        }
+        // Create a DatabaseContext for this plugin's adapter
+        const adminDbContext = createDatabaseContext({
+          adapter: adapterType,
+          bindingName,
+          env: platform?.env
+        });
         
-        console.log(`[AdminPlugin] Using D1 binding '${bindingName}'`);
-        const { createOrmClient } = await import('../../database/clients/orm-client.js');
-        
-        // Wrap D1 binding in D1Client interface
-        const d1Client = {
-          query: async (sql: string, params?: any[]) => {
-            const stmt = d1Binding.prepare(sql).bind(...(params || []));
-            const result = await stmt.all();
-            return { success: true, results: result.results };
-          },
-          exec: async (sql: string) => {
-            await d1Binding.exec(sql);
-            return { success: true };
-          },
-          batch: async (queries: any[]) => {
-            const stmts = queries.map((q: any) => d1Binding.prepare(q.query).bind(...(q.params || [])));
-            await d1Binding.batch(stmts);
-            return { success: true };
-          },
-          raw: async (sql: string, params?: any[]) => {
-            const stmt = d1Binding.prepare(sql).bind(...(params || []));
-            const result = await stmt.raw();
-            return { success: true, results: result };
-          },
-          first: async (sql: string, params?: any[]) => {
-            const stmt = d1Binding.prepare(sql).bind(...(params || []));
-            const result = await stmt.first();
-            return { success: true, data: result };
-          }
-        };
-        
-        adminDbClient = await createOrmClient({
-          httpClient: d1Client,
+        // Use DatabaseContext to get admin database - adapter handles all the details
+        adminDbClient = await adminDbContext.getAdminDatabase({
           schema: options.adminSchema,
-          databaseName: bindingName,
-          bindingName: bindingName,
           skipMigrations: options.skipMigrations ?? false
         });
         
         return adminDbClient;
       };
+      
+      // Wire admin DB getter into DatabaseContext for org database name resolution
+      if (ctx.dbContext) {
+        ctx.dbContext.setAdminDbGetter(ctx.locals.kuratchi.getAdminDb);
+      }
       
       // Batteries-included admin operations namespace
       ctx.locals.kuratchi = ctx.locals.kuratchi || {} as any;
@@ -214,25 +206,19 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           email: string;
           userName?: string;
           password?: string;
-          [key: string]: any;  // Allow any additional fields from schema
+          [key: string]: any;
         }) => {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
           if (!adminDb) throw new Error('[Admin] Admin DB not configured');
           
-          const env = ctx.env;
-          const gatewayKey = env.KURATCHI_GATEWAY_KEY;
-          const workersSubdomain = env.CLOUDFLARE_WORKERS_SUBDOMAIN;
-          const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-          const apiToken = env.CLOUDFLARE_API_TOKEN;
-          
-          if (!gatewayKey) {
-            throw new Error('[Admin] KURATCHI_GATEWAY_KEY not configured');
+          const dbContext = ctx.dbContext;
+          if (!dbContext) {
+            throw new Error('[Admin] DatabaseContext not available. Ensure kuratchi() is configured with database settings.');
           }
           
-          // Generate IDs using Web Crypto
+          // Generate IDs
           const organizationId = crypto.randomUUID();
           const databaseId = crypto.randomUUID();
-          // Generate database name from organizationName (sanitized) or use UUID
           const sanitizedName = orgData.organizationName
             .toLowerCase()
             .replace(/[^a-z0-9-]/g, '-')
@@ -242,105 +228,35 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const now = new Date().toISOString();
           
           // 1. Create organization record
-          // ORM now handles schema validation automatically
           const insertResult = await adminDb.organizations.insert({
-            ...orgData,                    // Spread all user fields
-            id: organizationId,            // Override with generated ID
-            created_at: now,               // System timestamp
-            updated_at: now,               // System timestamp
-            deleted_at: null               // Explicit null for soft-delete queries
+            ...orgData,
+            id: organizationId,
+            created_at: now,
+            updated_at: now,
+            deleted_at: null
           });
           
           if (!insertResult?.success) {
-            const errorMsg = insertResult?.error || 'Unknown error';
-            throw new Error(`[Admin] Failed to insert organization: ${errorMsg}`);
+            throw new Error(`[Admin] Failed to insert organization: ${insertResult?.error || 'Unknown error'}`);
           }
           
-          // Check if RPC mode is enabled (database.rpcBinding config)
-          const useRpc = isRpcEnabled();
-          const rpcBindingName = getRpcBindingName();
-          const platform = (ctx.event as any).platform;
-          const rpcBinding = useRpc && rpcBindingName ? platform?.env?.[rpcBindingName] : null;
+          // 2. Create organization database via DatabaseContext
+          console.log('[Admin] Creating org database via DatabaseContext:', databaseName);
+          const createResult = await dbContext.createOrgDatabase({
+            organizationId,
+            organizationName: orgData.organizationName,
+            schema: options.organizationSchema,
+            migrate: true
+          });
+          console.log('[Admin] ✓ Org database created');
           
-          if (useRpc && !rpcBinding) {
-            throw new Error(`[Admin] RPC binding '${rpcBindingName}' not found in platform.env`);
-          }
-          
-          if (useRpc) {
-            console.log(`[Admin] Using RPC for org database creation`);
-          }
-          
-          // Variables for database provisioning results
-          let dbToken: string = '';
-          let dbUuid: string | undefined;
-          let workerName: string | undefined;
-          let orgDb: any;
-          
-          if (useRpc) {
-            // RPC MODE: No D1/worker deployment needed - DO already exists via service binding
-            // Generate a placeholder token for record-keeping (not used for auth in RPC mode)
-            dbToken = `rpc-${crypto.randomUUID()}`;
-            dbUuid = undefined;
-            workerName = undefined;
-            
-            console.log('[Admin] Creating org DB client via RPC for:', databaseName);
-            
-            orgDb = await createOrmClient({
-              httpClient: undefined,
-              schema: options.organizationSchema,
-              databaseName,
-              skipMigrations: false,
-              bindingName: rpcBindingName!
-            });
-            
-            console.log('[Admin] ✓ RPC org DB client created');
-          } else {
-            // HTTP MODE: Deploy D1 database with dedicated worker
-            if (!workersSubdomain || !accountId || !apiToken) {
-              throw new Error('[Admin] Cloudflare credentials not configured (CLOUDFLARE_WORKERS_SUBDOMAIN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN)');
-            }
-            
-            const dbService = new KuratchiDatabase({
-              workersSubdomain,
-              accountId,
-              apiToken,
-              scriptName: 'kuratchi-d1'
-            });
-            
-            const result = await dbService.createDatabase({
-              databaseName,
-              gatewayKey: gatewayKey!,
-              migrate: true,
-              schema: options.organizationSchema,
-              schemaName: 'organization'
-            });
-            
-            dbToken = result.token;
-            dbUuid = result.databaseId;
-            workerName = result.workerName;
-            
-            // Get ORM client via HTTP
-            console.log('[Admin] Getting org DB client with direct credentials:', { databaseName, organizationId });
-            orgDb = await dbService.ormClient({
-              databaseName,
-              dbToken,
-              gatewayKey: gatewayKey || '',
-              schema: options.organizationSchema
-            });
-          }
-          
-          if (!orgDb) {
-            throw new Error('[Admin] Failed to get organization database client');
-          }
-          
-          // 2. Store database record in admin DB
-          // R2 storage uses shared bucket with org-prefixed paths (/{organizationId}/...)
+          // 3. Store database record in admin DB
           await adminDb.databases.insert({
             id: databaseId,
-            name: databaseName,
-            dbuuid: dbUuid || null,
-            workerName: workerName || null,
-            r2BucketName: null,  // Using shared R2 bucket with namespaced paths
+            name: createResult.databaseName,
+            dbuuid: null,
+            workerName: null,
+            r2BucketName: null,
             r2Binding: null,
             r2StorageDomain: null,
             organizationId: organizationId,
@@ -353,31 +269,26 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             updated_at: now
           });
           
-          // 3. Store database token in dbApiTokens table
-          const tokenId = crypto.randomUUID();
-          await adminDb.dbApiTokens.insert({
-            id: tokenId,
-            token: dbToken,
-            name: `${orgData.organizationName} Database Token`,
-            databaseId: databaseId,
-            expires: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 year
-            revoked: false,
-            created_at: now,
-            updated_at: now
+          // 4. Get org database client and create first user
+          const orgDb = await dbContext.getOrgDatabase({
+            organizationId,
+            schema: options.organizationSchema,
+            skipMigrations: true // Already migrated during creation
           });
+          
+          if (!orgDb) {
+            throw new Error('[Admin] Failed to get organization database client');
+          }
           
           const userId = crypto.randomUUID();
           let password_hash: string | undefined;
           
-          // Hash password if provided (for credentials auth)
-          // Use auth secret as pepper for consistency with credentials plugin verification
           if (orgData.password) {
-            const authSecret = env.KURATCHI_AUTH_SECRET;
+            const authSecret = ctx.env.KURATCHI_AUTH_SECRET;
             password_hash = await hashPassword(orgData.password, undefined, authSecret);
           }
           
-          // Create first user in organization database
-          console.log('[Admin] Creating first user in org DB:', { userId, email: orgData.email, organizationId });
+          console.log('[Admin] Creating first user in org DB:', { userId, email: orgData.email });
           const userInsertResult = await orgDb.users.insert({
             id: userId,
             email: orgData.email,
@@ -390,14 +301,11 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           });
           
           if (!userInsertResult?.success) {
-            const errorMsg = userInsertResult?.error || 'Unknown error';
-            console.error('[Admin] Failed to create user in org DB:', errorMsg);
-            throw new Error(`[Admin] Failed to create first user in organization: ${errorMsg}`);
+            throw new Error(`[Admin] Failed to create first user: ${userInsertResult?.error || 'Unknown error'}`);
           }
+          console.log('[Admin] ✓ First user created');
           
-          console.log('[Admin] ✓ First user created successfully in org DB');
-          
-          // 6. Create organizationUsers mapping (email -> organizationId for auth lookup)
+          // 5. Create organizationUsers mapping
           await adminDb.organizationUsers.insert({
             id: crypto.randomUUID(),
             organizationId: organizationId,
@@ -416,8 +324,7 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             },
             database: {
               id: databaseId,
-              name: databaseName,
-              token: dbToken
+              name: createResult.databaseName
             },
             user: {
               id: userId,
@@ -435,7 +342,6 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           const adminDb = await ctx.locals.kuratchi.getAdminDb();
           if (!adminDb) throw new Error('[Admin] Admin DB not configured');
           
-          const env = ctx.env;
           const now = new Date().toISOString();
           
           // Get database records before soft deleting
@@ -443,30 +349,6 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
             .where({ organizationId: organizationId, deleted_at: { isNullish: true } })
             .many();
           const databases = dbsRes?.data ?? [];
-          
-          // Delete actual D1 databases and workers
-          if (databases.length > 0 && env.CLOUDFLARE_API_TOKEN && env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_WORKERS_SUBDOMAIN) {
-            const { KuratchiDatabase } = await import('../../database/index.js');
-            const dbService = new KuratchiDatabase({
-              apiToken: env.CLOUDFLARE_API_TOKEN,
-              accountId: env.CLOUDFLARE_ACCOUNT_ID,
-              workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
-              scriptName: env.KURATCHI_DO_SCRIPT_NAME || 'kuratchi-do-internal'
-            });
-            
-            for (const db of databases) {
-              try {
-                console.log(`[Admin] Deleting database and worker: ${db.name}`);
-                await dbService.deleteDatabase({
-                  databaseName: db.name,
-                  databaseId: db.dbuuid
-                });
-              } catch (error: any) {
-                console.warn(`[Admin] Failed to delete database ${db.name}:`, error.message);
-                // Continue with soft delete even if physical deletion fails
-              }
-            }
-          }
           
           // Soft delete organization
           await adminDb.organizations
@@ -494,56 +376,6 @@ export function adminPlugin(options: AdminPluginOptions): AuthPlugin {
           return { success: true };
         },
         
-        /**
-         * Refresh database token for an organization
-         * Generates new token and updates it in admin DB
-         */
-        refreshDatabaseToken: async (organizationId: string) => {
-          const adminDb = await ctx.locals.kuratchi.getAdminDb();
-          if (!adminDb) throw new Error('[Admin] Admin DB not configured');
-          
-          const env = ctx.env;
-          const gatewayKey = env.KURATCHI_GATEWAY_KEY;
-          
-          if (!gatewayKey) {
-            throw new Error('[Admin] KURATCHI_GATEWAY_KEY not configured');
-          }
-          
-          // Get primary organization database (non-deleted)
-          const { data: db } = await adminDb.databases
-            .where({ organizationId: organizationId, isPrimary: true })
-            .whereAny([
-              { deleted_at: { is: null } },
-              { deleted_at: { isNullish: true } }
-            ])
-            .first();
-          
-          if (!db) {
-            throw new Error(`[Admin] No database found for organization: ${organizationId}`);
-          }
-          
-          // Generate new token with 1-year TTL (renewable)
-          const newToken = await createSignedDbToken(
-            db.name, 
-            gatewayKey,
-            365 * 24 * 60 * 60 * 1000 // 1 year
-          );
-          
-          // Update token in dbApiTokens table
-          await adminDb.dbApiTokens
-            .where({ databaseId: db.id, revoked: false })
-            .update({ 
-              token: newToken,
-              expires: Date.now() + (365 * 24 * 60 * 60 * 1000),
-              updated_at: new Date().toISOString()
-            });
-          
-          return { 
-            success: true, 
-            databaseName: db.name,
-            organizationId 
-          };
-        },
         
         /**
          * Attach a database to an organization

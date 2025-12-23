@@ -30,8 +30,20 @@ export { createHttpClient, createValidatedHttpClient } from './clients/http-clie
 export { createOrmClient, createValidatedOrmClient } from './clients/orm-client.js';
 
 // RPC configuration (for direct Worker-to-Worker calls)
-export { setRpcConfig, getRpcConfig, isRpcEnabled, getRpcBindingName } from './rpc-config.js';
-export type { RpcConfig } from './rpc-config.js';
+// Re-exported from adapters folder for backward compatibility
+export { setRpcConfig, getRpcConfig, isRpcEnabled, getRpcBindingName } from '../adapters/rpc-adapter.js';
+export type { RpcConfig, DatabaseAdapterType } from '../adapters/types.js';
+
+// DatabaseContext abstraction (adapter-agnostic database access)
+export { createDatabaseContext, RpcDatabaseContext, HttpDatabaseContext } from './context.js';
+export type {
+  DatabaseContext,
+  DatabaseContextConfig,
+  OrgDatabaseInfo,
+  CreateOrgDatabaseOptions,
+  CreateOrgDatabaseResult,
+  GetOrgDatabaseOptions
+} from './context.js';
 
 // Deployment utilities
 export { deployWorker, isWorkerDeployed } from './deployment/worker-deployment.js';
@@ -58,9 +70,11 @@ export type { EnvironmentConfig, AdminEnvironmentConfig } from './core/config.js
 // Convenience namespace API
 import { getDoEnvironment, getAdminEnvironment } from './core/config.js';
 import { KuratchiDatabase } from './core/database.js';
+import { createOrmClient } from './clients/orm-client.js';
+import { isRpcEnabled, getRpcBindingName } from '../adapters/rpc-adapter.js';
 // Uses example schema as default for database.admin() helper (legacy convenience)
 import { adminSchemaDsl } from '../schema/admin.example.js';
-import type { SchemaType, D1Client, OrmClient, ClientOptions } from './core/types.js';
+import type { SchemaType, D1Client, OrmClient, ClientOptions, CreateDatabaseResult } from './core/types.js';
 
 /**
  * Convenience namespace for common database operations
@@ -187,7 +201,32 @@ export const database = {
     schema?: SchemaType;
     schemaName?: string;  // Name of migrations folder (e.g., 'organization', 'admin', 'foo')
     instance?: KuratchiDatabase;
-  }): Promise<{ databaseName: string; token: string; databaseId?: string; workerName?: string }> {
+  }): Promise<CreateDatabaseResult> {
+    const useRpc = isRpcEnabled();
+    if (useRpc) {
+      const bindingName = getRpcBindingName();
+      if (!bindingName) {
+        throw new Error('[database.create] RPC binding name not configured. Did you call setRpcConfig()?');
+      }
+
+      // Run migrations via ORM client when requested and schema provided
+      if (args.migrate && args.schema) {
+        await createOrmClient({
+          schema: args.schema,
+          databaseName: args.name,
+          bindingName,
+          skipMigrations: false
+        });
+      }
+
+      return {
+        databaseName: args.name,
+        token: null,
+        databaseId: null,
+        workerName: null
+      };
+    }
+
     const envConfig = getDoEnvironment();
     
     if (!envConfig.gatewayKey) {

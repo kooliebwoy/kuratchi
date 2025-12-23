@@ -27,7 +27,7 @@ import {
   initPreferences,
 } from './notifications/index.js';
 import { initCache, type CacheConfig } from './cache/index.js';
-import { setRpcConfig, type DatabaseAdapterType } from './database/rpc-config.js';
+import { setRpcConfig, type DatabaseAdapterType } from './adapters/index.js';
 
 /**
  * Unified Kuratchi configuration object

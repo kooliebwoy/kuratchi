@@ -17,6 +17,7 @@ import { storagePlugin } from '../plugins/storage.js';
 import { adminPlugin } from '../plugins/admin.js';
 import { organizationPlugin } from '../plugins/organization.js';
 import { guardsPlugin } from '../plugins/guards.js';
+import { createDatabaseContext, type DatabaseContext, getRpcConfig } from '../../adapters/index.js';
 
 /**
  * Default environment resolver
@@ -145,20 +146,9 @@ export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: 
       }));
     }
     
-    // Admin plugin (if configured)
-    if (options.getAdminDb || options.getAdminSchema) {
-      registry.register(adminPlugin({
-        getAdminDb: options.getAdminDb,
-        adminSchema: options.getAdminSchema
-      }));
-    }
-    
-    // Organization plugin (if configured)
-    if (options.getOrganizationSchema) {
-      registry.register(organizationPlugin({
-        getOrganizationSchema: options.getOrganizationSchema
-      }));
-    }
+    // Note: Admin and Organization plugins should be registered via the plugins array
+    // The legacy getAdminSchema/getOrganizationSchema options are deprecated
+    // Use: plugins: [adminPlugin({...}), organizationPlugin({...})]
     
     // Guards plugin (if configured)
     if (options.guards && options.guards.length > 0) {
@@ -184,11 +174,31 @@ export function createAuthHandle(options: CreateAuthHandleOptions & { plugins?: 
     // Get environment
     const env = await getEnv(event as RequestEvent);
     
+    // Create DatabaseContext based on RPC config
+    const rpcConfig = getRpcConfig();
+    const platformEnv = (event as any)?.platform?.env;
+    let dbContext: DatabaseContext | undefined;
+    
+    if (rpcConfig.enabled || env.CLOUDFLARE_API_TOKEN) {
+      dbContext = createDatabaseContext({
+        adapter: rpcConfig.adapter,
+        rpcBinding: rpcConfig.bindingName,
+        env: platformEnv,
+        cloudflare: {
+          accountId: env.CLOUDFLARE_ACCOUNT_ID,
+          apiToken: env.CLOUDFLARE_API_TOKEN,
+          workersSubdomain: env.CLOUDFLARE_WORKERS_SUBDOMAIN,
+          gatewayKey: env.KURATCHI_GATEWAY_KEY
+        }
+      });
+    }
+    
     // Create plugin context
     const context = {
       event: event as RequestEvent,
       locals: event.locals,
-      env
+      env,
+      dbContext
     };
     
     // Execute onRequest hooks

@@ -31,7 +31,7 @@ export async function getUserPreferences(
 ): Promise<NotificationPreferences | null> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notification_preferences) {
@@ -118,7 +118,7 @@ export async function createDefaultPreferences(
 
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (db && db.notification_preferences) {
@@ -142,7 +142,7 @@ export async function updateUserPreferences(
 ): Promise<boolean> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notification_preferences) {
@@ -457,7 +457,7 @@ export async function resetPreferences(
 ): Promise<boolean> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notification_preferences) {

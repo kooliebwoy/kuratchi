@@ -14,12 +14,14 @@ const users = await db.users.many();
 ```
 
 ### `first()`
-Returns the first matching row or undefined.
+Returns the first matching row or undefined. Uses native `first()` API when available for optimal performance.
 
 ```typescript
 const user = await db.users.where({ email: 'test@example.com' }).first();
 // { success: true, data: User | undefined }
 ```
+
+**Native API optimization:** When using D1 or RPC adapters, `first()` calls the native `stmt.first()` method which is more efficient than fetching all rows and taking the first one.
 
 ### `one()`
 Returns exactly one row. Fails if zero or multiple rows match.

@@ -284,21 +284,23 @@ export const createDatabase = guardedForm(
 			}
 
 			// Store the database token
-			const dbApiToken = await adminDb.dbApiTokens.insert({
-				id: crypto.randomUUID(),
-				token: created.token,
-				name: `${name}-token`,
-				databaseId: dbId,
-				created_at: now,
-				updated_at: now,
-				revoked: false,
-				expires: null,
-				deleted_at: null
-			});
+			if (created.token) {
+				const dbApiToken = await adminDb.dbApiTokens.insert({
+					id: crypto.randomUUID(),
+					token: created.token,
+					name: `${name}-token`,
+					databaseId: dbId,
+					created_at: now,
+					updated_at: now,
+					revoked: false,
+					expires: null,
+					deleted_at: null
+				});
 
-			if (!dbApiToken.success) {
-				console.error('Failed to insert database token:', dbApiToken.error);
-				error(500, `Failed to create database token: ${dbApiToken.error}`);
+				if (!dbApiToken.success) {
+					console.error('Failed to insert database token:', dbApiToken.error);
+					error(500, `Failed to create database token: ${dbApiToken.error}`);
+				}
 			}
 
 			// Refresh databases list

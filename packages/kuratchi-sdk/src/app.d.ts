@@ -8,9 +8,10 @@ declare global {
 		interface Locals {
 			kuratchi?: KuratchiSDK & {
 				getAdminDb?: () => Promise<any>;
-				getOrgDb?: (organizationId?: string) => Promise<any>;
 				orgDatabaseClient?: (organizationId?: string) => Promise<any>;
 			};
+			user?: any;
+			session?: any;
 		}
 		// interface PageData {}
 		// interface PageState {}

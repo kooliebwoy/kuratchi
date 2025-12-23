@@ -12,7 +12,7 @@
 
 import { ManagedDatabase } from './database.js';
 import { PlatformClient } from './platform.js';
-import { createD1HttpAdapter } from '../orm/adapters.js';
+import { createD1HttpAdapter } from '../adapters/d1-http-adapter.js';
 import { createClientFromJsonSchema } from '../orm/kuratchi-orm.js';
 import type { DatabaseSchema } from '../database/migrations/schema.js';
 import type { QueryResult } from '../database/core/types.js';

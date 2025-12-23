@@ -34,6 +34,25 @@ export type QueryResult<T = any> = {
 
 export type SqlExecutor = (sql: string, params?: any[]) => Promise<QueryResult<any>>;
 
+/**
+ * Full database client interface for optimized operations
+ * When provided, the ORM can use native APIs like first(), batch(), etc.
+ */
+export interface FullDbClient {
+  /** Standard query - returns all rows */
+  query?: (sql: string, params?: any[]) => Promise<QueryResult<any>>;
+  /** Get first row only - more efficient than query + limit 1 */
+  first?: (sql: string, params?: any[], column?: string) => Promise<QueryResult<any>>;
+  /** Execute DDL/migrations - no results returned */
+  exec?: (sql: string) => Promise<QueryResult<any>>;
+  /** Batch multiple queries in a transaction */
+  batch?: (queries: Array<{ query: string; params?: any[] }>) => Promise<QueryResult<any>>;
+  /** Raw array results */
+  raw?: (sql: string, params?: any[]) => Promise<QueryResult<any>>;
+  /** Run INSERT/UPDATE/DELETE - returns metadata only */
+  run?: (sql: string, params?: any[]) => Promise<QueryResult<any>>;
+}
+
 export type SqlCondition = { query: string; params?: any[] };
 
 export interface OrmKvClient {
@@ -197,7 +216,11 @@ class QueryBuilder<Row = any> {
   private selectCols?: string[];
   private pendingUpdateValues?: Record<string, any>;
 
-  constructor(private readonly tableName: string, private readonly execute: SqlExecutor) {}
+  constructor(
+    private readonly tableName: string, 
+    private readonly execute: SqlExecutor,
+    private readonly fullClient?: FullDbClient
+  ) {}
 
   private currentGroup(): Where {
     if (this.whereGroups.length === 0) {
@@ -437,7 +460,21 @@ class QueryBuilder<Row = any> {
   }
 
   async first(): Promise<QueryResult<Row | undefined>> {
-    // Only set limit if not already set (allows .limit(5).first() to get first of 5)
+    // Use native first() if available and no custom limit set
+    if (this.fullClient?.first && typeof this.limitN !== 'number') {
+      const sel = compileSelect(this.selectCols);
+      const w = compileWhereGroupsWithRaw(this.whereGroups, this.rawWhereGroups);
+      const order = compileOrderBy(this.order);
+      const sql = [`SELECT ${sel} FROM ${this.tableName}`, w.sql, order, 'LIMIT 1'].filter(Boolean).join(' ');
+      
+      const res = await this.fullClient.first(sql, w.params);
+      if (!res || res.success === false) return res as any;
+      // Native first() returns single row in results (not array), or in data
+      const row = (res as any).data ?? (res as any).results;
+      return { success: true, data: row };
+    }
+    
+    // Fallback: use many() with limit 1
     if (typeof this.limitN !== 'number') {
       this.limitN = 1;
     }
@@ -517,7 +554,11 @@ class QueryBuilder<Row = any> {
   }
 }
 
-export function createRuntimeOrm(execute: SqlExecutor, schema?: Pick<DatabaseSchema, 'tables'>) {
+export function createRuntimeOrm(
+  execute: SqlExecutor, 
+  schema?: Pick<DatabaseSchema, 'tables'>,
+  fullClient?: FullDbClient
+) {
   // Build column map for schema validation
   const schemaColumnsByTable = new Map<string, Set<string>>();
   if (schema?.tables) {
@@ -528,7 +569,7 @@ export function createRuntimeOrm(execute: SqlExecutor, schema?: Pick<DatabaseSch
   }
 
   function table<Row = any>(tableName: string): TableApi<Row> {
-    const builderFactory = () => new QueryBuilder<Row>(tableName, execute);
+    const builderFactory = () => new QueryBuilder<Row>(tableName, execute, fullClient);
     return {
       async many(): Promise<QueryResult<Row[]>> {
         return builderFactory().many();
@@ -702,8 +743,10 @@ export function createClientFromTableNames(execute: SqlExecutor, tables: string[
 export function createClientFromJsonSchema(
   execute: SqlExecutor,
   schema: Pick<DatabaseSchema, 'tables'>,
-  opts?: { kv?: OrmKvClient }
+  opts?: { kv?: OrmKvClient; client?: FullDbClient }
 ): Record<string, TableApi> & { kv?: OrmKvClient } {
+  // Full client for optimized native API calls
+  const fullClient = opts?.client;
   // Build per-table JSON column sets
   const jsonColsByTable = new Map<string, Set<string>>();
   for (const t of schema.tables) {
@@ -718,7 +761,8 @@ export function createClientFromJsonSchema(
     }
   }
 
-  const base = createRuntimeOrm(execute, schema);
+  // Pass fullClient to createRuntimeOrm for native API optimizations
+  const base = createRuntimeOrm(execute, schema, fullClient);
 
   const serializeForTable = (table: string, values: Record<string, any>): Record<string, any> => {
     const jsonCols = jsonColsByTable.get(table) || new Set<string>();

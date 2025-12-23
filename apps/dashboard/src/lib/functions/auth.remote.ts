@@ -186,28 +186,15 @@ export const signOut = form('unchecked', async () => {
  * Create a new organization with database and first user
  */
 export const signUp = form(signupSchema, async (data: v.InferOutput<typeof signupSchema>) => {
-console.log('first hit and first hit ')
-
 	const { organizationName, email, password, userName } = data;
 	const { locals } = getRequestEvent();
 	const kur = locals.kuratchi as any;
-
-	console.log('are we hitting this endpoint any at all? ')
 
 	try {
 		// Check if admin operations are available
 		if (!kur?.auth?.admin?.createOrganization) {
 			error(500, 'Organization creation not configured');
 		}
-
-		// console.log 
-		console.log('org data: ', {
-			organizationName,
-			email,
-			password,
-			userName: userName || organizationName,
-			status: 'active'
-		})
 
 		// Create organization using SDK
 		const orgResult = await kur.auth.admin.createOrganization({

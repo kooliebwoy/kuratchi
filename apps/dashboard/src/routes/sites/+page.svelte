@@ -194,10 +194,17 @@
         <div class="kui-center">
           <Layout class="kui-empty__icon" />
           <p class="kui-subtext">No sites found</p>
-          <Button variant="primary" size="sm" onclick={() => createDialogOpen = true}>
-            <Plus class="kui-icon" />
-            Create Your First Site
-          </Button>
+          {#if isEmailVerified}
+            <Button variant="primary" size="sm" onclick={() => createDialogOpen = true}>
+              <Plus class="kui-icon" />
+              Create Your First Site
+            </Button>
+          {:else}
+            <Button variant="primary" size="sm" disabled title="Verify your email to create sites">
+              <Mail class="kui-icon" />
+              Verify Email to Create
+            </Button>
+          {/if}
         </div>
       {/if}
     </div>

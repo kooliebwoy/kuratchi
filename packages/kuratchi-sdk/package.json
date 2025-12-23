@@ -89,6 +89,11 @@
 			"types": "./src/lib/spaces/index.ts",
 			"svelte": "./src/lib/spaces/index.ts",
 			"default": "./src/lib/spaces/index.ts"
+		},
+		"./adapters": {
+			"types": "./src/lib/adapters/index.ts",
+			"svelte": "./src/lib/adapters/index.ts",
+			"default": "./src/lib/adapters/index.ts"
 		}
 	},
 	"peerDependencies": {

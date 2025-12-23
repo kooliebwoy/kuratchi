@@ -1,3 +1,10 @@
+export interface OrgDatabaseMeta {
+  databaseName: string;
+  workerName?: string | null;
+  token?: string | null;
+  adapter?: DatabaseAdapterType;
+}
+
 /**
  * Kuratchi SDK Caching Module
  * 
@@ -10,6 +17,7 @@
  */
 
 import type { RequestEvent } from '@sveltejs/kit';
+import type { DatabaseAdapterType } from '../adapters/types.js';
 
 // ============================================================================
 // Types
@@ -359,7 +367,7 @@ export class CacheManager {
   async getOrgDatabaseMeta(
     orgId: string,
     requestCache?: Map<string, any>
-  ): Promise<{ databaseName: string; workerName: string; token: string } | null> {
+  ): Promise<OrgDatabaseMeta | null> {
     return this.get(CacheManager.keys.orgDatabase(orgId), requestCache);
   }
   
@@ -368,7 +376,7 @@ export class CacheManager {
    */
   async setOrgDatabaseMeta(
     orgId: string,
-    meta: { databaseName: string; workerName: string; token: string },
+    meta: OrgDatabaseMeta,
     requestCache?: Map<string, any>
   ): Promise<void> {
     return this.set(

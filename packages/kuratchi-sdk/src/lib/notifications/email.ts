@@ -308,7 +308,7 @@ async function trackEmailNotification(
 ) {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(options.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(options.organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.email_notifications) {
@@ -357,7 +357,7 @@ export async function getEmailHistory(
 ): Promise<EmailNotification[]> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(filters?.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(filters?.organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.email_notifications) {
@@ -418,7 +418,7 @@ export async function getEmailById(
 ): Promise<EmailNotification | null> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.email_notifications) {

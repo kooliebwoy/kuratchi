@@ -38,7 +38,7 @@ export async function createCustomer(
 	};
 
 	const db = pluginOptions.trackingDb === 'org'
-		? await event.locals.kuratchi?.getOrgDb?.(options.organizationId)
+		? await event.locals.kuratchi?.orgDatabaseClient?.(options.organizationId)
 		: await event.locals.kuratchi?.getAdminDb?.();
 
 	if (db) {

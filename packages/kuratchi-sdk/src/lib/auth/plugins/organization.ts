@@ -1,13 +1,10 @@
 /**
  * Organization plugin - Multi-tenant organization database access
- * Optional plugin for per-organization data isolation
+ * Uses DatabaseContext abstraction for adapter-agnostic database access.
  */
 
 import type { AuthPlugin, PluginContext, SessionContext } from '../core/plugin.js';
-import { KuratchiDatabase } from '../../database/index.js';
-import { getCache, getRequestCache, CacheManager } from '../../cache/index.js';
-import { isRpcEnabled, getRpcBindingName } from '../../database/rpc-config.js';
-import { createOrmClient } from '../../database/clients/orm-client.js';
+import type { PluginAdapterConfig } from '../../adapters/types.js';
 
 export interface OrganizationPluginOptions {
   /**
@@ -16,6 +13,21 @@ export interface OrganizationPluginOptions {
    * See src/lib/schema/organization.ts for reference structure
    */
   organizationSchema: any;
+  
+  /**
+   * OPTIONAL: Explicit adapter configuration for organization databases
+   * Use rpcAdapter({ binding: 'KURATCHI_DATABASE' }) or d1Adapter({ binding: 'ORG_DB' })
+   * If not provided, uses the global adapter from kuratchi() config
+   * 
+   * @example
+   * ```ts
+   * organizationPlugin({
+   *   organizationSchema,
+   *   adapter: rpcAdapter({ binding: 'KURATCHI_DATABASE' })
+   * })
+   * ```
+   */
+  adapter?: PluginAdapterConfig;
   
   /**
    * Skip schema synchronization on database access (default: false)
@@ -33,9 +45,6 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
     );
   }
   
-  // Cache for DB service (singleton across requests in same worker)
-  let dbService: KuratchiDatabase | null = null;
-  
   return {
     name: 'organization',
     priority: 35, // After admin, before auth flows
@@ -43,16 +52,14 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
     async onRequest(ctx: PluginContext) {
       if (!ctx.locals.kuratchi) ctx.locals.kuratchi = {};
       
-      // Initialize cache with platform (for KV access)
-      const cache = getCache();
-      const platform = ctx.event.platform as any;
-      cache?.initializeKV(platform);
-      
-      // Get request-scoped cache for this request
-      const requestCache = getRequestCache(ctx.locals);
-      
-      // Cache for ORM clients within this request
+      // Request-scoped ORM client cache
       const ormClientCache = new Map<string, any>();
+      
+      // Get DatabaseContext from plugin context
+      const dbContext = ctx.dbContext;
+      if (!dbContext) {
+        throw new Error('[Organization Plugin] DatabaseContext not available. Ensure kuratchi() is configured.');
+      }
       
       // Helper to get organization DB client
       ctx.locals.kuratchi.orgDatabaseClient = async (
@@ -60,165 +67,37 @@ export function organizationPlugin(options: OrganizationPluginOptions): AuthPlug
         callOptions?: { schema?: any; skipMigrations?: boolean }
       ) => {
         if (typeof window !== 'undefined') {
-          throw new Error('[Kuratchi Organization] orgDatabaseClient() is server-only');
+          throw new Error('[Organization] orgDatabaseClient() is server-only');
         }
         
         const session = ctx.locals.kuratchi.session;
-        // Allow superadmin to override active organization for this request
         const superOrgId = ctx.locals.kuratchi?.superadmin?.getActiveOrgId?.();
         const organizationId = orgIdOverride || superOrgId || session?.organizationId;
         
         if (!organizationId) {
-          console.warn(
-            '[Kuratchi Organization] No organizationId found in session or override. ' +
-            'User must be signed in with an organization.'
-          );
+          console.warn('[Organization] No organizationId found in session or override.');
           return null;
         }
         
-        // Check request-level ORM client cache first (fastest)
-        const ormCacheKey = `orm:${organizationId}`;
-        if (ormClientCache.has(ormCacheKey)) {
-          return ormClientCache.get(ormCacheKey);
+        // Check request-level cache first
+        const cacheKey = `orm:${organizationId}`;
+        if (ormClientCache.has(cacheKey)) {
+          return ormClientCache.get(cacheKey);
         }
         
-        const env = ctx.env;
-        const workersSubdomain = env.CLOUDFLARE_WORKERS_SUBDOMAIN;
-        const gatewayKey = env.KURATCHI_GATEWAY_KEY;
-        
-        if (!workersSubdomain) {
-          console.warn('[Kuratchi Organization] CLOUDFLARE_WORKERS_SUBDOMAIN not configured');
-          return null;
-        }
-        
-        // Initialize DB service if needed
-        if (!dbService && env.CLOUDFLARE_API_TOKEN && env.CLOUDFLARE_ACCOUNT_ID) {
-          dbService = new KuratchiDatabase({
-            apiToken: env.CLOUDFLARE_API_TOKEN,
-            accountId: env.CLOUDFLARE_ACCOUNT_ID,
-            workersSubdomain
-          });
-        }
-        
-        if (!dbService) {
-          console.warn('[Kuratchi Organization] Unable to initialize database service');
-          return null;
-        }
-        
-        let databaseName: string;
-        let workerName: string;
-        let dbToken: string;
-        
-        // Try to get database metadata from cache
-        const cachedMeta = cache 
-          ? await cache.getOrgDatabaseMeta(organizationId, requestCache)
-          : null;
-        
-        if (cachedMeta) {
-          // Cache HIT - use cached metadata
-          databaseName = cachedMeta.databaseName;
-          workerName = cachedMeta.workerName;
-          dbToken = cachedMeta.token;
-          
-          if (cache?.getConfig().debug) {
-            console.log(`[Kuratchi Organization] Cache HIT for org: ${organizationId}`);
-          }
-        } else {
-          // Cache MISS - lookup from admin DB
-          const getAdminDb = ctx.locals.kuratchi.getAdminDb;
-          if (!getAdminDb) {
-            console.warn(
-              '[Kuratchi Organization] Admin plugin not loaded. ' +
-              'Add adminPlugin() before organizationPlugin()'
-            );
-            return null;
-          }
-          
-          const adminDb = await getAdminDb();
-          if (!adminDb) {
-            return null;
-          }
-          
-          // Lookup organization database record (using camelCase to match schema)
-          const { data: databases } = await adminDb.databases
-            .where({ organizationId: organizationId })
-            .first();
-          
-          if (!databases) {
-            console.warn(`[Kuratchi Organization] No database found for organization: ${organizationId}`);
-            return null;
-          }
-          
-          databaseName = databases.name;
-          workerName = databases.workerName;
-          
-          // Get token from dbApiTokens table (query for non-revoked token)
-          const { data: tokenRecord } = await adminDb.dbApiTokens
-            .where({ databaseId: databases.id, revoked: false })
-            .first();
-          
-          if (!tokenRecord || !tokenRecord.token) {
-            console.warn(`[Kuratchi Organization] No valid token found for database: ${databases.id}`);
-            return null;
-          }
-          
-          dbToken = tokenRecord.token;
-          
-          // Cache the metadata for future requests
-          if (cache) {
-            await cache.setOrgDatabaseMeta(organizationId, {
-              databaseName,
-              workerName,
-              token: dbToken
-            }, requestCache);
-          }
-        }
-        
-        // Use schema from call options or plugin config
         const schema = callOptions?.schema || options.organizationSchema;
         const skipMigrations = callOptions?.skipMigrations ?? options.skipMigrations ?? false;
         
-        // Use RPC if configured (database.rpcBinding defines the binding name)
-        if (isRpcEnabled()) {
-          const rpcBindingName = getRpcBindingName();
-          const rpcBinding = platform?.env?.[rpcBindingName!];
-          
-          if (!rpcBinding) {
-            throw new Error(`[Kuratchi Organization] RPC binding '${rpcBindingName}' not found in platform.env`);
-          }
-          
-          console.log(`[Kuratchi Organization] Using RPC for org: ${organizationId}`);
-
-          const orgDb = await createOrmClient({
-            httpClient: undefined,
-            schema,
-            databaseName,
-            skipMigrations,
-            bindingName: rpcBindingName!
-          });
-          
-          ormClientCache.set(ormCacheKey, orgDb);
-          return orgDb;
-        }
-        
-        // HTTP mode fallback (when no RPC configured)
-        if (!dbService) {
-          throw new Error('[Kuratchi Organization] No database config - set database.rpcBinding or provide HTTP credentials');
-        }
-        
-        // Get ORM client (auto-detects D1, DO direct, or HTTP)
-        const orgDb = await dbService.ormClient({
-          databaseName,
-          dbToken,
-          gatewayKey: gatewayKey || '',
+        // Use DatabaseContext (handles RPC vs HTTP internally)
+        const orgDb = await dbContext.getOrgDatabase({
+          organizationId,
           schema,
-          scriptName: workerName,
           skipMigrations
         });
         
-        // Cache the ORM client for this request
-        ormClientCache.set(ormCacheKey, orgDb);
-        
+        if (orgDb) {
+          ormClientCache.set(cacheKey, orgDb);
+        }
         return orgDb;
       };
       

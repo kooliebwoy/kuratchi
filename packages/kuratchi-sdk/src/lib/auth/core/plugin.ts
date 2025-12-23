@@ -5,6 +5,7 @@
 
 import type { RequestEvent } from '@sveltejs/kit';
 import type { AuthHandleEnv } from '../utils/types.js';
+import type { DatabaseContext } from '../../adapters/database-context.js';
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -15,6 +16,8 @@ export interface PluginContext {
   event: RequestEvent;
   locals: any;
   env: AuthHandleEnv;
+  /** Database context for adapter-agnostic database access */
+  dbContext?: DatabaseContext;
 }
 
 /**

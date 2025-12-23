@@ -35,7 +35,7 @@ export async function sendInAppNotification(
 
 	try {
 		const db = pluginOptions.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(options.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(options.organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -86,7 +86,7 @@ export async function getUserNotifications(
 ): Promise<InAppNotification[]> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(filters?.organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(filters?.organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -150,7 +150,7 @@ export async function getNotificationById(
 ): Promise<InAppNotification | null> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -178,7 +178,7 @@ export async function markNotificationAsRead(
 ): Promise<boolean> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -233,7 +233,7 @@ export async function markAllNotificationsAsRead(
 ): Promise<boolean> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -265,7 +265,7 @@ export async function deleteNotification(
 ): Promise<boolean> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -319,7 +319,7 @@ export async function getUnreadCount(
 ): Promise<number> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {
@@ -463,7 +463,7 @@ export async function cleanupExpiredNotifications(
 ): Promise<number> {
 	try {
 		const db = pluginOptions?.storageDb === 'org'
-			? await event.locals.kuratchi?.getOrgDb?.(organizationId)
+			? await event.locals.kuratchi?.orgDatabaseClient?.(organizationId)
 			: await event.locals.kuratchi?.getAdminDb?.();
 
 		if (!db || !db.notifications) {

@@ -105,6 +105,13 @@ export interface CreateDatabaseOptions {
   r2?: boolean | CreateR2Options;
 }
 
+export interface CreateDatabaseResult {
+  databaseName: string;
+  token?: string | null;
+  databaseId?: string | null;
+  workerName?: string | null;
+}
+
 export interface ClientOptions {
   databaseName: string;
   dbToken: string;
