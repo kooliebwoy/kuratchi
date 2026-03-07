@@ -11,10 +11,14 @@
       "custom_domain": true
     }
   ],
+  "placement": {
+    "mode": "smart"
+  },
+  "observability": {
+    "enabled": true
+  },
   "d1_databases": [
     {
-      // kuratchi's own admin database (users, sessions, database records)
-      // Replace database_id with your real D1 UUID from: wrangler d1 create kuratchi-db-admin
       "binding": "DB",
       "database_name": "kuratchi-platform-admin",
       "database_id": "4f1c4a1b-905a-4fda-83c1-6bf6bb654a10"
@@ -22,23 +26,14 @@
   ],
   "dispatch_namespaces": [
     {
-      // Workers for Platforms namespace — holds gateway workers for D1, KV, and R2
-      // Create once: wrangler dispatch-namespace create kuratchi-db
       "binding": "DISPATCHER",
       "namespace": "kuratchi-platform",
       "remote": true
     }
-  ]
-
-  // ── Production Secrets ──
-  // Set via `wrangler secret put <NAME>` before deploying:
-  //
-  // AUTH_SECRET           — Random 64+ char string for cookie/session signing
-  // CLOUDFLARE_ACCOUNT_ID — Your Cloudflare account ID
-  // CLOUDFLARE_API_TOKEN  — API token with D1, KV, R2, Workers permissions
-  // GATEWAY_KEY           — Random 64+ char string for HMAC token signing
-  // DISPATCH_NAMESPACE    — Must match the namespace above ("kuratchi-db")
-  //
-  // ── Optional: Custom Domain ──
-  // "routes": [{ "pattern": "api.yourdomain.com/*", "zone_name": "yourdomain.com" }]
+  ],
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
+    "DISPATCH_NAMESPACE": "kuratchi-platform"
+  },
+  "keep_vars": true
 }
