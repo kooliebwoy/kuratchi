@@ -26,4 +26,18 @@ export async function DELETE(ctx: RouteContext): Promise<Response> {
   }
 }
 
+export async function PATCH(ctx: RouteContext): Promise<Response> {
+  const auth = await requirePlatformToken(ctx.request);
+  if (auth instanceof Response) return auth;
+  const body = await ctx.request.json() as any;
+  if (body.action !== 'redeploy') return jsonResponse({ error: 'Unknown action' }, 400);
+  const { redeployDatabase } = await import('$server/database/databases');
+  try {
+    await redeployDatabase(ctx.params.id);
+    return jsonResponse({ success: true });
+  } catch (e: any) {
+    return jsonResponse({ success: false, error: e.message }, 400);
+  }
+}
+
 export { handleCorsPreflight as OPTIONS } from '$server/api/utils';

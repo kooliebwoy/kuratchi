@@ -19,14 +19,9 @@ export default {
       return Response.json({ error: 'Method not allowed' }, { status: 405 });
     }
 
-    const bookmark = request.headers.get('x-d1-bookmark') || 'first-unconstrained';
-    const session = env.DB.withSession(bookmark);
-    const tsStart = Date.now();
-
     try {
       const body = await request.json();
-      const response = await withTablesInitialized(body, session, env, handleRequest);
-      response.headers.set('x-d1-bookmark', session.getBookmark() || '');
+      const response = await withTablesInitialized(body, env, handleRequest);
       return response;
     } catch (error) {
       return Response.json({ error: String(error) }, { status: 500 });
@@ -51,23 +46,22 @@ async function retryWhile(fn, shouldRetryFn) {
   }
 }
 
-async function handleRequest(body, session, env) {
+async function handleRequest(body, env) {
   const tsStart = Date.now();
 
   // Batch mode
   if (body.batch) {
     return await retryWhile(async () => {
       const stmts = body.batch.map(item => {
-        let stmt = session.prepare(item.sql);
+        let stmt = env.DB.prepare(item.sql);
         if (item.params && item.params.length > 0) stmt = stmt.bind(...item.params);
         return stmt;
       });
-      const results = await session.batch(stmts);
+      const results = await env.DB.batch(stmts);
       return Response.json({
         success: true,
         results: results.map(r => r.results || []),
         d1Latency: Date.now() - tsStart,
-        sessionBookmark: session.getBookmark(),
       });
     }, shouldRetry);
   }
@@ -82,7 +76,6 @@ async function handleRequest(body, session, env) {
         results: [],
         meta: resp.meta,
         d1Latency: Date.now() - tsStart,
-        sessionBookmark: session.getBookmark(),
       });
     }, shouldRetry);
   }
@@ -90,21 +83,20 @@ async function handleRequest(body, session, env) {
   // Raw mode (array-of-arrays)
   if (body.raw) {
     return await retryWhile(async () => {
-      let stmt = session.prepare(body.sql);
+      let stmt = env.DB.prepare(body.sql);
       if (body.params && body.params.length > 0) stmt = stmt.bind(...body.params);
       const resp = await stmt.raw();
       return Response.json({
         success: true,
         results: resp,
         d1Latency: Date.now() - tsStart,
-        sessionBookmark: session.getBookmark(),
       });
     }, shouldRetry);
   }
 
   // Default: run (returns rows as objects)
   return await retryWhile(async () => {
-    let stmt = session.prepare(body.sql);
+    let stmt = env.DB.prepare(body.sql);
     if (body.params && body.params.length > 0) stmt = stmt.bind(...body.params);
     const resp = await stmt.all();
     return Response.json({
@@ -113,18 +105,17 @@ async function handleRequest(body, session, env) {
       d1Latency: Date.now() - tsStart,
       servedByRegion: resp.meta?.served_by_region || '',
       servedByPrimary: resp.meta?.served_by_primary || '',
-      sessionBookmark: session.getBookmark(),
     });
   }, shouldRetry);
 }
 
-async function withTablesInitialized(body, session, env, handler) {
-  try { return await handler(body, session, env); }
+async function withTablesInitialized(body, env, handler) {
+  try { return await handler(body, env); }
   catch (e) {
     const errMsg = String(e);
     if (errMsg.includes('no such table') || errMsg.includes('SQLITE_ERROR')) {
       await initTables(env);
-      return await handler(body, session, env);
+      return await handler(body, env);
     }
     throw e;
   }

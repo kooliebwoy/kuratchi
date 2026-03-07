@@ -9,9 +9,19 @@ export async function POST(ctx: RouteContext): Promise<Response> {
   const bearerToken = extractBearerToken(request);
   if (!bearerToken) return jsonResponse({ error: 'Missing or invalid Authorization header' }, 401);
 
-  const entry = await resolveDatabase(dbName);
+  let entry;
+  try {
+    entry = await resolveDatabase(dbName);
+  } catch (err) {
+    return jsonResponse({ error: `Database lookup failed: ${err}` }, 500);
+  }
   if (!entry) return jsonResponse({ error: 'Database not found' }, 404);
-  if (!await validateToken(bearerToken, entry)) return jsonResponse({ error: 'Invalid API token' }, 401);
+
+  try {
+    if (!await validateToken(bearerToken, entry)) return jsonResponse({ error: 'Invalid API token' }, 401);
+  } catch (err) {
+    return jsonResponse({ error: `Token validation failed: ${err}` }, 500);
+  }
 
   try {
     const dispatcher = getDispatcher();

@@ -1,16 +1,24 @@
 <script>
+  import { env } from 'cloudflare:workers';
   import { signIn } from '$server/database/auth';
   import AuthCard from '@kuratchi/ui/auth-card.html';
+
+  const turnstileSiteKey = (env as any).TURNSTILE_SITE_KEY || '';
 </script>
 
 <AuthCard
   title="Sign In"
-  subtitle="Welcome back — sign in to your account"
+  subtitle="Welcome back - sign in to your account"
   footerText="Don't have an account?"
   footerLink="Sign up"
   footerHref="/auth/signup"
   error={signIn.error}
 >
+  if (turnstileSiteKey) {
+    <head>
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    </head>
+  }
   <form action={signIn} method="POST" class="kui-auth-form">
     <div class="kui-field">
       <label for="email">Email</label>
@@ -18,8 +26,14 @@
     </div>
     <div class="kui-field">
       <label for="password">Password</label>
-      <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password" minlength="8" />
+      <input type="password" id="password" name="password" placeholder="********" required autocomplete="current-password" minlength="8" />
     </div>
+    if (turnstileSiteKey) {
+      <div class="kui-field">
+        <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-action="signin"></div>
+      </div>
+    }
     <button type="submit" class="kui-button kui-button--primary kui-button--block kui-auth-submit">Sign In</button>
   </form>
 </AuthCard>
+

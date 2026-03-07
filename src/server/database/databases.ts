@@ -175,6 +175,22 @@ export async function deleteDatabase(formData: FormData): Promise<void> {
   getLocals().__redirectTo = '/databases';
 }
 
+// -- Redeploy dispatch worker for an existing database -------------
+
+export async function redeployDatabase(id: string): Promise<void> {
+  const user = await requireAuth();
+
+  const result = await db.databases.where({ id, organizationId: user.organizationId }).first();
+  const record = result.data as any;
+  if (!record) throw new Error('Database not found');
+  if (!record.workerName || !record.dbuuid) throw new Error('Database is missing worker or D1 info');
+
+  const { accountId, apiToken, namespace } = getEnvVars();
+  await deployDbWorker({ accountId, apiToken, namespace, workerName: record.workerName, d1DatabaseId: record.dbuuid });
+
+  logActivity({ action: 'database.redeploy', userId: user.id, organizationId: user.organizationId, data: { name: record.name, databaseId: id } });
+}
+
 // -- Query a database through the dispatch namespace ----------------
 // Used by server-side routes (e.g. database detail page).
 

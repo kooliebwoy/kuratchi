@@ -33,7 +33,14 @@
   ],
   "vars": {
     "CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
-    "DISPATCH_NAMESPACE": "kuratchi-platform"
+    "DISPATCH_NAMESPACE": "kuratchi-platform",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAACny9P3q0-WsXWGq"
   },
-  "keep_vars": true
+  "keep_vars": true,
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMIT",
+      "id": "2196710312ed494ead9be62d87697bcb"
+    }
+  ]
 }
