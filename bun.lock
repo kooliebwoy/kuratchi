@@ -6,7 +6,7 @@
       "name": "kuratchi-db",
       "dependencies": {
         "@kuratchi/auth": "^0.0.1",
-        "@kuratchi/js": "^0.0.4",
+        "@kuratchi/js": "^0.0.7",
         "@kuratchi/orm": "^0.0.1",
         "@kuratchi/ui": "^0.0.1",
       },
@@ -147,7 +147,7 @@
 
     "@kuratchi/auth": ["@kuratchi/auth@0.0.1", "", { "dependencies": { "@kuratchi/orm": "^0.0.1" } }, "sha512-Y/kdlkvp4ickZB7K3GcWQS0plrgbIGDsVCQ3HatptATQC+SQRzdX+ldot7fL6RUTB2710FUqtRqQb9O1uQt36Q=="],
 
-    "@kuratchi/js": ["@kuratchi/js@0.0.4", "", { "bin": { "kuratchi": "dist/cli.js" } }, "sha512-J1xGY0Uasu+usFrje/ZVrbrZWgepAhXh/zG+2+qwLDXM7ZaR20ZlBa9Tvsd4Lj+kc0Weg3KG7oiKoTX3fBum+Q=="],
+    "@kuratchi/js": ["@kuratchi/js@0.0.7", "", { "dependencies": { "typescript": "^5.8.0" }, "bin": { "kuratchi": "dist/cli.js" } }, "sha512-3mySkM50skPemGxlv/502O4IQvxp0t0To+igIgSGpZd5mjwgBj+gMDO0utRUa1SWpEk7+G2TfhsuGjsnk/lg+Q=="],
 
     "@kuratchi/orm": ["@kuratchi/orm@0.0.1", "", {}, "sha512-bnuZNG96aY9YbzFAzrp9Dl1BFDILDE4gJzjowgxDauddLSy7psYridHAxudq3bE+GIjIEL5hWo5dvXLITPkquQ=="],
 
@@ -190,6 +190,8 @@
     "supports-color": ["supports-color@10.2.2", "", {}, "sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g=="],
 
     "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici": ["undici@7.18.2", "", {}, "sha512-y+8YjDFzWdQlSE9N5nzKMT3g4a5UBX1HKowfdXh0uvAnTaqqwqB92Jt4UXBAeKekDs5IaDKyJFR4X1gYVCgXcw=="],
 

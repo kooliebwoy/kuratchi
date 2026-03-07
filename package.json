@@ -8,9 +8,9 @@
     "build": "kuratchi build"
   },
   "dependencies": {
-    "@kuratchi/js": "^0.0.4",
-    "@kuratchi/orm": "^0.0.1",
     "@kuratchi/auth": "^0.0.1",
+    "@kuratchi/js": "^0.0.7",
+    "@kuratchi/orm": "^0.0.1",
     "@kuratchi/ui": "^0.0.1"
   },
   "devDependencies": {
