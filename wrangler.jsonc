@@ -1,7 +1,7 @@
 {
   "name": "kuratchi",
   "main": ".kuratchi/worker.js",
-  "compatibility_date": "2026-02-26",
+  "compatibility_date": "2026-03-07",
   "compatibility_flags": [
     "nodejs_compat"
   ],
