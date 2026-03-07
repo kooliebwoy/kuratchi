@@ -1,0 +1,99 @@
+<script>
+  import { getCurrentUser } from '$server/database/auth';
+  import { getUsers, inviteUser, suspendUser, activateUser, deleteUser } from '$server/database/users';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Callout from '@kuratchi/ui/callout.html';
+
+  const user = await getCurrentUser();
+  const users = user ? await getUsers() : [];
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>Users</h1>
+      <p data-muted>{users.length} user{users.length !== 1 ? 's' : ''}</p>
+    </div>
+    <button data-variant="primary" data-type="button" disabled title="Email service not yet connected">
+      + Invite User
+    </button>
+  </header>
+
+  <Callout data-variant="info">
+    User invitations are currently disabled. Email service integration is coming soon.
+  </Callout>
+
+  if (users.length === 0) {
+    <EmptyState
+      title="No users yet"
+      description="User invitations will be available once email service is connected."
+    />
+  } else {
+    <div data-scroll>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          for (const u of users) {
+            <tr>
+              <td>{u.name || '-'}</td>
+              <td data-muted>{u.email}</td>
+              <td><Badge>{u.role || 'member'}</Badge></td>
+              <td>
+                if (u.invite_token && !u.status) {
+                  <Badge data-variant="warning">Invited</Badge>
+                } else if (u.status === false) {
+                  <Badge data-variant="danger">Suspended</Badge>
+                } else if (u.status === true) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Pending</Badge>
+                }
+              </td>
+              <td data-muted>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</td>
+              <td>
+                if (u.id !== user.id) {
+                  <div data-cluster>
+                    if (u.status === true) {
+                      <form action={suspendUser} method="POST">
+                        <input type="hidden" name="id" value={u.id} />
+                        <button type="submit" data-variant="warning" data-size="sm">Suspend</button>
+                      </form>
+                    } else if (u.status === false) {
+                      <form action={activateUser} method="POST">
+                        <input type="hidden" name="id" value={u.id} />
+                        <button type="submit" data-variant="success" data-size="sm">Activate</button>
+                      </form>
+                    }
+                    <form action={deleteUser} method="POST">
+                      <input type="hidden" name="id" value={u.id} />
+                      <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Delete this user?')">Delete</button>
+                    </form>
+                  </div>
+                } else {
+                  <span data-muted>You</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

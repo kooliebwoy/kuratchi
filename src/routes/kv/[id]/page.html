@@ -1,0 +1,270 @@
+<script>
+  import { getRequest } from '@kuratchi/js';
+  import { getLocals } from '@kuratchi/js';
+  import { getCurrentUser } from '$server/database/auth';
+  import { getKvNamespace, deleteKvNamespace } from '$server/database/kv';
+  import { getKvTokens, createKvToken, revokeKvToken } from '$server/database/tokens';
+  import Card from '@kuratchi/ui/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import DataList from '@kuratchi/ui/data-list.html';
+  import DataItem from '@kuratchi/ui/data-item.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Callout from '@kuratchi/ui/callout.html';
+
+  const user = await getCurrentUser();
+  const { id } = params;
+  const namespace = user ? await getKvNamespace(id) : null;
+  const tokens = namespace ? await getKvTokens(namespace.id) : [];
+
+  const requestUrl = new URL(getRequest().url);
+  const apiBaseUrl = `${requestUrl.protocol}//${requestUrl.host}/api/v1/kv/${namespace?.name}`;
+
+  // Read and clear flash token cookie
+  let newToken = null;
+  const cookies = getRequest().headers.get('cookie') || '';
+  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
+  if (flashMatch) {
+    newToken = decodeURIComponent(flashMatch[1]);
+    const locals = getLocals();
+    if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
+    locals.__setCookieHeaders.push(`__flash_token=; Path=/kv/${id}; Max-Age=0; HttpOnly; SameSite=Strict`);
+  }
+
+  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+  const firstToken = tokens.length > 0 ? tokens[0].token : '<YOUR_TOKEN>';
+
+  const sdkExample = namespace ? `import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: '${firstToken}',
+  baseUrl: '${baseUrl}',
+});
+
+const kv = kuratchi.kv('${namespace.name}');
+
+// Put
+await kv.put('user:1', JSON.stringify({ name: 'Alice' }));
+
+// Put with TTL and metadata
+await kv.put('session:abc', data, {
+  expirationTtl: 3600,
+  metadata: { type: 'session' },
+});
+
+// Get
+const value = await kv.get('user:1');
+
+// Get with metadata
+const { value: v, metadata } = await kv.getWithMetadata('session:abc');
+
+// List
+const keys = await kv.list({ prefix: 'user:', limit: 100 });
+
+// Delete
+await kv.delete('user:1');` : '';
+
+  const curlGetExample = namespace ? `# Get a value
+curl -X POST ${apiBaseUrl} \\
+  -H "Authorization: Bearer ${firstToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"op": "get", "key": "my-key"}'` : '';
+
+  const curlPutExample = namespace ? `# Put a value
+curl -X POST ${apiBaseUrl} \\
+  -H "Authorization: Bearer ${firstToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"op": "put", "key": "my-key", "value": "hello world"}'` : '';
+
+  const fetchExample = namespace ? `// Get
+const res = await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ op: "get", key: "my-key" }),
+});
+const data = await res.json();
+
+// Put (with optional TTL and metadata)
+await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    op: "put",
+    key: "session:abc",
+    value: JSON.stringify({ userId: 1 }),
+    expirationTtl: 3600,
+    metadata: { type: "session" },
+  }),
+});
+
+// List keys
+await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: { "Authorization": "Bearer ${firstToken}", "Content-Type": "application/json" },
+  body: JSON.stringify({ op: "list", prefix: "session:", limit: 100 }),
+});
+
+// Delete
+await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: { "Authorization": "Bearer ${firstToken}", "Content-Type": "application/json" },
+  body: JSON.stringify({ op: "delete", key: "my-key" }),
+});` : '';
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else if (!namespace) {
+  <header>
+    <h1>KV Namespace not found</h1>
+  </header>
+  <a href="/kv" data-variant="secondary" data-type="button">Back to KV Namespaces</a>
+} else {
+  <header>
+    <div>
+      <h1>
+        {namespace.name}
+        if (namespace.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+      </h1>
+    </div>
+    <button data-variant="danger" data-type="button" commandfor="delete-kv-dialog" command="show-modal">
+      Delete
+    </button>
+  </header>
+
+  <Card title="Connection">
+    <DataList>
+      <DataItem label="API URL">
+        <code>{apiBaseUrl}</code>
+      </DataItem>
+    </DataList>
+
+    <Callout data-variant="info">
+      Single endpoint — operation determined by request body:
+      <code>get</code>, <code>put</code>, <code>delete</code>, <code>list</code>, <code>getWithMetadata</code>
+    </Callout>
+
+    <details>
+      <summary><strong>Usage Examples</strong></summary>
+      <h4>cURL — Get</h4>
+      <pre><code>{curlGetExample}</code></pre>
+      <h4>cURL — Put</h4>
+      <pre><code>{curlPutExample}</code></pre>
+      <h4>JavaScript / Fetch</h4>
+      <pre><code>{fetchExample}</code></pre>
+    </details>
+  </Card>
+
+  <Card title="SDK">
+    <Callout data-variant="success">
+      Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
+    </Callout>
+
+    <pre><code>{sdkExample}</code></pre>
+
+    <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
+  </Card>
+
+  <Card title="API Tokens">
+    if (newToken) {
+      <Alert data-variant="success">
+        <strong>Token created!</strong> Copy it now — you won't be able to see it again.
+        <pre data-mono style="margin-top:0.5rem;padding:0.75rem;background:var(--color-surface-2,#f4f4f5);border-radius:6px;word-break:break-all;white-space:pre-wrap">{newToken}</pre>
+      </Alert>
+    }
+    <div data-cluster>
+      <button data-variant="primary" data-size="sm" data-type="button" commandfor="create-token-dialog" command="show-modal">
+        + Create Token
+      </button>
+    </div>
+
+    if (tokens.length === 0) {
+      <p data-muted>No active tokens. Create one to access this namespace via the API.</p>
+    } else {
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Token</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            for (const t of tokens) {
+              <tr>
+                <td>{t.name}</td>
+                <td data-mono data-muted>{t.token.slice(0, 20)}...{t.token.slice(-8)}</td>
+                <td data-muted>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+                <td>
+                  <form action={revokeKvToken} method="POST">
+                    <input type="hidden" name="tokenId" value={t.id} />
+                    <input type="hidden" name="kvNamespaceId" value={namespace.id} />
+                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
+                  </form>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </Card>
+
+  <Card title="Details">
+    <DataList>
+      <DataItem label="Record ID" data-mono>{namespace.id}</DataItem>
+      <DataItem label="CF Namespace ID" data-mono>{namespace.cfNamespaceId || '-'}</DataItem>
+      <DataItem label="Worker Name" data-mono>{namespace.workerName || '-'}</DataItem>
+      <DataItem label="Created">{namespace.created_at ? new Date(namespace.created_at).toLocaleString() : '-'}</DataItem>
+    </DataList>
+  </Card>
+
+  <Dialog id="create-token-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Create API Token</h2>
+      <p>Create a new token for <strong>{namespace.name}</strong>.</p>
+    </div>
+    <form action={createKvToken} method="POST">
+      <input type="hidden" name="kvNamespaceId" value={namespace.id} />
+      <div data-field>
+        <label for="token-name">Token Name</label>
+        <input type="text" id="token-name" name="name" placeholder="e.g. production, staging, ci" required autocomplete="off" />
+      </div>
+      if (createKvToken.error) {
+        <Alert data-variant="danger">{createKvToken.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Token</button>
+      </div>
+    </form>
+  </Dialog>
+
+  <Dialog id="delete-kv-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Delete KV Namespace</h2>
+      <p>This will permanently delete <strong>{namespace.name}</strong>, its worker, and all tokens. This cannot be undone.</p>
+    </div>
+    <form action={deleteKvNamespace} method="POST">
+      <input type="hidden" name="id" value={namespace.id} />
+      <div data-dialog="actions">
+        <button type="submit" data-variant="danger">Delete Namespace</button>
+      </div>
+    </form>
+  </Dialog>
+}
+

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+.kuratchi/
+
+# Environment / secrets
+.dev.vars
+.env
+.env.local
+.env.production
+
+# Wrangler
+.wrangler/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

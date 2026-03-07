@@ -1,0 +1,304 @@
+<script>
+  import { getRequest } from '@kuratchi/js';
+  import { getLocals } from '@kuratchi/js';
+  import { getCurrentUser } from '$server/database/auth';
+  import { getDatabase, deleteDatabase, queryDatabase } from '$server/database/databases';
+  import { getDbTokens, createDbToken, revokeDbToken } from '$server/database/tokens';
+  import Card from '@kuratchi/ui/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import DataList from '@kuratchi/ui/data-list.html';
+  import DataItem from '@kuratchi/ui/data-item.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Callout from '@kuratchi/ui/callout.html';
+
+  const user = await getCurrentUser();
+  const { id } = params;
+  const database = user ? await getDatabase(id) : null;
+  const tokens = database ? await getDbTokens(database.id) : [];
+
+  const requestUrl = new URL(getRequest().url);
+  const apiBaseUrl = `${requestUrl.protocol}//${requestUrl.host}/api/v1/${database?.name}`;
+
+  // Read and clear flash token cookie
+  let newToken = null;
+  const cookies = getRequest().headers.get('cookie') || '';
+  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
+  if (flashMatch) {
+    newToken = decodeURIComponent(flashMatch[1]);
+    const locals = getLocals();
+    if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
+    locals.__setCookieHeaders.push(`__flash_token=; Path=/databases/${id}; Max-Age=0; HttpOnly; SameSite=Strict`);
+  }
+
+  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+  const firstToken = tokens.length > 0 ? tokens[0].token : '<YOUR_TOKEN>';
+
+  const sdkExample = database ? `import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: '${firstToken}',
+  baseUrl: '${baseUrl}',
+});
+
+const db = kuratchi.database('${database.name}');
+
+// Query
+const users = await db.query('SELECT * FROM users WHERE active = ?', [true]);
+
+// Insert
+await db.query('INSERT INTO users (name) VALUES (?)', ['Alice']);
+
+// Batch (transaction)
+await db.batch([
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['Hello'] },
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['World'] },
+]);
+
+// DDL
+await db.exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT)');` : '';
+
+  const drizzleExample = database ? `import { drizzle } from 'drizzle-orm/sqlite-proxy';
+` + `import * as schema from './schema';
+
+const db = kuratchi.database('${database.name}');
+const drizzleDb = drizzle(db.drizzleProxy(), { schema });
+const users = await drizzleDb.select().from(schema.users);` : '';
+
+  const curlExample = database ? `curl -X POST ${apiBaseUrl} \\
+  -H "Authorization: Bearer ${firstToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"sql": "SELECT * FROM my_table LIMIT 10"}'` : '';
+
+  const fetchExample = database ? `const res = await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    sql: "SELECT * FROM my_table WHERE id = ?",
+    params: [1],
+  }),
+});
+const data = await res.json();` : '';
+
+  const batchExample = database ? `// Batch — multiple statements in one request
+await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    batch: [
+      { sql: "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, title TEXT, body TEXT)" },
+      { sql: "INSERT INTO posts (title, body) VALUES (?, ?)", params: ["Hello", "World"] },
+    ],
+  }),
+});
+
+// Exec — DDL/write-only (no results returned)
+await fetch("${apiBaseUrl}", {
+  body: JSON.stringify({ sql: "DROP TABLE old_table", exec: true }),
+  ...
+});
+
+// Raw — returns array-of-arrays instead of objects
+await fetch("${apiBaseUrl}", {
+  body: JSON.stringify({ sql: "SELECT id, name FROM users", raw: true }),
+  ...
+});` : '';
+
+  let tables = [];
+  let tablesError = null;
+  if (database?.workerName) {
+    const result = await queryDatabase({
+      databaseId: id,
+      sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_cf_KV' AND name != 'migrations_history' ORDER BY name",
+    });
+    if (result.success) {
+      tables = result.results;
+    } else {
+      tablesError = result.error;
+    }
+  }
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else if (!database) {
+  <header>
+    <h1>Database not found</h1>
+  </header>
+  <a href="/databases" data-variant="secondary" data-type="button">Back to Databases</a>
+} else {
+  <header>
+    <div>
+      <h1>
+        {database.name}
+        if (database.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+      </h1>
+      if (database.locationHint) {
+        <p data-muted>Region: {database.locationHint}</p>
+      }
+    </div>
+    <button data-variant="danger" data-type="button" commandfor="delete-db-dialog" command="show-modal">
+      Delete
+    </button>
+  </header>
+
+  <Card title="Connection">
+    <DataList>
+      <DataItem label="API URL">
+        <code>{apiBaseUrl}</code>
+      </DataItem>
+    </DataList>
+
+    <Callout data-variant="info">
+      Single endpoint — operation determined by request body:
+      <code>sql</code> (query), <code>batch</code> (multi-statement), <code>exec: true</code> (DDL), <code>raw: true</code> (array results)
+    </Callout>
+
+    <details>
+      <summary><strong>Usage Examples</strong></summary>
+      <h4>cURL</h4>
+      <pre><code>{curlExample}</code></pre>
+      <h4>JavaScript / Fetch</h4>
+      <pre><code>{fetchExample}</code></pre>
+      <h4>Batch / Exec / Raw</h4>
+      <pre><code>{batchExample}</code></pre>
+    </details>
+  </Card>
+
+  <Card title="SDK">
+    <Callout data-variant="success">
+      Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
+    </Callout>
+
+    <pre><code>{sdkExample}</code></pre>
+
+    <details>
+      <summary><strong>Drizzle ORM</strong></summary>
+      <pre><code>{drizzleExample}</code></pre>
+    </details>
+
+    <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
+  </Card>
+
+  <Card title="API Tokens">
+    if (newToken) {
+      <Alert data-variant="success">
+        <strong>Token created!</strong> Copy it now — you won't be able to see it again.
+        <pre data-mono style="margin-top:0.5rem;padding:0.75rem;background:var(--color-surface-2,#f4f4f5);border-radius:6px;word-break:break-all;white-space:pre-wrap">{newToken}</pre>
+      </Alert>
+    }
+    <div data-cluster>
+      <button data-variant="primary" data-size="sm" data-type="button" commandfor="create-token-dialog" command="show-modal">
+        + Create Token
+      </button>
+    </div>
+
+    if (tokens.length === 0) {
+      <p data-muted>No active tokens. Create one to access this database via the API.</p>
+    } else {
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Token</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            for (const t of tokens) {
+              <tr>
+                <td>{t.name}</td>
+                <td data-mono data-muted>{t.token.slice(0, 20)}...{t.token.slice(-8)}</td>
+                <td data-muted>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+                <td>
+                  <form action={revokeDbToken} method="POST">
+                    <input type="hidden" name="tokenId" value={t.id} />
+                    <input type="hidden" name="databaseId" value={database.id} />
+                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
+                  </form>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </Card>
+
+  <Card title="Details">
+    <DataList>
+      <DataItem label="Record ID" data-mono>{database.id}</DataItem>
+      <DataItem label="D1 UUID" data-mono>{database.dbuuid || '-'}</DataItem>
+      <DataItem label="Worker Name" data-mono>{database.workerName || '-'}</DataItem>
+      if (database.locationHint) {
+        <DataItem label="Location Hint">{database.locationHint}</DataItem>
+      }
+      <DataItem label="Created">{database.created_at ? new Date(database.created_at).toLocaleString() : '-'}</DataItem>
+    </DataList>
+  </Card>
+
+  <Card title="Tables">
+    if (!database.workerName) {
+      <p data-muted>No worker deployed for this database.</p>
+    } else if (tablesError) {
+      <Alert data-variant="danger">Could not connect: {tablesError}</Alert>
+    } else if (tables.length === 0) {
+      <p data-muted>No tables yet. Use the API to create tables.</p>
+    } else {
+      <ul>
+        for (const t of tables) {
+          <li data-mono>{t.name}</li>
+        }
+      </ul>
+    }
+  </Card>
+
+  <Dialog id="create-token-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Create API Token</h2>
+      <p>Create a new token for <strong>{database.name}</strong>.</p>
+    </div>
+    <form action={createDbToken} method="POST">
+      <input type="hidden" name="databaseId" value={database.id} />
+      <div data-field>
+        <label for="token-name">Token Name</label>
+        <input type="text" id="token-name" name="name" placeholder="e.g. production, staging, ci" required autocomplete="off" />
+      </div>
+      if (createDbToken.error) {
+        <Alert data-variant="danger">{createDbToken.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Token</button>
+      </div>
+    </form>
+  </Dialog>
+
+  <Dialog id="delete-db-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Delete Database</h2>
+      <p>This will permanently delete <strong>{database.name}</strong>, its worker, and all tokens. This cannot be undone.</p>
+    </div>
+    <form action={deleteDatabase} method="POST">
+      <input type="hidden" name="id" value={database.id} />
+      <div data-dialog="actions">
+        <button type="submit" data-variant="danger">Delete Database</button>
+      </div>
+    </form>
+  </Dialog>
+}
+

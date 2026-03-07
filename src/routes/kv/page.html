@@ -1,0 +1,86 @@
+<script>
+  import { getCurrentUser } from '$server/database/auth';
+  import { getKvNamespaces, createKvNamespace } from '$server/database/kv';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const user = await getCurrentUser();
+  const namespaces = user ? await getKvNamespaces() : [];
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>KV Namespaces</h1>
+      <p data-muted>{namespaces.length} namespace{namespaces.length !== 1 ? 's' : ''}</p>
+    </div>
+    <button data-variant="primary" data-type="button" commandfor="create-kv-dialog" command="show-modal">
+      + New KV Namespace
+    </button>
+  </header>
+
+  if (namespaces.length === 0) {
+    <EmptyState
+      title="No KV namespaces yet"
+      description="Create a key-value namespace to get started."
+    >
+      <button data-variant="primary" data-type="button" commandfor="create-kv-dialog" command="show-modal">
+        + New KV Namespace
+      </button>
+    </EmptyState>
+  } else {
+    <div data-scroll>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          for (const ns of namespaces) {
+            <tr>
+              <td><a href={`/kv/${ns.id}`}>{ns.name}</a></td>
+              <td>
+                if (ns.isActive) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Inactive</Badge>
+                }
+              </td>
+              <td data-muted>{ns.created_at ? new Date(ns.created_at).toLocaleDateString() : '-'}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <Dialog id="create-kv-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>New KV Namespace</h2>
+      <p>Creates a new Workers KV namespace on Cloudflare.</p>
+    </div>
+    <form action={createKvNamespace} method="POST">
+      <div data-field>
+        <label for="kv-name">Name</label>
+        <input type="text" id="kv-name" name="name" placeholder="my-cache" required pattern="[a-z0-9-]+" title="Lowercase letters, numbers, and hyphens only" autocomplete="off" />
+        <small>Lowercase letters, numbers, and hyphens only.</small>
+      </div>
+      if (createKvNamespace.error) {
+        <Alert data-variant="danger">{createKvNamespace.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Namespace</button>
+      </div>
+    </form>
+  </Dialog>
+}

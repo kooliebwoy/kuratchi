@@ -1,0 +1,94 @@
+<script>
+  import { getCurrentUser } from '$server/database/auth';
+  import { getDatabases } from '$server/database/databases';
+  import { getKvNamespaces } from '$server/database/kv';
+  import { getR2Buckets } from '$server/database/r2';
+  import StatsCard from '@kuratchi/ui/stats-card.html';
+  import CardGrid from '@kuratchi/ui/card-grid.html';
+  import Card from '@kuratchi/ui/card.html';
+  import Callout from '@kuratchi/ui/callout.html';
+  import { getRequest } from '@kuratchi/js';
+
+  const user = await getCurrentUser();
+  const databases = user ? await getDatabases() : [];
+  const kvNamespaces = user ? await getKvNamespaces() : [];
+  const r2Buckets = user ? await getR2Buckets() : [];
+
+  const requestUrl = user ? new URL(getRequest().url) : null;
+  const baseUrl = requestUrl ? `${requestUrl.protocol}//${requestUrl.host}` : '';
+
+  const sdkInstall = `npm install @kuratchi/sdk`;
+  const sdkQuickStart = `import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: process.env.KURATCHI_API_KEY,
+  baseUrl: '${baseUrl}',
+});
+
+// SQL Database
+const db = kuratchi.database('my-db');
+await db.query('SELECT * FROM users');
+
+// Key-Value
+const kv = kuratchi.kv('my-cache');
+await kv.put('key', 'value');
+
+// Object Storage
+const r2 = kuratchi.r2('my-bucket');
+await r2.put('file.txt', 'hello');`;
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>Dashboard</h1>
+    </div>
+  </header>
+
+  <CardGrid>
+    <StatsCard
+      title="Databases"
+      value={String(databases.length)}
+      description="D1 relational databases"
+    />
+    <StatsCard
+      title="KV Namespaces"
+      value={String(kvNamespaces.length)}
+      description="Key-value stores"
+    />
+    <StatsCard
+      title="R2 Buckets"
+      value={String(r2Buckets.length)}
+      description="Object storage buckets"
+    />
+  </CardGrid>
+
+  <Card title="Quick Actions">
+    <nav data-cluster>
+      <a href="/databases" data-variant="primary" data-type="button">Manage Databases</a>
+      <a href="/kv" data-variant="secondary" data-type="button">Manage KV</a>
+      <a href="/r2" data-variant="secondary" data-type="button">Manage R2</a>
+    </nav>
+  </Card>
+
+  <Card title="SDK">
+    <Callout data-variant="success">
+      Connect from any JavaScript/TypeScript app with the <strong>Kuratchi SDK</strong>. Databases, KV, and R2 — one client, one API key.
+    </Callout>
+
+    <p><code>{sdkInstall}</code></p>
+
+    <details>
+      <summary><strong>Quick Start</strong></summary>
+      <pre><code>{sdkQuickStart}</code></pre>
+    </details>
+
+    <p data-muted><small>Create a platform token in <a href="/account/tokens">Account > API Tokens</a> for full access, or use a resource-scoped token from any resource detail page.</small></p>
+  </Card>
+}
+

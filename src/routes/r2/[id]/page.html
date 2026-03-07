@@ -1,0 +1,267 @@
+<script>
+  import { getRequest } from '@kuratchi/js';
+  import { getLocals } from '@kuratchi/js';
+  import { getCurrentUser } from '$server/database/auth';
+  import { getR2Bucket, deleteR2Bucket } from '$server/database/r2';
+  import { getR2Tokens, createR2Token, revokeR2Token } from '$server/database/tokens';
+  import Card from '@kuratchi/ui/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import DataList from '@kuratchi/ui/data-list.html';
+  import DataItem from '@kuratchi/ui/data-item.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Callout from '@kuratchi/ui/callout.html';
+
+  const user = await getCurrentUser();
+  const { id } = params;
+  const bucket = user ? await getR2Bucket(id) : null;
+  const tokens = bucket ? await getR2Tokens(bucket.id) : [];
+
+  const requestUrl = new URL(getRequest().url);
+  const apiBaseUrl = `${requestUrl.protocol}//${requestUrl.host}/api/v1/r2/${bucket?.name}`;
+
+  // Read and clear flash token cookie
+  let newToken = null;
+  const cookies = getRequest().headers.get('cookie') || '';
+  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
+  if (flashMatch) {
+    newToken = decodeURIComponent(flashMatch[1]);
+    const locals = getLocals();
+    if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
+    locals.__setCookieHeaders.push(`__flash_token=; Path=/r2/${id}; Max-Age=0; HttpOnly; SameSite=Strict`);
+  }
+
+  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+  const firstToken = tokens.length > 0 ? tokens[0].token : '<YOUR_TOKEN>';
+
+  const sdkExample = bucket ? `import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: '${firstToken}',
+  baseUrl: '${baseUrl}',
+});
+
+const r2 = kuratchi.r2('${bucket.name}');
+
+// Upload
+await r2.put('photos/cat.jpg', imageBuffer, {
+  contentType: 'image/jpeg',
+});
+
+// Download
+const file = await r2.get('photos/cat.jpg');
+// file.body — ReadableStream
+
+// List
+const list = await r2.list({ prefix: 'photos/', limit: 50 });
+
+// Head (metadata only)
+const meta = await r2.head('photos/cat.jpg');
+
+// Delete
+await r2.delete('photos/cat.jpg');` : '';
+
+  const curlExamples = bucket ? `# List objects
+curl ${apiBaseUrl} \\
+  -H "Authorization: Bearer ${firstToken}"
+
+# Upload a file
+curl -X PUT ${apiBaseUrl}/path/to/file.txt \\
+  -H "Authorization: Bearer ${firstToken}" \\
+  -H "Content-Type: text/plain" \\
+  --data-binary @file.txt
+
+# Download a file
+curl ${apiBaseUrl}/path/to/file.txt \\
+  -H "Authorization: Bearer ${firstToken}"
+
+# Delete a file
+curl -X DELETE ${apiBaseUrl}/path/to/file.txt \\
+  -H "Authorization: Bearer ${firstToken}"` : '';
+
+  const fetchExample = bucket ? `// Upload
+await fetch("${apiBaseUrl}/my-file.json", {
+  method: "PUT",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ hello: "world" }),
+});
+
+// Download
+const res = await fetch("${apiBaseUrl}/my-file.json", {
+  headers: { "Authorization": "Bearer ${firstToken}" },
+});
+const data = await res.json();
+
+// List objects (with optional prefix/limit/cursor)
+const list = await fetch("${apiBaseUrl}?prefix=uploads/&limit=50", {
+  headers: { "Authorization": "Bearer ${firstToken}" },
+});
+
+// Delete
+await fetch("${apiBaseUrl}/my-file.json", {
+  method: "DELETE",
+  headers: { "Authorization": "Bearer ${firstToken}" },
+});
+
+// Head (metadata only)
+const head = await fetch("${apiBaseUrl}/my-file.json", {
+  method: "HEAD",
+  headers: { "Authorization": "Bearer ${firstToken}" },
+});` : '';
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else if (!bucket) {
+  <header>
+    <h1>R2 Bucket not found</h1>
+  </header>
+  <a href="/r2" data-variant="secondary" data-type="button">Back to R2 Buckets</a>
+} else {
+  <header>
+    <div>
+      <h1>
+        {bucket.name}
+        if (bucket.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+      </h1>
+      if (bucket.locationHint) {
+        <p data-muted>Region: {bucket.locationHint}</p>
+      }
+    </div>
+    <button data-variant="danger" data-type="button" commandfor="delete-r2-dialog" command="show-modal">
+      Delete
+    </button>
+  </header>
+
+  <Card title="Connection">
+    <DataList>
+      <DataItem label="API URL">
+        <code>{apiBaseUrl}</code>
+      </DataItem>
+    </DataList>
+
+    <Callout data-variant="info">
+      RESTful API — <code>GET /</code> list, <code>GET /:key</code> download, <code>PUT /:key</code> upload, <code>DELETE /:key</code> delete, <code>HEAD /:key</code> metadata
+    </Callout>
+
+    <details>
+      <summary><strong>Usage Examples</strong></summary>
+      <h4>cURL</h4>
+      <pre><code>{curlExamples}</code></pre>
+      <h4>JavaScript / Fetch</h4>
+      <pre><code>{fetchExample}</code></pre>
+    </details>
+  </Card>
+
+  <Card title="SDK">
+    <Callout data-variant="success">
+      Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
+    </Callout>
+
+    <pre><code>{sdkExample}</code></pre>
+
+    <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
+  </Card>
+
+  <Card title="API Tokens">
+    if (newToken) {
+      <Alert data-variant="success">
+        <strong>Token created!</strong> Copy it now — you won't be able to see it again.
+        <pre data-mono style="margin-top:0.5rem;padding:0.75rem;background:var(--color-surface-2,#f4f4f5);border-radius:6px;word-break:break-all;white-space:pre-wrap">{newToken}</pre>
+      </Alert>
+    }
+    <div data-cluster>
+      <button data-variant="primary" data-size="sm" data-type="button" commandfor="create-token-dialog" command="show-modal">
+        + Create Token
+      </button>
+    </div>
+
+    if (tokens.length === 0) {
+      <p data-muted>No active tokens. Create one to access this bucket via the API.</p>
+    } else {
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Token</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            for (const t of tokens) {
+              <tr>
+                <td>{t.name}</td>
+                <td data-mono data-muted>{t.token.slice(0, 20)}...{t.token.slice(-8)}</td>
+                <td data-muted>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+                <td>
+                  <form action={revokeR2Token} method="POST">
+                    <input type="hidden" name="tokenId" value={t.id} />
+                    <input type="hidden" name="r2BucketId" value={bucket.id} />
+                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
+                  </form>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </Card>
+
+  <Card title="Details">
+    <DataList>
+      <DataItem label="Record ID" data-mono>{bucket.id}</DataItem>
+      <DataItem label="Worker Name" data-mono>{bucket.workerName || '-'}</DataItem>
+      if (bucket.locationHint) {
+        <DataItem label="Location Hint">{bucket.locationHint}</DataItem>
+      }
+      <DataItem label="Created">{bucket.created_at ? new Date(bucket.created_at).toLocaleString() : '-'}</DataItem>
+    </DataList>
+  </Card>
+
+  <Dialog id="create-token-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Create API Token</h2>
+      <p>Create a new token for <strong>{bucket.name}</strong>.</p>
+    </div>
+    <form action={createR2Token} method="POST">
+      <input type="hidden" name="r2BucketId" value={bucket.id} />
+      <div data-field>
+        <label for="token-name">Token Name</label>
+        <input type="text" id="token-name" name="name" placeholder="e.g. production, staging, ci" required autocomplete="off" />
+      </div>
+      if (createR2Token.error) {
+        <Alert data-variant="danger">{createR2Token.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Token</button>
+      </div>
+    </form>
+  </Dialog>
+
+  <Dialog id="delete-r2-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Delete R2 Bucket</h2>
+      <p>This will permanently delete <strong>{bucket.name}</strong>, its worker, and all tokens. This cannot be undone.</p>
+    </div>
+    <form action={deleteR2Bucket} method="POST">
+      <input type="hidden" name="id" value={bucket.id} />
+      <div data-dialog="actions">
+        <button type="submit" data-variant="danger">Delete Bucket</button>
+      </div>
+    </form>
+  </Dialog>
+}
+

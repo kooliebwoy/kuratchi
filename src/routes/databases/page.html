@@ -1,0 +1,112 @@
+<script>
+  import { getCurrentUser } from '$server/database/auth';
+  import { getDatabases, createDatabase } from '$server/database/databases';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const user = await getCurrentUser();
+  const databases = user ? await getDatabases() : [];
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>Databases</h1>
+      <p data-muted>{databases.length} database{databases.length !== 1 ? 's' : ''}</p>
+    </div>
+    <button data-variant="primary" data-type="button" commandfor="create-db-dialog" command="show-modal">
+      + New Database
+    </button>
+  </header>
+
+  if (databases.length === 0) {
+    <EmptyState
+      title="No databases yet"
+      description="Create your first database to get started."
+    >
+      <button data-variant="primary" data-type="button" commandfor="create-db-dialog" command="show-modal">
+        + New Database
+      </button>
+    </EmptyState>
+  } else {
+    <div data-scroll>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Location</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          for (const db of databases) {
+            <tr>
+              <td><a href={`/databases/${db.id}`}>{db.name}</a></td>
+              <td>
+                if (db.isActive) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Inactive</Badge>
+                }
+              </td>
+              <td data-muted>{db.locationHint || 'auto'}</td>
+              <td data-muted>{db.created_at ? new Date(db.created_at).toLocaleDateString() : '-'}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <Dialog id="create-db-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>New Database</h2>
+      <p>Creates a new D1 database on Cloudflare.</p>
+    </div>
+    <form action={createDatabase} method="POST">
+      <div data-field>
+        <label for="name">Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          placeholder="my-database"
+          required
+          pattern="[a-z0-9-]+"
+          title="Lowercase letters, numbers, and hyphens only"
+          autocomplete="off"
+        />
+        <small>Lowercase letters, numbers, and hyphens only.</small>
+      </div>
+      <div data-field>
+        <label for="locationHint">Location</label>
+        <select id="locationHint" name="locationHint">
+          <option value="">Automatic (nearest)</option>
+          <option value="wnam">Western North America</option>
+          <option value="enam">Eastern North America</option>
+          <option value="weur">Western Europe</option>
+          <option value="eeur">Eastern Europe</option>
+          <option value="apac">Asia Pacific</option>
+          <option value="oc">Oceania</option>
+          <option value="afr">Africa</option>
+          <option value="me">Middle East</option>
+        </select>
+        <small>Hint for where the primary D1 data is stored.</small>
+      </div>
+      if (createDatabase.error) {
+        <Alert data-variant="danger">{createDatabase.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Database</button>
+      </div>
+    </form>
+  </Dialog>
+}
