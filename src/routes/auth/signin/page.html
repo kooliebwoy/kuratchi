@@ -3,7 +3,7 @@
   import { signIn } from '$server/database/auth';
   import AuthCard from '@kuratchi/ui/auth-card.html';
 
-  const turnstileSiteKey = (env as any).TURNSTILE_SITE_KEY || '';
+  const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '';
 </script>
 
 <AuthCard
@@ -36,4 +36,5 @@
     <button type="submit" class="kui-button kui-button--primary kui-button--block kui-auth-submit">Sign In</button>
   </form>
 </AuthCard>
+
 
