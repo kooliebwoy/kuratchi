@@ -5,6 +5,12 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+   "routes": [
+    {
+      "pattern": "kuratchi.cloud",
+      "custom_domain": true
+    }
+  ],
   "d1_databases": [
     {
       // kuratchi's own admin database (users, sessions, database records)
