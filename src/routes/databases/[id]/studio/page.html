@@ -1,0 +1,52 @@
+<script>
+  import { getDatabaseStudioData, runSqlQuery, insertTableRow, deleteTableRow, updateTableRow } from '$server/database/db-studio';
+  import DatabaseStudio from '@kuratchi/db-studio/db-studio.html';
+
+  const {
+    database,
+    tables, activeTable, rows, columns, schema,
+    totalRows, page, totalPages,
+    sqlQuery, sqlResult, dbError,
+  } = await getDatabaseStudioData();
+</script>
+
+if (!database) {
+  <header>
+    <h1>Database not found</h1>
+  </header>
+  <a href="/databases" data-variant="secondary" data-type="button">Back to Databases</a>
+} else if (!database.workerName) {
+  <header>
+    <h1>{database.name}</h1>
+  </header>
+  <p data-muted>No worker deployed for this database. Deploy first to use the studio.</p>
+  <a href={`/databases/${database.id}`} data-variant="secondary" data-type="button">Back to Database</a>
+} else {
+  <header>
+    <div>
+      <h1>{database.name} — Studio</h1>
+      <p data-muted>Browse tables, run queries, and manage data.</p>
+    </div>
+    <a href={`/databases/${database.id}`} data-variant="secondary" data-type="button">Back to Database</a>
+  </header>
+
+  <DatabaseStudio
+    tables={tables}
+    activeTable={activeTable}
+    rows={rows}
+    columns={columns}
+    schema={schema}
+    totalRows={totalRows}
+    page={page}
+    totalPages={totalPages}
+    sqlQuery={sqlQuery}
+    sqlResult={sqlResult}
+    dbError={dbError}
+    baseHref={`/databases/${database.id}/studio`}
+    sqlPlaceholder="SELECT * FROM my_table LIMIT 10"
+    runQueryAction={runSqlQuery}
+    insertRowAction={insertTableRow}
+    deleteRowAction={deleteTableRow}
+    updateRowAction={updateTableRow}
+  />
+}

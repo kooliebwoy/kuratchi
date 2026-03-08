@@ -150,9 +150,14 @@ if (!user) {
         <p data-muted>Region: {database.locationHint}</p>
       }
     </div>
-    <button data-variant="danger" data-type="button" commandfor="delete-db-dialog" command="show-modal">
-      Delete
-    </button>
+    <div data-cluster>
+      if (database.workerName) {
+        <a href={`/databases/${database.id}/studio`} data-variant="secondary" data-type="button">Studio</a>
+      }
+      <button data-variant="danger" data-type="button" commandfor="delete-db-dialog" command="show-modal">
+        Delete
+      </button>
+    </div>
   </header>
 
   <Card title="Connection">

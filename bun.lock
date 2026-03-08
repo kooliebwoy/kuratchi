@@ -8,6 +8,7 @@
         "@kuratchi/auth": "^0.0.1",
         "@kuratchi/js": "^0.0.8",
         "@kuratchi/orm": "^0.0.1",
+        "@kuratchi/sdk": "0.1.0",
         "@kuratchi/ui": "^0.0.1",
       },
       "devDependencies": {
@@ -150,6 +151,8 @@
     "@kuratchi/js": ["@kuratchi/js@0.0.8", "", { "dependencies": { "typescript": "^5.8.0" }, "bin": { "kuratchi": "dist/cli.js" } }, "sha512-uUJz750094E8zwlvOwSBrruwXvc/QIMobEwMknQeIIZsqyv+DUSp3yno9Jg0x744XWcoFdElYNwnlf96pEBiRg=="],
 
     "@kuratchi/orm": ["@kuratchi/orm@0.0.1", "", {}, "sha512-bnuZNG96aY9YbzFAzrp9Dl1BFDILDE4gJzjowgxDauddLSy7psYridHAxudq3bE+GIjIEL5hWo5dvXLITPkquQ=="],
+
+    "@kuratchi/sdk": ["@kuratchi/sdk@0.1.0", "", {}, "sha512-CENH/yoM9aTPNk+g/5Ys8/dQxVcURqVFh7MkYHpLfjAPLbpxY18JkPJ9Yo+JrNyYe11AiLscRypmFKFhGC6vbg=="],
 
     "@kuratchi/ui": ["@kuratchi/ui@0.0.1", "", {}, "sha512-wgSuKoIacYeLz4pEk4Pw/wSp1HIRQU0Wkum1xtOr0QnXs5W+Hi5wK5ElBtyj1i5RTYy9PsrWhHYElBK9YHM3jg=="],
 
