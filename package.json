@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@kuratchi/auth": "^0.0.1",
-    "@kuratchi/js": "^0.0.7",
+    "@kuratchi/js": "^0.0.8",
     "@kuratchi/orm": "^0.0.1",
     "@kuratchi/ui": "^0.0.1"
   },
