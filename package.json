@@ -9,13 +9,13 @@
   },
   "dependencies": {
     "@kuratchi/auth": "^0.0.1",
-    "@kuratchi/js": "^0.0.8",
-    "@kuratchi/orm": "^0.0.1",
     "@kuratchi/db-studio": "^0.0.1",
+    "@kuratchi/js": "^0.0.9",
+    "@kuratchi/orm": "^0.0.1",
     "@kuratchi/ui": "^0.0.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",
-    "wrangler": "^4.14.0"
+    "wrangler": "^4.71.0"
   }
 }
