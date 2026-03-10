@@ -1,0 +1,19 @@
+{
+  "name": "@kuratchi/site",
+  "version": "0.0.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "bun run --cwd ../../packages/kuratchi-js build",
+    "dev": "bun run --bun ../../packages/kuratchi-js/src/cli.ts dev",
+    "prebuild": "bun run --cwd ../../packages/kuratchi-js build",
+    "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
+  },
+  "dependencies": {
+    "@kuratchi/js": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260223.0",
+    "wrangler": "^4.65.0"
+  }
+}

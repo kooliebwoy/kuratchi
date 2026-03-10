@@ -1,0 +1,7 @@
+<script>
+  const { class: className = '' } = props;
+</script>
+
+<div class="kui-dashboard {className}" data-sidebar-variant={props.data_sidebar_variant || 'inset'} data-sidebar-side={props.data_sidebar_side || 'left'} data-sidebar-collapsible={props.data_sidebar_collapsible || 'icon'}>
+  <slot></slot>
+</div>

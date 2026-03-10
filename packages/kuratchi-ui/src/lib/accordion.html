@@ -1,0 +1,18 @@
+<script>
+  const { class: className = '' } = props;
+</script>
+
+<div class="kui-accordion {className}">
+  <slot></slot>
+</div>
+
+<style>
+  .kui-accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-lg);
+    overflow: hidden;
+  }
+</style>

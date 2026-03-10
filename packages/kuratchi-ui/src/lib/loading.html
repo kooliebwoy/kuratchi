@@ -1,0 +1,11 @@
+<script>
+  const { type = 'spinner', size = 'md', class: className = '' } = props;
+</script>
+
+<span class="kui-loader {className}" data-type="{type}" data-size="{size}" aria-live="polite" aria-busy="true">
+  if (type === 'dots' || type === 'bars') {
+    <span></span>
+    <span></span>
+    <span></span>
+  }
+</span>

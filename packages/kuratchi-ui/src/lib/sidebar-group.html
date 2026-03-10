@@ -1,0 +1,12 @@
+<script>
+  const { label, class: className = '' } = props;
+</script>
+
+<div class="kui-sidebar__group {className}">
+  if (label) {
+    <div class="kui-sidebar__group-label">{label}</div>
+  }
+  <div class="kui-sidebar__group-content">
+    <slot></slot>
+  </div>
+</div>

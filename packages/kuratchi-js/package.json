@@ -1,0 +1,62 @@
+{
+    "name": "@kuratchi/js",
+    "version": "0.0.9",
+    "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "bin": {
+        "kuratchi": "./dist/cli.js"
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "check": "tsc -p tsconfig.build.json --noEmit",
+        "test": "bun test",
+        "test:watch": "bun test --watch",
+        "prepublishOnly": "npm run build"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./runtime/context.js": {
+            "types": "./dist/runtime/context.d.ts",
+            "import": "./dist/runtime/context.js"
+        },
+        "./request": {
+            "types": "./dist/runtime/request.d.ts",
+            "import": "./dist/runtime/request.js"
+        },
+        "./runtime/do.js": {
+            "types": "./dist/runtime/do.d.ts",
+            "import": "./dist/runtime/do.js"
+        },
+        "./compiler": {
+            "types": "./dist/compiler/index.d.ts",
+            "import": "./dist/compiler/index.js"
+        },
+        "./environment": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "typescript": "^5.8.0"
+    },
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260223.0",
+        "@types/node": "^24.4.0"
+    }
+}

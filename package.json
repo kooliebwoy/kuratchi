@@ -1,23 +1,17 @@
 {
-    "name":  "kuratchi",
-    "version":  "0.0.1",
-    "private":  true,
-    "type":  "module",
-    "scripts":  {
-                    "dev":  "kuratchi dev",
-                    "build":  "kuratchi build"
-                },
-    "dependencies":  {
-                         "@kuratchi/auth":  "file:../kuratchi-packages/packages/kuratchi-auth",
-                         "@kuratchi/db-studio":  "file:../kuratchi-packages/packages/kuratchi-db-studio",
-                         "@kuratchi/file-explorer":  "file:../kuratchi-packages/packages/kuratchi-file-explorer",
-                         "@kuratchi/js":  "file:../kuratchi-packages/packages/kuratchi-js",
-                         "@kuratchi/orm":  "file:../kuratchi-packages/packages/kuratchi-orm",
-                         "@kuratchi/ui":  "file:../kuratchi-packages/packages/kuratchi-ui",
-                         "@kuratchi/observability":  "file:../kuratchi-packages/packages/kuratchi-observability"
-                     },
-    "devDependencies":  {
-                            "@cloudflare/workers-types":  "^4.20250214.0",
-                            "wrangler":  "^4.71.0"
-                        }
+  "name": "kuratchi",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "bun run --cwd packages/kuratchi-js build && bun run --cwd packages/kuratchi-sdk build && bun run --cwd packages/kuratchi-observability build",
+    "check": "bun run --cwd packages/kuratchi-js check && bun run --cwd packages/kuratchi-sdk check && bun run --cwd packages/kuratchi-observability check",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7",
+    "typescript": "^5.8.0"
+  }
 }

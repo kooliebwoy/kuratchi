@@ -1,0 +1,132 @@
+{
+  "project": "KuratchiJS",
+  "package": "@kuratchi/js",
+  "category": "cloudflare-workers-framework",
+  "primary_docs": "/docs",
+  "machine_index": "/_assets/llms.txt",
+  "goal": "Enable an LLM to scaffold and run a working Kuratchi app without external context.",
+  "hello_world": {
+    "required_files": [
+      "package.json",
+      "tsconfig.json",
+      "wrangler.jsonc",
+      "kuratchi.config.ts",
+      "src/routes/layout.html",
+      "src/routes/page.html"
+    ],
+    "wrangler_main": ".kuratchi/worker.js",
+    "commands": [
+      "bun install",
+      "bun run build",
+      "bun run dev"
+    ],
+    "minimum_layout_rule": "src/routes/layout.html must include <slot></slot>"
+  },
+  "templates": {
+    "package_json": {
+      "name": "my-app",
+      "private": true,
+      "type": "module",
+      "scripts": {
+        "dev": "bun run --bun ../../packages/kuratchi-js/src/cli.ts dev",
+        "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
+      },
+      "dependencies": {
+        "@kuratchi/js": "workspace:*"
+      },
+      "devDependencies": {
+        "wrangler": "^4.65.0",
+        "@cloudflare/workers-types": "^4.20260223.0"
+      }
+    },
+    "tsconfig_json": {
+      "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "types": [
+          "./worker-configuration.d.ts"
+        ]
+      },
+      "include": [
+        "src/**/*.ts",
+        "kuratchi.config.ts"
+      ]
+    },
+    "wrangler_jsonc": {
+      "name": "my-app",
+      "main": ".kuratchi/worker.js",
+      "compatibility_date": "2026-03-06",
+      "compatibility_flags": [
+        "nodejs_compat"
+      ]
+    },
+    "kuratchi_config_ts": "import { defineConfig } from '@kuratchi/js';\n\nexport default defineConfig({});"
+  },
+  "routing": {
+    "rules": [
+      "src/routes/page.html -> /",
+      "src/routes/<name>/page.html -> /<name>",
+      "src/routes/blog/[slug]/page.html -> /blog/:slug",
+      "src/routes/layout.html wraps all routes"
+    ]
+  },
+  "actions": {
+    "binding": "action={exportedFunction}",
+    "input": "FormData",
+    "errors": [
+      "ActionError"
+    ],
+    "redirect": "redirect(path, status?)",
+    "example": {
+      "signature": "export async function createPost(formData: FormData)",
+      "notes": [
+        "Validate user input from formData",
+        "Throw ActionError for expected validation",
+        "Use redirect() for PRG"
+      ]
+    }
+  },
+  "durable_objects": {
+    "handler_suffix": ".do.ts",
+    "recommended_mode": "function",
+    "class_mode": "kuratchiDO base class supported",
+    "proxy_import_alias": "$durable-objects/*",
+    "quickstart_steps": [
+      "Create src/server/<name>.do.ts",
+      "Export functions to expose RPC methods",
+      "Configure durableObjects in kuratchi.config.ts",
+      "Add wrangler durable_objects binding + migrations",
+      "Import from $durable-objects/<name>"
+    ]
+  },
+  "progressive_enhancement": [
+    "data-action",
+    "data-refresh",
+    "data-get",
+    "data-poll",
+    "data-select-all",
+    "data-select-item"
+  ],
+  "artifacts": [
+    ".kuratchi/routes.js",
+    ".kuratchi/worker.js",
+    ".kuratchi/do/*.js"
+  ],
+  "llm_generation_policy": {
+    "for_basic_site": [
+      "Generate layout.html with nav and slot",
+      "Generate page.html home",
+      "Generate about/page.html",
+      "Generate one simple form action example",
+      "Ensure build command passes"
+    ],
+    "validation_checks": [
+      "wrangler.main equals .kuratchi/worker.js",
+      "layout includes <slot></slot>",
+      "package has build/dev scripts",
+      "route files use .html"
+    ]
+  }
+}

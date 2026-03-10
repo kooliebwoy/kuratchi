@@ -1,0 +1,23 @@
+{
+  "name": "@kuratchi/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "kuratchi dev",
+    "build": "kuratchi build"
+  },
+  "dependencies": {
+    "@kuratchi/auth": "workspace:*",
+    "@kuratchi/db-studio": "workspace:*",
+    "@kuratchi/file-explorer": "workspace:*",
+    "@kuratchi/js": "workspace:*",
+    "@kuratchi/orm": "workspace:*",
+    "@kuratchi/ui": "workspace:*",
+    "@kuratchi/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "wrangler": "^4.71.0"
+  }
+}

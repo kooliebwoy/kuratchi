@@ -1,0 +1,953 @@
+<script>
+  import Alert from '@kuratchi/ui/alert.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+
+  const {
+    resourceLabel = 'Files',
+    baseHref = '',
+    downloadBaseHref = '',
+    currentPrefix = '',
+    directories = [],
+    objects = [],
+    selectedObject = null,
+    selectedPreview = null,
+    selectedPreviewKind = 'none',
+    listError = null,
+    nextCursor = '',
+    uploadAction = '',
+    saveTextAction = '',
+    deleteAction = '',
+  } = props;
+
+  /* ── helpers ── */
+  function hrefFor(options = {}) {
+    const qs = new URLSearchParams();
+    const prefix = options.prefix ?? currentPrefix;
+    const selected = options.selected ?? '';
+    const cursor = options.cursor ?? '';
+    if (prefix) qs.set('prefix', prefix);
+    if (selected) qs.set('selected', selected);
+    if (cursor) qs.set('cursor', cursor);
+    const query = qs.toString();
+    return query ? `${baseHref}?${query}` : baseHref;
+  }
+
+  function parentPrefix(prefix) {
+    const parts = String(prefix || '').split('/').filter(Boolean);
+    if (parts.length === 0) return '';
+    parts.pop();
+    return parts.length > 0 ? `${parts.join('/')}/` : '';
+  }
+
+  function prefixParts(prefix) {
+    const parts = String(prefix || '').split('/').filter(Boolean);
+    const crumbs = [{ label: resourceLabel, prefix: '' }];
+    let acc = '';
+    for (const part of parts) {
+      acc += `${part}/`;
+      crumbs.push({ label: part, prefix: acc });
+    }
+    return crumbs;
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes || 0);
+    if (!Number.isFinite(value) || value <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const exp = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+    const num = value / Math.pow(1024, exp);
+    return `${num >= 10 || exp === 0 ? num.toFixed(0) : num.toFixed(1)} ${units[exp]}`;
+  }
+
+  function formatDate(value) {
+    if (!value) return '-';
+    try { return new Date(value).toLocaleString(); } catch { return String(value); }
+  }
+
+  function formatShortDate(value) {
+    if (!value) return '-';
+    try { return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return String(value); }
+  }
+
+  function downloadHref(key) {
+    if (!downloadBaseHref || !key) return '#';
+    const encoded = String(key).split('/').map((part) => encodeURIComponent(part)).join('/');
+    return `${downloadBaseHref}/${encoded}`;
+  }
+
+  function extname(name) {
+    const value = String(name || '').trim();
+    const idx = value.lastIndexOf('.');
+    if (idx <= 0 || idx === value.length - 1) return '';
+    return value.slice(idx + 1).toLowerCase();
+  }
+
+  function fileBadge(object) {
+    const ext = extname(object?.name || object?.key || '');
+    if (ext) return ext.slice(0, 4).toUpperCase();
+    if (String(object?.contentType || '').startsWith('image/')) return 'IMG';
+    return 'FILE';
+  }
+
+  function fileTone(object) {
+    const type = String(object?.contentType || '').toLowerCase();
+    const ext = extname(object?.name || object?.key || '');
+    if (type.startsWith('image/')) return 'success';
+    if (type.includes('json') || ext === 'json') return 'warning';
+    if (type.includes('javascript') || type.includes('typescript') || ['js', 'ts', 'tsx', 'jsx'].includes(ext)) return 'primary';
+    if (type.includes('pdf') || ext === 'pdf') return 'danger';
+    if (type.includes('css') || ext === 'css') return 'info';
+    if (type.includes('html') || ext === 'html') return 'html';
+    return 'muted';
+  }
+
+  function fileIcon(object) {
+    const type = String(object?.contentType || '').toLowerCase();
+    const ext = extname(object?.name || object?.key || '');
+    if (type.startsWith('image/')) return 'image';
+    if (type.includes('pdf') || ext === 'pdf') return 'pdf';
+    if (type.includes('zip') || type.includes('gzip') || type.includes('tar') || ['zip', 'gz', 'tar', 'rar', '7z'].includes(ext)) return 'archive';
+    if (type.includes('json') || ext === 'json') return 'code';
+    if (type.includes('javascript') || type.includes('typescript') || ['js', 'ts', 'tsx', 'jsx', 'css', 'html'].includes(ext)) return 'code';
+    if (type.includes('text') || ['txt', 'md', 'csv', 'log'].includes(ext)) return 'text';
+    return 'file';
+  }
+
+  const crumbs = prefixParts(currentPrefix);
+  const parent = parentPrefix(currentPrefix);
+  const hasEntries = directories.length > 0 || objects.length > 0;
+  const totalSize = objects.reduce((sum, object) => sum + Number(object?.size || 0), 0);
+
+  /* ── SVG icons ── */
+  const icons = {
+    folder: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>',
+    file: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>',
+    image: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+    code: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>',
+    text: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M16 13h-2"/></svg>',
+    pdf: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>',
+    archive: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
+    search: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+    upload: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
+    plus: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+    download: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
+    trash: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+    chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+    folderOpen: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>',
+    folderClosed: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+    home: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  };
+</script>
+
+<style>
+  /* ── Layout shell ── */
+  .kfe {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    height: 100%;
+    min-height: 0;
+    color: var(--kui-fg);
+    font-family: var(--kui-font-family, inherit);
+  }
+
+  /* ── Sidebar ── */
+  .kfe__sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--kui-bg);
+    border-right: 1px solid var(--kui-border);
+    overflow-y: auto;
+    padding: var(--kui-spacing-md) 0;
+  }
+
+  .kfe__sidebar-header {
+    padding: 0 var(--kui-spacing-md) var(--kui-spacing-md);
+    border-bottom: 1px solid var(--kui-border);
+    margin-bottom: var(--kui-spacing-sm);
+  }
+
+  .kfe__sidebar-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--kui-fg-muted);
+    margin: 0 0 var(--kui-spacing-xs);
+  }
+
+  .kfe__tree {
+    padding: var(--kui-spacing-xs) var(--kui-spacing-sm);
+    list-style: none;
+    margin: 0;
+  }
+
+  .kfe__tree-item {
+    margin: 0;
+  }
+
+  .kfe__tree-link {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+    padding: 0.4rem 0.65rem;
+    border-radius: var(--kui-radius-md);
+    text-decoration: none;
+    color: var(--kui-fg-muted);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    transition: background var(--kui-duration-fast), color var(--kui-duration-fast);
+    cursor: pointer;
+  }
+
+  .kfe__tree-link:hover {
+    background: var(--kui-bg-muted);
+    color: var(--kui-fg);
+  }
+
+  .kfe__tree-link[data-active='true'] {
+    background: var(--kui-primary-weak);
+    color: var(--kui-fg);
+    font-weight: 500;
+  }
+
+  .kfe__tree-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    color: var(--kui-fg-muted);
+  }
+
+  .kfe__tree-link[data-active='true'] .kfe__tree-icon {
+    color: var(--kui-primary);
+  }
+
+  .kfe__tree-children {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 1.25rem;
+  }
+
+  /* ── Main content ── */
+  .kfe__main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--kui-bg-muted);
+  }
+
+  /* ── Header toolbar ── */
+  .kfe__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md) var(--kui-spacing-lg);
+    background: var(--kui-bg);
+    border-bottom: 1px solid var(--kui-border);
+  }
+
+  .kfe__header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-md);
+    min-width: 0;
+    flex: 1;
+  }
+
+  .kfe__page-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+    margin: 0;
+  }
+
+  .kfe__page-title a {
+    color: var(--kui-fg-muted);
+    text-decoration: none;
+  }
+
+  .kfe__page-title a:hover {
+    color: var(--kui-fg);
+  }
+
+  .kfe__page-title span {
+    color: var(--kui-fg-muted);
+    margin: 0 0.35rem;
+  }
+
+  .kfe__search {
+    position: relative;
+    flex: 0 1 320px;
+  }
+
+  .kfe__search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--kui-fg-muted);
+    pointer-events: none;
+    display: inline-flex;
+  }
+
+  .kfe__search input {
+    width: 100%;
+    padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-bg-muted);
+    color: var(--kui-fg);
+    font: inherit;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color var(--kui-duration-fast), box-shadow var(--kui-duration-fast);
+  }
+
+  .kfe__search input::placeholder {
+    color: var(--kui-fg-muted);
+  }
+
+  .kfe__search input:focus {
+    border-color: var(--kui-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--kui-primary) 20%, transparent);
+  }
+
+  .kfe__header-actions {
+    display: flex;
+    gap: var(--kui-spacing-sm);
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  /* ── Shared button styles ── */
+  .kfe__btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-bg-elevated);
+    color: var(--kui-fg);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--kui-duration-fast), border-color var(--kui-duration-fast);
+  }
+
+  .kfe__btn:hover {
+    background: var(--kui-bg-muted);
+    border-color: color-mix(in srgb, var(--kui-border) 60%, var(--kui-fg) 20%);
+  }
+
+  .kfe__btn[data-variant='primary'] {
+    background: var(--kui-primary);
+    color: var(--kui-primary-fg);
+    border-color: var(--kui-primary);
+  }
+
+  .kfe__btn[data-variant='primary']:hover {
+    background: var(--kui-primary-strong);
+    border-color: var(--kui-primary-strong);
+  }
+
+  .kfe__btn[data-variant='danger'] {
+    color: var(--kui-destructive);
+    border-color: color-mix(in srgb, var(--kui-destructive) 30%, var(--kui-border));
+  }
+
+  .kfe__btn[data-variant='danger']:hover {
+    background: color-mix(in srgb, var(--kui-destructive) 8%, var(--kui-bg-elevated));
+  }
+
+  .kfe__btn[data-variant='ghost'] {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .kfe__btn[data-variant='ghost']:hover {
+    background: var(--kui-bg-muted);
+  }
+
+  .kfe__btn svg {
+    flex-shrink: 0;
+  }
+
+  /* ── Breadcrumbs ── */
+  .kfe__breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: var(--kui-spacing-sm) var(--kui-spacing-lg);
+    font-size: 0.84rem;
+    background: var(--kui-bg);
+    border-bottom: 1px solid var(--kui-border);
+  }
+
+  .kfe__breadcrumbs a {
+    color: var(--kui-fg-muted);
+    text-decoration: none;
+    transition: color var(--kui-duration-fast);
+  }
+
+  .kfe__breadcrumbs a:hover {
+    color: var(--kui-primary);
+  }
+
+  .kfe__breadcrumbs-sep {
+    color: var(--kui-fg-muted);
+    opacity: 0.5;
+    display: inline-flex;
+  }
+
+  .kfe__breadcrumbs-current {
+    color: var(--kui-fg);
+    font-weight: 500;
+  }
+
+  /* ── Grid area ── */
+  .kfe__body {
+    flex: 1;
+    padding: var(--kui-spacing-lg);
+    min-height: 0;
+  }
+
+  .kfe__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: var(--kui-spacing-md);
+  }
+
+  /* ── Card ── */
+  .kfe__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kui-spacing-sm);
+    padding: var(--kui-spacing-md);
+    background: var(--kui-bg-elevated);
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-lg);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color var(--kui-duration-fast), box-shadow var(--kui-duration-fast);
+    min-height: 160px;
+    cursor: pointer;
+  }
+
+  .kfe__card:hover {
+    border-color: color-mix(in srgb, var(--kui-border) 50%, var(--kui-fg) 20%);
+    box-shadow: var(--kui-shadow-sm);
+  }
+
+  .kfe__card[data-selected='true'] {
+    border-color: var(--kui-primary);
+    box-shadow: 0 0 0 1px var(--kui-primary);
+  }
+
+  .kfe__card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-bg-muted);
+    color: var(--kui-fg-muted);
+    flex-shrink: 0;
+  }
+
+  .kfe__card-icon[data-tone='primary'] {
+    background: color-mix(in srgb, var(--kui-primary) 10%, transparent);
+    color: var(--kui-primary);
+  }
+  .kfe__card-icon[data-tone='success'] {
+    background: color-mix(in srgb, var(--kui-success) 10%, transparent);
+    color: var(--kui-success);
+  }
+  .kfe__card-icon[data-tone='warning'] {
+    background: color-mix(in srgb, var(--kui-warning) 12%, transparent);
+    color: var(--kui-warning);
+  }
+  .kfe__card-icon[data-tone='danger'] {
+    background: color-mix(in srgb, var(--kui-destructive) 10%, transparent);
+    color: var(--kui-destructive);
+  }
+  .kfe__card-icon[data-tone='info'] {
+    background: color-mix(in srgb, #38bdf8 10%, transparent);
+    color: #38bdf8;
+  }
+  .kfe__card-icon[data-tone='html'] {
+    background: color-mix(in srgb, #f97316 10%, transparent);
+    color: #f97316;
+  }
+
+  .kfe__card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+    margin: 0;
+  }
+
+  .kfe__card-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--kui-spacing-sm);
+    font-size: 0.78rem;
+    color: var(--kui-fg-muted);
+    margin-top: auto;
+  }
+
+  /* ── Detail panel ── */
+  .kfe__content-split {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: var(--kui-spacing-lg);
+    align-items: start;
+  }
+
+  .kfe__detail {
+    background: var(--kui-bg-elevated);
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-lg);
+    padding: var(--kui-spacing-lg);
+  }
+
+  .kfe__detail h3 {
+    margin: 0 0 var(--kui-spacing-xs);
+    font-size: 1rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .kfe__detail-key {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--kui-fg-muted);
+    word-break: break-word;
+    margin-bottom: var(--kui-spacing-md);
+  }
+
+  .kfe__meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--kui-spacing-sm);
+  }
+
+  .kfe__meta-cell {
+    padding: 0.65rem 0.75rem;
+    background: var(--kui-bg-muted);
+    border-radius: var(--kui-radius-md);
+  }
+
+  .kfe__meta-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--kui-fg-muted);
+    margin-bottom: 0.2rem;
+  }
+
+  .kfe__meta-value {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+
+  .kfe__preview {
+    margin-top: var(--kui-spacing-md);
+    border-radius: var(--kui-radius-md);
+    background: var(--kui-bg-muted);
+    overflow: hidden;
+  }
+
+  .kfe__preview-header {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--kui-fg-muted);
+    border-bottom: 1px solid var(--kui-border);
+  }
+
+  .kfe__preview pre {
+    margin: 0;
+    padding: var(--kui-spacing-md);
+    max-height: 280px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.82rem;
+  }
+
+  .kfe__preview img {
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+  }
+
+  .kfe__detail-actions {
+    display: flex;
+    gap: var(--kui-spacing-sm);
+    margin-top: var(--kui-spacing-md);
+  }
+
+  .kfe__detail-actions form {
+    margin: 0;
+  }
+
+  /* ── Status bar ── */
+  .kfe__status {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-sm) var(--kui-spacing-lg);
+    background: var(--kui-bg);
+    border-top: 1px solid var(--kui-border);
+    font-size: 0.78rem;
+    color: var(--kui-fg-muted);
+  }
+
+  .kfe__status-sep {
+    width: 1px;
+    height: 0.85rem;
+    background: var(--kui-border);
+  }
+
+  /* ── Empty state ── */
+  .kfe__empty {
+    padding: var(--kui-spacing-xl);
+  }
+
+  /* ── Pagination ── */
+  .kfe__pagination {
+    display: flex;
+    justify-content: center;
+    padding-top: var(--kui-spacing-md);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1280px) {
+    .kfe__content-split {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 1024px) {
+    .kfe {
+      grid-template-columns: 1fr;
+    }
+
+    .kfe__sidebar {
+      display: none;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .kfe__header {
+      flex-wrap: wrap;
+    }
+
+    .kfe__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<!-- ═══════════════════════ COMPONENT ═══════════════════════ -->
+<div class="kfe">
+
+  <!-- ── Sidebar / Tree ── -->
+  <aside class="kfe__sidebar">
+    <div class="kfe__sidebar-header">
+      <p class="kfe__sidebar-title">Explorer</p>
+    </div>
+
+    <ul class="kfe__tree">
+      <li class="kfe__tree-item">
+        <a class="kfe__tree-link" href={hrefFor({ prefix: '', selected: '', cursor: '' })} data-active={!currentPrefix ? 'true' : 'false'}>
+          <span class="kfe__tree-icon">{@raw icons.home}</span>
+          <span>{resourceLabel}</span>
+        </a>
+        if (currentPrefix || directories.length > 0) {
+          <ul class="kfe__tree-children">
+            if (currentPrefix) {
+              <li class="kfe__tree-item">
+                <a class="kfe__tree-link" href={hrefFor({ prefix: parent, selected: '', cursor: '' })}>
+                  <span class="kfe__tree-icon">{@raw icons.folderOpen}</span>
+                  <span>..</span>
+                </a>
+              </li>
+            }
+            for (const dir of directories) {
+              <li class="kfe__tree-item">
+                <a class="kfe__tree-link" href={hrefFor({ prefix: dir.prefix, selected: '', cursor: '' })} data-active={dir.prefix === currentPrefix ? 'true' : 'false'}>
+                  <span class="kfe__tree-icon">{@raw icons.folderClosed}</span>
+                  <span>{dir.name}</span>
+                </a>
+              </li>
+            }
+          </ul>
+        }
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ── Main panel ── -->
+  <div class="kfe__main">
+
+    <!-- Header toolbar -->
+    <div class="kfe__header">
+      <div class="kfe__header-left">
+        <h1 class="kfe__page-title">
+          if (crumbs.length > 1) {
+            <a href={hrefFor({ prefix: '', selected: '', cursor: '' })}>{resourceLabel.toUpperCase()}</a>
+            <span>/</span>
+          }
+          <strong>FILE EXPLORER</strong>
+        </h1>
+        <div class="kfe__search">
+          <span class="kfe__search-icon">{@raw icons.search}</span>
+          <input type="text" placeholder={"Search in " + (crumbs[crumbs.length - 1]?.label || resourceLabel) + "..."} />
+        </div>
+      </div>
+      <div class="kfe__header-actions">
+        <button type="button" class="kfe__btn" data-variant="primary" commandfor="kfe-text-dialog" command="show-modal">
+          {@raw icons.plus}
+          New
+        </button>
+        <button type="button" class="kfe__btn" commandfor="kfe-upload-dialog" command="show-modal">
+          {@raw icons.upload}
+          Upload
+        </button>
+      </div>
+    </div>
+
+    <!-- Breadcrumbs -->
+    <nav class="kfe__breadcrumbs" aria-label="File path">
+      for (const crumb of crumbs) {
+        if (crumb === crumbs[crumbs.length - 1]) {
+          <span class="kfe__breadcrumbs-current">{crumb.label}</span>
+        } else {
+          <a href={hrefFor({ prefix: crumb.prefix, selected: '', cursor: '' })}>{crumb.label}</a>
+          <span class="kfe__breadcrumbs-sep">{@raw icons.chevronRight}</span>
+        }
+      }
+    </nav>
+
+    <!-- Body -->
+    <div class="kfe__body">
+      if (listError) {
+        <Alert data-variant="danger">{listError}</Alert>
+      }
+
+      if (!hasEntries) {
+        <div class="kfe__empty">
+          <EmptyState title="No files here" description="Upload a file or create a new text file to get started." />
+        </div>
+      } else if (selectedObject) {
+        <!-- Split view: grid + detail panel -->
+        <div class="kfe__content-split">
+          <div>
+            <div class="kfe__grid">
+              for (const dir of directories) {
+                <a class="kfe__card" href={hrefFor({ prefix: dir.prefix, selected: '', cursor: '' })}>
+                  <div class="kfe__card-icon">
+                    {@raw icons.folder}
+                  </div>
+                  <p class="kfe__card-name">{dir.name}</p>
+                  <div class="kfe__card-meta">
+                    <span>Folder</span>
+                  </div>
+                </a>
+              }
+              for (const object of objects) {
+                const isSelected = selectedObject && selectedObject.key === object.key;
+                const tone = fileTone(object);
+                const iconType = fileIcon(object);
+                <a class="kfe__card" href={hrefFor({ prefix: currentPrefix, selected: object.key, cursor: '' })} data-selected={isSelected ? 'true' : 'false'}>
+                  <div class="kfe__card-icon" data-tone={tone}>
+                    {@raw icons[iconType] || icons.file}
+                  </div>
+                  <p class="kfe__card-name">{object.name}</p>
+                  <div class="kfe__card-meta">
+                    <span>{formatShortDate(object.uploaded)}</span>
+                    <span>{formatBytes(object.size)}</span>
+                  </div>
+                </a>
+              }
+            </div>
+            if (nextCursor) {
+              <div class="kfe__pagination">
+                <a href={hrefFor({ prefix: currentPrefix, selected: '', cursor: nextCursor })} class="kfe__btn">Load More</a>
+              </div>
+            }
+          </div>
+
+          <!-- Detail panel -->
+          <aside class="kfe__detail">
+            <h3>{selectedObject.name || selectedObject.key}</h3>
+            <code class="kfe__detail-key">{selectedObject.key}</code>
+
+            <div class="kfe__meta-grid">
+              <div class="kfe__meta-cell">
+                <span class="kfe__meta-label">Size</span>
+                <strong class="kfe__meta-value">{formatBytes(selectedObject.size)}</strong>
+              </div>
+              <div class="kfe__meta-cell">
+                <span class="kfe__meta-label">Updated</span>
+                <strong class="kfe__meta-value">{formatDate(selectedObject.uploaded)}</strong>
+              </div>
+              <div class="kfe__meta-cell">
+                <span class="kfe__meta-label">Type</span>
+                <strong class="kfe__meta-value">{selectedObject.contentType || 'application/octet-stream'}</strong>
+              </div>
+              <div class="kfe__meta-cell">
+                <span class="kfe__meta-label">ETag</span>
+                <strong class="kfe__meta-value">{selectedObject.etag || '-'}</strong>
+              </div>
+            </div>
+
+            if (selectedPreviewKind === 'text' && selectedPreview !== null) {
+              <div class="kfe__preview">
+                <div class="kfe__preview-header">Preview</div>
+                <pre><code>{selectedPreview}</code></pre>
+              </div>
+            } else if (selectedPreviewKind === 'image') {
+              <div class="kfe__preview">
+                <div class="kfe__preview-header">Preview</div>
+                <img src={downloadHref(selectedObject.key)} alt={selectedObject.name || selectedObject.key} />
+              </div>
+            }
+
+            <div class="kfe__detail-actions">
+              <a href={downloadHref(selectedObject.key)} class="kfe__btn">
+                {@raw icons.download}
+                Download
+              </a>
+              <form action={deleteAction} method="POST">
+                <input type="hidden" name="key" value={selectedObject.key} />
+                <input type="hidden" name="prefix" value={currentPrefix} />
+                <button type="submit" class="kfe__btn" data-variant="danger" onclick="return confirm('Delete this object? This cannot be undone.')">
+                  {@raw icons.trash}
+                  Delete
+                </button>
+              </form>
+            </div>
+          </aside>
+        </div>
+      } else {
+        <!-- Grid only (no selection) -->
+        <div class="kfe__grid">
+          for (const dir of directories) {
+            <a class="kfe__card" href={hrefFor({ prefix: dir.prefix, selected: '', cursor: '' })}>
+              <div class="kfe__card-icon">
+                {@raw icons.folder}
+              </div>
+              <p class="kfe__card-name">{dir.name}</p>
+              <div class="kfe__card-meta">
+                <span>Folder</span>
+              </div>
+            </a>
+          }
+          for (const object of objects) {
+            const tone = fileTone(object);
+            const iconType = fileIcon(object);
+            <a class="kfe__card" href={hrefFor({ prefix: currentPrefix, selected: object.key, cursor: '' })}>
+              <div class="kfe__card-icon" data-tone={tone}>
+                {@raw icons[iconType] || icons.file}
+              </div>
+              <p class="kfe__card-name">{object.name}</p>
+              <div class="kfe__card-meta">
+                <span>{formatShortDate(object.uploaded)}</span>
+                <span>{formatBytes(object.size)}</span>
+              </div>
+            </a>
+          }
+        </div>
+        if (nextCursor) {
+          <div class="kfe__pagination">
+            <a href={hrefFor({ prefix: currentPrefix, selected: '', cursor: nextCursor })} class="kfe__btn">Load More</a>
+          </div>
+        }
+      }
+    </div>
+
+    <!-- Status bar -->
+    <div class="kfe__status">
+      <span>{directories.length + objects.length} Items</span>
+      <span class="kfe__status-sep"></span>
+      <span>{directories.length} Folders</span>
+      <span class="kfe__status-sep"></span>
+      <span>{objects.length} Files</span>
+      if (selectedObject) {
+        <span class="kfe__status-sep"></span>
+        <span>Selected: 1</span>
+      }
+      <span class="kfe__status-sep"></span>
+      <span>Total Size: {formatBytes(totalSize)}</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Upload dialog ── -->
+<Dialog id="kfe-upload-dialog" closedby="any">
+  <div data-dialog="header">
+    <h2>Upload File</h2>
+    <p>Upload a file into <strong>{currentPrefix || '/'}</strong>.</p>
+  </div>
+  <form action={uploadAction} method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="prefix" value={currentPrefix} />
+    <div data-field>
+      <label for="kfe-object-key">Object Key</label>
+      <input type="text" id="kfe-object-key" name="objectKey" class="kui-input" placeholder={currentPrefix ? `${currentPrefix}my-file.txt` : 'my-file.txt'} autocomplete="off" />
+      <small>Leave blank to use the uploaded file name.</small>
+    </div>
+    <div data-field>
+      <label for="kfe-file">File</label>
+      <input type="file" id="kfe-file" name="file" required />
+    </div>
+    <div data-dialog="actions">
+      <button type="submit" data-variant="primary">Upload</button>
+    </div>
+  </form>
+</Dialog>
+
+<!-- ── New text file dialog ── -->
+<Dialog id="kfe-text-dialog" closedby="any">
+  <div data-dialog="header">
+    <h2>New Text File</h2>
+    <p>Create a text object in <strong>{currentPrefix || '/'}</strong>.</p>
+  </div>
+  <form action={saveTextAction} method="POST">
+    <input type="hidden" name="prefix" value={currentPrefix} />
+    <div data-field>
+      <label for="kfe-text-key">Object Key</label>
+      <input type="text" id="kfe-text-key" name="objectKey" class="kui-input" placeholder={currentPrefix ? `${currentPrefix}notes.txt` : 'notes.txt'} required autocomplete="off" />
+    </div>
+    <div data-field>
+      <label for="kfe-text-type">Content Type</label>
+      <input type="text" id="kfe-text-type" name="contentType" class="kui-input" value="text/plain; charset=utf-8" autocomplete="off" />
+    </div>
+    <div data-field>
+      <label for="kfe-text-content">Content</label>
+      <textarea id="kfe-text-content" name="content" class="kui-textarea" rows="10" placeholder="Hello from Kuratchi"></textarea>
+    </div>
+    <div data-dialog="actions">
+      <button type="submit" data-variant="primary">Save file</button>
+    </div>
+  </form>
+</Dialog>

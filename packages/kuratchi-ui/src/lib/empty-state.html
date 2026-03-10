@@ -1,0 +1,13 @@
+<script>
+  const { title, description, class: className = '' } = props;
+</script>
+
+<div class="kui-empty-state {className}">
+  if (title) {
+    <p class="kui-empty-state__title">{title}</p>
+  }
+  if (description) {
+    <p class="kui-empty-state__description">{description}</p>
+  }
+  <slot></slot>
+</div>

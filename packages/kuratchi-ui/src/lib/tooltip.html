@@ -1,0 +1,7 @@
+<script>
+  const { text, position = 'top', class: className = '', open = false } = props;
+</script>
+
+<div class="kui-tooltip {className}" data-tip="{text}" data-position="{position}" data-open={open ? 'true' : 'false'}>
+  <slot></slot>
+</div>

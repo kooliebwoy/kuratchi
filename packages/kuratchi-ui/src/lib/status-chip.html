@@ -1,0 +1,31 @@
+<script>
+  const { label, title, class: className = '' } = props;
+</script>
+
+<span class="kui-status-chip {className}" data-variant={props.data_variant} title={title}>
+  <span class="kui-status-chip__label">{label}</span>
+</span>
+
+<style>
+  .kui-status-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--kui-warning) 12%, transparent);
+    color: var(--kui-warning);
+  }
+
+  .kui-status-chip[data-variant="verified"] {
+    background: color-mix(in srgb, var(--kui-success) 12%, transparent);
+    color: var(--kui-success);
+  }
+
+  .kui-status-chip__label {
+    line-height: 1;
+  }
+</style>

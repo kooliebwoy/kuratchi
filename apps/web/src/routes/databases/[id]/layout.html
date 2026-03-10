@@ -1,0 +1,254 @@
+<script>
+  import { url, pathname } from '@kuratchi/js/request';
+  import { getCurrentUser } from '$server/database/auth';
+  import { getDatabase } from '$server/database/databases';
+  import { getDbTokens } from '$server/database/tokens';
+  import Badge from '@kuratchi/ui/badge.html';
+  import TabNav from '@kuratchi/ui/tab-nav.html';
+  import Callout from '@kuratchi/ui/callout.html';
+
+  const user = await getCurrentUser();
+  const { id } = params;
+  const database = user ? await getDatabase(id) : null;
+  const tabs = database ? [
+    { label: 'Overview', href: `/databases/${database.id}`, active: pathname === `/databases/${database.id}` },
+    { label: 'Studio', href: `/databases/${database.id}/studio`, active: pathname === `/databases/${database.id}/studio`, disabled: !database.workerName },
+  ] : [];
+
+  const tokens = database ? await getDbTokens(database.id) : [];
+  const apiBaseUrl = database ? `${url.protocol}//${url.host}/api/v1/${database.name}` : '';
+  const baseUrl = `${url.protocol}//${url.host}`;
+  const firstToken = tokens.length > 0 ? tokens[0].token : '<YOUR_TOKEN>';
+
+  const sdkExample = database ? `import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: '${firstToken}',
+  baseUrl: '${baseUrl}',
+});
+
+const db = kuratchi.database('${database.name}');
+
+const users = await db.query('SELECT * FROM users WHERE active = ?', [true]);
+await db.query('INSERT INTO users (name) VALUES (?)', ['Alice']);
+await db.batch([
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['Hello'] },
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['World'] },
+]);
+await db.exec('CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT)');` : '';
+
+  const drizzleExample = database ? `import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import * as schema from './schema';
+
+const db = kuratchi.database('${database.name}');
+const drizzleDb = drizzle(db.drizzleProxy(), { schema });
+const users = await drizzleDb.select().from(schema.users);` : '';
+
+  const curlExample = database ? `curl -X POST ${apiBaseUrl} \\
+  -H "Authorization: Bearer ${firstToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"sql": "SELECT * FROM my_table LIMIT 10"}'` : '';
+
+  const fetchExample = database ? `const res = await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    sql: "SELECT * FROM my_table WHERE id = ?",
+    params: [1],
+  }),
+});
+const data = await res.json();` : '';
+
+  const batchExample = database ? `await fetch("${apiBaseUrl}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${firstToken}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    batch: [
+      { sql: "CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, title TEXT, body TEXT)" },
+      { sql: "INSERT INTO posts (title, body) VALUES (?, ?)", params: ["Hello", "World"] },
+    ],
+  }),
+});
+
+await fetch("${apiBaseUrl}", {
+  body: JSON.stringify({ sql: "DROP TABLE old_table", exec: true }),
+  ...
+});
+
+await fetch("${apiBaseUrl}", {
+  body: JSON.stringify({ sql: "SELECT id, name FROM users", raw: true }),
+  ...
+});` : '';
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else if (!database) {
+  <header>
+    <h1>Database not found</h1>
+  </header>
+  <a href="/databases" data-variant="secondary" data-type="button">Back to Databases</a>
+} else {
+  <style>
+    .db-header-row {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+    .db-header-row h1 {
+      margin: 0;
+      line-height: 1;
+    }
+    .db-info-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.625rem;
+      height: 1.625rem;
+      border-radius: 0.375rem;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .db-info-btn:hover {
+      color: inherit;
+      background: var(--border, rgba(255,255,255,0.08));
+    }
+    .db-meta {
+      margin-top: 0.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-family: Consolas, 'SFMono-Regular', monospace;
+    }
+  </style>
+  <header>
+    <div>
+      <div class="db-header-row">
+        <h1>{database.name}</h1>
+        if (database.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+        <button class="db-info-btn" data-type="button" commandfor="info-drawer" command="show-modal" title="Connection & SDK info">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        </button>
+      </div>
+      <div class="db-meta">
+        if (database.locationHint) {
+          <span>{database.locationHint} · </span>
+        }
+        <span>{database.dbuuid || 'No D1 UUID'}</span>
+      </div>
+    </div>
+  </header>
+
+  <TabNav items={tabs} ariaLabel="Database sections" />
+
+  <slot></slot>
+
+  <dialog id="info-drawer" closedby="any" style="
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    margin: 0;
+    max-height: 100vh;
+    height: 100vh;
+    max-width: 520px;
+    width: 90vw;
+    border: none;
+    border-left: 1px solid var(--color-border, #333);
+    background: var(--color-surface-1, #1a1a1a);
+    padding: 1.5rem;
+    overflow-y: auto;
+    animation: slide-in-right 0.2s ease-out;
+  ">
+    <div class="idr-head">
+      <h2>Connection & SDK</h2>
+      <button class="idr-close" data-type="button" onclick="this.closest('dialog').close()" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="idr-section">
+      <div class="idr-section-label">API Endpoint</div>
+      <div class="idr-url-block">
+        <div class="idr-url-label">URL</div>
+        <code class="idr-url-value">{apiBaseUrl}</code>
+      </div>
+      <Callout data-variant="info">
+        Single endpoint — operation determined by request body: <code>sql</code> (query), <code>batch</code> (multi-statement), <code>exec: true</code> (DDL), <code>raw: true</code> (array results)
+      </Callout>
+    </div>
+
+    <div class="idr-section">
+      <div class="idr-section-label">Examples</div>
+      <details>
+        <summary><strong>cURL</strong></summary>
+        <pre><code>{curlExample}</code></pre>
+      </details>
+      <details>
+        <summary><strong>JavaScript / Fetch</strong></summary>
+        <pre><code>{fetchExample}</code></pre>
+      </details>
+      <details>
+        <summary><strong>Batch / Exec / Raw</strong></summary>
+        <pre><code>{batchExample}</code></pre>
+      </details>
+    </div>
+
+    <div class="idr-divider"></div>
+
+    <div class="idr-section">
+      <div class="idr-section-label">SDK</div>
+      <Callout data-variant="success">
+        Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
+      </Callout>
+      <pre><code>{sdkExample}</code></pre>
+      <details>
+        <summary><strong>Drizzle ORM</strong></summary>
+        <pre><code>{drizzleExample}</code></pre>
+      </details>
+      <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
+    </div>
+  </dialog>
+
+  <style>
+    @keyframes slide-in-right {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    #info-drawer::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .idr-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border, #333); }
+    .idr-head h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .idr-close { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: 0.375rem; border: 1px solid var(--color-border, #333); background: transparent; color: var(--muted); cursor: pointer; padding: 0; transition: color 0.15s, background 0.15s; }
+    .idr-close:hover { color: inherit; background: var(--color-border, #222); }
+    .idr-section { margin-bottom: 1.5rem; }
+    .idr-section-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; }
+    .idr-url-block { background: var(--color-surface-2, rgba(255,255,255,0.04)); border: 1px solid var(--color-border, #333); border-radius: 0.375rem; padding: 0.625rem 0.75rem; margin-bottom: 0.75rem; }
+    .idr-url-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.3rem; }
+    .idr-url-value { font-family: Consolas, 'SFMono-Regular', monospace; font-size: 0.8rem; word-break: break-all; display: block; }
+    .idr-divider { height: 1px; background: var(--color-border, #333); margin: 1.5rem 0; }
+    #info-drawer details { margin-bottom: 0.375rem; }
+    #info-drawer details summary { cursor: pointer; padding: 0.5rem 0; font-size: 0.875rem; border-bottom: 1px solid var(--color-border, #2a2a2a); list-style: none; display: flex; align-items: center; gap: 0.4rem; user-select: none; }
+    #info-drawer details summary::-webkit-details-marker { display: none; }
+    #info-drawer details summary::before { content: '\25B6'; font-size: 0.6rem; color: var(--muted); transition: transform 0.15s; flex-shrink: 0; }
+    #info-drawer details[open] summary::before { transform: rotate(90deg); }
+    #info-drawer details pre { margin: 0.625rem 0 0.25rem; font-size: 0.78rem; }
+  </style>
+}

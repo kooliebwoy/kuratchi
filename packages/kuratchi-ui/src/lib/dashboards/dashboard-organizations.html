@@ -1,0 +1,354 @@
+<script>
+  const {
+    orgSwitcherListItems = [],
+    sideNavMenuItems = [],
+    headerNavMenuItems = [],
+    footerNavMenuItems = {},
+    footerSignOutAction = '',
+    no_theme_toggle = false,
+    class: className = ''
+  } = props;
+  const activeOrg = orgSwitcherListItems.find(o => o.active) || orgSwitcherListItems[0] || {};
+  const user = footerNavMenuItems;
+  const defaultUserIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>';
+  const signOutIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
+  const defaultAccountIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>';
+  const userMenuItems = [];
+  if (user.accountHref) {
+    userMenuItems.push({
+      label: user.accountLabel || 'Account',
+      href: user.accountHref,
+      icon: user.accountIcon || defaultAccountIcon,
+    });
+  }
+  if (user.menuItems && user.menuItems.length > 0) {
+    for (const menuItem of user.menuItems) {
+      userMenuItems.push(menuItem);
+    }
+  }
+  const hasUserIdentity = !!(user.name || user.email || user.avatar);
+  const hasUserMenu = userMenuItems.length > 0;
+  const hasSignOut = !!(footerSignOutAction || user.signOutOnclick || user.signOutHref);
+  const useInlineUserAction = hasSignOut && !hasUserMenu;
+  const showUserFooter = hasUserIdentity || hasUserMenu || hasSignOut;
+  let __tipId = 0;
+</script>
+
+<div class="kui-dashboard {className}" data-sidebar-variant="inset" data-sidebar-side="left" data-sidebar-collapsible="icon">
+
+  <input type="checkbox" id="kui-sidebar-toggle" class="kui-dashboard__collapse-toggle" />
+
+  <aside class="kui-sidebar" data-side="left" data-variant="inset" data-collapsible="icon">
+    <div class="kui-sidebar__inner">
+
+      <div class="kui-sidebar__header">
+        if (activeOrg.name) {
+          <button class="kui-sidebar__team" type="button" popovertarget="kui-org-popover">
+            <div class="kui-sidebar__team-logo">
+              if (activeOrg.logo) {
+                {@raw activeOrg.logo}
+              } else {
+                <span>{activeOrg.name.charAt(0)}</span>
+              }
+            </div>
+            <div class="kui-sidebar__team-info kui-sidebar__header-text">
+              <span class="kui-sidebar__team-name">{activeOrg.name}</span>
+              if (activeOrg.plan) {
+                <span class="kui-sidebar__team-plan">{activeOrg.plan}</span>
+              }
+            </div>
+            if (orgSwitcherListItems.length > 1) {
+              <svg class="kui-sidebar__team-chevron kui-sidebar__header-text" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+            }
+          </button>
+          <div id="kui-org-popover" popover class="kui-sidebar-popover kui-sidebar-popover--org">
+            <div class="kui-sidebar-popover__header">
+              <span class="kui-sidebar-popover__title">Teams</span>
+            </div>
+            <ul class="kui-sidebar-popover__list">
+              for (const org of orgSwitcherListItems) {
+                <li class="kui-sidebar-popover__item{org.active ? ' kui-sidebar-popover__item--active' : ''}">
+                  <a href="{org.href || '#'}" class="kui-sidebar-popover__link">
+                    <div class="kui-sidebar-popover__item-logo">
+                      if (org.logo) {
+                        {@raw org.logo}
+                      } else {
+                        <span>{org.name.charAt(0)}</span>
+                      }
+                    </div>
+                    <div class="kui-sidebar-popover__item-info">
+                      <span class="kui-sidebar-popover__item-name">{org.name}</span>
+                      if (org.plan) {
+                        <span class="kui-sidebar-popover__item-desc">{org.plan}</span>
+                      }
+                    </div>
+                    if (org.active) {
+                      <svg class="kui-sidebar-popover__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    }
+                  </a>
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      </div>
+
+      <div class="kui-sidebar__content">
+        for (const group of sideNavMenuItems) {
+          <div class="kui-sidebar__group">
+            if (group.label) {
+              <div class="kui-sidebar__group-label">{group.label}</div>
+            }
+            <div class="kui-sidebar__group-content">
+              <ul class="kui-sidebar__menu">
+                for (const item of group.items) {
+                  <li class="kui-sidebar__menu-item">
+                    if (item.children && item.children.length > 0) {
+                      <details class="kui-sidebar__collapsible" {item.open ? 'open' : ''}>
+                        <summary class="kui-sidebar__menu-button kui-sidebar__menu-button--collapsible{item.active ? ' kui-sidebar__menu-button--active' : ''}" interestfor="kui-tip-{__tipId}">
+                          if (item.icon) {
+                            {@raw item.icon}
+                          }
+                          <span class="kui-sidebar__menu-label">{item.label}</span>
+                          <svg class="kui-sidebar__chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                        </summary>
+                        <ul class="kui-sidebar__menu-sub">
+                          for (const child of item.children) {
+                            <li class="kui-sidebar__menu-sub-item">
+                              if (child.href) {
+                                <a href="{child.href}" class="kui-sidebar__menu-sub-button{child.active ? ' kui-sidebar__menu-sub-button--active' : ''}">{child.label}</a>
+                              } else {
+                                <span class="kui-sidebar__menu-sub-button{child.active ? ' kui-sidebar__menu-sub-button--active' : ''}">{child.label}</span>
+                              }
+                            </li>
+                          }
+                        </ul>
+                      </details>
+                      <button type="button" class="kui-sidebar__menu-button kui-sidebar__rail-popover-trigger{item.active ? ' kui-sidebar__menu-button--active' : ''}" popovertarget="kui-sub-{__tipId}">
+                        if (item.icon) {
+                          {@raw item.icon}
+                        }
+                      </button>
+                      <div id="kui-sub-{__tipId}" popover class="kui-sidebar-popover kui-sidebar-popover--sub">
+                        <div class="kui-sidebar-popover__header">
+                          <span class="kui-sidebar-popover__title">{item.label}</span>
+                        </div>
+                        <ul class="kui-sidebar-popover__list">
+                          for (const child of item.children) {
+                            <li class="kui-sidebar-popover__item">
+                              <a href="{child.href || '#'}" class="kui-sidebar-popover__link{child.active ? ' kui-sidebar-popover__link--active' : ''}">{child.label}</a>
+                            </li>
+                          }
+                        </ul>
+                      </div>
+                      <p id="kui-tip-{__tipId}" popover="hint" class="kui-sidebar__tooltip">{item.label}</p>
+                      __tipId++;
+                    } else {
+                      if (item.href) {
+                        <a href="{item.href}" class="kui-sidebar__menu-button{item.active ? ' kui-sidebar__menu-button--active' : ''}" interestfor="kui-tip-{__tipId}">
+                          if (item.icon) {
+                            {@raw item.icon}
+                          }
+                          <span class="kui-sidebar__menu-label">{item.label}</span>
+                        </a>
+                      } else {
+                        <button type="button" class="kui-sidebar__menu-button{item.active ? ' kui-sidebar__menu-button--active' : ''}" interestfor="kui-tip-{__tipId}">
+                          if (item.icon) {
+                            {@raw item.icon}
+                          }
+                          <span class="kui-sidebar__menu-label">{item.label}</span>
+                        </button>
+                      }
+                      <p id="kui-tip-{__tipId}" popover="hint" class="kui-sidebar__tooltip">{item.label}</p>
+                      __tipId++;
+                    }
+                  </li>
+                }
+              </ul>
+            </div>
+          </div>
+        }
+      </div>
+
+      if (showUserFooter) {
+        <div class="kui-sidebar__footer">
+          if (useInlineUserAction) {
+            <div class="kui-sidebar__footer-stack">
+              if (footerSignOutAction) {
+                <form action={footerSignOutAction} method="POST" class="kui-sidebar__footer-form">
+                  <button type="submit" class="kui-sidebar__footer-action">
+                    {@raw signOutIcon}
+                    <span>{user.signOutLabel || 'Sign out'}</span>
+                  </button>
+                </form>
+              } else if (user.signOutOnclick) {
+                <button type="button" class="kui-sidebar__footer-action" onclick="{user.signOutOnclick}">
+                  {@raw signOutIcon}
+                  <span>{user.signOutLabel || 'Sign out'}</span>
+                </button>
+              } else {
+                <a href="{user.signOutHref || '/auth/login'}" class="kui-sidebar__footer-action">
+                  {@raw signOutIcon}
+                  <span>{user.signOutLabel || 'Sign out'}</span>
+                </a>
+              }
+              if (hasUserIdentity) {
+                <div class="kui-sidebar__user kui-sidebar__user--static">
+                  <div class="kui-sidebar__user-avatar">
+                    if (user.avatar) {
+                      {@raw user.avatar}
+                    } else {
+                      {@raw defaultUserIcon}
+                    }
+                  </div>
+                  <div class="kui-sidebar__user-info kui-sidebar__footer-text">
+                    if (user.name) {
+                      <span class="kui-sidebar__user-name">{user.name}</span>
+                    }
+                    if (user.email) {
+                      <span class="kui-sidebar__user-email">{user.email}</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          } else {
+            <button class="kui-sidebar__user" type="button" popovertarget="kui-user-popover">
+              <div class="kui-sidebar__user-avatar">
+                if (user.avatar) {
+                  {@raw user.avatar}
+                } else {
+                  {@raw defaultUserIcon}
+                }
+              </div>
+              <div class="kui-sidebar__user-info kui-sidebar__footer-text">
+                if (hasUserIdentity) {
+                  if (user.name) {
+                    <span class="kui-sidebar__user-name">{user.name}</span>
+                  }
+                  if (user.email) {
+                    <span class="kui-sidebar__user-email">{user.email}</span>
+                  }
+                } else {
+                  <span class="kui-sidebar__user-name">{user.label || 'Account'}</span>
+                }
+              </div>
+              <svg class="kui-sidebar__user-chevron kui-sidebar__footer-text" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+            </button>
+            <div id="kui-user-popover" popover class="kui-sidebar-popover kui-sidebar-popover--user">
+              if (hasUserIdentity) {
+                <div class="kui-sidebar-popover__header">
+                  <div class="kui-sidebar-popover__user-info">
+                    if (user.name) {
+                      <span class="kui-sidebar-popover__user-name">{user.name}</span>
+                    }
+                    if (user.email) {
+                      <span class="kui-sidebar-popover__user-email">{user.email}</span>
+                    }
+                  </div>
+                </div>
+              } else if (user.label) {
+                <div class="kui-sidebar-popover__header">
+                  <span class="kui-sidebar-popover__title">{user.label}</span>
+                </div>
+              }
+              if (hasUserIdentity && (hasUserMenu || hasSignOut)) {
+                <div class="kui-sidebar-popover__separator"></div>
+              }
+              if (hasUserMenu) {
+                <ul class="kui-sidebar-popover__list">
+                  for (const menuItem of userMenuItems) {
+                    <li class="kui-sidebar-popover__item">
+                      <a href="{menuItem.href || '#'}" class="kui-sidebar-popover__link">
+                        if (menuItem.icon) {
+                          {@raw menuItem.icon}
+                        }
+                        <span>{menuItem.label}</span>
+                      </a>
+                    </li>
+                  }
+                </ul>
+              }
+              if (hasUserMenu && hasSignOut) {
+                <div class="kui-sidebar-popover__separator"></div>
+              }
+              if (hasSignOut) {
+                <ul class="kui-sidebar-popover__list">
+                  <li class="kui-sidebar-popover__item">
+                    if (footerSignOutAction) {
+                      <form action={footerSignOutAction} method="POST" class="kui-sidebar-popover__form">
+                        <button type="submit" class="kui-sidebar-popover__link kui-sidebar-popover__link--button">
+                          {@raw signOutIcon}
+                          <span>{user.signOutLabel || 'Sign out'}</span>
+                        </button>
+                      </form>
+                    } else if (user.signOutOnclick) {
+                      <button type="button" onclick="{user.signOutOnclick}" class="kui-sidebar-popover__link kui-sidebar-popover__link--button">
+                        {@raw signOutIcon}
+                        <span>{user.signOutLabel || 'Sign out'}</span>
+                      </button>
+                    } else {
+                      <a href="{user.signOutHref || '/auth/login'}" class="kui-sidebar-popover__link">
+                        {@raw signOutIcon}
+                        <span>{user.signOutLabel || 'Sign out'}</span>
+                      </a>
+                    }
+                  </li>
+                </ul>
+              }
+            </div>
+          }
+        </div>
+      }
+
+    </div>
+  </aside>
+
+  <div class="kui-dashboard__inset">
+    <div class="kui-dashboard__header">
+      <div class="kui-dashboard__header-left">
+        <label for="kui-sidebar-toggle" class="kui-sidebar__trigger" aria-label="Toggle sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+        </label>
+        if (headerNavMenuItems.length > 0) {
+          <div class="kui-separator"></div>
+          <nav class="kui-breadcrumb" aria-label="Breadcrumb">
+            <ol class="kui-breadcrumb__list">
+              for (const crumb of headerNavMenuItems) {
+                <li class="kui-breadcrumb__item" data-current={crumb.current || undefined}>
+                  if (crumb.href && !crumb.current) {
+                    <a href="{crumb.href}" class="kui-breadcrumb__link">{crumb.label}</a>
+                  } else {
+                    <span class="kui-breadcrumb__page">{crumb.label}</span>
+                  }
+                </li>
+              }
+            </ol>
+          </nav>
+        }
+      </div>
+      if (!no_theme_toggle) {
+        <div class="kui-dashboard__header-right">
+          <div class="kui-theme-toggle-wrap">
+            <button type="button" class="kui-theme-toggle" aria-label="Theme" aria-haspopup="true" aria-expanded="false">
+              <svg class="kui-theme-toggle__icon kui-theme-toggle__icon--light" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+              <svg class="kui-theme-toggle__icon kui-theme-toggle__icon--dark" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              <svg class="kui-theme-toggle__icon kui-theme-toggle__icon--system" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </button>
+            <div class="kui-theme-menu" hidden>
+              <button type="button" class="kui-theme-menu__item" data-theme-option="light">Light</button>
+              <button type="button" class="kui-theme-menu__item" data-theme-option="dark">Dark</button>
+              <button type="button" class="kui-theme-menu__item" data-theme-option="system">System</button>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+    <div class="kui-dashboard__body">
+      {@raw props.children || ""}
+    </div>
+  </div>
+
+</div>
+
+<script>(function(){var c=document.getElementById('kui-sidebar-toggle');if(c){if(localStorage.getItem('kui-sidebar-collapsed')==='1')c.checked=true;c.addEventListener('change',function(){localStorage.setItem('kui-sidebar-collapsed',c.checked?'1':'0')})}var ws=document.querySelectorAll('.kui-theme-toggle-wrap');function pref(){var r=document.documentElement;if(r.getAttribute('data-theme')==='system')return'system';return r.classList.contains('dark')?'dark':'light'}function apply(p){var r=document.documentElement;r.classList.remove('dark');r.removeAttribute('data-theme');if(p==='dark')r.classList.add('dark');if(p==='system')r.setAttribute('data-theme','system');try{localStorage.setItem('kui-theme',p)}catch(e){}sync()}function sync(){var p=pref();for(var i=0;i<ws.length;i++){var w=ws[i];var t=w.querySelector('.kui-theme-toggle');var m=w.querySelector('.kui-theme-menu');if(!t||!m)continue;t.setAttribute('data-theme',p);t.setAttribute('aria-label','Theme: '+p);var it=m.querySelectorAll('[data-theme-option]');for(var j=0;j<it.length;j++){var a=it[j].getAttribute('data-theme-option')===p;it[j].setAttribute('aria-pressed',a?'true':'false')}}}function close(){for(var i=0;i<ws.length;i++){var t=ws[i].querySelector('.kui-theme-toggle');var m=ws[i].querySelector('.kui-theme-menu');if(t)t.setAttribute('aria-expanded','false');if(m)m.hidden=true}}sync();for(var i=0;i<ws.length;i++){(function(w){var t=w.querySelector('.kui-theme-toggle');var m=w.querySelector('.kui-theme-menu');if(!t||!m)return;t.addEventListener('click',function(e){e.stopPropagation();var o=t.getAttribute('aria-expanded')==='true';close();t.setAttribute('aria-expanded',o?'false':'true');m.hidden=o});var it=m.querySelectorAll('[data-theme-option]');for(var j=0;j<it.length;j++){it[j].addEventListener('click',function(){apply(this.getAttribute('data-theme-option')||'light');close()})}})(ws[i])}document.addEventListener('click',close);document.addEventListener('keydown',function(e){if(e.key==='Escape')close()});var mq=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;if(mq&&typeof mq.addEventListener==='function'){mq.addEventListener('change',function(){if(pref()==='system')sync()})}})();</script>

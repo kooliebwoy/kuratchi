@@ -1,0 +1,16 @@
+<script>
+  const { dismissible = false, class: className = '' } = props;
+</script>
+
+<div class="kui-alert {className}" data-variant={props.data_variant} role="alert">
+  <div class="kui-alert__content">
+    <slot></slot>
+  </div>
+  if (dismissible) {
+    <button type="button" class="kui-alert__close" aria-label="Close alert">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  }
+</div>

@@ -1,0 +1,185 @@
+﻿{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "kuratchi HTML",
+  "scopeName": "text.html.kuratchi",
+  "patterns": [
+    { "include": "#sanitized-html-expression" },
+    { "include": "#raw-html-expression" },
+    { "include": "#style-shorthand" },
+    { "include": "#attribute-shorthand" },
+    { "include": "#attribute-expression" },
+    { "include": "#inline-expression" },
+    { "include": "#js-control-flow" },
+    { "include": "#component-tag" },
+    { "include": "text.html.basic" }
+  ],
+  "repository": {
+    "sanitized-html-expression": {
+      "comment": "{@html expr} - sanitized HTML output",
+      "name": "meta.expression.html.kuratchi",
+      "begin": "\\{(@html)\\s",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.begin.kuratchi" },
+        "1": { "name": "keyword.control.html.kuratchi" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    },
+    "raw-html-expression": {
+      "comment": "{@raw expr} / {=html expr} - raw/unescaped HTML output",
+      "name": "meta.expression.raw.kuratchi",
+      "begin": "\\{(@raw|=html)\\s",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.begin.kuratchi" },
+        "1": { "name": "keyword.control.raw.kuratchi" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    },
+    "attribute-expression": {
+      "comment": "attr={expr} - attribute value expressions",
+      "name": "meta.expression.attribute.kuratchi",
+      "begin": "(?<==)\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.begin.kuratchi" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    },
+    "inline-expression": {
+      "comment": "{expression} - escaped output interpolation",
+      "name": "meta.expression.interpolation.kuratchi",
+      "begin": "\\{(?!@html\\s)(?!@raw\\s)(?!=html\\s)(?![{/])",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.begin.kuratchi" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    },
+    "js-control-flow": {
+      "comment": "Inline JS control flow: for/if/else if/else/closing brace",
+      "patterns": [
+        {
+          "comment": "for (...) {",
+          "match": "^\\s*(for)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.control.loop.kuratchi" },
+            "2": { "name": "punctuation.section.group.begin.kuratchi" },
+            "3": { "name": "meta.embedded.block.javascript" },
+            "4": { "name": "punctuation.section.group.end.kuratchi" },
+            "5": { "name": "punctuation.section.block.begin.kuratchi" }
+          }
+        },
+        {
+          "comment": "if (...) {",
+          "match": "^\\s*(if)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.control.conditional.kuratchi" },
+            "2": { "name": "punctuation.section.group.begin.kuratchi" },
+            "3": { "name": "meta.embedded.block.javascript" },
+            "4": { "name": "punctuation.section.group.end.kuratchi" },
+            "5": { "name": "punctuation.section.block.begin.kuratchi" }
+          }
+        },
+        {
+          "comment": "} else if (...) {",
+          "match": "^\\s*(\\})\\s*(else\\s+if)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.section.block.end.kuratchi" },
+            "2": { "name": "keyword.control.conditional.kuratchi" },
+            "3": { "name": "punctuation.section.group.begin.kuratchi" },
+            "4": { "name": "meta.embedded.block.javascript" },
+            "5": { "name": "punctuation.section.group.end.kuratchi" },
+            "6": { "name": "punctuation.section.block.begin.kuratchi" }
+          }
+        },
+        {
+          "comment": "} else {",
+          "match": "^\\s*(\\})\\s*(else)\\s*(\\{)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.section.block.end.kuratchi" },
+            "2": { "name": "keyword.control.conditional.kuratchi" },
+            "3": { "name": "punctuation.section.block.begin.kuratchi" }
+          }
+        },
+        {
+          "comment": "closing }",
+          "match": "^\\s*(\\})\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.section.block.end.kuratchi" }
+          }
+        }
+      ]
+    },
+    "style-shorthand": {
+      "comment": "style={prop} - CSS property shorthand",
+      "name": "meta.expression.style-shorthand.kuratchi",
+      "match": "(style)(=)(\\{)(\\w+)(\\})",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.html" },
+        "2": { "name": "punctuation.separator.key-value.html" },
+        "3": { "name": "punctuation.section.embedded.begin.kuratchi" },
+        "4": { "name": "variable.other.readwrite.js" },
+        "5": { "name": "punctuation.section.embedded.end.kuratchi" }
+      }
+    },
+    "attribute-shorthand": {
+      "comment": "Bare {ident} in attribute position",
+      "name": "meta.expression.attribute-shorthand.kuratchi",
+      "match": "(?<=\\s)(\\{)(\\w+)(\\})(?=[\\s/>])",
+      "captures": {
+        "1": { "name": "punctuation.section.embedded.begin.kuratchi" },
+        "2": { "name": "entity.other.attribute-name.html" },
+        "3": { "name": "punctuation.section.embedded.end.kuratchi" }
+      }
+    },
+    "component-tag": {
+      "comment": "Component tags like <my-component attr={expr} />",
+      "name": "meta.tag.component.kuratchi",
+      "begin": "(<)(\\w[\\w-]*(?=-))(?=[\\s/>])",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.component.kuratchi" }
+      },
+      "end": "/?>",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "patterns": [
+        { "include": "#style-shorthand" },
+        { "include": "#attribute-shorthand" },
+        { "include": "#attribute-expression" },
+        {
+          "match": "(\\w[\\w-]*)(?==)",
+          "name": "entity.other.attribute-name.html"
+        }
+      ]
+    }
+  }
+}
+
+

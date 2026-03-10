@@ -1,0 +1,61 @@
+<section class="panel">
+  <h1>KuratchiJS LLM Docs</h1>
+  <p>Optimized for machine consumption. This page summarizes the framework contract from README.</p>
+</section>
+
+<section class="panel">
+  <h2>Install and boot</h2>
+  <ul>
+    <li>Install: <code>npm install @kuratchi/js</code></li>
+    <li>Create: <code>npx kuratchi create my-app</code></li>
+    <li>Dev: <code>bun run dev</code></li>
+    <li>Build: <code>npx kuratchi build</code></li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Routing contract</h2>
+  <ul>
+    <li><code>src/routes/page.html</code> -> <code>/</code></li>
+    <li><code>src/routes/items/page.html</code> -> <code>/items</code></li>
+    <li><code>src/routes/blog/[slug]/page.html</code> -> <code>/blog/:slug</code></li>
+    <li><code>src/routes/layout.html</code> wraps all routes and must include <code>&lt;slot&gt;&lt;/slot&gt;</code></li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Actions and forms</h2>
+  <ul>
+    <li>Exported functions referenced by <code>action=<fn></code> become server actions.</li>
+    <li>Actions receive <code>FormData</code>.</li>
+    <li>Use <code>ActionError</code> for user-facing validation failures.</li>
+    <li>Use <code>redirect()</code> for POST-Redirect-GET flows.</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Durable Object RPC</h2>
+  <ul>
+    <li>Any <code>.do.ts</code> file is treated as a Durable Object handler source.</li>
+    <li>Function mode is recommended: exported functions become RPC methods.</li>
+    <li>Class mode supported via <code>kuratchiDO</code>.</li>
+    <li>Client/runtime imports use generated <code>$durable-objects/*</code> proxy modules.</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Config integrations</h2>
+  <ul>
+    <li><code>orm</code>: D1 and DO SQLite schemas via <code>@kuratchi/orm</code></li>
+    <li><code>auth</code>: credentials, oauth, guards, rate limiting, roles, turnstile, organizations via <code>@kuratchi/auth</code></li>
+    <li><code>durableObjects</code>: class names, optional <code>stubId</code>, and file mapping</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Runtime APIs</h2>
+  <p>
+    Available server-side helpers include <code>getCtx</code>, <code>getRequest</code>, <code>getLocals</code>,
+    <code>getParams</code>, <code>getParam</code>, <code>redirect</code>, and <code>goto</code>.
+  </p>
+</section>

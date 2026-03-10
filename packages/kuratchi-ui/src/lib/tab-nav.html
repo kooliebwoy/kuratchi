@@ -1,0 +1,98 @@
+<script>
+  const {
+    items = [],
+    ariaLabel = 'Sections',
+    class: className = '',
+  } = props;
+</script>
+
+<style>
+  .kui-tab-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--kui-border) 82%, white 4%);
+    border-radius: calc(var(--kui-radius) + 0.2rem);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--kui-bg-subtle) 94%, white 1%), color-mix(in srgb, var(--kui-bg) 98%, black 2%));
+  }
+
+  .kui-tab-nav__link,
+  .kui-tab-nav__current,
+  .kui-tab-nav__disabled {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.35rem;
+    padding: 0.58rem 0.85rem;
+    border-radius: 0.85rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .kui-tab-nav__link {
+    color: var(--kui-fg-muted);
+  }
+
+  .kui-tab-nav__link:hover {
+    color: var(--kui-fg);
+    background: color-mix(in srgb, var(--kui-bg-subtle) 80%, white 2%);
+  }
+
+  .kui-tab-nav__current {
+    color: var(--kui-primary);
+    background: color-mix(in srgb, var(--kui-primary) 11%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kui-primary) 22%, transparent);
+  }
+
+  .kui-tab-nav__disabled {
+    color: var(--kui-fg-muted);
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .kui-tab-nav__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    min-height: 1.1rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--kui-primary) 12%, transparent);
+    color: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+</style>
+
+<nav class={`kui-tab-nav ${className}`.trim()} aria-label={ariaLabel}>
+  for (const item of items) {
+    if (item.disabled) {
+      <span class="kui-tab-nav__disabled" aria-disabled="true">
+        <span>{item.label}</span>
+        if (item.badge !== undefined && item.badge !== null && item.badge !== '') {
+          <span class="kui-tab-nav__badge">{item.badge}</span>
+        }
+      </span>
+    } else if (item.active) {
+      <a href={item.href} class="kui-tab-nav__current" aria-current="page">
+        <span>{item.label}</span>
+        if (item.badge !== undefined && item.badge !== null && item.badge !== '') {
+          <span class="kui-tab-nav__badge">{item.badge}</span>
+        }
+      </a>
+    } else {
+      <a href={item.href} class="kui-tab-nav__link">
+        <span>{item.label}</span>
+        if (item.badge !== undefined && item.badge !== null && item.badge !== '') {
+          <span class="kui-tab-nav__badge">{item.badge}</span>
+        }
+      </a>
+    }
+  }
+</nav>

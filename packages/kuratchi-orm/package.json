@@ -1,0 +1,16 @@
+﻿{
+  "name": "@kuratchi/orm",
+  "version": "0.0.1",
+  "description": "Lightweight D1/SQLite ORM for Cloudflare Workers",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./migrations": "./src/migrations/index.ts",
+    "./adapter": "./src/adapter.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
+

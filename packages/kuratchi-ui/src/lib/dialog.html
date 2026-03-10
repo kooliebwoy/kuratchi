@@ -1,0 +1,15 @@
+<script>
+  const {
+    id = 'dialog-' + Math.random().toString(36).substr(2, 9),
+    closedby = 'any',
+    class: className = ''
+  } = props;
+</script>
+
+<dialog id="{id}" closedby="{closedby}" class="kui-dialog {className}" data-size={props.data_size}>
+  <div class="kui-dialog__box">
+    <div class="kui-dialog__content">
+      <slot></slot>
+    </div>
+  </div>
+</dialog>

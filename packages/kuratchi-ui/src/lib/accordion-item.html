@@ -1,0 +1,117 @@
+<script>
+  const { title, description, open = false, disabled = false, class: className = '' } = props;
+</script>
+
+<details class="kui-accordion-item{disabled ? ' kui-accordion-item--disabled' : ''} {className}" {open}>
+  <summary class="kui-accordion-item__summary">
+    <span class="kui-accordion-item__chevron" aria-hidden="true"></span>
+    <div class="kui-accordion-item__title-group">
+      <div class="kui-accordion-item__text">
+        <span class="kui-accordion-item__title">{title}</span>
+        if (description) {
+          <span class="kui-accordion-item__description">{description}</span>
+        }
+      </div>
+    </div>
+  </summary>
+  <div class="kui-accordion-item__body">
+    <slot></slot>
+  </div>
+</details>
+
+<style>
+  .kui-accordion-item {
+    border-bottom: 1px solid var(--kui-border);
+  }
+
+  .kui-accordion-item:last-child {
+    border-bottom: none;
+  }
+
+  .kui-accordion-item--disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .kui-accordion-item__summary {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-md);
+    padding: var(--kui-spacing-md) var(--kui-spacing-lg);
+    background: var(--kui-bg-elevated);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+    list-style: none;
+  }
+
+  .kui-accordion-item__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .kui-accordion-item__summary:hover {
+    background: var(--kui-bg-muted);
+  }
+
+  .kui-accordion-item__summary:focus-visible {
+    outline: 2px solid var(--kui-ring);
+    outline-offset: -2px;
+  }
+
+  .kui-accordion-item__chevron {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--kui-fg-muted);
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .kui-accordion-item__chevron::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translate(-50%, -65%) rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+
+  .kui-accordion-item[open] .kui-accordion-item__chevron::before {
+    transform: translate(-50%, -35%) rotate(-135deg);
+  }
+
+  .kui-accordion-item__title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--kui-spacing-sm);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kui-accordion-item__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+
+  .kui-accordion-item__title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--kui-fg);
+  }
+
+  .kui-accordion-item__description {
+    font-size: 0.8rem;
+    color: var(--kui-fg-muted);
+  }
+
+  .kui-accordion-item__body {
+    padding: 0 var(--kui-spacing-lg) var(--kui-spacing-lg);
+    padding-left: calc(var(--kui-spacing-lg) + 1.25rem + var(--kui-spacing-sm));
+    background: var(--kui-bg-muted);
+  }
+</style>

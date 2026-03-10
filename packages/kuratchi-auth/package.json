@@ -1,0 +1,19 @@
+﻿{
+  "name": "@kuratchi/auth",
+  "version": "0.0.1",
+  "description": "Config-driven auth for KuratchiJS â€” credentials, OAuth, RBAC, rate limiting, Turnstile",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapter": "./src/adapter.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@kuratchi/orm": "^0.0.1"
+  }
+}
+
+

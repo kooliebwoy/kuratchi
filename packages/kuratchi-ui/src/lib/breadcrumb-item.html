@@ -1,0 +1,15 @@
+<script>
+  const {
+    href,
+    current = false,
+    class: className = ''
+  } = props;
+</script>
+
+<li class="kui-breadcrumb__item {className}" data-current={current || undefined}>
+  if (href && !current) {
+    <a href="{href}" class="kui-breadcrumb__link"><slot></slot></a>
+  } else {
+    <span class="kui-breadcrumb__page" aria-current={current ? 'page' : undefined}><slot></slot></span>
+  }
+</li>

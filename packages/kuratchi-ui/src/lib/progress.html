@@ -1,0 +1,8 @@
+<script>
+  const { value = 0, max = 100, class: className = '', indeterminate = false } = props;
+  const percentage = Math.round(Math.max(0, Math.min(value / max, 1)) * 100);
+</script>
+
+<div class="kui-progress {className}" role="progressbar" aria-valuemin="0" aria-valuemax={max} aria-valuenow={indeterminate ? undefined : value} data-indeterminate={indeterminate ? 'true' : 'false'}>
+  <span class="kui-progress__value" style="width: {indeterminate ? '35%' : percentage + '%'}"></span>
+</div>

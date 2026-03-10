@@ -1,0 +1,19 @@
+<script>
+  const {
+    href,
+    active = false,
+    class: className = ''
+  } = props;
+</script>
+
+<li class="kui-sidebar__menu-sub-item {className}">
+  if (href) {
+    <a href="{href}" class="kui-sidebar__menu-sub-button{active ? ' kui-sidebar__menu-sub-button--active' : ''}">
+      <slot></slot>
+    </a>
+  } else {
+    <button type="button" class="kui-sidebar__menu-sub-button{active ? ' kui-sidebar__menu-sub-button--active' : ''}">
+      <slot></slot>
+    </button>
+  }
+</li>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KuratchiJS - LLM Docs</title>
+  <style>
+    :root {
+      --bg: #f7f4ec;
+      --text: #121212;
+      --muted: #54544f;
+      --line: #161616;
+      --card: #fffeff;
+      --accent: #0c6b62;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(56rem 34rem at 8% -10%, rgba(12, 107, 98, 0.22), transparent 62%),
+        radial-gradient(50rem 36rem at 100% 0%, rgba(245, 111, 42, 0.14), transparent 58%),
+        var(--bg);
+      min-height: 100dvh;
+    }
+    .shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 1.2rem 1.1rem 3rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .brand {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+    nav { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+    nav a {
+      text-decoration: none;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.22rem 0.62rem;
+      font-size: 0.82rem;
+    }
+    main { display: grid; gap: 0.9rem; }
+    .panel {
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 6vw, 3.5rem);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      max-width: 15ch;
+    }
+    p { margin: 0.55rem 0 0; color: var(--muted); line-height: 1.55; }
+    ul { margin: 0.6rem 0 0; padding-left: 1rem; color: var(--muted); }
+    li { margin-top: 0.3rem; }
+    code {
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+      background: #f1efe8;
+      border: 1px solid #d9d5cb;
+      border-radius: 6px;
+      padding: 0.08rem 0.3rem;
+      color: #2a2a2a;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8rem;
+    }
+    @media (max-width: 760px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">KuratchiJS / LLM-First</div>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/_assets/llms.txt">llms.txt</a>
+        <a href="/_assets/llms.json">llms.json</a>
+      </nav>
+    </header>
+    <main>
+      <slot></slot>
+    </main>
+  </div>
+</body>
+</html>

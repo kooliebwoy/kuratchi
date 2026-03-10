@@ -1,0 +1,46 @@
+﻿{
+  "name": "kuratchi-syntax",
+  "displayName": "KuratchiJS Framework",
+  "description": "Syntax highlighting for KuratchiJS .html templates with expressions, control flow, and components",
+  "version": "0.1.0",
+  "publisher": "kuratchi",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "kuratchi-html",
+        "aliases": [
+          "kuratchi HTML",
+          "kuratchi-html"
+        ],
+        "extensions": [
+          ".kuratchi.html"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kuratchi-html",
+        "scopeName": "text.html.kuratchi",
+        "path": "./syntaxes/kuratchi.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.javascript": "javascript"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "files.associations": {
+        "**/src/routes/**/*.html": "kuratchi-html",
+        "**/packages/kuratchi-ui/src/lib/**/*.html": "kuratchi-html"
+      }
+    }
+  }
+}
+
+

@@ -1,0 +1,13 @@
+<script>
+  const { label, value, subvalue, class: className = '' } = props;
+</script>
+
+<article class="kui-card kui-metric-card {className}">
+  <div class="kui-card__body">
+    <p class="kui-metric-card__label">{label}</p>
+    <p class="kui-metric-card__value">{value}</p>
+    if (subvalue) {
+      <p class="kui-metric-card__subvalue">{subvalue}</p>
+    }
+  </div>
+</article>

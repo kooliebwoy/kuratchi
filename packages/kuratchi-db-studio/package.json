@@ -1,0 +1,12 @@
+﻿{
+  "name": "@kuratchi/db-studio",
+  "version": "0.0.1",
+  "description": "KuratchiJS database studio â€” shared SQL browser component for D1 and SQLite databases",
+  "type": "module",
+  "files": ["src/lib/**/*.html"],
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
+

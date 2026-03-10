@@ -1,0 +1,27 @@
+<script>
+  const {
+    href,
+    active = false,
+    icon,
+    class: className = ''
+  } = props;
+</script>
+
+<li class="kui-sidebar__menu-item {className}">
+  if (href) {
+    <a href="{href}" class="kui-sidebar__menu-button{active ? ' kui-sidebar__menu-button--active' : ''}">
+      if (icon) {
+        {@raw icon}
+      }
+      <span class="kui-sidebar__menu-label"><slot></slot></span>
+    </a>
+  } else {
+    <button type="button" class="kui-sidebar__menu-button{active ? ' kui-sidebar__menu-button--active' : ''}">
+      if (icon) {
+        {@raw icon}
+      }
+      <span class="kui-sidebar__menu-label"><slot></slot></span>
+    </button>
+  }
+</li>
+

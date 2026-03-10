@@ -1,0 +1,574 @@
+<script>
+  import Alert from '@kuratchi/ui/alert.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+
+  const {
+    tables = [],
+    activeTable = null,
+    rows = [],
+    columns = [],
+    schema = [],
+    totalRows = 0,
+    page = 0,
+    totalPages = 1,
+    sqlQuery = '',
+    sqlResult = null,
+    dbError = null,
+    baseHref = '',
+    sqlPlaceholder = 'SELECT * FROM table LIMIT 10',
+    runQueryAction = '',
+    insertRowAction = '',
+    deleteRowAction = '',
+    updateRowAction = '',
+  } = props;
+
+  const displayColumns = columns.filter((c) => c !== 'rowid');
+  const editableColumns = schema.filter((col) => !col.pk).map((c) => c.name);
+  const insertColumns = schema.filter((col) => !col.pk);
+  const sqlPanelOpen = !!(sqlQuery || sqlResult);
+
+  function tableHref(name) {
+    return `${baseHref}?table=${encodeURIComponent(name)}`;
+  }
+
+  function pageHref(name, p) {
+    const qs = new URLSearchParams({ table: name, page: String(p) });
+    if (sqlQuery) qs.set('sql', sqlQuery);
+    return `${baseHref}?${qs.toString()}`;
+  }
+
+  function formatCell(val) {
+    if (val === null || val === undefined) return null;
+    const s = String(val);
+    return s.length > 200 ? s.slice(0, 200) + '...' : s;
+  }
+</script>
+
+<style>
+  .kdb-studio {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .kdb-studio__rail {
+    position: sticky;
+    top: 1rem;
+    border: 1px solid color-mix(in srgb, var(--kui-border) 82%, white 6%);
+    border-radius: calc(var(--kui-radius) + 0.05rem);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--kui-bg-subtle) 94%, white 2%), color-mix(in srgb, var(--kui-bg) 98%, black 2%));
+    overflow: hidden;
+  }
+
+  .kdb-studio__rail-head {
+    padding: 0.9rem 1rem 0.8rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--kui-border) 85%, transparent);
+  }
+
+  .kdb-studio__rail-title {
+    margin: 0;
+    font-size: 0.76rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--kui-fg-muted);
+  }
+
+  .kdb-studio__rail-count {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    color: var(--kui-fg-muted);
+  }
+
+  .kdb-studio__table-list {
+    margin: 0;
+    padding: 0.45rem;
+    list-style: none;
+  }
+
+  .kdb-studio__table-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.72rem 0.8rem;
+    border-radius: 0.7rem;
+    color: var(--kui-fg);
+    text-decoration: none;
+    font-family: Consolas, 'SFMono-Regular', 'Liberation Mono', monospace;
+    font-size: 0.82rem;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .kdb-studio__table-link:hover {
+    background: color-mix(in srgb, var(--kui-bg-subtle) 88%, white 2%);
+  }
+
+  .kdb-studio__table-link--active {
+    background: color-mix(in srgb, var(--kui-primary) 12%, transparent);
+    color: var(--kui-primary);
+  }
+
+  .kdb-studio__table-arrow {
+    color: var(--kui-fg-muted);
+    font-size: 0.72rem;
+  }
+
+  .kdb-studio__empty-rail {
+    margin: 0;
+    padding: 1rem;
+    color: var(--kui-fg-muted);
+    font-size: 0.84rem;
+  }
+
+  .kdb-studio__main {
+    min-width: 0;
+  }
+
+  .kdb-studio__shell {
+    border: 1px solid color-mix(in srgb, var(--kui-border) 82%, white 6%);
+    border-radius: calc(var(--kui-radius) + 0.1rem);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--kui-bg-subtle) 92%, white 2%), color-mix(in srgb, var(--kui-bg) 98%, black 2%));
+    overflow: hidden;
+  }
+
+  .kdb-studio__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--kui-border) 82%, transparent);
+  }
+
+  .kdb-studio__title-wrap {
+    min-width: 0;
+  }
+
+  .kdb-studio__title {
+    margin: 0;
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+
+  .kdb-studio__subtitle {
+    margin: 0.32rem 0 0;
+    font-size: 0.84rem;
+    color: var(--kui-fg-muted);
+  }
+
+  .kdb-studio__toolbar-actions,
+  .kdb-studio__pagination,
+  .kdb-studio__row-actions,
+  .kdb-studio__runner-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
+  .kdb-studio__runner {
+    border-bottom: 1px solid color-mix(in srgb, var(--kui-border) 82%, transparent);
+    background: color-mix(in srgb, var(--kui-bg) 72%, transparent);
+  }
+
+  .kdb-studio__runner summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .kdb-studio__runner summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .kdb-studio__runner-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .kdb-studio__runner-hint {
+    font-size: 0.78rem;
+    color: var(--kui-fg-muted);
+  }
+
+  .kdb-studio__runner-body {
+    padding: 0 1.1rem 1rem;
+  }
+
+  .kdb-studio__runner-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .kdb-studio__result {
+    margin-top: 0.9rem;
+  }
+
+  .kdb-studio__section {
+    padding: 1rem 1.1rem 1.1rem;
+  }
+
+  .kdb-studio__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .kdb-studio__muted {
+    margin: 0;
+    color: var(--kui-fg-muted);
+    font-size: 0.84rem;
+  }
+
+  .kdb-studio__scroll {
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--kui-border) 82%, white 4%);
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--kui-bg) 96%, black 4%);
+  }
+
+  .kdb-studio__scroll table {
+    width: 100%;
+    min-width: 44rem;
+  }
+
+  .kdb-studio__scroll thead th {
+    position: sticky;
+    top: 0;
+    background: color-mix(in srgb, var(--kui-bg-subtle) 94%, white 2%);
+    z-index: 1;
+  }
+
+  .kdb-studio__cell {
+    font-family: Consolas, 'SFMono-Regular', 'Liberation Mono', monospace;
+    font-size: 0.78rem;
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kdb-studio__cell--muted {
+    color: var(--kui-fg-muted);
+    font-style: italic;
+  }
+
+  .kdb-studio__empty {
+    padding: 2.6rem 1rem;
+  }
+
+  .kdb-studio__schema {
+    margin-top: 1rem;
+    border-top: 1px solid color-mix(in srgb, var(--kui-border) 82%, transparent);
+    padding-top: 1rem;
+  }
+
+  .kdb-studio__schema summary {
+    cursor: pointer;
+    user-select: none;
+    color: var(--kui-fg-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  @media (max-width: 960px) {
+    .kdb-studio {
+      grid-template-columns: 1fr;
+    }
+
+    .kdb-studio__rail {
+      position: static;
+    }
+
+    .kdb-studio__toolbar,
+    .kdb-studio__meta {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>
+
+if (dbError) {
+  <Alert data-variant="danger">Database error: {dbError}</Alert>
+}
+
+<div class="kdb-studio">
+  <aside class="kdb-studio__rail">
+    <div class="kdb-studio__rail-head">
+      <p class="kdb-studio__rail-title">Tables</p>
+      <p class="kdb-studio__rail-count">{tables.length} total</p>
+    </div>
+    if (tables.length === 0) {
+      <p class="kdb-studio__empty-rail">No tables found.</p>
+    } else {
+      <ul class="kdb-studio__table-list">
+        for (const t of tables) {
+          const isActive = t === activeTable;
+          <li>
+            <a href={tableHref(t)} class={`kdb-studio__table-link${isActive ? ' kdb-studio__table-link--active' : ''}`}>
+              <span>{t}</span>
+              <span class="kdb-studio__table-arrow">&rsaquo;</span>
+            </a>
+          </li>
+        }
+      </ul>
+    }
+  </aside>
+
+  <section class="kdb-studio__main">
+    <div class="kdb-studio__shell">
+      <div class="kdb-studio__toolbar">
+        <div class="kdb-studio__title-wrap">
+          <h2 class="kdb-studio__title">{activeTable || 'Database'}</h2>
+          <p class="kdb-studio__subtitle">{totalRows.toLocaleString()} row(s) - Page {page + 1} of {totalPages}</p>
+        </div>
+        <div class="kdb-studio__toolbar-actions">
+          if (insertColumns.length > 0) {
+            <button commandfor="insert-row-dialog" command="show-modal" data-variant="secondary" data-size="sm">Insert Row</button>
+          }
+        </div>
+      </div>
+
+      <details class="kdb-studio__runner" {sqlPanelOpen ? 'open' : ''}>
+        <summary>
+          <span class="kdb-studio__runner-label">SQL Runner</span>
+          <span class="kdb-studio__runner-hint">Ad hoc queries, schema changes, and debugging.</span>
+        </summary>
+        <div class="kdb-studio__runner-body">
+          <form action={runQueryAction} class="kdb-studio__runner-form">
+            <input type="hidden" name="table" value={activeTable || ''} />
+            <div data-field>
+              <textarea name="sql" rows="7" placeholder={sqlPlaceholder} style="width:100%;font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;font-size:0.85rem;line-height:1.6;">{sqlQuery}</textarea>
+            </div>
+            <div class="kdb-studio__runner-actions">
+              <button type="submit" data-variant="secondary" data-size="sm">Run Query</button>
+              if (sqlQuery && activeTable) {
+                <a href={tableHref(activeTable)} data-type="button" data-variant="outline" data-size="sm">Clear</a>
+              } else if (sqlQuery) {
+                <a href={baseHref} data-type="button" data-variant="outline" data-size="sm">Clear</a>
+              }
+            </div>
+          </form>
+
+          if (sqlResult) {
+            <div class="kdb-studio__result">
+              if (!sqlResult.ok) {
+                <Alert data-variant="danger">{sqlResult.error || 'Query failed'}</Alert>
+              } else if (sqlResult.rows && sqlResult.rows.length > 0) {
+                const resultCols = sqlResult.columns || Object.keys(sqlResult.rows[0] || {});
+                <div class="kdb-studio__scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        for (const col of resultCols) { <th>{col}</th> }
+                      </tr>
+                    </thead>
+                    <tbody>
+                      for (const row of sqlResult.rows) {
+                        <tr>
+                          for (const col of resultCols) {
+                            <td class="kdb-studio__cell" title={row[col] !== null && row[col] !== undefined ? String(row[col]) : 'NULL'}>
+                              if (row[col] === null || row[col] === undefined) {
+                                <span class="kdb-studio__cell--muted">NULL</span>
+                              } else {
+                                {formatCell(row[col])}
+                              }
+                            </td>
+                          }
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+                <p class="kdb-studio__muted" style="margin-top:0.75rem;">{sqlResult.rows.length} row(s) returned.</p>
+              } else if (sqlResult.ok) {
+                <p class="kdb-studio__muted">
+                  Query executed successfully.
+                  if (sqlResult.changes !== undefined) { <span> {sqlResult.changes} row(s) affected.</span> }
+                  if (sqlResult.lastInsertId !== undefined) { <span> Last insert ID: {sqlResult.lastInsertId}.</span> }
+                </p>
+              }
+            </div>
+          }
+        </div>
+      </details>
+
+      <div class="kdb-studio__section">
+        if (rows.length === 0) {
+          <div class="kdb-studio__meta">
+            <p class="kdb-studio__muted">No rows in this table.</p>
+          </div>
+          <div class="kdb-studio__empty">
+            <EmptyState title="No rows" description="This table does not contain any rows yet." />
+          </div>
+        } else {
+          <div class="kdb-studio__scroll">
+            <table>
+              <thead>
+                <tr>
+                  for (const col of displayColumns) {
+                    <th>{col}</th>
+                  }
+                  <th style="width:7rem;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                for (const row of rows) {
+                  <tr>
+                    for (const col of displayColumns) {
+                      <td class="kdb-studio__cell" title={row[col] !== null && row[col] !== undefined ? String(row[col]) : 'NULL'}>
+                        if (row[col] === null || row[col] === undefined) {
+                          <span class="kdb-studio__cell--muted">NULL</span>
+                        } else {
+                          {formatCell(row[col])}
+                        }
+                      </td>
+                    }
+                    <td>
+                      <div class="kdb-studio__row-actions" style="justify-content:flex-end;">
+                        if (editableColumns.length > 0) {
+                          <button
+                            type="button"
+                            data-variant="outline"
+                            data-size="sm"
+                            commandfor="edit-row-dialog"
+                            command="fill-dialog"
+                            data-dialog-data={row}
+                          >Edit</button>
+                        }
+                        <form action={deleteRowAction} style="display:contents;">
+                          <input type="hidden" name="table" value={activeTable} />
+                          <input type="hidden" name="rowid" value={row['rowid']} />
+                          <input type="hidden" name="page" value={page} />
+                          <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Delete this row?');">Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <nav class="kdb-studio__pagination" style="margin-top:0.85rem;">
+            if (page > 0) {
+              <a href={pageHref(activeTable, page - 1)} data-type="button" data-variant="outline" data-size="sm">Prev</a>
+            } else {
+              <button disabled data-variant="outline" data-size="sm">Prev</button>
+            }
+            <span class="kdb-studio__muted">Page {page + 1} of {totalPages}</span>
+            if (page + 1 < totalPages) {
+              <a href={pageHref(activeTable, page + 1)} data-type="button" data-variant="outline" data-size="sm">Next</a>
+            } else {
+              <button disabled data-variant="outline" data-size="sm">Next</button>
+            }
+          </nav>
+        }
+
+        if (schema.length > 0) {
+          <details class="kdb-studio__schema">
+            <summary>Schema</summary>
+            <div class="kdb-studio__scroll" style="margin-top:0.75rem;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Column</th>
+                    <th>Type</th>
+                    <th>Not Null</th>
+                    <th>Default</th>
+                    <th>PK</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  for (const col of schema) {
+                    <tr>
+                      <td class="kdb-studio__cell">{col.name}</td>
+                      <td class="kdb-studio__cell">{col.type || '-'}</td>
+                      <td>
+                        if (col.notnull) { <Badge data-variant="warning" data-size="sm">NOT NULL</Badge> } else { <span class="kdb-studio__cell--muted">-</span> }
+                      </td>
+                      <td class="kdb-studio__cell">{col.dflt_value ?? '-'}</td>
+                      <td>
+                        if (col.pk) { <Badge data-variant="info" data-size="sm">PK</Badge> } else { <span class="kdb-studio__cell--muted">-</span> }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </details>
+        }
+      </div>
+    </div>
+
+    if (insertColumns.length > 0) {
+      <Dialog id="insert-row-dialog" closedby="any">
+        <div data-dialog="header">
+          <h2>Insert Row</h2>
+          <p>Add a new row to <strong>{activeTable}</strong>.</p>
+        </div>
+        <form action={insertRowAction}>
+          <input type="hidden" name="table" value={activeTable} />
+          <input type="hidden" name="_columns" value={JSON.stringify(insertColumns.map((c) => c.name))} />
+          for (const col of insertColumns) {
+            <div data-field>
+              <label for={`col-${col.name}`}>{col.name} <span style="font-size:0.75rem;color:var(--kui-fg-muted);font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;">({col.type || 'TEXT'})</span></label>
+              <input
+                type="text"
+                id={`col-${col.name}`}
+                name={`col_${col.name}`}
+                placeholder={col.dflt_value !== null && col.dflt_value !== undefined ? `default: ${col.dflt_value}` : col.type || 'TEXT'}
+                style="font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;font-size:0.875rem;"
+              />
+            </div>
+          }
+          <div data-dialog="actions">
+            <button type="submit" data-variant="primary">Insert Row</button>
+          </div>
+        </form>
+      </Dialog>
+    }
+
+    if (editableColumns.length > 0) {
+      <Dialog id="edit-row-dialog" closedby="any">
+        <div data-dialog="header">
+          <h2>Edit Row</h2>
+          <p>Update values in <strong>{activeTable}</strong>.</p>
+        </div>
+        <form action={updateRowAction}>
+          <input type="hidden" name="table" value={activeTable} />
+          <input type="hidden" name="page" value={page} />
+          <input type="hidden" name="rowid" value="" />
+          <input type="hidden" name="_columns" value={JSON.stringify(editableColumns)} />
+          for (const col of schema.filter((c) => !c.pk)) {
+            <div data-field>
+              <label for={`edit-col-${col.name}`}>{col.name} <span style="font-size:0.75rem;color:var(--kui-fg-muted);font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;">({col.type || 'TEXT'})</span></label>
+              <input
+                type="text"
+                id={`edit-col-${col.name}`}
+                name={`col_${col.name}`}
+                placeholder="NULL"
+                style="font-family:Consolas,'SFMono-Regular','Liberation Mono',monospace;font-size:0.875rem;"
+              />
+            </div>
+          }
+          <div data-dialog="actions">
+            <button type="submit" data-variant="primary">Save Changes</button>
+          </div>
+        </form>
+      </Dialog>
+    }
+  </section>
+</div>
+

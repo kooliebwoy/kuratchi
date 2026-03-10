@@ -1,0 +1,20 @@
+﻿{
+  "name": "@kuratchi/ui",
+  "version": "0.0.1",
+  "description": "KuratchiJS UI component library - server-rendered HTML components with scoped CSS",
+  "type": "module",
+  "exports": {
+    "./adapter": "./adapter.ts",
+    "./*": "./src/lib/*"
+  },
+  "files": [
+    "adapter.ts",
+    "src/lib/**/*.html",
+    "src/styles/**/*.css"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
+

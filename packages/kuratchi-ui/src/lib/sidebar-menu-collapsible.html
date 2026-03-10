@@ -1,0 +1,26 @@
+<script>
+  const {
+    label,
+    icon,
+    open = false,
+    active = false,
+    class: className = ''
+  } = props;
+  const collapseId = 'kui-sc-' + Math.random().toString(36).substr(2, 8);
+</script>
+
+<li class="kui-sidebar__menu-item kui-sidebar__menu-item--collapsible {className}">
+  <details class="kui-sidebar__collapsible" {open}>
+    <summary class="kui-sidebar__menu-button kui-sidebar__menu-button--collapsible{active ? ' kui-sidebar__menu-button--active' : ''}">
+      if (icon) {
+        {@raw icon}
+      }
+      <span class="kui-sidebar__menu-label">{label}</span>
+      <svg class="kui-sidebar__chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </summary>
+    <ul class="kui-sidebar__menu-sub">
+      <slot></slot>
+    </ul>
+  </details>
+</li>
+

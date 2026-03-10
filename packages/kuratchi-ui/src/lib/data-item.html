@@ -1,0 +1,14 @@
+<script>
+  const { label, value, long = false, class: className = '' } = props;
+</script>
+
+<div class="kui-kv__row {className}">
+  <dt class="kui-kv__label">{label}</dt>
+  if (props.children) {
+    <dd class="kui-kv__value">
+      <slot></slot>
+    </dd>
+  } else if (value) {
+    <dd><code data-size={long ? 'sm' : undefined}>{value}</code></dd>
+  }
+</div>

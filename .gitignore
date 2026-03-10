@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 .kuratchi/
+dist/
 
 # Environment / secrets
 .dev.vars

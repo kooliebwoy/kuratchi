@@ -1,0 +1,12 @@
+<script>
+  const { title, class: className = '', bodyClass = '' } = props;
+</script>
+
+<div class="kui-card {className}" data-compact={props.data_compact} data-side={props.data_side}>
+  <div class="kui-card__body {bodyClass}">
+    if (title) {
+      <h2 class="kui-card__title">{title}</h2>
+    }
+    <slot></slot>
+  </div>
+</div>

@@ -1,0 +1,15 @@
+<script>
+  // No props — this is a bare <script> block for <head>.
+  // It reads localStorage and applies the user's saved theme before first paint,
+  // preventing a flash when the stored preference differs from the server default.
+</script>
+
+<script>
+(function () {
+  try {
+    var stored = localStorage.getItem('kui-theme');
+    if (stored === 'dark')  document.documentElement.classList.add('dark');
+    if (stored === 'light') document.documentElement.classList.remove('dark');
+  } catch (e) {}
+})();
+</script>
