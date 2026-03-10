@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
-import { getLocals } from '@kuratchi/js';
+import { redirect } from '@kuratchi/js';
 import { getCurrentUser } from './auth';
 import { deployDbWorker, deleteDbWorker, generateDbToken, dispatchQuery } from './deploy';
 import { logActivity } from './audit';
@@ -10,7 +10,7 @@ const db = kuratchiORM(() => (env as any).DB);
 async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    getLocals().__redirectTo = '/auth/signin';
+    redirect('/auth/signin');
     throw new Error('Unauthorized');
   }
   if (!user.organizationId) {
@@ -129,7 +129,7 @@ export async function createDatabase(formData: FormData): Promise<void> {
 
   logActivity({ action: 'database.create', userId: user.id, organizationId: user.organizationId, data: { name, databaseId: id } });
 
-  getLocals().__redirectTo = `/databases/${id}`;
+  redirect(`/databases/${id}`);
 }
 
 // -- Delete database: D1 + dispatch worker + tokens + record ---------
@@ -172,7 +172,7 @@ export async function deleteDatabase(formData: FormData): Promise<void> {
 
   logActivity({ action: 'database.delete', userId: user.id, organizationId: user.organizationId, data: { name: record.name, databaseId: id } });
 
-  getLocals().__redirectTo = '/databases';
+  redirect('/databases');
 }
 
 // -- Redeploy dispatch worker for an existing database -------------
@@ -198,7 +198,7 @@ export async function queryDatabase(options: {
   databaseId: string;
   sql: string;
   params?: any[];
-}): Promise<{ results: any[]; success: boolean; error?: string }> {
+}): Promise<{ results: any[]; success: boolean; error?: string; meta?: Record<string, unknown> }> {
   await requireAuth();
 
   const { databaseId, sql, params = [] } = options;
@@ -212,8 +212,31 @@ export async function queryDatabase(options: {
       record.workerName,
       JSON.stringify({ sql, params }),
     );
-    const data = await res.json() as any;
-    return { success: data.success ?? true, results: data.results ?? [] };
+    const data = await res.json().catch(() => null) as any;
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data?.error ?? `HTTP ${res.status}`,
+        results: [],
+      };
+    }
+
+    if (data?.error) {
+      return {
+        success: false,
+        error: String(data.error),
+        results: [],
+        meta: data?.meta,
+      };
+    }
+
+    return {
+      success: data?.success ?? true,
+      results: data?.results ?? [],
+      error: data?.success === false ? (data?.error ?? 'Query failed') : undefined,
+      meta: data?.meta,
+    };
   } catch (err) {
     return { success: false, error: String(err), results: [] };
   }

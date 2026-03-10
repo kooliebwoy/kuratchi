@@ -1,4 +1,5 @@
-import { getLocals, getRequest, redirect } from '@kuratchi/js';
+import { getLocals, redirect } from '@kuratchi/js';
+import { searchParams } from '@kuratchi/js/request';
 import { getCurrentUser } from './auth';
 import { getDatabase, queryDatabase } from './databases';
 
@@ -39,7 +40,18 @@ async function execSql(databaseId: string, sql: string, params: any[] = []): Pro
   return { ok: true, rows, columns };
 }
 
-// — Data loader ———————————————————————————————————————————————————————
+async function loadTableNames(databaseId: string): Promise<string[]> {
+  const tablesResult = await execSql(
+    databaseId,
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_cf_KV' ORDER BY name",
+  );
+
+  if (!tablesResult.ok || !tablesResult.rows) {
+    return [];
+  }
+
+  return tablesResult.rows.map((row) => String(row.name));
+}
 
 export async function getDatabaseStudioData(): Promise<{
   database: any;
@@ -57,10 +69,9 @@ export async function getDatabaseStudioData(): Promise<{
 }> {
   const { database, id } = await requireAuthAndDb();
 
-  const url = new URL(getRequest().url);
-  const activeTable = url.searchParams.get('table') ?? null;
-  const page = Math.max(0, parseInt(url.searchParams.get('page') ?? '0', 10));
-  const sqlQuery = url.searchParams.get('sql') ?? '';
+  let activeTable = searchParams.get('table') ?? null;
+  const page = Math.max(0, parseInt(searchParams.get('page') ?? '0', 10));
+  const sqlQuery = searchParams.get('sql') ?? '';
 
   let tables: string[] = [];
   let rows: Record<string, unknown>[] = [];
@@ -72,16 +83,16 @@ export async function getDatabaseStudioData(): Promise<{
   let dbError: string | null = null;
 
   try {
-    // Load table list
-    const tablesResult = await execSql(
-      id,
-      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_cf_KV' AND name != 'migrations_history' ORDER BY name",
-    );
-    if (tablesResult.ok && tablesResult.rows) {
-      tables = tablesResult.rows.map((r) => String(r.name));
+    tables = await loadTableNames(id);
+
+    if (!activeTable && tables.length > 0) {
+      activeTable = tables[0] ?? null;
     }
 
-    // Load table data + schema when a table is selected
+    if (activeTable && !tables.includes(activeTable)) {
+      activeTable = null;
+    }
+
     if (activeTable) {
       const [countResult, dataResult, schemaResult] = await Promise.all([
         execSql(id, `SELECT COUNT(*) as cnt FROM "${activeTable}"`),
@@ -102,7 +113,6 @@ export async function getDatabaseStudioData(): Promise<{
       }
     }
 
-    // Run custom SQL query if provided
     if (sqlQuery) {
       sqlResult = await execSql(id, sqlQuery);
     }
@@ -125,8 +135,6 @@ export async function getDatabaseStudioData(): Promise<{
     dbError,
   };
 }
-
-// — Actions ———————————————————————————————————————————————————————————
 
 export async function runSqlQuery(formData: FormData): Promise<void> {
   const { id } = await requireAuthAndDb();

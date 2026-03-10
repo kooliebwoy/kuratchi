@@ -1,0 +1,288 @@
+<script>
+  import { searchParams } from '@kuratchi/js/request';
+  import { getDatabaseObservability } from '$server/database/observability';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Callout from '@kuratchi/ui/callout.html';
+  import Card from '@kuratchi/ui/card.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+
+  const requestedSince = searchParams.get('since') || undefined;
+  const requestedUntil = searchParams.get('until') || undefined;
+
+  const {
+    database,
+    range,
+    overview,
+    error,
+    unavailableReason,
+  } = await getDatabaseObservability(params.id, {
+    since: requestedSince,
+    until: requestedUntil,
+  });
+
+  const analyticsPoints = overview?.analytics.points ?? [];
+  const storagePoints = overview?.storage.points ?? [];
+  const queryInsights = overview?.insights.queries ?? [];
+
+  const totals = analyticsPoints.reduce((acc, point) => {
+    acc.readQueries += point.readQueries;
+    acc.writeQueries += point.writeQueries;
+    acc.rowsRead += point.rowsRead;
+    acc.rowsWritten += point.rowsWritten;
+    acc.queryBatchTimeMs += point.queryBatchTimeMs;
+    return acc;
+  }, {
+    readQueries: 0,
+    writeQueries: 0,
+    rowsRead: 0,
+    rowsWritten: 0,
+    queryBatchTimeMs: 0,
+  });
+
+  const totalQueries = totals.readQueries + totals.writeQueries;
+  const latestStorage = storagePoints[0]?.databaseSizeBytes ?? null;
+  const latestP90 = analyticsPoints[0]?.p90QueryBatchTimeMs ?? null;
+  const averageBatchMs = analyticsPoints.length > 0
+    ? totals.queryBatchTimeMs / analyticsPoints.length
+    : null;
+
+  function formatInt(value) {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  function formatDuration(value) {
+    if (value === null || value === undefined) return '-';
+    if (value >= 1000) return `${(value / 1000).toFixed(2)}s`;
+    if (value >= 1) return `${Number(value.toFixed(2))} ms`;
+    return `${Number(value.toFixed(3))} ms`;
+  }
+
+  function formatBytes(value) {
+    if (value === null || value === undefined) return '-';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = value;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  }
+
+  function summarizeQuery(sql) {
+    const normalized = String(sql || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return '-';
+    return normalized.length > 120 ? `${normalized.slice(0, 120)}...` : normalized;
+  }
+</script>
+
+<style>
+  /* ── Toolbar ── */
+  .kob-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .kob-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .kob-date-field label {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .kob-date-input {
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+    background: transparent;
+    border: 1px solid var(--border, #333);
+    border-radius: 0.375rem;
+    color: inherit;
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    height: 2.125rem;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .kob-date-input:focus {
+    border-color: var(--primary, #888);
+  }
+
+  /* ── Stats bar ── */
+  .kob-stats-bar {
+    display: flex;
+    border: 1px solid var(--border, #333);
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+    overflow: hidden;
+  }
+
+  .kob-stat {
+    flex: 1;
+    padding: 0.875rem 1.25rem;
+    border-right: 1px solid var(--border, #333);
+  }
+
+  .kob-stat:last-child {
+    border-right: none;
+  }
+
+  .kob-stat-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+
+  .kob-stat-value {
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 0.275rem;
+  }
+
+  .kob-stat-sub {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  /* ── Tables ── */
+  .kob-table-wrap {
+    overflow: auto;
+  }
+
+  .kob-table-wrap table {
+    width: 100%;
+    min-width: 38rem;
+  }
+
+  .kob-query {
+    font-family: Consolas, 'SFMono-Regular', 'Liberation Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+
+</style>
+
+if (database) {
+  <form class="kob-toolbar" method="GET">
+    <div class="kob-date-field">
+      <label for="since">Since</label>
+      <input class="kob-date-input" type="date" id="since" name="since" value={range.since} max={range.until} />
+    </div>
+    <div class="kob-date-field">
+      <label for="until">Until</label>
+      <input class="kob-date-input" type="date" id="until" name="until" value={range.until} min={range.since} />
+    </div>
+    <button type="submit" data-variant="secondary" style="margin-top:1.05rem;">Update</button>
+  </form>
+
+  if (unavailableReason) {
+    <Callout data-variant="info">
+      {unavailableReason}
+    </Callout>
+  } else if (error) {
+    <Alert data-variant="danger">{error}</Alert>
+  } else if (!overview) {
+    <EmptyState title="No observability data" description="Cloudflare did not return D1 observability for this database yet." />
+  } else {
+    <div class="kob-stats-bar">
+      <div class="kob-stat">
+        <div class="kob-stat-label">Total queries</div>
+        <div class="kob-stat-value">{formatInt(totalQueries)}</div>
+        <div class="kob-stat-sub">{formatInt(totals.readQueries)} read · {formatInt(totals.writeQueries)} write</div>
+      </div>
+      <div class="kob-stat">
+        <div class="kob-stat-label">Rows read</div>
+        <div class="kob-stat-value">{formatInt(totals.rowsRead)}</div>
+        <div class="kob-stat-sub">{formatInt(totals.rowsWritten)} rows written</div>
+      </div>
+      <div class="kob-stat">
+        <div class="kob-stat-label">Database size</div>
+        <div class="kob-stat-value">{formatBytes(latestStorage)}</div>
+        <div class="kob-stat-sub">{storagePoints[0]?.date ? `As of ${storagePoints[0].date}` : 'No storage sample'}</div>
+      </div>
+      <div class="kob-stat">
+        <div class="kob-stat-label">Avg / P90 latency</div>
+        <div class="kob-stat-value">{formatDuration(averageBatchMs)}</div>
+        <div class="kob-stat-sub">P90: {formatDuration(latestP90)}</div>
+      </div>
+    </div>
+
+    <Card title="Daily activity" style="margin-top:1rem;">
+      if (analyticsPoints.length === 0) {
+        <p data-muted>No analytics points returned for this date range.</p>
+      } else {
+        <div class="kob-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reads</th>
+                <th>Writes</th>
+                <th>Rows read</th>
+                <th>Avg batch</th>
+                <th>P90 batch</th>
+              </tr>
+            </thead>
+            <tbody>
+              for (const point of analyticsPoints) {
+                <tr>
+                  <td>{point.date}</td>
+                  <td>{formatInt(point.readQueries)}</td>
+                  <td>{formatInt(point.writeQueries)}</td>
+                  <td>{formatInt(point.rowsRead)}</td>
+                  <td>{formatDuration(point.avgQueryBatchTimeMs)}</td>
+                  <td>{formatDuration(point.p90QueryBatchTimeMs)}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </Card>
+
+    <Card title="Top queries" style="margin-top:1rem;">
+      if (queryInsights.length === 0) {
+        <p data-muted>No query insights returned for this date range.</p>
+      } else {
+        <div class="kob-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Query</th>
+                <th>Executions</th>
+                <th>Avg rows read</th>
+                <th>P95 latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              for (const insight of queryInsights) {
+                <tr>
+                  <td class="kob-query">{summarizeQuery(insight.query)}</td>
+                  <td>{formatInt(insight.count)}</td>
+                  <td>{formatInt(insight.avgRowsRead ?? 0)}</td>
+                  <td>{formatDuration(insight.p95DurationMs)}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </Card>
+  }
+}

@@ -1,21 +1,25 @@
 <script>
-  import { getRequest } from '@kuratchi/js';
+  import { headers } from '@kuratchi/js/request';
   import { getLocals } from '@kuratchi/js';
   import { getCurrentUser } from '$server/database/auth';
-  import { getPlatformTokens, createPlatformToken, revokePlatformToken } from '$server/database/tokens';
+  import { getAllTokens, createScopedToken, revokeAnyToken } from '$server/database/tokens';
+  import { getDatabases } from '$server/database/databases';
+  import { getKvNamespaces } from '$server/database/kv';
+  import { getR2Buckets } from '$server/database/r2';
   import Card from '@kuratchi/ui/card.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import Badge from '@kuratchi/ui/badge.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
   import Alert from '@kuratchi/ui/alert.html';
-  import Callout from '@kuratchi/ui/callout.html';
 
   const user = await getCurrentUser();
-  const tokens = user ? await getPlatformTokens() : [];
+  const tokens = user ? await getAllTokens() : [];
+  const databases = user ? await getDatabases() : [];
+  const kvNamespaces = user ? await getKvNamespaces() : [];
+  const r2Buckets = user ? await getR2Buckets() : [];
 
-  // Read and clear flash token cookie
   let newToken = null;
-  const cookies = getRequest().headers.get('cookie') || '';
+  const cookies = headers.get('cookie') || '';
   const flashMatch = cookies.match(/__flash_token=([^;]+)/);
   if (flashMatch) {
     newToken = decodeURIComponent(flashMatch[1]);
@@ -34,16 +38,12 @@ if (!user) {
   <header>
     <div>
       <h1>API Tokens</h1>
-      <p data-muted>Account-level tokens that grant access to all your resources.</p>
+      <p data-muted>Manage all API tokens — platform-wide or scoped to individual resources.</p>
     </div>
-    <button data-variant="primary" data-type="button" commandfor="create-platform-token-dialog" command="show-modal">
+    <button data-variant="primary" data-type="button" commandfor="create-token-dialog" command="show-modal">
       + Create Token
     </button>
   </header>
-
-  <Callout data-variant="warning">
-    Platform tokens have full access to every database, KV namespace, and R2 bucket in your account. For scoped access, create tokens on individual resource pages instead.
-  </Callout>
 
   if (newToken) {
     <Alert data-variant="success">
@@ -54,10 +54,10 @@ if (!user) {
 
   if (tokens.length === 0) {
     <EmptyState
-      title="No platform tokens"
-      description="Create a token to access all your resources with a single key."
+      title="No API tokens"
+      description="Create a token to access your resources via the API."
     >
-      <button data-variant="primary" data-type="button" commandfor="create-platform-token-dialog" command="show-modal">
+      <button data-variant="primary" data-type="button" commandfor="create-token-dialog" command="show-modal">
         + Create Token
       </button>
     </EmptyState>
@@ -68,6 +68,7 @@ if (!user) {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Scope</th>
               <th>Token</th>
               <th>Created</th>
               <th>Actions</th>
@@ -77,12 +78,20 @@ if (!user) {
             for (const t of tokens) {
               <tr>
                 <td>{t.name}</td>
-                <td data-mono data-muted>{t.token.slice(0, 24)}...{t.token.slice(-8)}</td>
+                <td>
+                  if (t.scope === 'platform') {
+                    <Badge data-variant="warning">Platform</Badge>
+                  } else {
+                    <Badge data-variant="info">{t.scopeLabel}</Badge>
+                  }
+                </td>
+                <td data-mono data-muted>{t.token.slice(0, 20)}...{t.token.slice(-8)}</td>
                 <td data-muted>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
                 <td>
-                  <form action={revokePlatformToken} method="POST">
+                  <form action={revokeAnyToken} method="POST">
                     <input type="hidden" name="tokenId" value={t.id} />
-                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? All clients using it will lose access to every resource.')">Revoke</button>
+                    <input type="hidden" name="scope" value={t.scope} />
+                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
                   </form>
                 </td>
               </tr>
@@ -93,22 +102,54 @@ if (!user) {
     </Card>
   }
 
-  <Dialog id="create-platform-token-dialog" closedby="any">
+  <Dialog id="create-token-dialog" closedby="any">
     <div data-dialog="header">
-      <h2>Create Platform Token</h2>
-      <p>This token will have access to all databases, KV namespaces, and R2 buckets in your account.</p>
+      <h2>Create API Token</h2>
+      <p>Choose a scope for this token.</p>
     </div>
-    <form action={createPlatformToken} method="POST">
+    <form action={createScopedToken} method="POST">
       <div data-field>
-        <label for="platform-token-name">Token Name</label>
-        <input type="text" id="platform-token-name" name="name" placeholder="e.g. ci-pipeline, backend-prod" required autocomplete="off" />
+        <label for="token-scope">Scope</label>
+        <select id="token-scope" name="scope" required onchange="
+          var rf = document.getElementById('resource-field');
+          var rs = document.getElementById('token-resource');
+          if (this.value === 'platform') {
+            rf.style.display = 'none';
+            rs.removeAttribute('required');
+          } else {
+            rf.style.display = '';
+            rs.setAttribute('required', '');
+            var opts = JSON.parse(document.getElementById('scope-data-' + this.value)?.textContent || '[]');
+            rs.innerHTML = '<option value=\x22\x22>Select a resource...</option>' + opts.map(function(o) { return '<option value=\x22' + o.id + '\x22>' + o.name + '</option>'; }).join('');
+          }
+        ">
+          <option value="">Select scope...</option>
+          <option value="platform">Platform (all resources)</option>
+          <option value="database">Database</option>
+          <option value="kv">KV Namespace</option>
+          <option value="r2">R2 Bucket</option>
+        </select>
       </div>
-      if (createPlatformToken.error) {
-        <Alert data-variant="danger">{createPlatformToken.error}</Alert>
+      <div data-field id="resource-field" style="display:none">
+        <label for="token-resource">Resource</label>
+        <select id="token-resource" name="resourceId">
+          <option value="">Select a resource...</option>
+        </select>
+      </div>
+      <div data-field>
+        <label for="token-name">Token Name</label>
+        <input type="text" id="token-name" name="name" placeholder="e.g. production, staging, ci" required autocomplete="off" />
+      </div>
+      if (createScopedToken.error) {
+        <Alert data-variant="danger">{createScopedToken.error}</Alert>
       }
       <div data-dialog="actions">
         <button type="submit" data-variant="primary">Create Token</button>
       </div>
     </form>
   </Dialog>
+
+  <script id="scope-data-database" type="application/json">{JSON.stringify(databases.map(d => ({ id: d.id, name: d.name })))}</script>
+  <script id="scope-data-kv" type="application/json">{JSON.stringify(kvNamespaces.map(n => ({ id: n.id, name: n.name })))}</script>
+  <script id="scope-data-r2" type="application/json">{JSON.stringify(r2Buckets.map(b => ({ id: b.id, name: b.name })))}</script>
 }

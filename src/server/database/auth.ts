@@ -9,7 +9,7 @@ import {
   parseSessionCookie,
 } from '@kuratchi/auth';
 import { getAuth } from '@kuratchi/auth';
-import { getLocals } from '@kuratchi/js';
+import { redirect } from '@kuratchi/js';
 import { logActivity } from './audit';
 
 const db = kuratchiORM(() => (env as any).DB);
@@ -118,7 +118,7 @@ export async function signUp(formData: FormData): Promise<void> {
 
   logActivity({ action: 'user.signup', userId: id, organizationId: orgId, data: { email } });
 
-  getLocals().__redirectTo = '/auth/signin';
+  redirect('/auth/signin');
 }
 
 // -- Sign In --------------------------------------------------------
@@ -171,7 +171,7 @@ export async function signIn(formData: FormData): Promise<void> {
   if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
   locals.__setCookieHeaders.push(setCookieHeader);
 
-  locals.__redirectTo = '/';
+  redirect('/');
 
   logActivity({ action: 'user.signin', userId: user.id, data: { email } });
 }
@@ -195,5 +195,5 @@ export async function signOut(formData: FormData): Promise<void> {
   if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
   locals.__setCookieHeaders.push(clearHeader);
 
-  locals.__redirectTo = '/auth/signin';
+  redirect('/auth/signin');
 }

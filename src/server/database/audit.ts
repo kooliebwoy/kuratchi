@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
-import { getRequest } from '@kuratchi/js';
+import { headers } from '@kuratchi/js/request';
 
 const db = kuratchiORM(() => (env as any).DB);
 
@@ -22,11 +22,10 @@ export function logActivity(entry: AuditEntry): void {
   let userAgent: string | null = null;
 
   try {
-    const request = getRequest();
-    ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || null;
-    userAgent = request.headers.get('user-agent') || null;
+    ip = headers.get('cf-connecting-ip') || headers.get('x-forwarded-for') || null;
+    userAgent = headers.get('user-agent') || null;
   } catch {
-    // getRequest() may fail outside a request context
+    // headers may be unavailable outside a request context
   }
 
   db.activity.insert({

@@ -1,74 +1,76 @@
 <script>
-  import { getBreadcrumbs } from '@kuratchi/js';
-  import { getCurrentUser, signOut } from '$server/database/auth';
-  import DashboardOrganizations from '@kuratchi/ui/dashboards/dashboard-organizations.html';
+    import { getBreadcrumbs } from '@kuratchi/js';
+    import { getCurrentUser, signOut } from '$server/database/auth';
+    import DashboardOrganizations from '@kuratchi/ui/dashboards/dashboard-organizations.html';
 
-  const user = await getCurrentUser();
+    const user = await getCurrentUser();
 
-  const orgSwitcherListItems = user ? [
-    {
-      name: 'Kuratchi',
-      plan: null,
-      active: true,
-      logo: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>'
-    },
-  ] : [];
+    const orgSwitcherListItems = user ? [
+      {
+        name: 'Kuratchi',
+        plan: null,
+        active: true,
+        logo: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>'
+      },
+    ] : [];
 
-  const sideNavMenuItems = [
-    {
-      label: 'Platform',
-      items: [
-        { label: 'Dashboard', href: '/', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>' },
-        { label: 'Databases', href: '/databases', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>' },
-        { label: 'KV Namespaces', href: '/kv', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>' },
-        { label: 'R2 Buckets', href: '/r2', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>' },
-      ]
-    },
-    {
-      label: 'Account',
-      items: [
-        { label: 'Users', href: '/account/users', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-        { label: 'API Tokens', href: '/account/tokens', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
-      ]
-    }
-  ];
+    const sideNavMenuItems = [
+      {
+        label: 'Platform',
+        items: [
+          { label: 'Dashboard', href: '/', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>' },
+          { label: 'Databases', href: '/databases', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>' },
+          { label: 'KV Namespaces', href: '/kv', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>' },
+          { label: 'R2 Buckets', href: '/r2', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>' },
+        ]
+      },
+      {
+        label: 'Account',
+        items: [
+          { label: 'Users', href: '/account/users', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+          { label: 'API Tokens', href: '/account/tokens', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' },
+        ]
+      }
+    ];
 
-  const headerNavMenuItems = getBreadcrumbs().map((crumb, index) => {
-    if (index === 0) {
-      return { ...crumb, label: 'Dashboard' };
-    }
-    return crumb;
-  });
+    const headerNavMenuItems = getBreadcrumbs().map((crumb, index) => {
+      if (index === 0) {
+        return { ...crumb, label: 'Dashboard' };
+      }
+      return crumb;
+    });
 
-  const footerNavMenuItems = user ? {
-    name: user.name || user.email || 'User',
-    email: user.email || '',
-    signOutOnclick: "document.getElementById('signout-form').requestSubmit(); return false;",
-  } : {
-    name: '',
-    email: '',
-  };
+    const footerNavMenuItems = user ? {
+      name: user.name || user.email || 'User',
+      email: user.email || '',
+      signOutLabel: 'Sign out',
+    } : {
+      name: '',
+      email: '',
+    };
 </script>
 
-<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kuratchi</title>
-</head>
-<body>
-  if (!user) {
-    <slot></slot>
-  } else {
-    <DashboardOrganizations
-      orgSwitcherListItems={orgSwitcherListItems}
-      sideNavMenuItems={sideNavMenuItems}
-      headerNavMenuItems={headerNavMenuItems}
-      footerNavMenuItems={footerNavMenuItems}
-    >
-      <slot></slot>
-    </DashboardOrganizations>
-  }
-</body>
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Kuratchi</title>
+    </head>
+    <body>
+        if (!user) {
+        <slot></slot>
+        } else {
+        <DashboardOrganizations
+            orgSwitcherListItems={orgSwitcherListItems}
+            sideNavMenuItems={sideNavMenuItems}
+            headerNavMenuItems={headerNavMenuItems}
+            footerNavMenuItems={footerNavMenuItems}
+            footerSignOutAction={signOut}
+        >
+            <slot></slot>
+        </DashboardOrganizations>
+        }
+    </body>
 </html>
+

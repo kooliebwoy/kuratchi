@@ -7,15 +7,14 @@
   import CardGrid from '@kuratchi/ui/card-grid.html';
   import Card from '@kuratchi/ui/card.html';
   import Callout from '@kuratchi/ui/callout.html';
-  import { getRequest } from '@kuratchi/js';
+  import { url } from '@kuratchi/js/request';
 
   const user = await getCurrentUser();
   const databases = user ? await getDatabases() : [];
   const kvNamespaces = user ? await getKvNamespaces() : [];
   const r2Buckets = user ? await getR2Buckets() : [];
 
-  const requestUrl = user ? new URL(getRequest().url) : null;
-  const baseUrl = requestUrl ? `${requestUrl.protocol}//${requestUrl.host}` : '';
+  const baseUrl = user ? `${url.protocol}//${url.host}` : '';
 
   const sdkInstall = `npm install @kuratchi/sdk`;
   const sdkQuickStart = `import { createClient } from '@kuratchi/sdk';

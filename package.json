@@ -1,21 +1,23 @@
 {
-  "name": "kuratchi",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "kuratchi dev",
-    "build": "kuratchi build"
-  },
-  "dependencies": {
-    "@kuratchi/auth": "^0.0.1",
-    "@kuratchi/db-studio": "^0.0.1",
-    "@kuratchi/js": "^0.0.9",
-    "@kuratchi/orm": "^0.0.1",
-    "@kuratchi/ui": "^0.0.1"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
-    "wrangler": "^4.71.0"
-  }
+    "name":  "kuratchi",
+    "version":  "0.0.1",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "kuratchi dev",
+                    "build":  "kuratchi build"
+                },
+    "dependencies":  {
+                         "@kuratchi/auth":  "file:../kuratchi-packages/packages/kuratchi-auth",
+                         "@kuratchi/db-studio":  "file:../kuratchi-packages/packages/kuratchi-db-studio",
+                         "@kuratchi/file-explorer":  "file:../kuratchi-packages/packages/kuratchi-file-explorer",
+                         "@kuratchi/js":  "file:../kuratchi-packages/packages/kuratchi-js",
+                         "@kuratchi/orm":  "file:../kuratchi-packages/packages/kuratchi-orm",
+                         "@kuratchi/ui":  "file:../kuratchi-packages/packages/kuratchi-ui",
+                         "@kuratchi/observability":  "file:../kuratchi-packages/packages/kuratchi-observability"
+                     },
+    "devDependencies":  {
+                            "@cloudflare/workers-types":  "^4.20250214.0",
+                            "wrangler":  "^4.71.0"
+                        }
 }

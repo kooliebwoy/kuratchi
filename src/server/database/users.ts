@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
-import { getLocals } from '@kuratchi/js';
+import { redirect } from '@kuratchi/js';
 import { getCurrentUser } from './auth';
 
 const db = kuratchiORM(() => (env as any).DB);
@@ -8,7 +8,7 @@ const db = kuratchiORM(() => (env as any).DB);
 async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    getLocals().__redirectTo = '/auth/signin';
+    redirect('/auth/signin');
     throw new Error('Unauthorized');
   }
   if (!user.organizationId) {
@@ -95,7 +95,7 @@ export async function inviteUser(formData: FormData): Promise<void> {
     updated_at: now,
   });
 
-  getLocals().__redirectTo = '/account/users';
+  redirect('/account/users');
 }
 
 export async function suspendUser(formData: FormData): Promise<void> {
@@ -137,5 +137,5 @@ export async function deleteUser(formData: FormData): Promise<void> {
     .where({ id })
     .update({ deleted_at: now });
 
-  getLocals().__redirectTo = '/account/users';
+  redirect('/account/users');
 }

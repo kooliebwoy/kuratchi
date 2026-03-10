@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
-import { getLocals } from '@kuratchi/js';
+import { redirect } from '@kuratchi/js';
 import { getCurrentUser } from './auth';
 import { generateDbToken } from './deploy';
 import { logActivity } from './audit';
@@ -10,7 +10,7 @@ const db = kuratchiORM(() => (env as any).DB);
 async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    getLocals().__redirectTo = '/auth/signin';
+    redirect('/auth/signin');
     throw new Error('Unauthorized');
   }
   if (!user.organizationId) {
@@ -193,7 +193,7 @@ export async function createKvNamespace(formData: FormData): Promise<void> {
 
   logActivity({ action: 'kv.create', userId: user.id, organizationId: user.organizationId, data: { name, kvNamespaceId: id } });
 
-  getLocals().__redirectTo = `/kv/${id}`;
+  redirect(`/kv/${id}`);
 }
 
 // -- Delete KV namespace ---------------------------------------------
@@ -231,5 +231,5 @@ export async function deleteKvNamespace(formData: FormData): Promise<void> {
 
   logActivity({ action: 'kv.delete', userId: user.id, organizationId: user.organizationId, data: { name: record.name, kvNamespaceId: id } });
 
-  getLocals().__redirectTo = '/kv';
+  redirect('/kv');
 }

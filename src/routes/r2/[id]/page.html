@@ -1,37 +1,35 @@
 <script>
-  import { getRequest } from '@kuratchi/js';
-  import { getLocals } from '@kuratchi/js';
+  import { url } from '@kuratchi/js/request';
   import { getCurrentUser } from '$server/database/auth';
-  import { getR2Bucket, deleteR2Bucket } from '$server/database/r2';
-  import { getR2Tokens, createR2Token, revokeR2Token } from '$server/database/tokens';
+  import { getR2Bucket, getR2ExplorerData, uploadR2Object, saveR2TextObject, deleteR2Object, deleteR2Bucket } from '$server/database/r2';
+  import { getR2Tokens } from '$server/database/tokens';
+  import FileExplorer from '@kuratchi/file-explorer/file-explorer.html';
   import Card from '@kuratchi/ui/card.html';
   import Badge from '@kuratchi/ui/badge.html';
   import DataList from '@kuratchi/ui/data-list.html';
   import DataItem from '@kuratchi/ui/data-item.html';
   import Dialog from '@kuratchi/ui/dialog.html';
-  import Alert from '@kuratchi/ui/alert.html';
   import Callout from '@kuratchi/ui/callout.html';
 
   const user = await getCurrentUser();
   const { id } = params;
   const bucket = user ? await getR2Bucket(id) : null;
   const tokens = bucket ? await getR2Tokens(bucket.id) : [];
+  const explorer = bucket
+    ? await getR2ExplorerData()
+    : {
+        currentPrefix: '',
+        directories: [],
+        objects: [],
+        selectedObject: null,
+        selectedPreview: null,
+        selectedPreviewKind: 'none',
+        nextCursor: '',
+        listError: null,
+      };
 
-  const requestUrl = new URL(getRequest().url);
-  const apiBaseUrl = `${requestUrl.protocol}//${requestUrl.host}/api/v1/r2/${bucket?.name}`;
-
-  // Read and clear flash token cookie
-  let newToken = null;
-  const cookies = getRequest().headers.get('cookie') || '';
-  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
-  if (flashMatch) {
-    newToken = decodeURIComponent(flashMatch[1]);
-    const locals = getLocals();
-    if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
-    locals.__setCookieHeaders.push(`__flash_token=; Path=/r2/${id}; Max-Age=0; HttpOnly; SameSite=Strict`);
-  }
-
-  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+  const apiBaseUrl = `${url.protocol}//${url.host}/api/v1/r2/${bucket?.name}`;
+  const baseUrl = `${url.protocol}//${url.host}`;
   const firstToken = tokens.length > 0 ? tokens[0].token : '<YOUR_TOKEN>';
 
   const sdkExample = bucket ? `import { createClient } from '@kuratchi/sdk';
@@ -126,16 +124,19 @@ if (!user) {
 } else {
   <header>
     <div>
-      <h1>
-        {bucket.name}
+      <div class="rs-header-row">
+        <h1>{bucket.name}</h1>
         if (bucket.isActive) {
           <Badge data-variant="success">Active</Badge>
         } else {
           <Badge data-variant="muted">Inactive</Badge>
         }
-      </h1>
+        <button class="rs-info-btn" data-type="button" commandfor="info-drawer" command="show-modal" title="Connection & SDK info">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        </button>
+      </div>
       if (bucket.locationHint) {
-        <p data-muted>Region: {bucket.locationHint}</p>
+        <div class="rs-meta">{bucket.locationHint}</div>
       }
     </div>
     <button data-variant="danger" data-type="button" commandfor="delete-r2-dialog" command="show-modal">
@@ -143,82 +144,22 @@ if (!user) {
     </button>
   </header>
 
-  <Card title="Connection">
-    <DataList>
-      <DataItem label="API URL">
-        <code>{apiBaseUrl}</code>
-      </DataItem>
-    </DataList>
-
-    <Callout data-variant="info">
-      RESTful API — <code>GET /</code> list, <code>GET /:key</code> download, <code>PUT /:key</code> upload, <code>DELETE /:key</code> delete, <code>HEAD /:key</code> metadata
-    </Callout>
-
-    <details>
-      <summary><strong>Usage Examples</strong></summary>
-      <h4>cURL</h4>
-      <pre><code>{curlExamples}</code></pre>
-      <h4>JavaScript / Fetch</h4>
-      <pre><code>{fetchExample}</code></pre>
-    </details>
-  </Card>
-
-  <Card title="SDK">
-    <Callout data-variant="success">
-      Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
-    </Callout>
-
-    <pre><code>{sdkExample}</code></pre>
-
-    <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
-  </Card>
-
-  <Card title="API Tokens">
-    if (newToken) {
-      <Alert data-variant="success">
-        <strong>Token created!</strong> Copy it now — you won't be able to see it again.
-        <pre data-mono style="margin-top:0.5rem;padding:0.75rem;background:var(--color-surface-2,#f4f4f5);border-radius:6px;word-break:break-all;white-space:pre-wrap">{newToken}</pre>
-      </Alert>
-    }
-    <div data-cluster>
-      <button data-variant="primary" data-size="sm" data-type="button" commandfor="create-token-dialog" command="show-modal">
-        + Create Token
-      </button>
-    </div>
-
-    if (tokens.length === 0) {
-      <p data-muted>No active tokens. Create one to access this bucket via the API.</p>
-    } else {
-      <div data-scroll>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Token</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            for (const t of tokens) {
-              <tr>
-                <td>{t.name}</td>
-                <td data-mono data-muted>{t.token.slice(0, 20)}...{t.token.slice(-8)}</td>
-                <td data-muted>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
-                <td>
-                  <form action={revokeR2Token} method="POST">
-                    <input type="hidden" name="tokenId" value={t.id} />
-                    <input type="hidden" name="r2BucketId" value={bucket.id} />
-                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
-                  </form>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    }
-  </Card>
+  <FileExplorer
+    resourceLabel={bucket.name}
+    baseHref={`/r2/${bucket.id}`}
+    downloadBaseHref={`/r2/${bucket.id}/files`}
+    currentPrefix={explorer.currentPrefix}
+    directories={explorer.directories}
+    objects={explorer.objects}
+    selectedObject={explorer.selectedObject}
+    selectedPreview={explorer.selectedPreview}
+    selectedPreviewKind={explorer.selectedPreviewKind}
+    listError={explorer.listError}
+    nextCursor={explorer.nextCursor}
+    uploadAction={uploadR2Object}
+    saveTextAction={saveR2TextObject}
+    deleteAction={deleteR2Object}
+  />
 
   <Card title="Details">
     <DataList>
@@ -231,25 +172,65 @@ if (!user) {
     </DataList>
   </Card>
 
-  <Dialog id="create-token-dialog" closedby="any">
-    <div data-dialog="header">
-      <h2>Create API Token</h2>
-      <p>Create a new token for <strong>{bucket.name}</strong>.</p>
+  <dialog id="info-drawer" closedby="any" style="
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: auto;
+    margin: 0;
+    max-height: 100vh;
+    height: 100vh;
+    max-width: 520px;
+    width: 90vw;
+    border: none;
+    border-left: 1px solid var(--color-border, #333);
+    background: var(--color-surface-1, #1a1a1a);
+    padding: 1.5rem;
+    overflow-y: auto;
+    animation: slide-in-right 0.2s ease-out;
+  ">
+    <div class="idr-head">
+      <h2>Connection & SDK</h2>
+      <button class="idr-close" data-type="button" onclick="this.closest('dialog').close()" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
-    <form action={createR2Token} method="POST">
-      <input type="hidden" name="r2BucketId" value={bucket.id} />
-      <div data-field>
-        <label for="token-name">Token Name</label>
-        <input type="text" id="token-name" name="name" placeholder="e.g. production, staging, ci" required autocomplete="off" />
+
+    <div class="idr-section">
+      <div class="idr-section-label">API Endpoint</div>
+      <div class="idr-url-block">
+        <div class="idr-url-label">URL</div>
+        <code class="idr-url-value">{apiBaseUrl}</code>
       </div>
-      if (createR2Token.error) {
-        <Alert data-variant="danger">{createR2Token.error}</Alert>
-      }
-      <div data-dialog="actions">
-        <button type="submit" data-variant="primary">Create Token</button>
-      </div>
-    </form>
-  </Dialog>
+      <Callout data-variant="info">
+        RESTful API — <code>GET /</code> list, <code>GET /:key</code> download, <code>PUT /:key</code> upload, <code>DELETE /:key</code> delete, <code>HEAD /:key</code> metadata
+      </Callout>
+    </div>
+
+    <div class="idr-section">
+      <div class="idr-section-label">Examples</div>
+      <details>
+        <summary><strong>cURL</strong></summary>
+        <pre><code>{curlExamples}</code></pre>
+      </details>
+      <details>
+        <summary><strong>JavaScript / Fetch</strong></summary>
+        <pre><code>{fetchExample}</code></pre>
+      </details>
+    </div>
+
+    <div class="idr-divider"></div>
+
+    <div class="idr-section">
+      <div class="idr-section-label">SDK</div>
+      <Callout data-variant="success">
+        Use the <strong>Kuratchi SDK</strong> for a cleaner developer experience — no manual fetch calls or token management.
+      </Callout>
+      <pre><code>{sdkExample}</code></pre>
+      <small data-muted>Install: <code>npm install @kuratchi/sdk</code></small>
+    </div>
+  </dialog>
 
   <Dialog id="delete-r2-dialog" closedby="any">
     <div data-dialog="header">
@@ -263,5 +244,35 @@ if (!user) {
       </div>
     </form>
   </Dialog>
-}
 
+  <style>
+    /* ── Resource header ── */
+    .rs-header-row { display: flex; align-items: center; gap: 0.625rem; }
+    .rs-header-row h1 { margin: 0; line-height: 1; }
+    .rs-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.625rem; height: 1.625rem; border-radius: 0.375rem; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 0; transition: color 0.15s, background 0.15s; flex-shrink: 0; }
+    .rs-info-btn:hover { color: inherit; background: var(--border, rgba(255,255,255,0.08)); }
+    .rs-meta { margin-top: 0.25rem; font-size: 0.78rem; color: var(--muted); }
+    /* ── Info drawer ── */
+    @keyframes slide-in-right {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    #info-drawer::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .idr-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border, #333); }
+    .idr-head h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .idr-close { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: 0.375rem; border: 1px solid var(--color-border, #333); background: transparent; color: var(--muted); cursor: pointer; padding: 0; transition: color 0.15s, background 0.15s; }
+    .idr-close:hover { color: inherit; background: var(--color-border, #222); }
+    .idr-section { margin-bottom: 1.5rem; }
+    .idr-section-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; }
+    .idr-url-block { background: var(--color-surface-2, rgba(255,255,255,0.04)); border: 1px solid var(--color-border, #333); border-radius: 0.375rem; padding: 0.625rem 0.75rem; margin-bottom: 0.75rem; }
+    .idr-url-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.3rem; }
+    .idr-url-value { font-family: Consolas, 'SFMono-Regular', monospace; font-size: 0.8rem; word-break: break-all; display: block; }
+    .idr-divider { height: 1px; background: var(--color-border, #333); margin: 1.5rem 0; }
+    #info-drawer details { margin-bottom: 0.375rem; }
+    #info-drawer details summary { cursor: pointer; padding: 0.5rem 0; font-size: 0.875rem; border-bottom: 1px solid var(--color-border, #2a2a2a); list-style: none; display: flex; align-items: center; gap: 0.4rem; user-select: none; }
+    #info-drawer details summary::-webkit-details-marker { display: none; }
+    #info-drawer details summary::before { content: '\25B6'; font-size: 0.6rem; color: var(--muted); transition: transform 0.15s; flex-shrink: 0; }
+    #info-drawer details[open] summary::before { transform: rotate(90deg); }
+    #info-drawer details pre { margin: 0.625rem 0 0.25rem; font-size: 0.78rem; }
+  </style>
+}
