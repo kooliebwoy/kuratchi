@@ -73,7 +73,8 @@ function rewriteWorkerEnvAliases(source: string, aliases: string[]): string {
   let out = source;
   for (const alias of aliases) {
     if (!/^[A-Za-z_$][\w$]*$/.test(alias)) continue;
-    const aliasRegex = new RegExp(`\\b${alias}\\b`, 'g');
+    // Negative lookbehind: don't rewrite property accesses like __m16.env
+    const aliasRegex = new RegExp(`(?<!\\.)\\b${alias}\\b`, 'g');
     out = out.replace(aliasRegex, '__env');
   }
   return out;
