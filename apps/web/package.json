@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "bun run --cwd ../../packages/kuratchi-js build",
+    "predev": "bun run --cwd ../.. build",
     "dev": "bun run --bun ../../packages/kuratchi-js/src/cli.ts dev",
-    "prebuild": "bun run --cwd ../../packages/kuratchi-js build",
+    "prebuild": "bun run --cwd ../.. build",
     "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
   },
   "dependencies": {
