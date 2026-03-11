@@ -31,12 +31,10 @@ export class KuratchiAPI {
     return res.json();
   }
 
-  // Health
   async health() {
     return this.request("/health");
   }
 
-  // Databases
   async listDatabases() {
     return this.request("/platform/databases");
   }
@@ -63,7 +61,6 @@ export class KuratchiAPI {
     });
   }
 
-  // KV
   async listKVNamespaces() {
     return this.request("/platform/kv");
   }
@@ -83,7 +80,6 @@ export class KuratchiAPI {
     return this.request(`/platform/kv/${id}`, { method: "DELETE" });
   }
 
-  // R2
   async listR2Buckets() {
     return this.request("/platform/r2");
   }
@@ -103,7 +99,6 @@ export class KuratchiAPI {
     return this.request(`/platform/r2/${id}`, { method: "DELETE" });
   }
 
-  // Tokens
   async createToken(params: {
     type: "database" | "kv" | "r2";
     name: string;
@@ -111,20 +106,39 @@ export class KuratchiAPI {
     kvNamespaceId?: string;
     r2BucketId?: string;
   }) {
-    return this.request("/platform/tokens", {
+    if (params.type === "database") {
+      return this.request("/platform/tokens/database", {
+        method: "POST",
+        body: {
+          name: params.name,
+          databaseId: params.databaseId,
+        },
+      });
+    }
+
+    if (params.type === "kv") {
+      return this.request("/platform/tokens/kv", {
+        method: "POST",
+        body: {
+          name: params.name,
+          kvNamespaceId: params.kvNamespaceId,
+        },
+      });
+    }
+
+    return this.request("/platform/tokens/r2", {
       method: "POST",
-      body: params,
+      body: {
+        name: params.name,
+        r2BucketId: params.r2BucketId,
+      },
     });
   }
 
   async revokeToken(tokenId: string) {
-    return this.request("/platform/tokens", {
-      method: "DELETE",
-      body: { tokenId },
-    });
+    return this.request(`/platform/tokens/${tokenId}`, { method: "DELETE" });
   }
 
-  // Scoped data operations
   async queryDatabase(dbName: string, sql: string, scopedToken: string) {
     const res = await fetch(`${API_BASE}/${dbName}`, {
       method: "POST",

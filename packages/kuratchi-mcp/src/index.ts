@@ -1,254 +1,267 @@
-import { McpAgent } from "agents/mcp";
+import { createMcpHandler } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { KuratchiAPI } from "./api";
 
 type Env = {};
 
-type Props = {
-  apiKey: string;
-};
-
-export class KuratchiMCP extends McpAgent<Env, unknown, Props> {
-  server = new McpServer({
-    name: "Kuratchi",
-    version: "0.0.1",
-  });
-
-  private getAPI(): KuratchiAPI {
-    if (!this.props.apiKey) {
-      throw new Error("Not authenticated. Provide a platform API token (kdbp_) via the Authorization header.");
-    }
-    return new KuratchiAPI(this.props.apiKey);
+function createAPI(apiKey: string): KuratchiAPI {
+  if (!apiKey) {
+    throw new Error("Not authenticated. Provide a platform API token (kdbp_) via Authorization: Bearer header.");
   }
 
-  async init() {
-    // ── Health ──────────────────────────────────────────────
+  return new KuratchiAPI(apiKey);
+}
 
-    this.server.tool("health", "Check Kuratchi platform status", {}, async () => {
-      const api = this.getAPI();
-      const result = await api.health();
+function registerTools(server: McpServer, apiKey: string) {
+  server.registerTool(
+    "health",
+    {
+      description: "Check Kuratchi platform status",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await createAPI(apiKey).health();
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    });
+    }
+  );
 
-    // ── Databases ──────────────────────────────────────────
+  server.registerTool(
+    "list_databases",
+    {
+      description: "List all databases in your organization",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await createAPI(apiKey).listDatabases();
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "list_databases",
-      "List all databases in your organization",
-      {},
-      async () => {
-        const api = this.getAPI();
-        const result = await api.listDatabases();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
-
-    this.server.tool(
-      "create_database",
-      "Create a new database",
-      {
+  server.registerTool(
+    "create_database",
+    {
+      description: "Create a new database",
+      inputSchema: {
         name: z.string().describe("Name for the new database"),
         locationHint: z.string().optional().describe("Region hint (e.g. 'wnam', 'enam', 'weur', 'eeur', 'apac')"),
       },
-      async ({ name, locationHint }) => {
-        const api = this.getAPI();
-        const result = await api.createDatabase(name, locationHint);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ name, locationHint }) => {
+      const result = await createAPI(apiKey).createDatabase(name, locationHint);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "get_database",
-      "Get details about a specific database",
-      {
+  server.registerTool(
+    "get_database",
+    {
+      description: "Get details about a specific database",
+      inputSchema: {
         id: z.string().describe("Database ID"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.getDatabase(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).getDatabase(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "delete_database",
-      "Delete a database permanently",
-      {
+  server.registerTool(
+    "delete_database",
+    {
+      description: "Delete a database permanently",
+      inputSchema: {
         id: z.string().describe("Database ID to delete"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.deleteDatabase(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).deleteDatabase(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "redeploy_database",
-      "Redeploy a database after configuration changes",
-      {
+  server.registerTool(
+    "redeploy_database",
+    {
+      description: "Redeploy a database after configuration changes",
+      inputSchema: {
         id: z.string().describe("Database ID to redeploy"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.redeployDatabase(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).redeployDatabase(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "query_database",
-      "Execute a SQL query against a database using a scoped token",
-      {
+  server.registerTool(
+    "query_database",
+    {
+      description: "Execute a SQL query against a database using a scoped token",
+      inputSchema: {
         dbName: z.string().describe("Database name"),
         sql: z.string().describe("SQL query to execute"),
         token: z.string().describe("Scoped database token"),
       },
-      async ({ dbName, sql, token }) => {
-        const api = this.getAPI();
-        const result = await api.queryDatabase(dbName, sql, token);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ dbName, sql, token }) => {
+      const result = await createAPI(apiKey).queryDatabase(dbName, sql, token);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    // ── KV Namespaces ──────────────────────────────────────
+  server.registerTool(
+    "list_kv_namespaces",
+    {
+      description: "List all KV namespaces in your organization",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await createAPI(apiKey).listKVNamespaces();
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "list_kv_namespaces",
-      "List all KV namespaces in your organization",
-      {},
-      async () => {
-        const api = this.getAPI();
-        const result = await api.listKVNamespaces();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
-
-    this.server.tool(
-      "create_kv_namespace",
-      "Create a new KV namespace",
-      {
+  server.registerTool(
+    "create_kv_namespace",
+    {
+      description: "Create a new KV namespace",
+      inputSchema: {
         name: z.string().describe("Name for the new KV namespace"),
       },
-      async ({ name }) => {
-        const api = this.getAPI();
-        const result = await api.createKVNamespace(name);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ name }) => {
+      const result = await createAPI(apiKey).createKVNamespace(name);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "get_kv_namespace",
-      "Get details about a specific KV namespace",
-      {
+  server.registerTool(
+    "get_kv_namespace",
+    {
+      description: "Get details about a specific KV namespace",
+      inputSchema: {
         id: z.string().describe("KV namespace ID"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.getKVNamespace(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).getKVNamespace(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "delete_kv_namespace",
-      "Delete a KV namespace permanently",
-      {
+  server.registerTool(
+    "delete_kv_namespace",
+    {
+      description: "Delete a KV namespace permanently",
+      inputSchema: {
         id: z.string().describe("KV namespace ID to delete"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.deleteKVNamespace(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).deleteKVNamespace(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    // ── R2 Buckets ─────────────────────────────────────────
+  server.registerTool(
+    "list_r2_buckets",
+    {
+      description: "List all R2 buckets in your organization",
+      inputSchema: {},
+    },
+    async () => {
+      const result = await createAPI(apiKey).listR2Buckets();
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "list_r2_buckets",
-      "List all R2 buckets in your organization",
-      {},
-      async () => {
-        const api = this.getAPI();
-        const result = await api.listR2Buckets();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
-
-    this.server.tool(
-      "create_r2_bucket",
-      "Create a new R2 storage bucket",
-      {
+  server.registerTool(
+    "create_r2_bucket",
+    {
+      description: "Create a new R2 storage bucket",
+      inputSchema: {
         name: z.string().describe("Name for the new R2 bucket"),
         locationHint: z.string().optional().describe("Region hint (e.g. 'wnam', 'enam', 'weur', 'eeur', 'apac')"),
       },
-      async ({ name, locationHint }) => {
-        const api = this.getAPI();
-        const result = await api.createR2Bucket(name, locationHint);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ name, locationHint }) => {
+      const result = await createAPI(apiKey).createR2Bucket(name, locationHint);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "get_r2_bucket",
-      "Get details about a specific R2 bucket",
-      {
+  server.registerTool(
+    "get_r2_bucket",
+    {
+      description: "Get details about a specific R2 bucket",
+      inputSchema: {
         id: z.string().describe("R2 bucket ID"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.getR2Bucket(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).getR2Bucket(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "delete_r2_bucket",
-      "Delete an R2 bucket permanently",
-      {
+  server.registerTool(
+    "delete_r2_bucket",
+    {
+      description: "Delete an R2 bucket permanently",
+      inputSchema: {
         id: z.string().describe("R2 bucket ID to delete"),
       },
-      async ({ id }) => {
-        const api = this.getAPI();
-        const result = await api.deleteR2Bucket(id);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async ({ id }) => {
+      const result = await createAPI(apiKey).deleteR2Bucket(id);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    // ── Tokens ─────────────────────────────────────────────
-
-    this.server.tool(
-      "create_token",
-      "Create a scoped API token for a specific resource (database, KV, or R2)",
-      {
+  server.registerTool(
+    "create_token",
+    {
+      description: "Create a scoped API token for a specific resource (database, KV, or R2)",
+      inputSchema: {
         type: z.enum(["database", "kv", "r2"]).describe("Resource type to scope the token to"),
         name: z.string().describe("Name for the token"),
         databaseId: z.string().optional().describe("Database ID (required if type is 'database')"),
         kvNamespaceId: z.string().optional().describe("KV namespace ID (required if type is 'kv')"),
         r2BucketId: z.string().optional().describe("R2 bucket ID (required if type is 'r2')"),
       },
-      async (params) => {
-        const api = this.getAPI();
-        const result = await api.createToken(params);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
+    },
+    async (params) => {
+      const result = await createAPI(apiKey).createToken(params);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-    this.server.tool(
-      "revoke_token",
-      "Revoke a scoped API token",
-      {
+  server.registerTool(
+    "revoke_token",
+    {
+      description: "Revoke a scoped API token",
+      inputSchema: {
         tokenId: z.string().describe("Token ID to revoke"),
       },
-      async ({ tokenId }) => {
-        const api = this.getAPI();
-        const result = await api.revokeToken(tokenId);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-    );
-  }
+    },
+    async ({ tokenId }) => {
+      const result = await createAPI(apiKey).revokeToken(tokenId);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+}
+
+function createServer(apiKey: string) {
+  const server = new McpServer({
+    name: "Kuratchi",
+    version: "0.0.1",
+  });
+
+  registerTools(server, apiKey);
+
+  return server;
 }
 
 function extractBearerToken(request: Request): string | null {
@@ -258,30 +271,31 @@ function extractBearerToken(request: Request): string | null {
 }
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
-    const apiKey = extractBearerToken(request) || "";
 
-    if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-      return KuratchiMCP.serveSSE("/sse", { props: { apiKey } }).fetch(request, env, ctx);
-    }
-
-    if (url.pathname === "/mcp" || url.pathname === "/mcp/message") {
-      return KuratchiMCP.serve("/mcp", { props: { apiKey } }).fetch(request, env, ctx);
+    if (url.pathname === "/mcp") {
+      const apiKey = extractBearerToken(request) || "";
+      const server = createServer(apiKey);
+      return createMcpHandler(server, { route: "/mcp" })(request, env, ctx);
     }
 
     if (url.pathname === "/") {
-      return new Response(JSON.stringify({
-        name: "Kuratchi MCP Server",
-        version: "0.0.1",
-        auth: "Pass your platform API token (kdbp_) via Authorization: Bearer header",
-        endpoints: {
-          sse: "/sse",
-          streamable: "/mcp",
-        },
-      }, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify(
+          {
+            name: "Kuratchi MCP Server",
+            version: "0.0.1",
+            auth: "Pass your platform API token (kdbp_) via Authorization: Bearer header",
+            endpoint: "/mcp",
+          },
+          null,
+          2
+        ),
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     return new Response("Not found", { status: 404 });
