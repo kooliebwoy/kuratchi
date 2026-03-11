@@ -1,0 +1,222 @@
+# Kuratchi Platform — API, MCP & SDK Reference
+
+Project: Kuratchi Platform
+Machine schema: /_assets/llms.json
+Category: Cloud platform for managed databases, KV, and R2 storage on Cloudflare Workers
+
+Two ways to interact with Kuratchi:
+- MCP Server: Manage infrastructure from AI agents (create DBs, buckets, tokens)
+- SDK (@kuratchi/sdk): Use infrastructure at runtime in deployed apps (query, read/write)
+
+## 1) MCP Server (infrastructure management from AI agents)
+
+Kuratchi exposes a Model Context Protocol server for full platform management.
+
+### Setup
+
+Add to your MCP client config (Claude Code, Claude Desktop, Cursor, etc.):
+
+{
+  "mcpServers": {
+    "kuratchi": {
+      "url": "https://mcp.kuratchi.cloud/sse",
+      "headers": {
+        "Authorization": "Bearer kdbp_your_token_here"
+      }
+    }
+  }
+}
+
+### Available tools
+
+- health: Check platform status
+- list_databases / create_database / get_database / delete_database / redeploy_database
+- query_database: Execute SQL against a database (requires dbName, sql, scoped token)
+- list_kv_namespaces / create_kv_namespace / get_kv_namespace / delete_kv_namespace
+- list_r2_buckets / create_r2_bucket / get_r2_bucket / delete_r2_bucket
+- create_token: Create a scoped token for a resource (type, name, resource ID)
+- revoke_token: Revoke a scoped token
+
+## 2) SDK — @kuratchi/sdk (runtime usage in deployed apps)
+
+The SDK is how your deployed application interacts with Kuratchi resources.
+Use the MCP or dashboard to create resources, then use the SDK to access them.
+
+### Install
+
+npm install @kuratchi/sdk
+
+### Initialize
+
+import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: process.env.KURATCHI_API_KEY,
+  baseUrl: 'https://kuratchi.cloud',
+});
+
+### Database operations
+
+const db = kuratchi.database('my-db');
+
+// Parameterized query — returns rows as objects
+const users = await db.query('SELECT * FROM users WHERE active = ?', [true]);
+
+// DDL / write-only
+await db.exec('CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, title TEXT)');
+
+// Batch (transaction) — multiple statements atomically
+await db.batch([
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['Hello'] },
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['World'] },
+]);
+
+// Raw mode — rows as arrays instead of objects
+const raw = await db.raw('SELECT id, name FROM users');
+
+// Drizzle ORM integration
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
+const drizzleDb = drizzle(db.drizzleProxy());
+
+### KV operations
+
+const kv = kuratchi.kv('my-cache');
+
+await kv.put('user:1', JSON.stringify({ name: 'Alice' }));
+const value = await kv.get('user:1');
+const keys = await kv.list({ prefix: 'user:' });
+await kv.delete('user:1');
+
+// With TTL and metadata
+await kv.put('session:abc', data, {
+  expirationTtl: 3600,
+  metadata: { userId: '1' },
+});
+const { value, metadata } = await kv.getWithMetadata('session:abc');
+
+### R2 operations
+
+const r2 = kuratchi.r2('my-bucket');
+
+// Upload
+await r2.put('photos/cat.jpg', imageBuffer, { contentType: 'image/jpeg' });
+
+// Download
+const file = await r2.get('photos/cat.jpg');
+// file.body: ReadableStream, file.etag, file.contentType, file.size
+
+// List
+const list = await r2.list({ prefix: 'photos/' });
+
+// Delete
+await r2.delete('photos/cat.jpg');
+
+// Metadata only
+const meta = await r2.head('photos/cat.jpg');
+
+### Platform management (via SDK)
+
+The SDK also exposes platform management (same as MCP, but programmatic).
+Requires a platform token (kdbp_ prefix).
+
+const kuratchi = createClient({ apiKey: 'kdbp_...', baseUrl: '...' });
+
+// Databases
+const dbs = await kuratchi.platform.databases.list();
+await kuratchi.platform.databases.create({ name: 'my-db', locationHint: 'enam' });
+await kuratchi.platform.databases.delete('db-id');
+
+// KV
+await kuratchi.platform.kv.create({ name: 'my-cache' });
+
+// R2
+await kuratchi.platform.r2.create({ name: 'my-bucket', locationHint: 'weur' });
+
+// Scoped tokens
+await kuratchi.platform.tokens.createForDatabase({ name: 'ci-token', databaseId: 'db-id' });
+await kuratchi.platform.tokens.createForKv({ name: 'cache-token', kvNamespaceId: 'kv-id' });
+await kuratchi.platform.tokens.createForR2({ name: 'storage-token', r2BucketId: 'r2-id' });
+await kuratchi.platform.tokens.revoke('token-id');
+
+## 3) REST API
+
+Base URL: https://kuratchi.cloud/api/v1
+Auth: Bearer token in Authorization header
+
+### Token types
+
+Platform token (kdbp_ prefix):
+- Full management access — CRUD resources, manage tokens
+- Obtain from dashboard: https://kuratchi.cloud/account/tokens
+
+Scoped token:
+- Access a single resource (one database, KV namespace, or R2 bucket)
+- Create via API, MCP, or SDK using a platform token
+
+### Databases
+
+GET    /platform/databases          — List all databases
+POST   /platform/databases          — Create database { name, locationHint? }
+GET    /platform/databases/:id      — Get database details
+DELETE /platform/databases/:id      — Delete database
+PATCH  /platform/databases/:id      — Redeploy { action: "redeploy" }
+POST   /:dbName                     — Query database { sql, params?, batch?, exec?, raw? }
+
+### KV Namespaces
+
+GET    /platform/kv                 — List all KV namespaces
+POST   /platform/kv                 — Create namespace { name }
+GET    /platform/kv/:id             — Get namespace details
+DELETE /platform/kv/:id             — Delete namespace
+POST   /kv/:kvName                  — KV operations { op: 'get'|'put'|'delete'|'list'|'getWithMetadata', key?, value?, ... }
+
+### R2 Buckets
+
+GET    /platform/r2                 — List all R2 buckets
+POST   /platform/r2                 — Create bucket { name, locationHint? }
+GET    /platform/r2/:id             — Get bucket details
+DELETE /platform/r2/:id             — Delete bucket
+GET    /r2/:r2Name                  — List objects
+GET    /r2/:r2Name/:key             — Get object
+PUT    /r2/:r2Name/:key             — Upload object
+DELETE /r2/:r2Name/:key             — Delete object
+HEAD   /r2/:r2Name/:key             — Get object metadata
+
+### Tokens
+
+POST   /platform/tokens             — Create scoped token { type, name, databaseId?, kvNamespaceId?, r2BucketId? }
+DELETE /platform/tokens             — Revoke token { tokenId }
+
+## 4) End-to-end example for AI agents
+
+Step 1: Get a platform token from https://kuratchi.cloud/account/tokens
+Step 2: Add the MCP server to your config (see section 1)
+Step 3: Use MCP tools to set up infrastructure:
+
+  1. create_database(name: "my-app-db")
+  2. create_token(type: "database", name: "my-app-token", databaseId: "<id>")
+
+Step 4: Install the SDK in your project and use it at runtime:
+
+  npm install @kuratchi/sdk
+
+  import { createClient } from '@kuratchi/sdk';
+  const kuratchi = createClient({
+    apiKey: '<scoped token from step 3>',
+    baseUrl: 'https://kuratchi.cloud',
+  });
+  const db = kuratchi.database('my-app-db');
+  await db.exec('CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT)');
+  await db.query('INSERT INTO users VALUES (?, ?)', ['1', 'Alice']);
+  const users = await db.query('SELECT * FROM users');
+
+## 5) Location hints
+
+When creating databases or R2 buckets, you can pass a locationHint:
+- wnam: Western North America
+- enam: Eastern North America
+- weur: Western Europe
+- eeur: Eastern Europe
+- apac: Asia Pacific
+
+If omitted, Cloudflare selects automatically based on proximity.

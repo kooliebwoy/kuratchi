@@ -1,0 +1,145 @@
+{
+  "project": "Kuratchi Platform",
+  "category": "cloud-platform-api",
+  "description": "Managed database, KV, and R2 storage platform on Cloudflare Workers",
+  "primary_docs": "https://kuratchi.cloud/_assets/llms.txt",
+  "mcp": {
+    "description": "Full platform management via Model Context Protocol — use for infrastructure setup from AI agents",
+    "endpoints": {
+      "sse": "https://mcp.kuratchi.cloud/sse",
+      "streamable": "https://mcp.kuratchi.cloud/mcp"
+    },
+    "auth": "Bearer token via Authorization header using your platform API key (kdbp_ prefix)",
+    "config_example": {
+      "mcpServers": {
+        "kuratchi": {
+          "url": "https://mcp.kuratchi.cloud/sse",
+          "headers": {
+            "Authorization": "Bearer kdbp_your_token_here"
+          }
+        }
+      }
+    }
+  },
+  "sdk": {
+    "package": "@kuratchi/sdk",
+    "description": "TypeScript SDK for using Kuratchi resources at runtime in deployed applications",
+    "install": "npm install @kuratchi/sdk",
+    "quick_start": "import { createClient } from '@kuratchi/sdk';\n\nconst kuratchi = createClient({\n  apiKey: process.env.KURATCHI_API_KEY,\n  baseUrl: 'https://kuratchi.cloud',\n});",
+    "clients": {
+      "database": {
+        "init": "kuratchi.database('my-db')",
+        "methods": {
+          "query": "db.query(sql, params?) — parameterized query, returns rows as objects",
+          "exec": "db.exec(sql) — DDL or write-only SQL",
+          "batch": "db.batch([{ sql, params? }]) — multiple statements in a transaction",
+          "raw": "db.raw(sql, params?) — returns rows as arrays",
+          "drizzleProxy": "db.drizzleProxy() — returns Drizzle ORM compatible proxy"
+        }
+      },
+      "kv": {
+        "init": "kuratchi.kv('my-cache')",
+        "methods": {
+          "get": "kv.get(key, type?) — get value by key",
+          "getWithMetadata": "kv.getWithMetadata(key, type?) — get value with metadata",
+          "put": "kv.put(key, value, { expirationTtl?, metadata? }) — store a value",
+          "delete": "kv.delete(key) — delete a key",
+          "list": "kv.list({ prefix?, limit?, cursor? }) — list keys"
+        }
+      },
+      "r2": {
+        "init": "kuratchi.r2('my-bucket')",
+        "methods": {
+          "get": "r2.get(key) — download object (returns body stream, etag, contentType, size)",
+          "put": "r2.put(key, body, { contentType?, metadata? }) — upload object",
+          "delete": "r2.delete(key) — delete object",
+          "head": "r2.head(key) — get metadata without downloading",
+          "list": "r2.list({ prefix?, limit?, cursor? }) — list objects"
+        }
+      },
+      "platform": {
+        "init": "kuratchi.platform (requires kdbp_ platform token)",
+        "methods": {
+          "databases.list": "List all databases",
+          "databases.get": "Get database by ID",
+          "databases.create": "Create database { name, locationHint? }",
+          "databases.delete": "Delete database by ID",
+          "kv.list": "List all KV namespaces",
+          "kv.get": "Get KV namespace by ID",
+          "kv.create": "Create KV namespace { name }",
+          "kv.delete": "Delete KV namespace by ID",
+          "r2.list": "List all R2 buckets",
+          "r2.get": "Get R2 bucket by ID",
+          "r2.create": "Create R2 bucket { name, locationHint? }",
+          "r2.delete": "Delete R2 bucket by ID",
+          "tokens.createForDatabase": "Create scoped DB token { name, databaseId }",
+          "tokens.createForKv": "Create scoped KV token { name, kvNamespaceId }",
+          "tokens.createForR2": "Create scoped R2 token { name, r2BucketId }",
+          "tokens.revoke": "Revoke a token by ID"
+        }
+      }
+    }
+  },
+  "api": {
+    "base_url": "https://kuratchi.cloud/api/v1",
+    "auth": "Bearer token via Authorization header",
+    "token_types": {
+      "platform": {
+        "prefix": "kdbp_",
+        "scope": "Full platform management — create/delete resources, manage tokens",
+        "obtain": "Generate from dashboard at https://kuratchi.cloud/account/tokens"
+      },
+      "scoped": {
+        "scope": "Access a single resource (database, KV namespace, or R2 bucket)",
+        "obtain": "Create via API, MCP, or SDK using a platform token"
+      }
+    },
+    "resources": {
+      "databases": {
+        "list": "GET /platform/databases",
+        "create": "POST /platform/databases { name, locationHint? }",
+        "get": "GET /platform/databases/:id",
+        "delete": "DELETE /platform/databases/:id",
+        "redeploy": "PATCH /platform/databases/:id { action: 'redeploy' }",
+        "query": "POST /:dbName { sql, params?, batch?, exec?, raw? }"
+      },
+      "kv": {
+        "list": "GET /platform/kv",
+        "create": "POST /platform/kv { name }",
+        "get": "GET /platform/kv/:id",
+        "delete": "DELETE /platform/kv/:id",
+        "operations": "POST /kv/:kvName { op: 'get'|'put'|'delete'|'list'|'getWithMetadata', key?, value?, ... }"
+      },
+      "r2": {
+        "list": "GET /platform/r2",
+        "create": "POST /platform/r2 { name, locationHint? }",
+        "get": "GET /platform/r2/:id",
+        "delete": "DELETE /platform/r2/:id",
+        "objects": "GET|PUT|DELETE|HEAD /r2/:r2Name/:key"
+      },
+      "tokens": {
+        "create": "POST /platform/tokens { type, name, databaseId?, kvNamespaceId?, r2BucketId? }",
+        "revoke": "DELETE /platform/tokens { tokenId }"
+      }
+    }
+  },
+  "mcp_tools": [
+    { "name": "health", "description": "Check platform status" },
+    { "name": "list_databases", "description": "List all databases" },
+    { "name": "create_database", "description": "Create a new database", "params": ["name", "locationHint?"] },
+    { "name": "get_database", "description": "Get database details", "params": ["id"] },
+    { "name": "delete_database", "description": "Delete a database", "params": ["id"] },
+    { "name": "redeploy_database", "description": "Redeploy a database", "params": ["id"] },
+    { "name": "query_database", "description": "Run SQL query", "params": ["dbName", "sql", "token"] },
+    { "name": "list_kv_namespaces", "description": "List all KV namespaces" },
+    { "name": "create_kv_namespace", "description": "Create a KV namespace", "params": ["name"] },
+    { "name": "get_kv_namespace", "description": "Get KV namespace details", "params": ["id"] },
+    { "name": "delete_kv_namespace", "description": "Delete a KV namespace", "params": ["id"] },
+    { "name": "list_r2_buckets", "description": "List all R2 buckets" },
+    { "name": "create_r2_bucket", "description": "Create an R2 bucket", "params": ["name", "locationHint?"] },
+    { "name": "get_r2_bucket", "description": "Get R2 bucket details", "params": ["id"] },
+    { "name": "delete_r2_bucket", "description": "Delete an R2 bucket", "params": ["id"] },
+    { "name": "create_token", "description": "Create a scoped token", "params": ["type", "name", "databaseId?", "kvNamespaceId?", "r2BucketId?"] },
+    { "name": "revoke_token", "description": "Revoke a token", "params": ["tokenId"] }
+  ]
+}
