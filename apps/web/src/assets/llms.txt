@@ -187,6 +187,58 @@ HEAD   /r2/:r2Name/:key             — Get object metadata
 POST   /platform/tokens             — Create scoped token { type, name, databaseId?, kvNamespaceId?, r2BucketId? }
 DELETE /platform/tokens             — Revoke token { tokenId }
 
+### AI Sessions
+
+These endpoints are for application runtime use. They are REST endpoints, not MCP tools.
+All AI endpoints require a platform token (kdbp_ prefix).
+
+GET    /ai/sessions                  - List AI sessions for the authenticated organization
+POST   /ai/sessions                  - Create a session { title?, model?, sessionId? }
+GET    /ai/sessions/:sessionId       - Get session metadata plus current agent state
+POST   /ai/chat                      - Send or resume chat { sessionId?, model?, message?, messages?, system?, reset? }
+
+Notes:
+- Sessions are organization-scoped
+- `POST /ai/chat` creates or resumes a session
+- `GET /ai/sessions` is the endpoint product apps should use to render resumable conversation history
+- MCP remains infrastructure-only and does not expose chat/session tools
+
+Create a session:
+
+fetch('https://kuratchi.cloud/api/v1/ai/sessions', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer kdbp_your_token_here'
+  },
+  body: JSON.stringify({
+    title: 'Terminal copilot',
+    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+  })
+});
+
+Send a message:
+
+fetch('https://kuratchi.cloud/api/v1/ai/chat', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer kdbp_your_token_here'
+  },
+  body: JSON.stringify({
+    sessionId: 'session-id',
+    message: 'Explain why this command failed'
+  })
+});
+
+List sessions:
+
+fetch('https://kuratchi.cloud/api/v1/ai/sessions', {
+  headers: {
+    'Authorization': 'Bearer kdbp_your_token_here'
+  }
+});
+
 ## 4) End-to-end example for AI agents
 
 Step 1: Get a platform token from https://kuratchi.cloud/account/tokens

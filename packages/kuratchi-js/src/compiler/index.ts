@@ -799,6 +799,7 @@ export function compile(options: CompileOptions): string {
   const doConfig = readDoConfig(projectDir);
   const containerConfig = readWorkerClassConfig(projectDir, 'containers');
   const workflowConfig = readWorkerClassConfig(projectDir, 'workflows');
+  const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agent.ts', '.agent');
   const doHandlers = doConfig.length > 0
     ? discoverDoHandlers(srcDir, doConfig, ormDatabases)
     : [];
@@ -1363,7 +1364,7 @@ export function compile(options: CompileOptions): string {
   // worker.js explicitly re-exports them so wrangler.jsonc can reference a
   // stable filename while routes.js is freely regenerated.
   const workerFile = path.join(outDir, 'worker.js');
-  const workerClassExports = [...containerConfig, ...workflowConfig]
+  const workerClassExports = [...agentConfig, ...containerConfig, ...workflowConfig]
     .map((entry) => {
       const importPath = toWorkerImportPath(projectDir, outDir, entry.file);
       if (entry.exportKind === 'default') {
@@ -2058,6 +2059,15 @@ interface WorkerClassConfigEntry {
   exportKind: 'named' | 'default';
 }
 
+interface ConventionClassEntry {
+  /** Exported class name (e.g. 'SessionAgent') */
+  className: string;
+  /** Source file path relative to project root */
+  file: string;
+  /** Whether worker.js should re-export a named or default class export. */
+  exportKind: 'named' | 'default';
+}
+
 interface DoHandlerEntry {
   /** File name without extension (e.g. 'sites') */
   fileName: string;
@@ -2246,6 +2256,42 @@ function readWorkerClassConfig(projectDir: string, key: 'containers' | 'workflow
     });
   }
   return entries;
+}
+
+function resolveClassExportFromFile(absPath: string, errorLabel: string): { className: string; exportKind: 'named' | 'default' } {
+  if (!fs.existsSync(absPath)) {
+    throw new Error(`[kuratchi] ${errorLabel} file not found: ${absPath}`);
+  }
+  const fileSource = fs.readFileSync(absPath, 'utf-8');
+  const defaultClass = fileSource.match(/export\s+default\s+class\s+(\w+)/);
+  if (defaultClass) {
+    return { className: defaultClass[1], exportKind: 'default' };
+  }
+  const namedClass = fileSource.match(/export\s+class\s+(\w+)/);
+  if (namedClass) {
+    return { className: namedClass[1], exportKind: 'named' };
+  }
+  throw new Error(`[kuratchi] ${errorLabel} must export a class via "export class X" or "export default class X". File: ${absPath}`);
+}
+
+function discoverConventionClassFiles(
+  projectDir: string,
+  dir: string,
+  suffix: string,
+  errorLabel: string,
+): ConventionClassEntry[] {
+  const absDir = path.join(projectDir, dir);
+  const files = discoverFilesWithSuffix(absDir, suffix);
+  if (files.length === 0) return [];
+
+  return files.map((absPath) => {
+    const resolved = resolveClassExportFromFile(absPath, errorLabel);
+    return {
+      className: resolved.className,
+      file: path.relative(projectDir, absPath).replace(/\\/g, '/'),
+      exportKind: resolved.exportKind,
+    };
+  });
 }
 
 function discoverFilesWithSuffix(dir: string, suffix: string): string[] {
@@ -3383,9 +3429,6 @@ function toWorkerImportPath(projectDir: string, outDir: string, filePath: string
   if (!rel.startsWith('.')) rel = `./${rel}`;
   return rel.replace(/\.(ts|js|mjs|cjs)$/, '');
 }
-
-
-
 
 
 

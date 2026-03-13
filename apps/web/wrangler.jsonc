@@ -17,6 +17,9 @@
   "observability": {
     "enabled": true
   },
+  "ai": {
+    "binding": "AI"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -29,6 +32,32 @@
       "binding": "DISPATCHER",
       "namespace": "kuratchi-platform",
       "remote": true
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "KURATCHI_AI_SESSION",
+        "class_name": "KuratchiAiSession"
+      },
+      {
+        "name": "KURATCHI_IDE_SESSION",
+        "class_name": "KuratchiIdeSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "KuratchiAiSession"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "KuratchiIdeSession"
+      ]
     }
   ],
   "vars": {

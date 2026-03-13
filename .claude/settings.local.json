@@ -9,7 +9,9 @@
       "Bash(xargs grep -l \"client\\\\|browser\")",
       "Bash(grep -rn \"client_script\\\\|client\\\\.js\\\\|hydrat\\\\|islan\\\\|interactive\\\\|__client\" node_modules/@kuratchi/js/dist/compiler/*.js)",
       "Bash(grep -rn \"data-get\\\\|data-boost\\\\|data-swap\\\\|data-transition\" node_modules/@kuratchi/js/dist/compiler/*.js)",
-      "Bash(grep -rn \"redirect\\\\|__redirect\\\\|302\\\\|303\\\\|Location\" node_modules/@kuratchi/js/dist/runtime/*.js)"
+      "Bash(grep -rn \"redirect\\\\|__redirect\\\\|302\\\\|303\\\\|Location\" node_modules/@kuratchi/js/dist/runtime/*.js)",
+      "Bash(ls /c/Users/kryst/Documents/kuratchi/node_modules/.bun/agents*/node_modules/agents/package.json)",
+      "Bash(bun ../../packages/kuratchi-js/src/cli.ts dev)"
     ]
   }
 }

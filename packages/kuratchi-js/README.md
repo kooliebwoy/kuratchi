@@ -23,7 +23,7 @@ bun run dev
 | File | Purpose |
 |---|---|
 | `.kuratchi/routes.js` | Compiled routes, actions, RPC handlers, and render functions |
-| `.kuratchi/worker.js` | Stable wrangler entry - re-exports the fetch handler and all Durable Object classes |
+| `.kuratchi/worker.js` | Stable wrangler entry - re-exports the fetch handler plus all Durable Object and Agent classes |
 | `.kuratchi/do/*.js` | Generated Durable Object RPC proxy modules for `$durable-objects/*` imports |
 
 Point wrangler at the entry and you're done. **No `src/index.ts` needed.**
@@ -470,6 +470,44 @@ Declare it in `kuratchi.config.ts` and in `wrangler.jsonc`. The compiler exports
   ]
 }
 ```
+
+## Agents
+
+Kuratchi treats `src/server/**/*.agent.ts` as a first-class Worker export convention.
+
+- Any `.agent.ts` file under `src/server/` is scanned during build.
+- The file must export a class with either `export class MyAgent` or `export default class MyAgent`.
+- The compiler re-exports that class from `.kuratchi/worker.js`, so Wrangler can bind it directly.
+- `.agent.ts` files are not route modules and are not converted into `$durable-objects/*` RPC proxies.
+
+```ts
+// src/server/ai/session.agent.ts
+import { Agent } from 'agents';
+
+export class SessionAgent extends Agent {
+  async onRequest() {
+    return Response.json({ ok: true });
+  }
+}
+```
+
+```jsonc
+// wrangler.jsonc
+{
+  "durable_objects": {
+    "bindings": [{ "name": "AI_SESSION", "class_name": "SessionAgent" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionAgent"] }
+  ]
+}
+```
+
+Failure and edge behavior:
+
+- If a `.agent.ts` file does not export a class, the build fails.
+- Kuratchi only auto-discovers `.agent.ts` files under `src/server/`.
+- You still need Wrangler Durable Object bindings and migrations because Agents run as Durable Objects.
 ## Runtime APIs
 
 These are available anywhere in server-side route code:

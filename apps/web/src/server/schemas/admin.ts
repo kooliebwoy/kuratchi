@@ -2,7 +2,7 @@ import type { SchemaDsl } from '@kuratchi/orm';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 5,
+  version: 6,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -191,6 +191,17 @@ export const adminSchema: SchemaDsl = {
       organizationId: 'text',
       expires: 'timestamp_ms',
       revoked: 'boolean',
+      '...timestamps': true,
+    },
+    aiSessions: {
+      id: 'text primary key not null',
+      organizationId: 'text not null',
+      title: 'text',
+      model: 'text not null',
+      lastUserMessage: 'text',
+      lastAssistantMessage: 'text',
+      messageCount: 'integer default 0',
+      archived: 'boolean default 0',
       '...timestamps': true,
     },
     activity: {

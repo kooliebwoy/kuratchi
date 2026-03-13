@@ -135,16 +135,18 @@ async function startWranglerDev(): Promise<void> {
     console.log(`[kuratchi] Starting wrangler dev on port ${port}`);
   }
 
+  // Use 'pipe' for stdin so wrangler doesn't detect stdin EOF and exit
+  // prematurely when launched via a script runner (e.g. `bun run dev`).
   const isWin = process.platform === 'win32';
   const wrangler = isWin
     ? spawn('npx ' + wranglerArgs.join(' '), {
         cwd: projectDir,
-        stdio: 'inherit',
+        stdio: ['pipe', 'inherit', 'inherit'],
         shell: true,
       })
     : spawn('npx', wranglerArgs, {
         cwd: projectDir,
-        stdio: 'inherit',
+        stdio: ['pipe', 'inherit', 'inherit'],
       });
 
   const cleanup = () => {

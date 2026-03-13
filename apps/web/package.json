@@ -10,6 +10,7 @@
     "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
   },
   "dependencies": {
+    "agents": "^0.3.0",
     "@kuratchi/auth": "workspace:*",
     "@kuratchi/db-studio": "workspace:*",
     "@kuratchi/file-explorer": "workspace:*",

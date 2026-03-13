@@ -95,6 +95,18 @@
       }
     },
     "resources": {
+      "ai": {
+        "create_session": "POST /ai/sessions { title?, model?, sessionId? }",
+        "list_sessions": "GET /ai/sessions",
+        "get_session": "GET /ai/sessions/:sessionId",
+        "chat": "POST /ai/chat { sessionId?, model?, message?, messages?, system?, reset? }",
+        "notes": [
+          "All AI endpoints require a platform token (kdbp_ prefix)",
+          "Sessions are organization-scoped",
+          "POST /ai/chat resumes an existing session when sessionId is provided",
+          "GET /ai/sessions/:sessionId returns session metadata plus current agent state"
+        ]
+      },
       "databases": {
         "list": "GET /platform/databases",
         "create": "POST /platform/databases { name, locationHint? }",
@@ -141,5 +153,10 @@
     { "name": "delete_r2_bucket", "description": "Delete an R2 bucket", "params": ["id"] },
     { "name": "create_token", "description": "Create a scoped token", "params": ["type", "name", "databaseId?", "kvNamespaceId?", "r2BucketId?"] },
     { "name": "revoke_token", "description": "Revoke a token", "params": ["tokenId"] }
-  ]
+  ],
+  "ai_rest_examples": {
+    "create_session": "fetch('https://kuratchi.cloud/api/v1/ai/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer kdbp_your_token_here' }, body: JSON.stringify({ title: 'Support chat', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }) })",
+    "chat": "fetch('https://kuratchi.cloud/api/v1/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer kdbp_your_token_here' }, body: JSON.stringify({ sessionId: 'session-id', message: 'Help me debug this stack trace' }) })",
+    "list_sessions": "fetch('https://kuratchi.cloud/api/v1/ai/sessions', { headers: { 'Authorization': 'Bearer kdbp_your_token_here' } })"
+  }
 }
