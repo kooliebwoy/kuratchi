@@ -1296,7 +1296,7 @@ export function compile(options: CompileOptions): string {
     compiledRoutes.push(routeObj);
   }
 
-  // Scan src/assets/ for static files to embed
+  // Scan src/assets/ for static files to embed (recursive)
   const assetsDir = path.join(srcDir, 'assets');
   const compiledAssets: { name: string; content: string; mime: string; etag: string }[] = [];
   if (fs.existsSync(assetsDir)) {
@@ -1307,14 +1307,22 @@ export function compile(options: CompileOptions): string {
       '.svg': 'image/svg+xml',
       '.txt': 'text/plain; charset=utf-8',
     };
-    for (const file of fs.readdirSync(assetsDir).sort()) {
-      const ext = path.extname(file).toLowerCase();
-      const mime = mimeTypes[ext];
-      if (!mime) continue; // skip unknown file types
-      const content = fs.readFileSync(path.join(assetsDir, file), 'utf-8');
-      const etag = '"' + crypto.createHash('md5').update(content).digest('hex').slice(0, 12) + '"';
-      compiledAssets.push({ name: file, content, mime, etag });
-    }
+    const scanAssets = (dir: string, prefix: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+        if (entry.isDirectory()) {
+          scanAssets(path.join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
+          continue;
+        }
+        const ext = path.extname(entry.name).toLowerCase();
+        const mime = mimeTypes[ext];
+        if (!mime) continue;
+        const content = fs.readFileSync(path.join(dir, entry.name), 'utf-8');
+        const etag = '"' + crypto.createHash('md5').update(content).digest('hex').slice(0, 12) + '"';
+        const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+        compiledAssets.push({ name, content, mime, etag });
+      }
+    };
+    scanAssets(assetsDir, '');
   }
 
   // Collect only the components that were actually imported by routes
@@ -1863,7 +1871,7 @@ function buildRouteObject(opts: {
       return { ${loadReturnVars.join(', ')} };`;
       }
     }
-    parts.push(`    async load(params = {}) {
+    parts.push(`    async load(__routeParams = {}) {
       ${loadBody}${returnObj}
     }`);
   }

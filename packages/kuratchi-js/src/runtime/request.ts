@@ -9,7 +9,7 @@ export let slug: string | undefined = undefined;
 function __syncDerivedState(): void {
   pathname = url.pathname;
   searchParams = url.searchParams;
-  slug = params.slug;
+  slug = params.slug ?? Object.values(params)[0];
 }
 
 export function __setRequestState(request: Request): void {
