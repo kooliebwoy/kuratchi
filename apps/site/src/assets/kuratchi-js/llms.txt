@@ -1,0 +1,624 @@
+# @kuratchi/js — Full Framework Reference
+
+Project: KuratchiJS
+Package: @kuratchi/js
+Machine schema: /_assets/kuratchi-js/llms.json
+Category: Cloudflare Workers-native web framework
+
+This file is the complete reference for building apps with @kuratchi/js.
+It covers routing, template syntax, server actions, Durable Objects, Agents,
+progressive enhancement, error handling, runtime APIs, and configuration.
+
+## 1) What KuratchiJS is
+
+KuratchiJS is a Cloudflare Workers-native framework.
+It compiles HTML routes in src/routes into .kuratchi output used by Wrangler.
+
+Key capabilities:
+- File-based routing from HTML files
+- Server-first execution model — top-level <script> runs on the server
+- Template syntax with inline if/for/interpolation — not custom directives
+- Server actions using native FormData
+- Durable Object RPC via .do.ts files
+- Agent support via .agent.ts files
+- Progressive enhancement with data-* attributes
+- Client reactivity via Svelte-style $: labels
+- Config-driven ORM/Auth/UI/DO integrations via kuratchi.config.ts
+- Custom runtime middleware via kuratchi.runtime.ts
+
+## 2) Install
+
+npm install @kuratchi/js
+
+Scaffold a new app:
+
+npx kuratchi create my-app
+cd my-app
+bun run dev
+
+## 3) How it works
+
+`kuratchi build` (or `kuratchi watch`) scans `src/routes/` and generates:
+
+| File | Purpose |
+|---|---|
+| .kuratchi/routes.js | Compiled routes, actions, RPC handlers, render functions |
+| .kuratchi/worker.js | Stable wrangler entry — re-exports fetch handler + DO/Agent classes |
+| .kuratchi/do/*.js | Generated Durable Object RPC proxy modules |
+
+Wrangler config:
+
+{
+  "main": ".kuratchi/worker.js"
+}
+
+No src/index.ts needed.
+
+## 4) Route conventions
+
+Place .html files inside src/routes/. The file path becomes the URL pattern.
+
+src/routes/page.html          -> /
+src/routes/about/page.html    -> /about
+src/routes/items/page.html    -> /items
+src/routes/blog/[slug]/page.html -> /blog/:slug
+src/routes/layout.html        -> shared layout wrapping all routes
+
+### Execution model
+
+Routes are server-first:
+- Top-level <script> blocks run on the server
+- Template expressions, if, and for blocks render on the server
+- src/server is for private server-only modules
+- Reactive $: code is the browser-only escape hatch
+
+Route files are server-rendered routes, not client files.
+
+### Route file structure
+
+<script>
+  import { getItems, addItem, deleteItem } from '$database/items';
+  const items = await getItems();
+</script>
+
+<ul>
+  for (const item of items) {
+    <li>{item.title}</li>
+  }
+</ul>
+
+The $database/ alias resolves to src/database/. Any tsconfig path alias works.
+
+### Layout file
+
+src/routes/layout.html wraps every page. Use <slot></slot> where page content renders:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My App</title>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/items">Items</a>
+  </nav>
+  <main>
+    <slot></slot>
+  </main>
+</body>
+</html>
+
+## 5) Template syntax
+
+### Interpolation
+
+<p>{title}</p>
+<p>{@html bodyHtml}</p>   <!-- sanitized HTML -->
+<p>{@raw trustedHtml}</p>  <!-- unescaped, unsafe -->
+
+### Conditionals (inline JavaScript if/else)
+
+if (items.length === 0) {
+  <p>Nothing here yet.</p>
+} else {
+  <p>{items.length} items</p>
+}
+
+if (user.role === 'admin') {
+  <a href="/admin">Admin panel</a>
+}
+
+### Loops (inline JavaScript for)
+
+for (const item of items) {
+  <li>{item.title}</li>
+}
+
+for (const [i, item] of items.entries()) {
+  <tr>
+    <td>{i + 1}</td>
+    <td>{item.title}</td>
+  </tr>
+}
+
+### Components
+
+Import .html components from src/lib/ or packages:
+
+<script>
+  import Card from '$lib/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+</script>
+
+<Card title="Stack">
+  <Badge variant="success">Live</Badge>
+</Card>
+
+### Client reactivity ($:)
+
+Inside client/browser <script> tags in the template markup:
+
+<script>
+  let users = ['Alice'];
+
+  $: console.log(`Users: ${users.length}`);
+
+  function addUser() {
+    users.push('Bob');
+  }
+</script>
+
+Block form:
+
+<script>
+  let form = { first: '', last: '' };
+
+  $: {
+    const fullName = `${form.first} ${form.last}`.trim();
+    console.log(fullName);
+  }
+</script>
+
+Rules:
+- $: is the only browser-side execution primitive in a route template
+- Runs in browser scripts in template markup, NOT in the top server <script> block
+- Object/array let bindings are proxy-backed automatically when $: is used
+- You should not need if (browser) guards in normal route code
+
+## 6) Form actions
+
+Export server functions from a route's <script> block and reference them with action={fn}:
+
+<script>
+  import { addItem, deleteItem } from '$database/items';
+</script>
+
+<form action={addItem} method="POST">
+  <input type="text" name="title" required />
+  <button type="submit">Add</button>
+</form>
+
+The action function receives raw FormData:
+
+import { ActionError } from '@kuratchi/js';
+
+export async function addItem(formData: FormData): Promise<void> {
+  const title = (formData.get('title') as string)?.trim();
+  if (!title) throw new ActionError('Title is required');
+  // write to DB...
+}
+
+### Redirect after action
+
+import { redirect } from '@kuratchi/js';
+
+export async function createItem(formData: FormData): Promise<void> {
+  const id = await db.items.insert({ title: formData.get('title') });
+  redirect(`/items/${id}`);
+}
+
+## 7) Error handling
+
+### Action errors
+
+Throw ActionError for user-facing validation messages:
+
+import { ActionError } from '@kuratchi/js';
+
+export async function signIn(formData: FormData) {
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
+  if (!email || !password) throw new ActionError('Email and password are required');
+}
+
+In the template, the action's state object is available under its function name:
+
+<form action={signIn}>
+  (signIn.error ? `<p class="error">${signIn.error}</p>` : '')
+  <input type="email" name="email" />
+  <input type="password" name="password" />
+  <button type="submit">Sign in</button>
+</form>
+
+State shape: { error?: string, loading: boolean, success: boolean }
+
+- actionName.error — set on ActionError throw, cleared on next success
+- actionName.loading — set by client bridge during submission
+- actionName.success — reserved for future use
+
+Throwing a plain Error shows a generic "Action failed" message in production.
+
+### Load errors (PageError)
+
+Throw PageError from a route's load scope:
+
+import { PageError } from '@kuratchi/js';
+
+const post = await db.posts.findOne({ id: params.id });
+if (!post) throw new PageError(404);
+if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403);
+
+PageError renders matching custom error pages (src/routes/404.html, etc.) or a built-in fallback.
+
+throw new PageError(404);
+throw new PageError(403, 'Admin only');
+throw new PageError(401, 'Login required');
+
+## 8) Progressive enhancement
+
+### data-action — fetch action (no page reload)
+
+<button data-action="deleteItem" data-args={JSON.stringify([item.id])}>Delete</button>
+<button data-action="toggleItem" data-args={JSON.stringify([item.id, true])}>Done</button>
+
+The action function receives the args array as individual arguments:
+
+export async function deleteItem(id: number): Promise<void> {
+  await db.items.delete({ id });
+}
+
+### data-refresh — partial refresh
+
+<section data-refresh="/items">
+  for (const item of items) {
+    <article>{item.title}</article>
+  }
+</section>
+
+### data-get — client-side navigation
+
+<div data-get="/items/{item.id}">Click to navigate</div>
+
+### data-poll — polling
+
+<div data-refresh="/status" data-poll="3000">
+  {status}
+</div>
+
+### data-select-all / data-select-item — checkbox groups
+
+<input type="checkbox" data-select-all="todos" />
+
+for (const todo of todos) {
+  <input type="checkbox" data-select-item="todos" value={todo.id} />
+}
+
+## 9) Durable Object RPC
+
+### Function mode (recommended)
+
+Create .do.ts files. Exported functions become RPC methods.
+Use this.db, this.env, and this.ctx inside those functions.
+
+// src/server/auth/auth.do.ts
+import { redirect } from '@kuratchi/js';
+
+export async function getOrgUsers() {
+  const result = await this.db.users.orderBy({ createdAt: 'asc' }).many();
+  return result.data ?? [];
+}
+
+export async function createOrgUser(formData: FormData) {
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  if (!email) throw new Error('Email is required');
+  await this.db.users.insert({ email, role: 'member' });
+  redirect('/settings/users');
+}
+
+Import RPC methods from $durable-objects/<file-name-without-.do>:
+
+<script>
+  import { getOrgUsers, createOrgUser } from '$durable-objects/auth';
+  const users = await getOrgUsers();
+</script>
+
+<form action={createOrgUser} method="POST">
+  <input type="email" name="email" required />
+  <button type="submit">Create</button>
+</form>
+
+Optional lifecycle exports (not exposed as RPC):
+- export async function onInit()
+- export async function onAlarm(...args)
+- export function onMessage(...args)
+
+### Class mode (optional)
+
+import { kuratchiDO } from '@kuratchi/js';
+
+export default class NotesDO extends kuratchiDO {
+  static binding = 'NOTES_DO';
+
+  async getNotes() {
+    return (await this.db.notes.orderBy({ created_at: 'desc' }).many()).data ?? [];
+  }
+}
+
+Declare in kuratchi.config.ts and wrangler.jsonc. The compiler exports DO classes from .kuratchi/worker.js.
+
+## 10) Agents
+
+Kuratchi treats src/server/**/*.agent.ts as first-class Worker exports.
+
+- The file must export a class (named or default)
+- The compiler re-exports it from .kuratchi/worker.js
+- .agent.ts files are NOT route modules and NOT converted into $durable-objects/* proxies
+
+// src/server/ai/session.agent.ts
+import { Agent } from 'agents';
+
+export class SessionAgent extends Agent {
+  async onRequest() {
+    return Response.json({ ok: true });
+  }
+}
+
+Wrangler config needed:
+
+{
+  "durable_objects": {
+    "bindings": [{ "name": "AI_SESSION", "class_name": "SessionAgent" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SessionAgent"] }
+  ]
+}
+
+## 11) Runtime APIs
+
+Available anywhere in server-side route code:
+
+import {
+  getCtx,        // ExecutionContext
+  getRequest,    // Request
+  getLocals,     // mutable locals bag for the current request
+  getParams,     // URL params ({ slug: 'foo' })
+  getParam,      // getParam('slug')
+  redirect,      // redirect('/path', 302)
+  goto,          // same as redirect — alias
+  RedirectError, // redirect signal thrown by redirect()
+} from '@kuratchi/js';
+
+### Request helpers
+
+import { url, pathname, searchParams, slug } from '@kuratchi/js/request';
+
+const page = pathname;
+const tab = searchParams.get('tab');
+const postSlug = slug;
+
+Exports: url, pathname, searchParams, slug, headers, method, params
+
+### Framework environment
+
+import { dev } from '@kuratchi/js/environment';
+
+- dev is true for development builds, false for production
+- Compile-time framework state, not a process env var
+
+### Environment bindings
+
+import { env } from 'cloudflare:workers';
+const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '';
+
+Server only. Templates and client <script> cannot read env directly.
+Compute values in the server script and reference them in the template.
+
+## 12) kuratchi.config.ts
+
+Optional. Required only when using framework integrations or Durable Objects.
+
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
+import { kuratchiAuthConfig } from '@kuratchi/auth/adapter';
+import { appSchema } from './src/server/schemas/app';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ theme: 'default' }),
+  orm: kuratchiOrmConfig({
+    databases: {
+      DB: { schema: appSchema },
+      NOTES_DO: { schema: notesSchema, type: 'do' },
+    },
+  }),
+  durableObjects: {
+    NOTES_DO: {
+      className: 'NotesDO',
+      files: ['notes.do.ts'],
+    },
+  },
+  auth: kuratchiAuthConfig({
+    cookieName: 'kuratchi_session',
+    sessionEnabled: true,
+    guards: {
+      paths: ['/*'],
+      exclude: ['/auth/signin', '/auth/signup', '/api/v1/*'],
+      redirectTo: '/auth/signin',
+    },
+    rateLimit: {
+      defaultWindowMs: 60000,
+      defaultMaxRequests: 10,
+      kvBinding: 'RATE_LIMIT',
+      routes: [
+        {
+          id: 'auth-signin',
+          path: '/auth/signin',
+          methods: ['POST'],
+          maxRequests: 5,
+          windowMs: 60000,
+          message: 'Too many sign-in attempts.',
+        },
+      ],
+    },
+    turnstile: {
+      secretEnv: 'TURNSTILE_SECRET',
+      siteKeyEnv: 'TURNSTILE_SITE_KEY',
+      routes: [
+        {
+          id: 'auth-signin',
+          path: '/auth/signin',
+          methods: ['POST'],
+          expectedAction: 'signin',
+          message: 'Please complete the bot check.',
+        },
+      ],
+    },
+  }),
+});
+
+Without kuratchi.config.ts the compiler falls back to defaults.
+
+## 13) kuratchi.runtime.ts
+
+Optional runtime hook file. Export a RuntimeDefinition to intercept requests
+before they reach the framework router. Used for agent request routing,
+custom middleware, or pre-route auth checks.
+
+import type { RuntimeDefinition } from '@kuratchi/js';
+
+const runtime: RuntimeDefinition = {
+  agents: {
+    async request(ctx, next) {
+      // ctx.url — parsed URL
+      // ctx.request — raw Request
+      // ctx.env — Cloudflare env bindings
+      // next() — pass to the next handler
+
+      if (!ctx.url.pathname.startsWith('/agents/')) {
+        return next();
+      }
+
+      // Custom auth, routing, or agent dispatch logic here
+      return new Response('Agent response');
+    },
+  },
+};
+
+export default runtime;
+
+The runtime file lives at src/kuratchi.runtime.ts (sibling to src/routes/).
+
+## 14) Minimal Hello World
+
+### Folder structure
+
+my-app/
+  package.json
+  tsconfig.json
+  wrangler.jsonc
+  kuratchi.config.ts
+  src/routes/layout.html
+  src/routes/page.html
+
+### package.json
+
+{
+  "name": "my-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "kuratchi dev",
+    "build": "kuratchi build"
+  },
+  "dependencies": {
+    "@kuratchi/js": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "^4.65.0",
+    "@cloudflare/workers-types": "^4.20260223.0"
+  }
+}
+
+### wrangler.jsonc
+
+{
+  "name": "my-app",
+  "main": ".kuratchi/worker.js",
+  "compatibility_date": "2026-03-06",
+  "compatibility_flags": ["nodejs_compat"]
+}
+
+### kuratchi.config.ts
+
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({});
+
+### src/routes/layout.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My App</title>
+</head>
+<body>
+  <header><a href="/">Home</a></header>
+  <main><slot></slot></main>
+</body>
+</html>
+
+### src/routes/page.html
+
+<script>
+  const items = ['Alpha', 'Bravo', 'Charlie'];
+</script>
+
+<h1>Hello KuratchiJS</h1>
+
+if (items.length > 0) {
+  <ul>
+    for (const item of items) {
+      <li>{item}</li>
+    }
+  </ul>
+} else {
+  <p>No items yet.</p>
+}
+
+### Run
+
+bun install
+bun run build
+bun run dev
+
+## 15) LLM generation checklist
+
+When generating a Kuratchi app, ensure:
+- src/routes/layout.html exists and contains <slot></slot>
+- src/routes/page.html exists
+- wrangler main is .kuratchi/worker.js
+- package scripts include build/dev via kuratchi CLI
+- Template uses inline JavaScript if/for (not #if or {#each})
+- Interpolation uses {expression} (not {{ }})
+- bun run build succeeds
+
+If user asks for "basic site", generate:
+- layout.html with nav and slot
+- home page with template examples (if/for)
+- one extra route (/about)
+- one form action example

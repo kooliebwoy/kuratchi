@@ -2,10 +2,10 @@ import type { RouteContext } from '@kuratchi/js';
 import { handleCorsPreflight, jsonResponse, requirePlatformToken } from '$server/api/utils';
 import { createAiSession, getAiSession } from '$server/database/ai-sessions';
 import { signAgentConnectionToken } from '$server/ai/live-auth';
-
-const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from '$server/ai/models';
 const AGENT_NAME = 'KuratchiIdeSession';
 const CONNECTION_TTL_MS = 12 * 60 * 60 * 1000;
+const LIVE_BASE_PATH = 'api/v1/ai/ide/live';
 
 function buildSessionKey(organizationId: string, sessionId: string): string {
   return `${organizationId}:${sessionId}`;
@@ -24,7 +24,7 @@ export async function POST(ctx: RouteContext): Promise<Response> {
     session = await createAiSession({
       id: sessionId,
       organizationId: auth.organizationId,
-      model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : DEFAULT_MODEL,
+      model: resolveKuratchiAiModel(body.model ?? DEFAULT_KURATCHI_AI_MODEL),
       title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'New session',
       messageCount: 0,
     });
@@ -52,6 +52,7 @@ export async function POST(ctx: RouteContext): Promise<Response> {
       agent: {
         agent: AGENT_NAME,
         name: buildSessionKey(auth.organizationId, sessionId),
+        basePath: LIVE_BASE_PATH,
         host: ctx.url.host,
         protocol: ctx.url.protocol === 'https:' ? 'wss' : 'ws',
         query: { token: connectionToken },

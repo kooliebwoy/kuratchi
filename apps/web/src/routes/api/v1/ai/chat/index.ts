@@ -3,6 +3,7 @@ import { getAgentByName } from 'agents';
 import { handleCorsPreflight, jsonResponse, CORS_HEADERS, requirePlatformToken } from '$server/api/utils';
 import { deriveSessionTitle, upsertAiSession } from '$server/database/ai-sessions';
 import { logActivity } from '$server/database/audit';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from '$server/ai/models';
 
 function buildSessionKey(organizationId: string, sessionId: string): string {
   return `${organizationId}:${sessionId}`;
@@ -67,7 +68,7 @@ export async function POST(ctx: RouteContext): Promise<Response> {
     await upsertAiSession({
       id: sessionId,
       organizationId: auth.organizationId,
-      model: payload?.data?.model || (typeof body.model === 'string' ? body.model : '@cf/meta/llama-3.3-70b-instruct-fp8-fast'),
+      model: resolveKuratchiAiModel(payload?.data?.model ?? body.model ?? DEFAULT_KURATCHI_AI_MODEL),
       title: deriveSessionTitle(messages),
       lastUserMessage,
       lastAssistantMessage,

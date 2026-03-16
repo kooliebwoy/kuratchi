@@ -1,0 +1,230 @@
+{
+  "project": "KuratchiJS",
+  "package": "@kuratchi/js",
+  "category": "cloudflare-workers-framework",
+  "primary_docs": "/_assets/kuratchi-js/llms.txt",
+  "goal": "Enable an LLM to scaffold and run a working Kuratchi app without external context.",
+  "install": "npm install @kuratchi/js",
+  "scaffold": "npx kuratchi create my-app",
+  "hello_world": {
+    "required_files": [
+      "package.json",
+      "tsconfig.json",
+      "wrangler.jsonc",
+      "kuratchi.config.ts",
+      "src/routes/layout.html",
+      "src/routes/page.html"
+    ],
+    "wrangler_main": ".kuratchi/worker.js",
+    "commands": ["bun install", "bun run build", "bun run dev"],
+    "minimum_layout_rule": "src/routes/layout.html must include <slot></slot>"
+  },
+  "routing": {
+    "rules": [
+      "src/routes/page.html -> /",
+      "src/routes/<name>/page.html -> /<name>",
+      "src/routes/blog/[slug]/page.html -> /blog/:slug",
+      "src/routes/layout.html wraps all routes"
+    ],
+    "execution_model": "server-first — top-level <script> runs on the server, template renders on the server, $: is the browser escape hatch"
+  },
+  "template_syntax": {
+    "interpolation": {
+      "expression": "{title}",
+      "sanitized_html": "{@html bodyHtml}",
+      "raw_html": "{@raw trustedHtml}"
+    },
+    "conditionals": {
+      "description": "Inline JavaScript if/else — NOT custom directives",
+      "example": "if (items.length === 0) {\n  <p>Nothing here yet.</p>\n} else {\n  <p>{items.length} items</p>\n}",
+      "notes": [
+        "Uses standard JavaScript if/else if/else syntax",
+        "Curly braces wrap HTML blocks",
+        "Renders on the server"
+      ]
+    },
+    "loops": {
+      "description": "Inline JavaScript for...of — NOT custom directives",
+      "example": "for (const item of items) {\n  <li>{item.title}</li>\n}",
+      "notes": [
+        "Uses standard JavaScript for...of syntax",
+        "Destructuring and .entries() supported",
+        "Renders on the server"
+      ]
+    },
+    "components": {
+      "import": "import Card from '$lib/card.html';",
+      "usage": "<Card title=\"Stack\"><Badge variant=\"success\">Live</Badge></Card>",
+      "sources": ["$lib/ (src/lib/)", "packages (@kuratchi/ui/badge.html)"]
+    },
+    "client_reactivity": {
+      "syntax": "$: expression",
+      "block_form": "$: { ... }",
+      "notes": [
+        "Only browser-side execution primitive in route templates",
+        "Runs in template <script> tags, NOT in top server <script>",
+        "Object/array let bindings are proxy-backed automatically",
+        "No if (browser) guards needed in normal code"
+      ]
+    }
+  },
+  "actions": {
+    "binding": "action={exportedFunction}",
+    "input": "FormData",
+    "errors": {
+      "ActionError": "User-facing validation error — message shown in template",
+      "plain_Error": "Hidden in production — shows generic 'Action failed'"
+    },
+    "redirect": "redirect(path, status?)",
+    "state_shape": {
+      "error": "string | undefined — set on ActionError throw",
+      "loading": "boolean — set by client bridge during submission",
+      "success": "boolean — reserved for future use"
+    },
+    "template_access": "actionName.error, actionName.loading"
+  },
+  "error_handling": {
+    "ActionError": {
+      "import": "import { ActionError } from '@kuratchi/js';",
+      "usage": "throw new ActionError('Title is required');",
+      "scope": "form actions — surfaces message to template"
+    },
+    "PageError": {
+      "import": "import { PageError } from '@kuratchi/js';",
+      "usage": "throw new PageError(404);",
+      "scope": "route load — renders matching error page (src/routes/404.html)",
+      "accepts": "any HTTP status code, optional message"
+    }
+  },
+  "progressive_enhancement": {
+    "data-action": "Call server action via fetch, no page reload",
+    "data-refresh": "Re-fetch content after data-action succeeds",
+    "data-get": "Declarative client-side navigation on click",
+    "data-poll": "Auto-refresh on interval (milliseconds)",
+    "data-select-all": "Sync 'select all' checkbox with group",
+    "data-select-item": "Individual checkbox in a select group"
+  },
+  "durable_objects": {
+    "handler_suffix": ".do.ts",
+    "recommended_mode": "function — exported functions become RPC methods",
+    "class_mode": "kuratchiDO base class supported",
+    "proxy_import_alias": "$durable-objects/*",
+    "context_in_function_mode": ["this.db", "this.env", "this.ctx"],
+    "lifecycle_exports": ["onInit()", "onAlarm(...args)", "onMessage(...args)"],
+    "quickstart_steps": [
+      "Create src/server/<name>.do.ts",
+      "Export functions to expose RPC methods",
+      "Configure durableObjects in kuratchi.config.ts",
+      "Add wrangler durable_objects binding + migrations",
+      "Import from $durable-objects/<name>"
+    ]
+  },
+  "agents": {
+    "handler_suffix": ".agent.ts",
+    "location": "src/server/**/*.agent.ts",
+    "requirement": "Must export a class (named or default)",
+    "notes": [
+      "Compiler re-exports class from .kuratchi/worker.js",
+      "NOT route modules — NOT converted to $durable-objects/* proxies",
+      "Wrangler DO bindings + migrations still required"
+    ]
+  },
+  "runtime_apis": {
+    "core": {
+      "import_from": "@kuratchi/js",
+      "exports": [
+        "getCtx() — ExecutionContext",
+        "getRequest() — raw Request",
+        "getLocals() — mutable locals bag",
+        "getParams() — URL params object",
+        "getParam(name) — single URL param",
+        "redirect(path, status?) — redirect response",
+        "goto(path, status?) — alias for redirect",
+        "RedirectError — redirect signal class"
+      ]
+    },
+    "request_helpers": {
+      "import_from": "@kuratchi/js/request",
+      "exports": [
+        "url — parsed URL",
+        "pathname — full path",
+        "searchParams — url.searchParams",
+        "slug — params.slug shorthand",
+        "headers — request headers",
+        "method — HTTP method",
+        "params — all route params"
+      ]
+    },
+    "environment": {
+      "import_from": "@kuratchi/js/environment",
+      "exports": ["dev — true for dev builds, false for production"]
+    },
+    "cloudflare_env": {
+      "import_from": "cloudflare:workers",
+      "usage": "import { env } from 'cloudflare:workers';",
+      "note": "Server only — templates and client scripts cannot read env directly"
+    }
+  },
+  "kuratchi_config": {
+    "file": "kuratchi.config.ts",
+    "import": "import { defineConfig } from '@kuratchi/js';",
+    "integrations": {
+      "ui": {
+        "adapter": "@kuratchi/ui/adapter",
+        "config_fn": "kuratchiUiConfig({ theme: 'default' })"
+      },
+      "orm": {
+        "adapter": "@kuratchi/orm/adapter",
+        "config_fn": "kuratchiOrmConfig({ databases: { DB: { schema } } })"
+      },
+      "auth": {
+        "adapter": "@kuratchi/auth/adapter",
+        "config_fn": "kuratchiAuthConfig({ cookieName, sessionEnabled, guards, rateLimit, turnstile })"
+      },
+      "durableObjects": {
+        "format": "{ BINDING: { className, files } }"
+      }
+    },
+    "note": "Optional — compiler falls back to defaults without it"
+  },
+  "kuratchi_runtime": {
+    "file": "src/kuratchi.runtime.ts",
+    "export": "default RuntimeDefinition",
+    "hooks": {
+      "agents.request": "Intercept requests before framework router — receives (ctx, next)"
+    },
+    "ctx_shape": {
+      "url": "parsed URL",
+      "request": "raw Request",
+      "env": "Cloudflare env bindings"
+    },
+    "note": "Optional — used for agent routing, custom middleware, pre-route auth"
+  },
+  "artifacts": [
+    ".kuratchi/routes.js",
+    ".kuratchi/worker.js",
+    ".kuratchi/do/*.js"
+  ],
+  "llm_generation_policy": {
+    "template_syntax_rules": [
+      "Use inline JavaScript if/else for conditionals (NOT #if or {#each})",
+      "Use inline JavaScript for...of for loops",
+      "Use {expression} for interpolation (NOT {{ }})",
+      "Use {@html expr} for sanitized HTML injection",
+      "Use {@raw expr} for unescaped HTML (unsafe)"
+    ],
+    "for_basic_site": [
+      "Generate layout.html with nav and <slot></slot>",
+      "Generate page.html home with template examples",
+      "Generate about/page.html",
+      "Generate one simple form action example",
+      "Ensure build command passes"
+    ],
+    "validation_checks": [
+      "wrangler.main equals .kuratchi/worker.js",
+      "layout includes <slot></slot>",
+      "package has build/dev scripts",
+      "route files use .html extension"
+    ]
+  }
+}

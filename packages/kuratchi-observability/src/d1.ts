@@ -1,3 +1,4 @@
+import { AiGatewayObservabilityClient } from './ai-gateway.js';
 import { CloudflareGraphQLClient, type CloudflareObservabilityClientOptions } from './graphql.js';
 
 export interface D1DateRangeInput {
@@ -106,6 +107,10 @@ interface AnalyticsQueryResponse {
           rowsRead?: number;
           rowsWritten?: number;
           queryBatchResponseBytes?: number;
+          queryBatchTimeMs?: number;
+        };
+        avg?: {
+          queryBatchTimeMs?: number;
         };
         quantiles?: {
           queryBatchTimeMsP90?: number;
@@ -176,6 +181,10 @@ const ANALYTICS_QUERY = `query KuratchiD1Analytics($accountTag: string!, $databa
           rowsRead
           rowsWritten
           queryBatchResponseBytes
+          queryBatchTimeMs
+        }
+        avg {
+          queryBatchTimeMs
         }
         quantiles {
           queryBatchTimeMsP90
@@ -281,8 +290,8 @@ export class D1ObservabilityClient {
         rowsRead: group.sum?.rowsRead ?? 0,
         rowsWritten: group.sum?.rowsWritten ?? 0,
         queryBatchResponseBytes: group.sum?.queryBatchResponseBytes ?? 0,
-        queryBatchTimeMs: 0,
-        avgQueryBatchTimeMs: undefined,
+        queryBatchTimeMs: group.sum?.queryBatchTimeMs ?? 0,
+        avgQueryBatchTimeMs: group.avg?.queryBatchTimeMs,
         p90QueryBatchTimeMs: group.quantiles?.queryBatchTimeMsP90,
       })),
     };
@@ -414,6 +423,10 @@ export class CloudflareObservabilityClient {
 
   d1(databaseId: string) {
     return new D1ObservabilityClient(this.graphql, databaseId);
+  }
+
+  aiGateway() {
+    return new AiGatewayObservabilityClient(this.graphql);
   }
 }
 

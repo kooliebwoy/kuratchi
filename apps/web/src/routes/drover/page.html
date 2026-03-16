@@ -1,0 +1,302 @@
+<script>
+  import { searchParams } from '@kuratchi/js/request';
+  import { getCurrentUser } from '$server/database/auth';
+  import { getDroverUsage } from '$server/ai/observability';
+  import StatsCard from '@kuratchi/ui/stats-card.html';
+  import CardGrid from '@kuratchi/ui/card-grid.html';
+  import Card from '@kuratchi/ui/card.html';
+  import Callout from '@kuratchi/ui/callout.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const user = await getCurrentUser();
+  const requestedSince = searchParams.get('since') || undefined;
+  const requestedUntil = searchParams.get('until') || undefined;
+  const usage = user ? await getDroverUsage({
+    since: requestedSince,
+    until: requestedUntil,
+  }) : null;
+
+  const totals = usage?.overview?.usage.totals ?? {
+    requests: 0,
+    cachedRequests: 0,
+    erroredRequests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
+  };
+  const topModels = usage?.overview?.topModels.models ?? [];
+  const hourlyPoints = usage?.overview?.usage.points ?? [];
+  const errorRate = totals.requests > 0 ? (totals.erroredRequests / totals.requests) * 100 : 0;
+
+  function formatInt(value) {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  }
+
+  function formatCompact(value) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+
+  function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: value >= 1 ? 2 : 4,
+      maximumFractionDigits: value >= 1 ? 2 : 4,
+    }).format(value);
+  }
+
+  function formatPercent(value) {
+    return `${Number(value.toFixed(value >= 10 ? 0 : 1))}%`;
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+    }).format(new Date(value));
+  }
+</script>
+
+<style>
+  .drover-toolbar {
+    display: flex;
+    align-items: end;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+  }
+  .drover-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .drover-field label {
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .drover-input {
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+    background: transparent;
+    border: 1px solid var(--border, #333);
+    border-radius: 0.375rem;
+    color: inherit;
+    padding: 0 0.625rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    height: 2.25rem;
+    outline: none;
+  }
+  .drover-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  .drover-panel {
+    display: grid;
+    gap: 1rem;
+  }
+  .drover-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .drover-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--border, #333);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #2fba78;
+  }
+  .drover-pill::before {
+    content: '';
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .drover-note {
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .drover-table-wrap {
+    overflow: auto;
+  }
+  .drover-table-wrap table {
+    width: 100%;
+    min-width: 34rem;
+  }
+  .drover-table-wrap td:last-child,
+  .drover-table-wrap th:last-child {
+    text-align: right;
+  }
+  .drover-activity {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .drover-activity-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border, #333);
+  }
+  .drover-activity-item:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+  .drover-activity strong {
+    display: block;
+  }
+  .drover-activity span {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  @media (max-width: 900px) {
+    .drover-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>Drover</h1>
+      <p data-muted>Organization-scoped AI usage from Cloudflare AI Gateway.</p>
+    </div>
+  </header>
+
+  <form class="drover-toolbar" method="GET">
+    <div class="drover-field">
+      <label for="since">Since</label>
+      <input class="drover-input" type="date" id="since" name="since" value={usage?.range.since || ''} max={usage?.range.until || ''} />
+    </div>
+    <div class="drover-field">
+      <label for="until">Until</label>
+      <input class="drover-input" type="date" id="until" name="until" value={usage?.range.until || ''} min={usage?.range.since || ''} />
+    </div>
+    <button type="submit" data-variant="secondary">Update</button>
+  </form>
+
+  <CardGrid>
+    <StatsCard title="Requests" value={formatCompact(totals.requests)} description="Drover traffic in selected range" />
+    <StatsCard title="Tokens" value={formatCompact(totals.inputTokens + totals.outputTokens)} description="Input + output tokens" />
+    <StatsCard title="Cost" value={formatCurrency(totals.cost)} description="Cloudflare AI Gateway cost" />
+    <StatsCard title="Error Rate" value={formatPercent(errorRate)} description={`${formatCompact(totals.erroredRequests)} errored requests`} />
+  </CardGrid>
+
+  <div class="drover-layout">
+    <Card title="Usage by Model">
+      <div class="drover-meta">
+        <span class="drover-pill">Connected</span>
+        <span class="drover-note">Gateway: {usage?.gatewayId || 'Not configured'}</span>
+        if (usage?.organizationId) {
+          <span class="drover-note">Organization: {usage.organizationId}</span>
+        }
+      </div>
+
+      if (usage?.unavailableReason) {
+        <Callout data-variant="info">{usage.unavailableReason}</Callout>
+      } else if (usage?.error) {
+        <Alert data-variant="danger">{usage.error}</Alert>
+      } else if (topModels.length === 0) {
+        <Callout data-variant="info">Drover is connected, but Cloudflare has not returned organization-tagged usage for this date range yet.</Callout>
+      } else {
+        <div class="drover-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Provider</th>
+                <th>Requests</th>
+                <th>Tokens</th>
+                <th>Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              for (const model of topModels) {
+                <tr>
+                  <td>{model.model}</td>
+                  <td>{model.provider}</td>
+                  <td>{formatInt(model.requests)}</td>
+                  <td>{formatCompact(model.inputTokens + model.outputTokens)}</td>
+                  <td>{formatCurrency(model.cost)}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </Card>
+
+    <div class="drover-panel">
+      <Card title="Snapshot">
+        <div class="drover-activity">
+          <div class="drover-activity-item">
+            <div>
+              <strong>{formatCompact(totals.inputTokens)}</strong>
+              <span>Input tokens</span>
+            </div>
+            <div>
+              <strong>{formatCompact(totals.outputTokens)}</strong>
+              <span>Output tokens</span>
+            </div>
+          </div>
+          <div class="drover-activity-item">
+            <div>
+              <strong>{formatCompact(totals.cachedRequests)}</strong>
+              <span>Cached requests</span>
+            </div>
+            <div>
+              <strong>{formatCompact(totals.erroredRequests)}</strong>
+              <span>Errored requests</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Recent Activity">
+        if (hourlyPoints.length === 0) {
+          <p data-muted>No hourly Drover samples available yet.</p>
+        } else {
+          <div class="drover-activity">
+            for (const point of hourlyPoints.slice(0, 5)) {
+              <div class="drover-activity-item">
+                <div>
+                  <strong>{formatTimestamp(point.timestamp)}</strong>
+                  <span>{point.gateway || usage?.gatewayId || 'Drover'}</span>
+                </div>
+                <div>
+                  <strong>{formatInt(point.requests)}</strong>
+                  <span>{formatCompact(point.inputTokens + point.outputTokens)} tokens</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </Card>
+    </div>
+  </div>
+}

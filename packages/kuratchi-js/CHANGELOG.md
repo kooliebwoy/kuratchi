@@ -1,5 +1,11 @@
 # @kuratchi/js
 
+## 0.0.10
+
+### Patch Changes
+
+- Publish latest framework and ORM for LLM docs compatibility
+
 ## 0.0.9
 
 ### Patch Changes

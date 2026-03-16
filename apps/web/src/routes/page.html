@@ -6,7 +6,6 @@
   import StatsCard from '@kuratchi/ui/stats-card.html';
   import CardGrid from '@kuratchi/ui/card-grid.html';
   import Card from '@kuratchi/ui/card.html';
-  import Callout from '@kuratchi/ui/callout.html';
   import { url } from '@kuratchi/js/request';
 
   const user = await getCurrentUser();
@@ -69,6 +68,7 @@ if (!user) {
 
   <Card title="Quick Actions">
     <nav data-cluster>
+      <a href="/drover" data-variant="secondary" data-type="button">View Drover Usage</a>
       <a href="/databases" data-variant="primary" data-type="button">Manage Databases</a>
       <a href="/kv" data-variant="secondary" data-type="button">Manage KV</a>
       <a href="/r2" data-variant="secondary" data-type="button">Manage R2</a>

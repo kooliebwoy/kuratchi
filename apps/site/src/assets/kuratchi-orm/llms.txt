@@ -1,0 +1,489 @@
+# @kuratchi/orm — Full ORM Reference
+
+Project: Kuratchi ORM
+Package: @kuratchi/orm
+Machine schema: /_assets/kuratchi-orm/llms.json
+Category: Workers-native ORM for Cloudflare D1 and Durable Object SQLite
+
+This file is the complete reference for building with @kuratchi/orm.
+It covers schema DSL, query API, migrations, Durable Object integration,
+and configuration via kuratchi.config.ts.
+
+## 1) What @kuratchi/orm is
+
+A lightweight, Workers-native ORM for Cloudflare D1 and Durable Object SQLite.
+Zero dependencies. No Node APIs. Runs entirely in the Workers runtime.
+
+Key capabilities:
+- Schema DSL with type-safe table definitions
+- Mixins for shared column sets (e.g. timestamps)
+- Foreign key relationships with cascade
+- Query builder with chainable where/orderBy/limit/offset
+- Include (relations) for eager loading
+- Soft delete support (deleted_at column)
+- JSON column auto-serialize/deserialize
+- Migration generation and additive DO migrations
+- D1 and Durable Object SQLite support
+- Config-driven integration with @kuratchi/js
+
+## 2) Install
+
+npm install @kuratchi/orm
+
+## 3) D1 usage
+
+import { kuratchiORM } from '@kuratchi/orm';
+import { env } from 'cloudflare:workers';
+
+// Direct binding
+const db = kuratchiORM(env.DB);
+
+// Getter function (lazy — resolved at query time, good for module-level singletons)
+const db = kuratchiORM(() => env.DB);
+
+// Basic operations
+await db.todos.insert({ title: 'Hello' });
+const todos = await db.todos.orderBy({ created_at: 'desc' }).many();
+
+## 4) Durable Object usage
+
+import { initDO } from '@kuratchi/orm';
+
+// In DO constructor — runs migration SQL, returns ORM instance
+const db = initDO(ctx.storage.sql, appSchema);
+
+// Same API as D1 after init
+await db.notes.insert({ title: 'Note from DO' });
+const notes = await db.notes.many();
+
+initDO:
+- Runs CREATE TABLE IF NOT EXISTS for all schema tables
+- Runs additive migrations (ALTER TABLE ADD COLUMN) for pre-existing tables
+- Returns a kuratchiORM instance ready to use
+
+## 5) Schema DSL
+
+import type { SchemaDsl } from '@kuratchi/orm';
+
+export const appSchema: SchemaDsl = {
+  name: 'app',
+  version: 1,
+  mixins: {
+    timestamps: {
+      updated_at: 'text default now',
+      created_at: 'text default now',
+      deleted_at: 'text'
+    }
+  },
+  tables: {
+    todos: {
+      id: 'integer primary key',
+      title: 'text not null',
+      done: 'integer not null default 0',
+      '...timestamps': true,
+    },
+    categories: {
+      id: 'text primary key not null',
+      name: 'text not null unique',
+      description: 'text',
+      '...timestamps': true,
+    },
+  },
+};
+
+### Column definition strings
+
+Format: <type> [constraints...]
+
+Types:
+- text — TEXT column
+- integer — INTEGER column
+- real — REAL column
+- blob — BLOB column
+- json — stored as TEXT, auto-serialized/deserialized by ORM
+- boolean — INTEGER column with boolean mode
+- timestamp_ms — INTEGER column with timestamp mode
+
+Constraints:
+- primary key — PRIMARY KEY
+- not null — NOT NULL
+- unique — UNIQUE
+- default <value> — DEFAULT value
+- default now — DEFAULT (CURRENT_TIMESTAMP)
+- default null — DEFAULT NULL
+- default 0 — DEFAULT 0
+- enum(a,b,c) — enum validation
+- -> table.column — foreign key reference
+- -> table.column cascade — foreign key with ON DELETE CASCADE
+
+### Mixins
+
+Define reusable column sets:
+
+mixins: {
+  timestamps: {
+    updated_at: 'text default now',
+    created_at: 'text default now',
+    deleted_at: 'text'
+  }
+}
+
+Apply with spread syntax in table definitions:
+
+tables: {
+  todos: {
+    id: 'integer primary key',
+    title: 'text not null',
+    '...timestamps': true,   // expands to updated_at, created_at, deleted_at
+  }
+}
+
+### Foreign keys
+
+userId: 'text not null -> users.id cascade'
+organizationId: 'text -> organizations.id'
+roleId: 'text -> roles.id'
+
+### Indexes
+
+indexes: {
+  todos: {
+    idx_todos_done: { columns: ['done'] },
+    idx_todos_title: { columns: ['title'], unique: true },
+  }
+}
+
+### Real-world schema example
+
+export const adminSchema: SchemaDsl = {
+  name: 'admin',
+  version: 6,
+  mixins: {
+    timestamps: {
+      updated_at: 'text default now',
+      created_at: 'text default now',
+      deleted_at: 'text'
+    }
+  },
+  tables: {
+    users: {
+      id: 'text primary key not null',
+      name: 'text',
+      email: 'text not null unique',
+      role: 'text',
+      password_hash: 'text',
+      '...timestamps': true,
+    },
+    session: {
+      sessionToken: 'text primary key not null',
+      userId: 'text not null -> users.id cascade',
+      expires: 'timestamp_ms not null',
+      '...timestamps': true,
+    },
+    organizations: {
+      id: 'text primary key not null',
+      organizationName: 'text',
+      email: 'text unique',
+      status: 'enum(active,inactive,lead)',
+      '...timestamps': true,
+    },
+    roles: {
+      id: 'text primary key not null',
+      name: 'text not null unique',
+      description: 'text',
+      permissions: 'json',
+      isArchived: 'boolean default 0',
+      '...timestamps': true,
+    },
+    activity: {
+      id: 'text primary key',
+      userId: 'text',
+      action: 'text not null',
+      data: 'json default (json_object())',
+      status: 'boolean',
+      '...timestamps': true,
+    },
+  },
+};
+
+## 6) Query API
+
+All query methods return QueryResult<T>: { success: boolean, data?: T, error?: string }
+
+### Insert
+
+await db.todos.insert({ title: 'Hello', done: 0 });
+
+// Batch insert
+await db.todos.insert([
+  { title: 'First' },
+  { title: 'Second' },
+]);
+
+Fields not in schema are automatically skipped with a console warning.
+
+### Select many
+
+const result = await db.todos.many();
+const todos = result.data; // Row[]
+
+### Select first
+
+const result = await db.todos.first();
+const todo = result.data; // Row | undefined
+
+### Select one (exactly one or error)
+
+const result = await db.todos.where({ id: 1 }).one();
+// Errors if 0 or 2+ rows match
+
+### Check existence
+
+const exists = await db.todos.where({ id: 1 }).exists(); // boolean
+
+### Count
+
+const result = await db.todos.count();
+const total = result.data; // number
+
+// With where clause
+const result = await db.todos.count({ done: 1 });
+
+### Distinct
+
+const result = await db.todos.distinct('title');
+// result.data = ['Hello', 'World', ...]
+
+### Where (filtering)
+
+// Simple equality
+db.todos.where({ done: 0 })
+
+// LIKE (string contains %)
+db.todos.where({ title: '%hello%' })
+
+// Comparison operators
+db.todos.where({ id: { gt: 5 } })
+db.todos.where({ id: { gte: 5 } })
+db.todos.where({ id: { lt: 10 } })
+db.todos.where({ id: { lte: 10 } })
+db.todos.where({ id: { ne: 3 } })
+db.todos.where({ title: { like: '%hello%' } })
+db.todos.where({ id: { in: [1, 2, 3] } })
+db.todos.where({ id: { notIn: [4, 5] } })
+db.todos.where({ deleted_at: { isNull: true } })
+db.todos.where({ deleted_at: { isNullish: true } })
+db.todos.where({ deleted_at: { is: null } })
+
+### Where chaining
+
+// AND (chained where)
+db.todos.where({ done: 0 }).where({ title: '%hello%' })
+
+// OR (orWhere)
+db.todos.where({ done: 0 }).orWhere({ title: 'Important' })
+
+// whereAny (OR across multiple conditions)
+db.todos.whereAny([
+  { done: 0 },
+  { title: '%urgent%' },
+])
+
+// whereIn shorthand
+db.todos.whereIn('id', [1, 2, 3])
+
+### Raw SQL conditions
+
+db.todos.sql({ query: 'title LIKE ? OR done = ?', params: ['%hello%', 1] })
+
+SQL injection protection:
+- Template literals (${}) throw an error
+- String concatenation detected throws an error
+- Multiple statements (;DROP) throw an error
+- Always use ? placeholders and params array
+
+### OrderBy
+
+db.todos.orderBy({ created_at: 'desc' })
+db.todos.orderBy({ done: 'asc', title: 'asc' })
+db.todos.orderBy('created_at DESC')
+
+// Multiple order specs
+db.todos.orderBy([{ done: 'asc' }, { created_at: 'desc' }])
+
+### Limit and offset
+
+db.todos.limit(10)
+db.todos.offset(20)
+db.todos.limit(10).offset(20)
+
+### Select specific columns
+
+db.todos.select(['id', 'title'])
+
+### Update
+
+// Update with where clause (required)
+await db.todos.update({ done: 1 }).where({ id: 1 }).update();
+
+// updateMany — bulk update matching rows
+await db.todos.where({ done: 0 }).updateMany({ done: 1 });
+
+### Delete
+
+// Delete with where clause (required for safety)
+await db.todos.delete({ id: 1 });
+
+// Via query builder
+await db.todos.where({ done: 1 }).delete();
+
+Delete without a where clause returns an error for safety.
+
+### Include (relations / eager loading)
+
+// Auto-detect foreign key (parentFkCol convention)
+const result = await db.todos.include({ categories: true }).many();
+// Each todo gets a .categories array
+
+// Explicit foreign key
+const result = await db.todos.include({
+  categories: {
+    foreignKey: 'todoId',
+    localKey: 'id',
+  }
+}).many();
+
+// With alias
+db.todos.include({ categories: { as: 'cats', table: 'categories' } })
+
+### Soft delete
+
+If a table has a deleted_at column, the ORM automatically filters out soft-deleted rows.
+Use .withDeleted() to include them:
+
+const allTodos = await db.todos.withDeleted().many();
+
+### Full query chain example
+
+const result = await db.todos
+  .where({ done: 0 })
+  .where({ title: { like: '%important%' } })
+  .orderBy({ created_at: 'desc' })
+  .limit(10)
+  .offset(0)
+  .select(['id', 'title', 'created_at'])
+  .include({ categories: true })
+  .many();
+
+const items = result.data;
+
+## 7) JSON columns
+
+Columns defined as 'json' type are automatically:
+- Serialized to JSON string on insert/update
+- Deserialized from JSON string on select
+
+permissions: 'json'
+data: 'json default (json_object())'
+
+No manual JSON.stringify/parse needed.
+
+## 8) Configure in kuratchi.config.ts
+
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
+import { appSchema } from './src/server/schemas/app';
+
+export default defineConfig({
+  orm: kuratchiOrmConfig({
+    databases: {
+      DB: { schema: appSchema },
+      NOTES_DO: { schema: notesSchema, type: 'do' },
+    },
+  }),
+});
+
+- DB key matches the Wrangler D1 binding name
+- type: 'do' marks a Durable Object SQLite database
+- Schema is used for validation, migration generation, and JSON auto-handling
+
+## 9) kuratchi.runtime.ts
+
+The ORM integrates natively with the Kuratchi framework runtime.
+In Durable Object .do.ts files, this.db is the ORM instance:
+
+// src/server/notes.do.ts
+export async function listNotes() {
+  const result = await this.db.notes.orderBy({ created_at: 'desc' }).many();
+  return result.data ?? [];
+}
+
+export async function addNote(formData: FormData) {
+  const title = String(formData.get('title') ?? '').trim();
+  await this.db.notes.insert({ title });
+}
+
+The runtime automatically initializes ORM instances for each configured database
+and makes them available through the framework context.
+
+## 10) Migration system
+
+### Schema normalization
+
+The DSL is normalized to a DatabaseSchema format internally:
+- Column strings are parsed into typed Column objects
+- Mixins are expanded into table definitions
+- Indexes are collected per table
+
+### D1 migrations
+
+The ORM generates CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS
+SQL from the normalized schema. For D1, run these migrations through your
+deployment pipeline.
+
+### Durable Object migrations
+
+initDO() handles migrations automatically:
+1. Snapshots existing tables before running initial SQL
+2. Runs CREATE TABLE IF NOT EXISTS for all schema tables
+3. For pre-existing tables, checks for missing columns via PRAGMA table_info
+4. Runs ALTER TABLE ADD COLUMN for any missing columns
+5. Returns the ORM instance
+
+This means DO schemas are additive — you can add columns and tables
+across versions without manual migration files.
+
+## 11) Advanced: custom executor
+
+For advanced use cases, pass a custom SQL executor:
+
+import { kuratchiORM } from '@kuratchi/orm';
+
+const db = kuratchiORM({
+  adapter: 'executor',
+  execute: async (sql, params) => {
+    // Custom SQL execution
+    return { success: true, data: rows };
+  },
+});
+
+## 12) API types reference
+
+QueryResult<T> = { success: boolean, data?: T, error?: string, meta?: { rowsRead, rowsWritten, duration } }
+Where = Record<string, Primitive | { eq, ne, gt, gte, lt, lte, like, in, notIn, is, isNull, isNullish }>
+OrderBy = string | { [column]: 'asc' | 'desc' } | Array<string | { [column]: 'asc' | 'desc' }>
+SchemaDsl = { name, version, mixins?, tables, indexes? }
+TableApi<Row> = { many, first, one, exists, insert, delete, count, update, where, whereIn, orWhere, whereAny, orderBy, limit, offset, include, select, sql }
+
+## 13) LLM generation checklist
+
+When generating ORM code for a Kuratchi app:
+- Define schema as SchemaDsl with name and version
+- Use '...timestamps': true mixin for created_at/updated_at/deleted_at
+- Use -> table.column syntax for foreign keys
+- Use kuratchiORM(() => env.DB) for module-level singletons (lazy binding)
+- Use initDO(ctx.storage.sql, schema) in Durable Object constructors
+- Always check result.success or use result.data
+- Where clauses use object syntax, not SQL strings
+- For raw SQL conditions, use .sql({ query, params }) with ? placeholders
+- Never use string interpolation in SQL — the ORM throws on template literals

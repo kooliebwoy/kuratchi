@@ -96,6 +96,7 @@
     },
     "resources": {
       "ai": {
+        "list_models": "GET /ai/models",
         "create_session": "POST /ai/sessions { title?, model?, sessionId? }",
         "list_sessions": "GET /ai/sessions",
         "get_session": "GET /ai/sessions/:sessionId",
@@ -103,6 +104,7 @@
         "notes": [
           "All AI endpoints require a platform token (kdbp_ prefix)",
           "Sessions are organization-scoped",
+          "GET /ai/models returns Kuratchi-supported Workers AI models plus the default model",
           "POST /ai/chat resumes an existing session when sessionId is provided",
           "GET /ai/sessions/:sessionId returns session metadata plus current agent state"
         ]
@@ -155,7 +157,8 @@
     { "name": "revoke_token", "description": "Revoke a token", "params": ["tokenId"] }
   ],
   "ai_rest_examples": {
-    "create_session": "fetch('https://kuratchi.cloud/api/v1/ai/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer kdbp_your_token_here' }, body: JSON.stringify({ title: 'Support chat', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }) })",
+    "list_models": "fetch('https://kuratchi.cloud/api/v1/ai/models', { headers: { 'Authorization': 'Bearer kdbp_your_token_here' } })",
+    "create_session": "fetch('https://kuratchi.cloud/api/v1/ai/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer kdbp_your_token_here' }, body: JSON.stringify({ title: 'Support chat', model: '@cf/meta/llama-4-scout-17b-16e-instruct' }) })",
     "chat": "fetch('https://kuratchi.cloud/api/v1/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer kdbp_your_token_here' }, body: JSON.stringify({ sessionId: 'session-id', message: 'Help me debug this stack trace' }) })",
     "list_sessions": "fetch('https://kuratchi.cloud/api/v1/ai/sessions', { headers: { 'Authorization': 'Bearer kdbp_your_token_here' } })"
   }

@@ -1,207 +1,34 @@
-# KuratchiJS LLM Build Spec (Implementation-Grade)
+# Kuratchi — LLM Documentation Index
 
-Project: KuratchiJS
-Package: @kuratchi/js
-Primary docs page: /docs
-Machine schema: /_assets/llms.json
+Project: Kuratchi
+Category: Cloudflare Workers-native framework and tooling
 
-This file is written for LLMs to scaffold real working apps.
+This is the top-level index for all Kuratchi LLM documentation.
+Each package has its own llms.txt and llms.json with full implementation-grade references.
 
-## 1) What KuratchiJS is
+## Packages
 
-KuratchiJS is a Cloudflare Workers-native framework.
-It compiles HTML routes in src/routes into .kuratchi output used by Wrangler.
+### @kuratchi/js — Web Framework
+Cloudflare Workers-native framework with file-based routing, server actions,
+inline template syntax (if/for/interpolation), Durable Object RPC, Agents,
+progressive enhancement, and config-driven integrations.
 
-Key capabilities:
-- File-based routing from HTML files
-- Server actions using native FormData
-- Durable Object RPC via .do.ts files
-- Progressive enhancement with data-* attributes
-- Config-driven ORM/Auth/DO integrations
+- llms.txt: /_assets/kuratchi-js/llms.txt
+- llms.json: /_assets/kuratchi-js/llms.json
 
-## 2) Minimal Hello World (no ORM/auth)
+### @kuratchi/orm — ORM
+Workers-native ORM for Cloudflare D1 and Durable Object SQLite.
+Schema DSL, query builder, migrations, JSON columns, soft delete,
+relations, and native framework integration.
 
-### 2.1 Create folder structure
+- llms.txt: /_assets/kuratchi-orm/llms.txt
+- llms.json: /_assets/kuratchi-orm/llms.json
 
-my-app/
-- package.json
-- tsconfig.json
-- wrangler.jsonc
-- kuratchi.config.ts
-- src/routes/layout.html
-- src/routes/page.html
+## Shared configuration files
 
-### 2.2 package.json
+Both packages integrate through two shared config files:
 
-{
-  "name": "my-app",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "bun run --bun ../../packages/kuratchi-js/src/cli.ts dev",
-    "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
-  },
-  "dependencies": {
-    "@kuratchi/js": "workspace:*"
-  },
-  "devDependencies": {
-    "wrangler": "^4.65.0",
-    "@cloudflare/workers-types": "^4.20260223.0"
-  }
-}
+- kuratchi.config.ts — Declarative config for ORM, Auth, UI, and Durable Object integrations
+- kuratchi.runtime.ts — Optional runtime middleware for agent routing and pre-route hooks
 
-### 2.3 tsconfig.json
-
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "types": ["./worker-configuration.d.ts"]
-  },
-  "include": ["src/**/*.ts", "kuratchi.config.ts"]
-}
-
-### 2.4 wrangler.jsonc
-
-{
-  "name": "my-app",
-  "main": ".kuratchi/worker.js",
-  "compatibility_date": "2026-03-06",
-  "compatibility_flags": ["nodejs_compat"]
-}
-
-### 2.5 kuratchi.config.ts
-
-import { defineConfig } from '@kuratchi/js';
-
-export default defineConfig({});
-
-### 2.6 src/routes/layout.html
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My App</title>
-</head>
-<body>
-  <header><a href="/">Home</a></header>
-  <main><slot></slot></main>
-</body>
-</html>
-
-### 2.7 src/routes/page.html
-
-<h1>Hello KuratchiJS</h1>
-<p>Running on Cloudflare Workers.</p>
-
-### 2.8 Run
-
-- bun install
-- bun run build
-- bun run dev
-
-## 3) Route conventions
-
-- src/routes/page.html -> /
-- src/routes/about/page.html -> /about
-- src/routes/blog/[slug]/page.html -> /blog/:slug
-- src/routes/layout.html wraps all pages and must contain <slot></slot>
-
-## 4) Basic dynamic server data
-
-Put server code in top <script> block of a route file:
-
-<script>
-  const framework = 'KuratchiJS';
-  const year = new Date().getUTCFullYear();
-</script>
-
-<h1>{framework}</h1>
-<p>{year}</p>
-
-## 5) Forms + actions (important)
-
-Action function in route script:
-
-<script>
-  import { ActionError, redirect } from '@kuratchi/js';
-
-  export async function createPost(formData: FormData) {
-    const title = String(formData.get('title') || '').trim();
-    if (!title) throw new ActionError('Title is required');
-    redirect('/');
-  }
-</script>
-
-<form action={createPost} method="POST">
-  <input name="title" />
-  <button type="submit">Create</button>
-</form>
-
-Rules:
-- Exported function + action binding => server action
-- Action input is FormData
-- Use ActionError for user-facing validation errors
-- Use redirect() for PRG flow
-
-## 6) Durable Object RPC quickstart
-
-- Create src/server/notes.do.ts
-- Export functions (function mode preferred)
-- Configure durableObjects in kuratchi.config.ts and wrangler.jsonc
-- Import generated RPC functions from $durable-objects/notes
-
-Example DO file:
-
-export async function listNotes() {
-  return [{ id: 1, title: 'Hello from DO' }];
-}
-
-Example route usage:
-
-<script>
-  import { listNotes } from '$durable-objects/notes';
-  const notes = await listNotes();
-</script>
-
-for (const note of notes) {
-  <p>{note.title}</p>
-}
-
-## 7) Progressive enhancement shortcuts
-
-- data-action: call server action via fetch
-- data-refresh: refresh partial blocks after action
-- data-get: declarative navigation
-- data-poll: poll RPC endpoint
-- data-select-all / data-select-item: checkbox group sync
-
-## 8) Compiler output and deploy
-
-Build emits:
-- .kuratchi/routes.js
-- .kuratchi/worker.js
-- .kuratchi/do/*.js (when using DO RPC)
-
-Wrangler should always point to:
-- main: .kuratchi/worker.js
-
-## 9) LLM generation checklist (must satisfy)
-
-When generating a Kuratchi app, ensure:
-- src/routes/layout.html exists and contains <slot></slot>
-- src/routes/page.html exists
-- wrangler main is .kuratchi/worker.js
-- package scripts include build/dev via kuratchi CLI
-- bun run build succeeds
-
-If user asks for "basic site", generate:
-- layout.html with nav
-- home page
-- one extra route (/about)
-- one action form example
-
+These are documented in both the @kuratchi/js and @kuratchi/orm llms files.

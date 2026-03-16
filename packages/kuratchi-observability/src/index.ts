@@ -8,6 +8,19 @@ export {
   type CloudflareObservabilityClientOptions,
 } from './graphql.js';
 export {
+  AiGatewayObservabilityClient,
+  type AiGatewayDateRangeInput,
+  type AiGatewayOverviewOptions,
+  type AiGatewayOverviewResult,
+  type AiGatewayTimeseriesOptions,
+  type AiGatewayTimeseriesPoint,
+  type AiGatewayTimeseriesResult,
+  type AiGatewayTopModel,
+  type AiGatewayTopModelsOptions,
+  type AiGatewayTopModelsResult,
+  type AiGatewayUsageTotals,
+} from './ai-gateway.js';
+export {
   CloudflareObservabilityClient,
   D1ObservabilityClient,
   createCloudflareObservability,

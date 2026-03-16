@@ -1,4 +1,5 @@
 import { Agent } from 'agents';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from './models';
 
 type SessionRole = 'system' | 'user' | 'assistant';
 
@@ -27,8 +28,11 @@ type ChatRequestBody = {
   stream?: boolean;
 };
 
-const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const MAX_SESSION_MESSAGES = 40;
+const DROVER_GATEWAY_METADATA = {
+  product: 'drover',
+  surface: 'chat',
+} as const;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -128,7 +132,7 @@ export class KuratchiAiSession extends Agent<Record<string, any>, SessionState |
       return json({ success: false, error: 'Workers AI binding is not configured' }, 500);
     }
 
-    const model = body.model?.trim() || existing?.model || DEFAULT_MODEL;
+    const model = resolveKuratchiAiModel(body.model ?? existing?.model ?? DEFAULT_KURATCHI_AI_MODEL);
     let messages = body.reset ? [] : [...(existing?.messages ?? [])];
 
     const providedMessages = normalizeMessages(body.messages);
@@ -158,7 +162,16 @@ export class KuratchiAiSession extends Agent<Record<string, any>, SessionState |
     const result = await this.env.AI.run(
       model,
       { messages },
-      { gateway: { id: gatewayId } },
+      {
+        gateway: {
+          id: gatewayId,
+          metadata: {
+            ...DROVER_GATEWAY_METADATA,
+            organizationId,
+            sessionId,
+          },
+        },
+      },
     );
 
     const reply = extractReply(result);

@@ -88,18 +88,21 @@ describe('createCloudflareObservability', () => {
                   {
                     count: 4,
                     sum: {
+                      queryDurationMs: 80,
                       rowsRead: 200,
                       rowsWritten: 0,
-                      queryBatchTimeMs: 80,
                     },
                     avg: {
+                      queryDurationMs: 20,
                       rowsRead: 50,
                       rowsWritten: 0,
-                      queryBatchTimeMs: 20,
+                    },
+                    quantiles: {
+                      queryDurationMsP50: 18,
+                      queryDurationMsP95: 45,
                     },
                     dimensions: {
                       query: 'SELECT * FROM users',
-                      databaseId: 'db-123',
                     },
                   },
                 ],
@@ -132,11 +135,10 @@ describe('createCloudflareObservability', () => {
 
     const body = JSON.parse(String(calls[0].init?.body));
     expect(body.query).toContain('d1QueriesAdaptiveGroups');
-    expect(body.variables.orderBy).toEqual(['avg_rowsRead_ASC']);
+    expect(body.variables.orderBy).toBe('avg_rowsRead_ASC');
 
     expect(result.queries[0]).toEqual({
       query: 'SELECT * FROM users',
-      databaseId: 'db-123',
       count: 4,
       totalRowsRead: 200,
       totalRowsWritten: 0,
@@ -144,6 +146,8 @@ describe('createCloudflareObservability', () => {
       avgRowsRead: 50,
       avgRowsWritten: 0,
       avgDurationMs: 20,
+      p50DurationMs: 18,
+      p95DurationMs: 45,
     });
   });
 

@@ -1,25 +1,34 @@
 <section class="panel">
-  <h1>KuratchiJS for LLM-driven development.</h1>
+  <h1>Kuratchi LLM-first documentation.</h1>
   <p>
-    Cloudflare Workers-native framework with file-based routes, server actions,
-    Durable Object RPC, and batteries-included auth/ORM integrations.
+    Open source packages for building on Cloudflare Workers.
+    Each package has dedicated llms.txt and llms.json files optimized for machine consumption.
   </p>
-  <ul>
-    <li>Primary docs for models: <code>/docs</code></li>
-    <li>Machine index: <code>/_assets/llms.txt</code></li>
-    <li>Machine schema: <code>/_assets/llms.json</code></li>
-  </ul>
 </section>
 
 <section class="row">
   <article class="panel">
-    <h2>Core model</h2>
-    <p>HTML-first routes in <code>src/routes</code>, compiled to <code>.kuratchi</code> worker output.</p>
-    <p>Progressive enhancement via declarative attributes and server actions.</p>
+    <h2>@kuratchi/js</h2>
+    <p>Cloudflare Workers-native framework with file-based routing, inline template syntax (if/for), server actions, Durable Objects, and Agents.</p>
+    <ul>
+      <li><a href="/_assets/kuratchi-js/llms.txt">llms.txt</a></li>
+      <li><a href="/_assets/kuratchi-js/llms.json">llms.json</a></li>
+    </ul>
   </article>
   <article class="panel">
-    <h2>Batteries included</h2>
-    <p>Config-driven ORM, auth, and Durable Objects from <code>kuratchi.config.ts</code>.</p>
-    <p>Cloudflare-first defaults with Wrangler-aligned deployment.</p>
+    <h2>@kuratchi/orm</h2>
+    <p>Workers-native ORM for D1 and DO SQLite. Schema DSL, query builder, migrations, JSON columns, and native framework integration.</p>
+    <ul>
+      <li><a href="/_assets/kuratchi-orm/llms.txt">llms.txt</a></li>
+      <li><a href="/_assets/kuratchi-orm/llms.json">llms.json</a></li>
+    </ul>
   </article>
+</section>
+
+<section class="panel">
+  <h2>Shared config</h2>
+  <p>Both packages integrate through <code>kuratchi.config.ts</code> and <code>kuratchi.runtime.ts</code>, documented in each package's llms files.</p>
+  <ul>
+    <li>Index: <a href="/_assets/llms.txt">llms.txt</a> / <a href="/_assets/llms.json">llms.json</a></li>
+  </ul>
 </section>

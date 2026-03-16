@@ -203,6 +203,14 @@ Notes:
 - `GET /ai/sessions` is the endpoint product apps should use to render resumable conversation history
 - MCP remains infrastructure-only and does not expose chat/session tools
 
+List supported models:
+
+fetch('https://kuratchi.cloud/api/v1/ai/models', {
+  headers: {
+    'Authorization': 'Bearer kdbp_your_token_here'
+  }
+});
+
 Create a session:
 
 fetch('https://kuratchi.cloud/api/v1/ai/sessions', {
@@ -213,7 +221,7 @@ fetch('https://kuratchi.cloud/api/v1/ai/sessions', {
   },
   body: JSON.stringify({
     title: 'Terminal copilot',
-    model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+    model: '@cf/meta/llama-4-scout-17b-16e-instruct'
   })
 });
 

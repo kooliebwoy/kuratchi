@@ -1,6 +1,6 @@
 {
   "name": "@kuratchi/web",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,14 +10,18 @@
     "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
   },
   "dependencies": {
-    "agents": "^0.3.0",
+    "@cloudflare/ai-chat": "^0.1.8",
     "@kuratchi/auth": "workspace:*",
     "@kuratchi/db-studio": "workspace:*",
     "@kuratchi/file-explorer": "workspace:*",
     "@kuratchi/js": "workspace:*",
+    "@kuratchi/observability": "workspace:*",
     "@kuratchi/orm": "workspace:*",
     "@kuratchi/ui": "workspace:*",
-    "@kuratchi/observability": "workspace:*"
+    "agents": "^0.7.3",
+    "ai": "^6.0.116",
+    "workers-ai-provider": "^3.1.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",

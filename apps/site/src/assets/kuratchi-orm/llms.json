@@ -1,0 +1,219 @@
+{
+  "project": "Kuratchi ORM",
+  "package": "@kuratchi/orm",
+  "category": "workers-native-orm",
+  "primary_docs": "/_assets/kuratchi-orm/llms.txt",
+  "goal": "Enable an LLM to define schemas, query data, and integrate the ORM into Kuratchi apps.",
+  "install": "npm install @kuratchi/orm",
+  "usage": {
+    "d1": {
+      "import": "import { kuratchiORM } from '@kuratchi/orm';",
+      "direct": "const db = kuratchiORM(env.DB);",
+      "lazy": "const db = kuratchiORM(() => env.DB);",
+      "note": "Lazy getter resolves binding at query time — ideal for module-level singletons"
+    },
+    "durable_object": {
+      "import": "import { initDO } from '@kuratchi/orm';",
+      "init": "const db = initDO(ctx.storage.sql, appSchema);",
+      "note": "Runs migrations automatically, returns ORM instance"
+    }
+  },
+  "schema_dsl": {
+    "type": "SchemaDsl",
+    "fields": {
+      "name": "string — schema identifier",
+      "version": "number — schema version for migration tracking",
+      "mixins": "Record<string, TableDsl> — reusable column sets",
+      "tables": "Record<string, TableDsl> — table definitions",
+      "indexes": "Record<string, Record<string, { columns, unique? }>> — table indexes"
+    },
+    "column_types": [
+      "text — TEXT",
+      "integer — INTEGER",
+      "real — REAL",
+      "blob — BLOB",
+      "json — TEXT with auto-serialize/deserialize",
+      "boolean — INTEGER with boolean mode",
+      "timestamp_ms — INTEGER with timestamp mode"
+    ],
+    "column_constraints": [
+      "primary key",
+      "not null",
+      "unique",
+      "default <value>",
+      "default now — (CURRENT_TIMESTAMP)",
+      "default null",
+      "enum(a,b,c)",
+      "-> table.column — foreign key",
+      "-> table.column cascade — FK with ON DELETE CASCADE"
+    ],
+    "mixin_syntax": "'...mixinName': true — expands mixin columns into table",
+    "examples": {
+      "simple_table": {
+        "todos": {
+          "id": "integer primary key",
+          "title": "text not null",
+          "done": "integer not null default 0"
+        }
+      },
+      "with_mixins_and_fk": {
+        "session": {
+          "sessionToken": "text primary key not null",
+          "userId": "text not null -> users.id cascade",
+          "expires": "timestamp_ms not null",
+          "...timestamps": true
+        }
+      },
+      "with_json_and_enum": {
+        "roles": {
+          "id": "text primary key not null",
+          "name": "text not null unique",
+          "permissions": "json",
+          "status": "enum(active,inactive)",
+          "isArchived": "boolean default 0"
+        }
+      }
+    }
+  },
+  "query_api": {
+    "return_type": "QueryResult<T> = { success, data?, error?, meta? }",
+    "table_api": {
+      "insert": {
+        "signature": "db.table.insert(values | values[])",
+        "notes": "Fields not in schema are auto-skipped with warning"
+      },
+      "many": {
+        "signature": "db.table.many() or db.table.where({...}).many()",
+        "returns": "QueryResult<Row[]>"
+      },
+      "first": {
+        "signature": "db.table.first()",
+        "returns": "QueryResult<Row | undefined>"
+      },
+      "one": {
+        "signature": "db.table.where({...}).one()",
+        "returns": "QueryResult<Row> — errors if 0 or 2+ rows"
+      },
+      "exists": {
+        "signature": "db.table.where({...}).exists()",
+        "returns": "boolean"
+      },
+      "count": {
+        "signature": "db.table.count(where?)",
+        "returns": "QueryResult<number>"
+      },
+      "distinct": {
+        "signature": "db.table.distinct(column)",
+        "returns": "QueryResult<any[]>"
+      },
+      "delete": {
+        "signature": "db.table.delete(where) or .where({...}).delete()",
+        "notes": "Requires where clause for safety"
+      },
+      "update": {
+        "signature": "db.table.update(values).where({...}).update()",
+        "notes": "Requires where clause"
+      },
+      "updateMany": {
+        "signature": "db.table.where({...}).updateMany(values)",
+        "notes": "Bulk update matching rows"
+      }
+    },
+    "where_operators": {
+      "equality": "{ column: value }",
+      "like": "{ column: '%pattern%' } or { column: { like: '%pattern%' } }",
+      "comparison": "{ column: { gt, gte, lt, lte, ne, eq } }",
+      "in": "{ column: { in: [1, 2, 3] } }",
+      "notIn": "{ column: { notIn: [4, 5] } }",
+      "null_check": "{ column: { isNull: true } } or { column: { is: null } } or { column: { isNullish: true } }"
+    },
+    "chaining": {
+      "where": ".where(filter) — AND with previous conditions",
+      "orWhere": ".orWhere(filter) — OR group",
+      "whereAny": ".whereAny([condition1, condition2]) — OR across conditions",
+      "whereIn": ".whereIn(column, values) — IN shorthand",
+      "sql": ".sql({ query, params }) — raw SQL condition with ? placeholders",
+      "orderBy": ".orderBy({ column: 'asc' | 'desc' }) or .orderBy('column DESC')",
+      "limit": ".limit(n)",
+      "offset": ".offset(n)",
+      "select": ".select(['col1', 'col2'])",
+      "include": ".include({ relatedTable: true | { foreignKey, localKey, as, table } })",
+      "withDeleted": ".withDeleted() — include soft-deleted rows"
+    },
+    "sql_injection_protection": [
+      "Template literals (${}) in .sql() throw an error",
+      "String concatenation detected throws an error",
+      "Multiple statements (;DROP) throw an error",
+      "Always use ? placeholders and params array"
+    ]
+  },
+  "json_columns": {
+    "definition": "column: 'json'",
+    "behavior": "Auto JSON.stringify on insert/update, auto JSON.parse on select",
+    "default_example": "data: 'json default (json_object())'"
+  },
+  "soft_delete": {
+    "trigger": "Table has a deleted_at column",
+    "behavior": "Automatically filters out rows where deleted_at is set",
+    "override": ".withDeleted() includes soft-deleted rows"
+  },
+  "include_relations": {
+    "auto_detect": "Looks for parentTable singularized + 'Id' column (e.g. categoryId)",
+    "explicit": "{ foreignKey: 'todoId', localKey: 'id' }",
+    "alias": "{ as: 'cats', table: 'categories' }",
+    "result": "Adds related data as nested property on each row"
+  },
+  "migrations": {
+    "d1": "ORM generates CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS SQL from schema",
+    "durable_object": {
+      "handler": "initDO(ctx.storage.sql, schema)",
+      "process": [
+        "Snapshots existing tables",
+        "Runs CREATE TABLE IF NOT EXISTS for all tables",
+        "ALTER TABLE ADD COLUMN for missing columns on pre-existing tables",
+        "Returns ORM instance"
+      ],
+      "note": "Additive only — columns and tables can be added, not removed"
+    }
+  },
+  "kuratchi_config": {
+    "file": "kuratchi.config.ts",
+    "setup": "import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';",
+    "example": {
+      "orm": "kuratchiOrmConfig({ databases: { DB: { schema: appSchema }, NOTES_DO: { schema: notesSchema, type: 'do' } } })"
+    },
+    "notes": [
+      "DB key matches Wrangler D1 binding name",
+      "type: 'do' marks Durable Object SQLite database",
+      "Schema used for validation, migrations, and JSON handling"
+    ]
+  },
+  "kuratchi_runtime": {
+    "file": "src/kuratchi.runtime.ts",
+    "orm_in_do_files": "this.db is the ORM instance in .do.ts function mode",
+    "example": "export async function listNotes() {\n  const result = await this.db.notes.orderBy({ created_at: 'desc' }).many();\n  return result.data ?? [];\n}"
+  },
+  "advanced": {
+    "custom_executor": {
+      "usage": "kuratchiORM({ adapter: 'executor', execute: async (sql, params) => ({ success: true, data: rows }) })",
+      "note": "For custom SQL execution backends"
+    },
+    "full_client": {
+      "methods": ["query", "first", "exec", "batch", "raw", "run"],
+      "note": "Native D1 client methods exposed through FullDbClient interface"
+    }
+  },
+  "llm_generation_policy": {
+    "rules": [
+      "Define schema as SchemaDsl with name and version",
+      "Use '...timestamps': true for created_at/updated_at/deleted_at",
+      "Use -> table.column for foreign keys",
+      "Use kuratchiORM(() => env.DB) for module-level singletons",
+      "Use initDO(ctx.storage.sql, schema) in DO constructors",
+      "Always check result.success or use result.data",
+      "Use object syntax for where clauses, not SQL strings",
+      "Use .sql({ query, params }) with ? placeholders for raw SQL",
+      "Never use string interpolation in SQL"
+    ]
+  }
+}

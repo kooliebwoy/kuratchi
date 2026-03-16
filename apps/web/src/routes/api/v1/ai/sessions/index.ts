@@ -1,8 +1,7 @@
 import type { RouteContext } from '@kuratchi/js';
 import { handleCorsPreflight, jsonResponse, requirePlatformToken } from '$server/api/utils';
 import { createAiSession, listAiSessions } from '$server/database/ai-sessions';
-
-const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from '$server/ai/models';
 
 export async function GET(ctx: RouteContext): Promise<Response> {
   const auth = await requirePlatformToken(ctx.request);
@@ -24,7 +23,7 @@ export async function POST(ctx: RouteContext): Promise<Response> {
   const session = await createAiSession({
     id: sessionId,
     organizationId: auth.organizationId,
-    model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : DEFAULT_MODEL,
+    model: resolveKuratchiAiModel(body.model ?? DEFAULT_KURATCHI_AI_MODEL),
     title: typeof body.title === 'string' ? body.title : 'New session',
     messageCount: 0,
   });
