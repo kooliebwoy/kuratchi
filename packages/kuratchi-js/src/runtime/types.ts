@@ -134,20 +134,10 @@ export interface kuratchiConfig<E extends Env = Env> {
     /** DO source files (e.g. ['auth.do.ts', 'sites.do.ts']) */
     files?: string[];
   }>;
-  /** Container classes exported into the generated worker entry. */
-  containers?: Record<string, string | {
-    /** Relative path from project root. Must end in `.container.ts|js|mjs|cjs`. */
-    file: string;
-    /** Optional override; inferred from exported class in `file` when omitted. */
-    className?: string;
-  }>;
-  /** Workflow classes exported into the generated worker entry. */
-  workflows?: Record<string, string | {
-    /** Relative path from project root. Must end in `.workflow.ts|js|mjs|cjs`. */
-    file: string;
-    /** Optional override; inferred from exported class in `file` when omitted. */
-    className?: string;
-  }>;
+  // Note: Containers and Workflows are auto-discovered from convention files in src/server/
+  // .container.ts → FILENAME_CONTAINER binding
+  // .workflow.ts  → FILENAME_WORKFLOW binding
+  // No config needed — just create the file and it's automatically registered.
 }
 
 /** Auth configuration for kuratchi.config.ts */
