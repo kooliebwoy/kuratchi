@@ -509,6 +509,85 @@ Failure and edge behavior:
 - If a `.agent.ts` file does not export a class, the build fails.
 - Kuratchi only auto-discovers `.agent.ts` files under `src/server/`.
 - You still need Wrangler Durable Object bindings and migrations because Agents run as Durable Objects.
+
+## Workflows
+
+Kuratchi auto-discovers `.workflow.ts` files in `src/server/`. **No config needed.**
+
+```ts
+// src/server/migration.workflow.ts
+import { WorkflowEntrypoint, WorkflowStep } from 'cloudflare:workers';
+import type { WorkflowEvent } from 'cloudflare:workers';
+
+export class MigrationWorkflow extends WorkflowEntrypoint<Env, MigrationParams> {
+  async run(event: WorkflowEvent<MigrationParams>, step: WorkflowStep) {
+    // workflow steps...
+  }
+}
+```
+
+On build, Kuratchi:
+1. Scans `src/server/` for `.workflow.ts` files
+2. Derives binding from filename: `migration.workflow.ts` → `MIGRATION_WORKFLOW`
+3. Infers class name from the exported class
+4. Auto-adds/updates the workflow entry in `wrangler.jsonc`
+
+**Zero config required.** Just create the file and the framework handles everything:
+- `name`: derived from binding (e.g., `MIGRATION_WORKFLOW` → `migration-workflow`)
+- `binding`: derived from filename (e.g., `migration.workflow.ts` → `MIGRATION_WORKFLOW`)
+- `class_name`: inferred from the exported class
+
+Examples:
+- `migration.workflow.ts` → `MIGRATION_WORKFLOW` binding
+- `bond.workflow.ts` → `BOND_WORKFLOW` binding
+- `new-site.workflow.ts` → `NEW_SITE_WORKFLOW` binding
+
+## Containers
+
+Kuratchi auto-discovers `.container.ts` files in `src/server/`. **No config needed.**
+
+```ts
+// src/server/wordpress.container.ts
+import { Container } from 'cloudflare:workers';
+
+export class WordPressContainer extends Container {
+  // container implementation...
+}
+```
+
+On build, Kuratchi derives the binding from the filename:
+- `wordpress.container.ts` → `WORDPRESS_CONTAINER` binding
+- `redis.container.ts` → `REDIS_CONTAINER` binding
+
+## Convention-Based Auto-Discovery
+
+Kuratchi uses file suffixes to auto-discover and register worker classes. **No config needed** — just create the file:
+
+| Suffix | Location | Binding Pattern | Example |
+|--------|----------|-----------------|---------|
+| `.workflow.ts` | `src/server/**/*.workflow.ts` | `FILENAME_WORKFLOW` | `migration.workflow.ts` → `MIGRATION_WORKFLOW` |
+| `.container.ts` | `src/server/**/*.container.ts` | `FILENAME_CONTAINER` | `wordpress.container.ts` → `WORDPRESS_CONTAINER` |
+| `.agent.ts` | `src/server/**/*.agent.ts` | (manual wrangler config) | `session.agent.ts` |
+| `.do.ts` | `src/server/**/*.do.ts` | (via `durableObjects` config) | `auth.do.ts` |
+
+## Automatic Wrangler Config Sync
+
+Kuratchi automatically syncs `wrangler.jsonc` during every build. This eliminates duplicate configuration for:
+
+- **Workflows** — auto-discovered from `.workflow.ts` files
+- **Containers** — auto-discovered from `.container.ts` files
+- **Durable Objects** — `durableObjects` in kuratchi.config.ts
+
+The sync is additive and non-destructive:
+- New entries are added automatically
+- Existing entries are updated if the class name changes
+- Manually-added wrangler config (D1, KV, R2, vars, etc.) is preserved
+- Removed entries are cleaned up from wrangler.jsonc
+
+Requirements:
+- Uses `wrangler.jsonc` or `wrangler.json` (TOML is not supported for auto-sync)
+- Creates `wrangler.jsonc` if no wrangler config exists
+
 ## Runtime APIs
 
 These are available anywhere in server-side route code:

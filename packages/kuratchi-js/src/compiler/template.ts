@@ -192,9 +192,58 @@ export function compileTemplate(
     }
 
     // HTML line â†’ compile {expr} interpolations
-    out.push(compileHtmlLine(line, actionNames, rpcNameMap));
+    // Handle multi-line expressions: if a line has unclosed {, join continuation lines
+    let htmlLine = line;
+    let extraLines = 0;
+    if (hasUnclosedBrace(htmlLine)) {
+      let j = i + 1;
+      while (j < lines.length && hasUnclosedBrace(htmlLine)) {
+        htmlLine += '\n' + lines[j];
+        extraLines++;
+        j++;
+      }
+      i += extraLines;
+    }
+    out.push(compileHtmlLine(htmlLine, actionNames, rpcNameMap));
   }
   return out.join('\n');
+}
+
+/**
+ * Check if a string has unclosed template braces (more { than }).
+ * Respects string quotes to avoid false positives.
+ */
+function hasUnclosedBrace(src: string): boolean {
+  let depth = 0;
+  let quote: '"' | "'" | '`' | null = null;
+  let escaped = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch as '"' | "'" | '`';
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+  }
+
+  return depth > 0;
 }
 
 function advanceHtmlTagState(

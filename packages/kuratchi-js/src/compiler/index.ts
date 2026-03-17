@@ -800,8 +800,9 @@ export function compile(options: CompileOptions): string {
 
   // Read Durable Object config and discover handler files
   const doConfig = readDoConfig(projectDir);
-  const containerConfig = readWorkerClassConfig(projectDir, 'containers');
-  const workflowConfig = readWorkerClassConfig(projectDir, 'workflows');
+  // Auto-discover convention-based worker class files (no config needed)
+  const containerConfig = discoverContainerFiles(projectDir);
+  const workflowConfig = discoverWorkflowFiles(projectDir);
   const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agent.ts', '.agent');
   const doHandlers = doConfig.length > 0
     ? discoverDoHandlers(srcDir, doConfig, ormDatabases)
@@ -1392,6 +1393,13 @@ export function compile(options: CompileOptions): string {
     '',
   ];
   writeIfChanged(workerFile, workerLines.join('\n'));
+
+  // Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts
+  syncWranglerConfig(projectDir, {
+    workflows: workflowConfig,
+    containers: containerConfig,
+    durableObjects: doConfig,
+  });
 
   return workerFile;
 }
@@ -2333,6 +2341,54 @@ function discoverFilesWithSuffix(dir: string, suffix: string): string[] {
   };
   walk(dir);
   return out;
+}
+
+/**
+ * Auto-discover .workflow.ts files in src/server/.
+ * Derives binding name from filename: migration.workflow.ts → MIGRATION_WORKFLOW
+ * Returns entries compatible with WorkerClassConfigEntry for worker.js export generation.
+ */
+function discoverWorkflowFiles(projectDir: string): WorkerClassConfigEntry[] {
+  const serverDir = path.join(projectDir, 'src', 'server');
+  const files = discoverFilesWithSuffix(serverDir, '.workflow.ts');
+  if (files.length === 0) return [];
+
+  return files.map((absPath) => {
+    const fileName = path.basename(absPath, '.workflow.ts');
+    // Derive binding: migration.workflow.ts → MIGRATION_WORKFLOW
+    const binding = fileName.toUpperCase().replace(/-/g, '_') + '_WORKFLOW';
+    const resolved = resolveClassExportFromFile(absPath, `.workflow`);
+    return {
+      binding,
+      className: resolved.className,
+      file: path.relative(projectDir, absPath).replace(/\\/g, '/'),
+      exportKind: resolved.exportKind,
+    };
+  });
+}
+
+/**
+ * Auto-discover .container.ts files in src/server/.
+ * Derives binding name from filename: wordpress.container.ts → WORDPRESS_CONTAINER
+ * Returns entries compatible with WorkerClassConfigEntry for worker.js export generation.
+ */
+function discoverContainerFiles(projectDir: string): WorkerClassConfigEntry[] {
+  const serverDir = path.join(projectDir, 'src', 'server');
+  const files = discoverFilesWithSuffix(serverDir, '.container.ts');
+  if (files.length === 0) return [];
+
+  return files.map((absPath) => {
+    const fileName = path.basename(absPath, '.container.ts');
+    // Derive binding: wordpress.container.ts → WORDPRESS_CONTAINER
+    const binding = fileName.toUpperCase().replace(/-/g, '_') + '_CONTAINER';
+    const resolved = resolveClassExportFromFile(absPath, `.container`);
+    return {
+      binding,
+      className: resolved.className,
+      file: path.relative(projectDir, absPath).replace(/\\/g, '/'),
+      exportKind: resolved.exportKind,
+    };
+  });
 }
 
 /**
@@ -3448,6 +3504,244 @@ function toWorkerImportPath(projectDir: string, outDir: string, filePath: string
   let rel = path.relative(outDir, absPath).replace(/\\/g, '/');
   if (!rel.startsWith('.')) rel = `./${rel}`;
   return rel.replace(/\.(ts|js|mjs|cjs)$/, '');
+}
+
+interface WranglerSyncConfig {
+  workflows: WorkerClassConfigEntry[];
+  containers: WorkerClassConfigEntry[];
+  durableObjects: DoConfigEntry[];
+}
+
+/**
+ * Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts.
+ * This eliminates the need to manually duplicate config between kuratchi.config.ts and wrangler.jsonc.
+ *
+ * The function:
+ * 1. Reads existing wrangler.jsonc (or wrangler.json)
+ * 2. Updates/adds workflow entries based on kuratchi.config.ts
+ * 3. Preserves all other wrangler config (bindings, vars, etc.)
+ * 4. Writes back only if changed
+ */
+function syncWranglerConfig(projectDir: string, config: WranglerSyncConfig): void {
+  // Find wrangler config file (prefer .jsonc, fall back to .json)
+  const jsoncPath = path.join(projectDir, 'wrangler.jsonc');
+  const jsonPath = path.join(projectDir, 'wrangler.json');
+  const tomlPath = path.join(projectDir, 'wrangler.toml');
+
+  let configPath: string;
+  let isJsonc = false;
+
+  if (fs.existsSync(jsoncPath)) {
+    configPath = jsoncPath;
+    isJsonc = true;
+  } else if (fs.existsSync(jsonPath)) {
+    configPath = jsonPath;
+  } else if (fs.existsSync(tomlPath)) {
+    // TOML is not supported for auto-sync — user must migrate to JSON/JSONC
+    console.log('[kuratchi] wrangler.toml detected. Auto-sync requires wrangler.jsonc. Skipping wrangler sync.');
+    return;
+  } else {
+    // No wrangler config exists — create a minimal wrangler.jsonc
+    console.log('[kuratchi] Creating wrangler.jsonc with workflow config...');
+    configPath = jsoncPath;
+    isJsonc = true;
+  }
+
+  // Read existing config (or start fresh)
+  let rawContent = '';
+  let wranglerConfig: Record<string, any> = {};
+
+  if (fs.existsSync(configPath)) {
+    rawContent = fs.readFileSync(configPath, 'utf-8');
+    try {
+      // Strip JSONC comments for parsing
+      const jsonContent = stripJsonComments(rawContent);
+      wranglerConfig = JSON.parse(jsonContent);
+    } catch (err: any) {
+      console.error(`[kuratchi] Failed to parse ${path.basename(configPath)}: ${err.message}`);
+      console.error('[kuratchi] Skipping wrangler sync. Please fix the JSON syntax.');
+      return;
+    }
+  }
+
+  let changed = false;
+
+  // Sync workflows
+  if (config.workflows.length > 0) {
+    const existingWorkflows: any[] = wranglerConfig.workflows || [];
+    const existingByBinding = new Map(existingWorkflows.map(w => [w.binding, w]));
+
+    for (const wf of config.workflows) {
+      // Convert SCREAMING_SNAKE binding to kebab-case name
+      const name = wf.binding.toLowerCase().replace(/_/g, '-');
+      const entry = {
+        name,
+        binding: wf.binding,
+        class_name: wf.className,
+      };
+
+      const existing = existingByBinding.get(wf.binding);
+      if (!existing) {
+        existingWorkflows.push(entry);
+        changed = true;
+        console.log(`[kuratchi] Added workflow "${wf.binding}" to wrangler config`);
+      } else if (existing.class_name !== wf.className) {
+        existing.class_name = wf.className;
+        changed = true;
+        console.log(`[kuratchi] Updated workflow "${wf.binding}" class_name to "${wf.className}"`);
+      }
+    }
+
+    // Remove workflows that are no longer in kuratchi.config.ts
+    const configBindings = new Set(config.workflows.map(w => w.binding));
+    const filtered = existingWorkflows.filter(w => {
+      if (!configBindings.has(w.binding)) {
+        // Check if this was a kuratchi-managed workflow (has matching naming convention)
+        const expectedName = w.binding.toLowerCase().replace(/_/g, '-');
+        if (w.name === expectedName) {
+          console.log(`[kuratchi] Removed workflow "${w.binding}" from wrangler config`);
+          changed = true;
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (filtered.length !== existingWorkflows.length) {
+      wranglerConfig.workflows = filtered;
+    } else {
+      wranglerConfig.workflows = existingWorkflows;
+    }
+
+    if (wranglerConfig.workflows.length === 0) {
+      delete wranglerConfig.workflows;
+    }
+  }
+
+  // Sync containers (similar pattern)
+  if (config.containers.length > 0) {
+    const existingContainers: any[] = wranglerConfig.containers || [];
+    const existingByBinding = new Map(existingContainers.map(c => [c.binding, c]));
+
+    for (const ct of config.containers) {
+      const name = ct.binding.toLowerCase().replace(/_/g, '-');
+      const entry = {
+        name,
+        binding: ct.binding,
+        class_name: ct.className,
+      };
+
+      const existing = existingByBinding.get(ct.binding);
+      if (!existing) {
+        existingContainers.push(entry);
+        changed = true;
+        console.log(`[kuratchi] Added container "${ct.binding}" to wrangler config`);
+      } else if (existing.class_name !== ct.className) {
+        existing.class_name = ct.className;
+        changed = true;
+        console.log(`[kuratchi] Updated container "${ct.binding}" class_name to "${ct.className}"`);
+      }
+    }
+
+    wranglerConfig.containers = existingContainers;
+    if (wranglerConfig.containers.length === 0) {
+      delete wranglerConfig.containers;
+    }
+  }
+
+  // Sync durable_objects
+  if (config.durableObjects.length > 0) {
+    if (!wranglerConfig.durable_objects) {
+      wranglerConfig.durable_objects = { bindings: [] };
+    }
+    const existingBindings: any[] = wranglerConfig.durable_objects.bindings || [];
+    const existingByName = new Map(existingBindings.map(b => [b.name, b]));
+
+    for (const doEntry of config.durableObjects) {
+      const entry = {
+        name: doEntry.binding,
+        class_name: doEntry.className,
+      };
+
+      const existing = existingByName.get(doEntry.binding);
+      if (!existing) {
+        existingBindings.push(entry);
+        changed = true;
+        console.log(`[kuratchi] Added durable_object "${doEntry.binding}" to wrangler config`);
+      } else if (existing.class_name !== doEntry.className) {
+        existing.class_name = doEntry.className;
+        changed = true;
+        console.log(`[kuratchi] Updated durable_object "${doEntry.binding}" class_name to "${doEntry.className}"`);
+      }
+    }
+
+    wranglerConfig.durable_objects.bindings = existingBindings;
+  }
+
+  if (!changed) return;
+
+  // Write back with pretty formatting
+  const newContent = JSON.stringify(wranglerConfig, null, '\t');
+  writeIfChanged(configPath, newContent + '\n');
+}
+
+/**
+ * Strip JSON comments (// and /* *\/) for parsing JSONC files.
+ */
+function stripJsonComments(content: string): string {
+  let result = '';
+  let i = 0;
+  let inString = false;
+  let stringChar = '';
+
+  while (i < content.length) {
+    const ch = content[i];
+    const next = content[i + 1];
+
+    // Handle string literals
+    if (inString) {
+      result += ch;
+      if (ch === '\\' && i + 1 < content.length) {
+        result += next;
+        i += 2;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
+    // Start of string
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      result += ch;
+      i++;
+      continue;
+    }
+
+    // Line comment
+    if (ch === '/' && next === '/') {
+      // Skip until end of line
+      while (i < content.length && content[i] !== '\n') i++;
+      continue;
+    }
+
+    // Block comment
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < content.length - 1 && !(content[i] === '*' && content[i + 1] === '/')) i++;
+      i += 2; // Skip */
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+
+  return result;
 }
 
 
