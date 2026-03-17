@@ -54,6 +54,7 @@ Kuratchi routes are server-first.
 - Top-level route `<script>` blocks run on the server.
 - Template expressions, `if`, and `for` blocks render on the server.
 - `src/server` is for private server-only modules and reusable backend logic.
+- `src/server/runtime.hook.ts` is the server runtime hook entrypoint for request interception.
 - Reactive `$:` code is the browser-only escape hatch.
 
 Route files are not client files. They are server-rendered routes that can opt into small browser-side reactive behavior when needed.
@@ -542,6 +543,38 @@ const postSlug = slug;
 - `slug` is `params.slug` when the matched route defines a `slug` param.
 - `headers`, `method`, and `params` are also exported from `@kuratchi/js/request`.
 - Use `getRequest()` when you want the raw native `Request` object.
+
+## Runtime Hook
+
+Optional server runtime hook file. Export a `RuntimeDefinition` from `src/server/runtime.hook.ts`
+to intercept requests before they reach the framework router. Use it for agent routing,
+pre-route auth, or custom response/error handling.
+
+```ts
+import type { RuntimeDefinition } from '@kuratchi/js';
+
+const runtime: RuntimeDefinition = {
+  agents: {
+    async request(ctx, next) {
+      if (!ctx.url.pathname.startsWith('/agents/')) {
+        return next();
+      }
+
+      return new Response('Agent response');
+    },
+  },
+};
+
+export default runtime;
+```
+
+`ctx` includes:
+
+- `ctx.url` - parsed URL
+- `ctx.request` - raw Request
+- `ctx.env` - Cloudflare env bindings
+- `next()` - pass control to the next handler
+
 ## Environment bindings
 
 Cloudflare env is server-only.

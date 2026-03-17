@@ -1,0 +1,108 @@
+<script>
+  import { getCurrentUser } from '$server/database/auth';
+  import { getSites, createSite } from '$server/database/sites';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const user = await getCurrentUser();
+  const sites = user ? await getSites() : [];
+</script>
+
+if (!user) {
+  <head>
+    <meta http-equiv="refresh" content="0;url=/auth/signin" />
+  </head>
+  <p>Redirecting to sign in...</p>
+} else {
+  <header>
+    <div>
+      <h1>Sites</h1>
+      <p data-muted>{sites.length} site{sites.length !== 1 ? 's' : ''}</p>
+    </div>
+    <button data-variant="primary" data-type="button" commandfor="create-site-dialog" command="show-modal">
+      + New Site
+    </button>
+  </header>
+
+  if (sites.length === 0) {
+    <EmptyState
+      title="No sites yet"
+      description="Upload static files and serve them on the edge."
+    >
+      <button data-variant="primary" data-type="button" commandfor="create-site-dialog" command="show-modal">
+        + New Site
+      </button>
+    </EmptyState>
+  } else {
+    <div data-scroll>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Files</th>
+            <th>Size</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          for (const site of sites) {
+            <tr>
+              <td><a href={`/sites/${site.id}`}>{site.name}</a></td>
+              <td>
+                if (site.isActive) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Inactive</Badge>
+                }
+              </td>
+              <td data-muted>{site.fileCount || 0}</td>
+              <td data-muted>{formatBytes(site.totalSize || 0)}</td>
+              <td data-muted>{site.created_at ? new Date(site.created_at).toLocaleDateString() : '-'}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <Dialog id="create-site-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>New Site</h2>
+      <p>Create a new static site served on the edge.</p>
+    </div>
+    <form action={createSite} method="POST">
+      <div data-field>
+        <label for="name">Name</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          placeholder="my-site"
+          required
+          pattern="[a-z0-9-]+"
+          title="Lowercase letters, numbers, and hyphens only"
+          autocomplete="off"
+        />
+        <small>Lowercase letters, numbers, and hyphens only.</small>
+      </div>
+      if (createSite.error) {
+        <Alert data-variant="danger">{createSite.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Create Site</button>
+      </div>
+    </form>
+  </Dialog>
+}
+
+<script>
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+  }
+</script>

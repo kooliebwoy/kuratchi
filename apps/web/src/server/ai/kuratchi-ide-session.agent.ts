@@ -4,7 +4,7 @@ import { callable } from 'agents';
 import { createWorkersAI } from 'workers-ai-provider';
 import { z } from 'zod';
 import { deriveSessionTitle, upsertAiSession } from '../database/ai-sessions';
-import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from './models';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiIdeModel } from './models';
 
 type IdeAttachment = {
   name: string;
@@ -174,6 +174,31 @@ Rules:
 - Always single-quote URLs that contain shell-special characters such as ?, &, =, or #.${buildEnvironmentContext(body)}${buildAttachmentContext(body)}`;
 }
 
+function getLatestUserText(messages: UIMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      return flattenMessage(messages[index]).toLowerCase();
+    }
+  }
+  return '';
+}
+
+function shouldForceTerminalTool(messages: UIMessage[]): boolean {
+  const latestUserText = getLatestUserText(messages);
+  if (!latestUserText) return false;
+
+  const executionIntent =
+    /\b(create|make|delete|remove|rename|move|copy|write|edit|update|install|run|execute|open|list|show|find)\b/.test(latestUserText) ||
+    /\b(folder|directory|file|index\.html|documents|downloads|desktop|terminal|powershell|cmd|bash|shell)\b/.test(latestUserText) ||
+    /\bcan you execute commands\b/.test(latestUserText);
+
+  const directQuestionOnly =
+    /\b(is it possible|can you explain|what is|how hard|how long|why)\b/.test(latestUserText) &&
+    !/\b(create|delete|run|execute|file|folder|directory|command)\b/.test(latestUserText);
+
+  return executionIntent && !directQuestionOnly;
+}
+
 function createWorkersAiModel(env: Record<string, any>, model: string, state: KuratchiIdeSessionState) {
   if (!env.AI) throw new Error('Workers AI binding is not configured');
 
@@ -252,7 +277,7 @@ export class KuratchiIdeSession extends AIChatAgent<Record<string, any>, Kuratch
   async onChatMessage(onFinish: StreamTextOnFinishCallback<ToolSet>, options?: OnChatMessageOptions) {
     const body = (options?.body ?? {}) as PromptBody;
     const current = this.currentState();
-    const model = resolveKuratchiAiModel(body.model ?? current.model ?? DEFAULT_KURATCHI_AI_MODEL);
+    const model = resolveKuratchiIdeModel(body.model ?? current.model ?? DEFAULT_KURATCHI_AI_MODEL);
     const nextState: KuratchiIdeSessionState = {
       ...current,
       model,
@@ -279,6 +304,9 @@ export class KuratchiIdeSession extends AIChatAgent<Record<string, any>, Kuratch
           needsApproval: true,
         }),
       },
+      toolChoice: shouldForceTerminalTool(this.messages)
+        ? { type: 'tool', toolName: RUN_TERMINAL_COMMANDS_TOOL }
+        : undefined,
       stopWhen: stepCountIs(5),
     });
 

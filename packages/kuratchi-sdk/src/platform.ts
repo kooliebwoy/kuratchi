@@ -84,6 +84,31 @@ export interface CreateR2Request {
   locationHint?: string;
 }
 
+export interface SiteInfo {
+  id: string;
+  name: string;
+  workerName?: string;
+  customDomain?: string;
+  isActive: boolean;
+  fileCount: number;
+  totalSize: number;
+  created_at: string;
+}
+
+export interface SiteFileInfo {
+  id: string;
+  siteId: string;
+  path: string;
+  hash: string;
+  contentType?: string;
+  size: number;
+  created_at: string;
+}
+
+export interface CreateSiteRequest {
+  name: string;
+}
+
 export interface CreateTokenRequest {
   name: string;
 }
@@ -176,6 +201,46 @@ export class PlatformClient {
 
       delete: (id: string) =>
         this.request<void>(`/api/v1/platform/r2/${id}`, { method: 'DELETE' }),
+    };
+  }
+
+  /** Site management */
+  get sites() {
+    return {
+      list: () => this.request<SiteInfo[]>('/api/v1/platform/sites'),
+
+      get: (id: string) => this.request<SiteInfo & { files: SiteFileInfo[] }>(`/api/v1/platform/sites/${id}`),
+
+      create: (req: CreateSiteRequest) =>
+        this.request<SiteInfo>('/api/v1/platform/sites', {
+          method: 'POST',
+          body: req,
+        }),
+
+      delete: (id: string) =>
+        this.request<void>(`/api/v1/platform/sites/${id}`, { method: 'DELETE' }),
+
+      /** Upload files to a site and deploy. Each entry is { file, path? }. */
+      uploadFiles: async (siteId: string, files: { file: Blob | File; path?: string }[]): Promise<ApiResponse> => {
+        const form = new FormData();
+        for (const entry of files) {
+          form.append('file', entry.file);
+          form.append('path', entry.path || (entry.file instanceof File ? entry.file.name : ''));
+        }
+
+        try {
+          const res = await fetch(`${this.baseUrl}/api/v1/platform/sites/${siteId}/files`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${this.apiKey}` },
+            body: form,
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: (data as any).error || `HTTP ${res.status}` };
+          return data as ApiResponse;
+        } catch (error: any) {
+          return { success: false, error: error.message || 'Network error' };
+        }
+      },
     };
   }
 

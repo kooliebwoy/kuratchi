@@ -128,7 +128,7 @@ async function initTables(env) {
 
 // -- Token generation -----------------------------------------------
 // Token format: {dbName}.{rnd}.{expMs}.{hmac-sha256-base64url}
-// Validated at the edge in kuratchi.runtime.ts.
+// Validated at the edge in src/server/runtime.hook.ts.
 
 export async function generateDbToken(
   dbName: string,

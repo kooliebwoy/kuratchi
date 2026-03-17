@@ -789,6 +789,9 @@ export function compile(options: CompileOptions): string {
     compiledErrorPages.set(status, `function __error_${status}(error) {\n  ${body}\n  return __html;\n}`);
   }
 
+  // Read assets prefix from kuratchi.config.ts (default: /assets/)
+  const assetsPrefix = readAssetsPrefix(projectDir);
+
   // Read kuratchi.config.ts at build time to discover ORM database configs
   const ormDatabases = readOrmConfig(projectDir);
 
@@ -1357,6 +1360,7 @@ export function compile(options: CompileOptions): string {
     compiledLayoutActions,
     hasRuntime,
     runtimeImportPath,
+    assetsPrefix,
   });
 
   // Write to .kuratchi/routes.js
@@ -2282,6 +2286,18 @@ function resolveClassExportFromFile(absPath: string, errorLabel: string): { clas
   throw new Error(`[kuratchi] ${errorLabel} must export a class via "export class X" or "export default class X". File: ${absPath}`);
 }
 
+function readAssetsPrefix(projectDir: string): string {
+  const configPath = path.join(projectDir, 'kuratchi.config.ts');
+  if (!fs.existsSync(configPath)) return '/assets/';
+  const source = fs.readFileSync(configPath, 'utf-8');
+  const match = source.match(/assetsPrefix\s*:\s*['"]([^'"]+)['"]/);
+  if (!match) return '/assets/';
+  let prefix = match[1];
+  if (!prefix.startsWith('/')) prefix = '/' + prefix;
+  if (!prefix.endsWith('/')) prefix += '/';
+  return prefix;
+}
+
 function discoverConventionClassFiles(
   projectDir: string,
   dir: string,
@@ -2644,6 +2660,7 @@ function generateRoutesModule(opts: {
   compiledLayoutActions: string | null;
   hasRuntime: boolean;
   runtimeImportPath?: string;
+  assetsPrefix: string;
 }): string {
   const layoutBlock = opts.compiledLayout ?? 'function __layout(content) { return content; }';
   const layoutActionsBlock = opts.compiledLayoutActions
@@ -3228,9 +3245,9 @@ ${migrationInit ? '    await __runMigrations();\n' : ''}${authInit ? '    __init
       const url = __runtimeCtx.url;
 ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n      { const __rlRes = await __checkRL(); if (__rlRes) return __secHeaders(__rlRes); }\n' : ''}${ac?.hasTurnstile ? '      // Turnstile bot protection\n      { const __tsRes = await __checkTS(); if (__tsRes) return __secHeaders(__tsRes); }\n' : ''}${ac?.hasGuards ? '      // Route guards - redirect if not authenticated\n      { const __gRes = __checkGuard(); if (__gRes) return __secHeaders(__gRes); }\n' : ''}
 
-      // Serve static assets from src/assets/ at /_assets/*
-      if (url.pathname.startsWith('/_assets/')) {
-        const name = url.pathname.slice('/_assets/'.length);
+      // Serve static assets from src/assets/
+      if (url.pathname.startsWith('${opts.assetsPrefix}')) {
+        const name = url.pathname.slice('${opts.assetsPrefix}'.length);
         const asset = __assets[name];
         if (asset) {
           if (request.headers.get('if-none-match') === asset.etag) {
@@ -3416,12 +3433,7 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
 
 function resolveRuntimeImportPath(projectDir: string): string | null {
   const candidates: Array<{ file: string; importPath: string }> = [
-    { file: 'src/kuratchi.runtime.ts', importPath: '../src/kuratchi.runtime' },
-    { file: 'src/kuratchi.runtime.js', importPath: '../src/kuratchi.runtime' },
-    { file: 'src/kuratchi.runtime.mjs', importPath: '../src/kuratchi.runtime' },
-    { file: 'kuratchi.runtime.ts', importPath: '../kuratchi.runtime' },
-    { file: 'kuratchi.runtime.js', importPath: '../kuratchi.runtime' },
-    { file: 'kuratchi.runtime.mjs', importPath: '../kuratchi.runtime' },
+    { file: 'src/server/runtime.hook.ts', importPath: '../src/server/runtime.hook' },
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(path.join(projectDir, candidate.file))) {
@@ -3437,6 +3449,5 @@ function toWorkerImportPath(projectDir: string, outDir: string, filePath: string
   if (!rel.startsWith('.')) rel = `./${rel}`;
   return rel.replace(/\.(ts|js|mjs|cjs)$/, '');
 }
-
 
 

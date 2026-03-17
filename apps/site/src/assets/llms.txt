@@ -29,6 +29,6 @@ relations, and native framework integration.
 Both packages integrate through two shared config files:
 
 - kuratchi.config.ts — Declarative config for ORM, Auth, UI, and Durable Object integrations
-- kuratchi.runtime.ts — Optional runtime middleware for agent routing and pre-route hooks
+- src/server/runtime.hook.ts — Optional server runtime hook for agent routing and pre-route hooks
 
 These are documented in both the @kuratchi/js and @kuratchi/orm llms files.

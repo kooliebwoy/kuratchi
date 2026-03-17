@@ -1,0 +1,181 @@
+<script>
+  import { getParam } from '@kuratchi/js';
+  import { getSite, getSiteFiles, uploadSiteFiles, deleteSiteFile, deleteSite } from '$server/database/sites';
+  import Badge from '@kuratchi/ui/badge.html';
+  import Dialog from '@kuratchi/ui/dialog.html';
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+  import Alert from '@kuratchi/ui/alert.html';
+  import Card from '@kuratchi/ui/card.html';
+
+  const id = getParam('id');
+  const site = await getSite(id);
+  const files = site ? await getSiteFiles(id) : [];
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+  }
+
+  function getFileIcon(contentType) {
+    if (!contentType) return '📄';
+    if (contentType.startsWith('text/html')) return '🌐';
+    if (contentType.startsWith('text/css')) return '🎨';
+    if (contentType.includes('javascript')) return '⚡';
+    if (contentType.startsWith('image/')) return '🖼️';
+    if (contentType.includes('json')) return '📋';
+    if (contentType.includes('font')) return '🔤';
+    return '📄';
+  }
+</script>
+
+if (!site) {
+  <EmptyState title="Site not found" description="This site doesn't exist or you don't have access." />
+} else {
+  <header>
+    <div>
+      <h1>{site.name}</h1>
+      <p data-muted>{files.length} file{files.length !== 1 ? 's' : ''} · {formatBytes(site.totalSize || 0)}</p>
+    </div>
+    <div data-flex data-gap="sm">
+      <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
+        Upload Files
+      </button>
+      <button data-variant="danger-outline" data-type="button" commandfor="delete-site-dialog" command="show-modal">
+        Delete Site
+      </button>
+    </div>
+  </header>
+
+  <div data-grid data-cols="3" data-gap="md">
+    <Card>
+      <div data-stat>
+        <p data-muted>Status</p>
+        if (site.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+      </div>
+    </Card>
+    <Card>
+      <div data-stat>
+        <p data-muted>Files</p>
+        <p data-large>{site.fileCount || 0}</p>
+      </div>
+    </Card>
+    <Card>
+      <div data-stat>
+        <p data-muted>Total Size</p>
+        <p data-large>{formatBytes(site.totalSize || 0)}</p>
+      </div>
+    </Card>
+  </div>
+
+  if (site.workerName) {
+    <Card>
+      <div data-flex data-justify="between" data-align="center">
+        <div>
+          <p data-muted>Worker</p>
+          <code>{site.workerName}</code>
+        </div>
+      </div>
+    </Card>
+  }
+
+  <section>
+    <h2>Files</h2>
+    if (files.length === 0) {
+      <EmptyState
+        title="No files uploaded"
+        description="Upload HTML, CSS, JS, images, or any static files to serve."
+      >
+        <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
+          Upload Files
+        </button>
+      </EmptyState>
+    } else {
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Path</th>
+              <th>Type</th>
+              <th>Size</th>
+              <th>Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            for (const file of files) {
+              <tr>
+                <td>{getFileIcon(file.contentType)}</td>
+                <td><code>{file.path}</code></td>
+                <td data-muted>{file.contentType || '-'}</td>
+                <td data-muted>{formatBytes(file.size)}</td>
+                <td data-muted>{file.updated_at ? new Date(file.updated_at).toLocaleDateString() : '-'}</td>
+                <td>
+                  <form action={deleteSiteFile} method="POST" data-action data-inline>
+                    <input type="hidden" name="siteId" value={site.id} />
+                    <input type="hidden" name="fileId" value={file.id} />
+                    <button type="submit" data-variant="danger-ghost" data-size="sm">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <Dialog id="upload-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Upload Files</h2>
+      <p>Upload files to deploy to your site. All files are deployed together.</p>
+    </div>
+    <form action={uploadSiteFiles} method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="siteId" value={site.id} />
+      <div data-field>
+        <label for="file">Files</label>
+        <input type="file" id="file" name="file" required multiple />
+        <small>Select one or more files. They'll be served at their filename paths.</small>
+      </div>
+      <div data-field>
+        <label for="path">Path prefix (optional)</label>
+        <input
+          type="text"
+          id="path"
+          name="path"
+          placeholder="css/ or leave blank for root"
+          autocomplete="off"
+        />
+        <small>Prefix added to all filenames. Leave blank to serve from root.</small>
+      </div>
+      if (uploadSiteFiles.error) {
+        <Alert data-variant="danger">{uploadSiteFiles.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="primary">Upload &amp; Deploy</button>
+      </div>
+    </form>
+  </Dialog>
+
+  <Dialog id="delete-site-dialog" closedby="any">
+    <div data-dialog="header">
+      <h2>Delete Site</h2>
+      <p>This will permanently delete <strong>{site.name}</strong> and all its files. This cannot be undone.</p>
+    </div>
+    <form action={deleteSite} method="POST">
+      <input type="hidden" name="id" value={site.id} />
+      if (deleteSite.error) {
+        <Alert data-variant="danger">{deleteSite.error}</Alert>
+      }
+      <div data-dialog="actions">
+        <button type="submit" data-variant="danger">Delete Site</button>
+      </div>
+    </form>
+  </Dialog>
+}

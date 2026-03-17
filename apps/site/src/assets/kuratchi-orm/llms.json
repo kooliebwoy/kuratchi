@@ -189,7 +189,7 @@
     ]
   },
   "kuratchi_runtime": {
-    "file": "src/kuratchi.runtime.ts",
+    "file": "src/server/runtime.hook.ts",
     "orm_in_do_files": "this.db is the ORM instance in .do.ts function mode",
     "example": "export async function listNotes() {\n  const result = await this.db.notes.orderBy({ created_at: 'desc' }).many();\n  return result.data ?? [];\n}"
   },

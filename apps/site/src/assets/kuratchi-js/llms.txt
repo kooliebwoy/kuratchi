@@ -24,7 +24,7 @@ Key capabilities:
 - Progressive enhancement with data-* attributes
 - Client reactivity via Svelte-style $: labels
 - Config-driven ORM/Auth/UI/DO integrations via kuratchi.config.ts
-- Custom runtime middleware via kuratchi.runtime.ts
+- Custom server runtime hooks via src/server/runtime.hook.ts
 
 ## 2) Install
 
@@ -491,7 +491,7 @@ export default defineConfig({
 
 Without kuratchi.config.ts the compiler falls back to defaults.
 
-## 13) kuratchi.runtime.ts
+## 13) src/server/runtime.hook.ts
 
 Optional runtime hook file. Export a RuntimeDefinition to intercept requests
 before they reach the framework router. Used for agent request routing,
@@ -519,7 +519,7 @@ const runtime: RuntimeDefinition = {
 
 export default runtime;
 
-The runtime file lives at src/kuratchi.runtime.ts (sibling to src/routes/).
+The runtime hook file lives at src/server/runtime.hook.ts.
 
 ## 14) Minimal Hello World
 

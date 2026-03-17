@@ -2,7 +2,7 @@ import type { RouteContext } from '@kuratchi/js';
 import { handleCorsPreflight, jsonResponse, requirePlatformToken } from '$server/api/utils';
 import { createAiSession, getAiSession } from '$server/database/ai-sessions';
 import { signAgentConnectionToken } from '$server/ai/live-auth';
-import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiAiModel } from '$server/ai/models';
+import { DEFAULT_KURATCHI_AI_MODEL, resolveKuratchiIdeModel } from '$server/ai/models';
 const AGENT_NAME = 'KuratchiIdeSession';
 const CONNECTION_TTL_MS = 12 * 60 * 60 * 1000;
 const LIVE_BASE_PATH = 'api/v1/ai/ide/live';
@@ -24,7 +24,7 @@ export async function POST(ctx: RouteContext): Promise<Response> {
     session = await createAiSession({
       id: sessionId,
       organizationId: auth.organizationId,
-      model: resolveKuratchiAiModel(body.model ?? DEFAULT_KURATCHI_AI_MODEL),
+      model: resolveKuratchiIdeModel(body.model ?? DEFAULT_KURATCHI_AI_MODEL),
       title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'New session',
       messageCount: 0,
     });

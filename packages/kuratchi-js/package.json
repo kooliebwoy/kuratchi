@@ -1,6 +1,6 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
     "type": "module",
     "main": "./dist/index.js",

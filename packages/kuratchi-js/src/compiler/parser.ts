@@ -854,6 +854,19 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     for (const name of loadReturnVars) {
       if (!dataVars.includes(name)) dataVars.push(name);
     }
+
+    // Server import named bindings are also data vars (available in templates)
+    for (const line of serverImports) {
+      const namesMatch = line.match(/import\s*\{([^}]+)\}/);
+      if (!namesMatch) continue;
+      for (const part of namesMatch[1].split(',')) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        const segments = trimmed.split(/\s+as\s+/);
+        const localName = (segments[1] || segments[0]).trim();
+        if (localName && !dataVars.includes(localName)) dataVars.push(localName);
+      }
+    }
   }
 
   const hasLoad = scriptBody.length > 0 || !!loadFunction;

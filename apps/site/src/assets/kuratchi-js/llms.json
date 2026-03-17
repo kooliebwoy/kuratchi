@@ -188,7 +188,7 @@
     "note": "Optional — compiler falls back to defaults without it"
   },
   "kuratchi_runtime": {
-    "file": "src/kuratchi.runtime.ts",
+    "file": "src/server/runtime.hook.ts",
     "export": "default RuntimeDefinition",
     "hooks": {
       "agents.request": "Intercept requests before framework router — receives (ctx, next)"

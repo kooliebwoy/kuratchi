@@ -407,7 +407,7 @@ export default defineConfig({
 - type: 'do' marks a Durable Object SQLite database
 - Schema is used for validation, migration generation, and JSON auto-handling
 
-## 9) kuratchi.runtime.ts
+## 9) src/server/runtime.hook.ts
 
 The ORM integrates natively with the Kuratchi framework runtime.
 In Durable Object .do.ts files, this.db is the ORM instance:

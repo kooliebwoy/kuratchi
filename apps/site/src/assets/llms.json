@@ -18,6 +18,6 @@
   },
   "shared_config": {
     "kuratchi_config_ts": "Declarative config for ORM, Auth, UI, and Durable Object integrations",
-    "kuratchi_runtime_ts": "Optional runtime middleware for agent routing and pre-route hooks"
+    "src_server_runtime_hook_ts": "Optional server runtime hook for agent routing and pre-route hooks"
   }
 }

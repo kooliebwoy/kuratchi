@@ -34,6 +34,13 @@
       "remote": true
     }
   ],
+  // "vpc_services": [
+  //   {
+  //     "binding": "VPC_SERVICE",
+  //     "service_id": "019cf80a-4f90-7ba3-8fd1-7e89ad3f348d",
+  //     "remote": true
+  //   }
+  // ],
   "durable_objects": {
     "bindings": [
       {
