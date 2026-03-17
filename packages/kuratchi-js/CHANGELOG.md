@@ -1,5 +1,11 @@
 # @kuratchi/js
 
+## 0.0.13
+
+### Patch Changes
+
+- Move the runtime hook convention to `src/server/runtime.hook.ts` and fix async route compilation so imported action functions are not leaked into generated load return values.
+
 ## 0.0.12
 
 ### Patch Changes

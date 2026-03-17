@@ -133,7 +133,44 @@ const href = await Promise.resolve(pathname + url.search);
     expect(routesCode).toContain("const pathname = ");
     expect(routesCode).toContain("const url = ");
     expect(routesCode).toContain("const href = await Promise.resolve(pathname + url.search);");
-  });  it('rejects @kuratchi/js/environment imports in client reactive scripts', () => {
+  });
+
+  it('does not return imported action functions from async route load output', () => {
+    const projectDir = createTempProject('async-action-load');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { getUser, createUser } from '$server/actions';
+const user = await getUser();
+</script>
+
+<form action={createUser} method="POST"></form>
+<div>{user.name}</div>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'actions.ts'),
+      `export async function getUser() {
+  return { name: 'Ada' };
+}
+
+export async function createUser(formData: FormData) {
+  return formData;
+}
+`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain("actions: { 'createUser': __m0.createUser }");
+    expect(routesCode).not.toContain('return { user, createUser');
+    expect(routesCode).not.toContain('return { user, getUser, createUser');
+  });
+
+  it('rejects @kuratchi/js/environment imports in client reactive scripts', () => {
     const projectDir = createTempProject('framework-dev-client');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
