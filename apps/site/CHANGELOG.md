@@ -1,5 +1,12 @@
 # @kuratchi/site
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies
+  - @kuratchi/js@0.0.12
+
 ## 0.0.7
 
 ### Patch Changes

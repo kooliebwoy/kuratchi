@@ -1,7 +1,8 @@
 {
   "name": "@kuratchi/orm",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Lightweight D1/SQLite ORM for Cloudflare Workers",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

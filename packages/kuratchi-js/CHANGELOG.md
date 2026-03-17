@@ -1,5 +1,11 @@
 # @kuratchi/js
 
+## 0.0.12
+
+### Patch Changes
+
+- Add explicit MIT license metadata and package license files so both packages can be published and consumed as public open source packages.
+
 ## 0.0.10
 
 ### Patch Changes

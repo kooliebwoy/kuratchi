@@ -1,6 +1,6 @@
 {
   "name": "@kuratchi/auth",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Config-driven auth for KuratchiJS â€” credentials, OAuth, RBAC, rate limiting, Turnstile",
   "type": "module",
   "main": "src/index.ts",
@@ -12,6 +12,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@kuratchi/orm": "^0.0.2"
+    "@kuratchi/orm": "^0.0.3"
   }
 }

@@ -1,16 +1,18 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.11",
+    "version": "0.0.12",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
+    "license": "MIT",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "bin": {
-        "kuratchi": "./dist/cli.js"
+        "kuratchi": "dist/cli.js"
     },
     "files": [
         "dist",
-        "README.md"
+        "README.md",
+        "LICENSE"
     ],
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
