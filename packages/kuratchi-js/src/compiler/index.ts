@@ -526,31 +526,47 @@ export function compile(options: CompileOptions): string {
     if(typeof dialog.showModal === 'function') dialog.showModal();
   }, true);
   (function initPoll(){
-    var prev = {};
+    // Parse human-readable interval: 2s, 500ms, 1m, 30s (default 30s)
+    function parseInterval(str){
+      if(!str) return 30000;
+      var m = str.match(/^(\d+(?:\.\d+)?)(ms|s|m)?$/i);
+      if(!m) return 30000;
+      var n = parseFloat(m[1]);
+      var u = (m[2] || 's').toLowerCase();
+      if(u === 'ms') return n;
+      if(u === 'm') return n * 60000;
+      return n * 1000;
+    }
     function bindPollEl(el){
       if(!el || !el.getAttribute) return;
       if(el.getAttribute('data-kuratchi-poll-bound') === '1') return;
       var fn = el.getAttribute('data-poll');
       if(!fn) return;
       el.setAttribute('data-kuratchi-poll-bound', '1');
-      var args = el.getAttribute('data-poll-args') || '[]';
-      var iv = parseInt(el.getAttribute('data-interval') || '', 10) || 3000;
-      var key = String(fn) + args;
-      if(!(key in prev)) prev[key] = null;
+      var pollId = el.getAttribute('data-poll-id');
+      if(!pollId) return; // Server must provide stable poll ID
+      var baseIv = parseInterval(el.getAttribute('data-interval'));
+      var maxIv = Math.min(baseIv * 10, 300000); // cap at 5 minutes
+      var backoff = el.getAttribute('data-backoff') !== 'false';
+      var prevHtml = el.innerHTML;
+      var currentIv = baseIv;
       (function tick(){
         setTimeout(function(){
-          fetch(location.pathname + '?_rpc=' + encodeURIComponent(String(fn)) + '&_args=' + encodeURIComponent(args), { headers: { 'x-kuratchi-rpc': '1' } })
-            .then(function(r){ return r.json(); })
-            .then(function(j){
-              if(j && j.ok){
-                var s = JSON.stringify(j.data);
-                if(prev[key] !== null && prev[key] !== s){ location.reload(); return; }
-                prev[key] = s;
+          // Request only the fragment, not the full page
+          fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
+            .then(function(r){ return r.text(); })
+            .then(function(html){
+              if(prevHtml !== html){
+                el.innerHTML = html;
+                prevHtml = html;
+                currentIv = baseIv; // Reset backoff on change
+              } else if(backoff && currentIv < maxIv){
+                currentIv = Math.min(currentIv * 1.5, maxIv);
               }
               tick();
             })
-            .catch(function(){ tick(); });
-        }, iv);
+            .catch(function(){ currentIv = baseIv; tick(); });
+        }, currentIv);
       })();
     }
     function scan(){
@@ -1356,6 +1372,7 @@ export function compile(options: CompileOptions): string {
     authConfig,
     doConfig,
     doHandlers,
+    workflowConfig,
     isDev: options.isDev ?? false,
     isLayoutAsync,
     compiledLayoutActions,
@@ -2712,6 +2729,7 @@ function generateRoutesModule(opts: {
   authConfig: AuthConfigEntry | null;
   doConfig: DoConfigEntry[];
   doHandlers: DoHandlerEntry[];
+  workflowConfig: WorkerClassConfigEntry[];
   isLayoutAsync: boolean;
   compiledLayoutActions: string | null;
   hasRuntime: boolean;
@@ -3073,8 +3091,34 @@ ${initLines.join('\n')}
     }
 
     doImports = doImportLines.join('\n');
-    doClassCode = `\n// �"��"� Durable Object Classes (generated) �"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"�\n\n` + doClassLines.join('\n') + '\n';
+    doClassCode = `\n// ── Durable Object Classes (generated) ─────────────────────────\n\n` + doClassLines.join('\n') + '\n';
     doResolverInit = `\nfunction __initDoResolvers() {\n${doResolverLines.join('\n')}\n}\n`;
+  }
+
+  // Generate workflow status RPC handlers for auto-discovered workflows
+  // Naming: migration.workflow.ts -> migrationWorkflowStatus(instanceId)
+  let workflowStatusRpc = '';
+  if (opts.workflowConfig.length > 0) {
+    const rpcLines: string[] = [];
+    rpcLines.push(`\n// ── Workflow Status RPCs (auto-generated) ─────────────────────`);
+    rpcLines.push(`const __workflowStatusRpc = {`);
+    for (const wf of opts.workflowConfig) {
+      // file: src/server/migration.workflow.ts -> camelCase RPC name: migrationWorkflowStatus
+      const baseName = wf.file.split('/').pop()?.replace(/\.workflow\.ts$/, '') || '';
+      const camelName = baseName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const rpcName = `${camelName}WorkflowStatus`;
+      rpcLines.push(`  '${rpcName}': async (instanceId) => {`);
+      rpcLines.push(`    if (!instanceId) return { status: 'unknown', error: { name: 'Error', message: 'Missing instanceId' } };`);
+      rpcLines.push(`    try {`);
+      rpcLines.push(`      const instance = await __env.${wf.binding}.get(instanceId);`);
+      rpcLines.push(`      return await instance.status();`);
+      rpcLines.push(`    } catch (err) {`);
+      rpcLines.push(`      return { status: 'errored', error: { name: err?.name || 'Error', message: err?.message || 'Unknown error' } };`);
+      rpcLines.push(`    }`);
+      rpcLines.push(`  },`);
+    }
+    rpcLines.push(`};`);
+    workflowStatusRpc = rpcLines.join('\n');
   }
 
   return `// Generated by KuratchiJS compiler �" do not edit.
@@ -3082,8 +3126,9 @@ ${opts.isDev ? '\nglobalThis.__kuratchi_DEV__ = true;\n' : ''}
 ${workerImport}
 ${contextImport}
 ${runtimeImport ? runtimeImport + '\n' : ''}${migrationImports ? migrationImports + '\n' : ''}${authPluginImports ? authPluginImports + '\n' : ''}${doImports ? doImports + '\n' : ''}${opts.serverImports.join('\n')}
+${workflowStatusRpc}
 
-// �"��"� Assets �"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"�
+// ── Assets ─────────────────────────────────────────────────────
 
 const __assets = {
 ${opts.compiledAssets.map(a => `  ${JSON.stringify(a.name)}: { content: ${JSON.stringify(a.content)}, mime: ${JSON.stringify(a.mime)}, etag: ${JSON.stringify(a.etag)} }`).join(',\n')}
@@ -3212,8 +3257,49 @@ function __isSameOrigin(request, url) {
   try { return new URL(origin).origin === url.origin; } catch { return false; }
 }
 
-${opts.isLayoutAsync ? 'async ' : ''}function __render(route, data) {
+// Extract fragment content by ID from rendered HTML
+function __extractFragment(html, fragmentId) {
+  // Find the element with data-poll-id="fragmentId" and extract its innerHTML
+  const escaped = fragmentId.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+  const openTagRegex = new RegExp('<([a-z][a-z0-9]*)\\\\s[^>]*data-poll-id="' + escaped + '"[^>]*>', 'i');
+  const match = html.match(openTagRegex);
+  if (!match) return null;
+  const tagName = match[1];
+  const startIdx = match.index + match[0].length;
+  // Find matching closing tag (handle nesting)
+  let depth = 1;
+  let i = startIdx;
+  const closeTag = '</' + tagName + '>';
+  const openTag = '<' + tagName;
+  while (i < html.length && depth > 0) {
+    const nextClose = html.indexOf(closeTag, i);
+    const nextOpen = html.indexOf(openTag, i);
+    if (nextClose === -1) break;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      i = nextOpen + openTag.length;
+    } else {
+      depth--;
+      if (depth === 0) return html.slice(startIdx, nextClose);
+      i = nextClose + closeTag.length;
+    }
+  }
+  return null;
+}
+
+${opts.isLayoutAsync ? 'async ' : ''}function __render(route, data, fragmentId) {
   let html = route.render(data);
+  
+  // Fragment request: return only the fragment's innerHTML
+  if (fragmentId) {
+    const fragment = __extractFragment(html, fragmentId);
+    if (fragment !== null) {
+      return new Response(fragment, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    }
+    return new Response('Fragment not found', { status: 404 });
+  }
+  
+  // Full page render
   const headMatch = html.match(/<head>([\\s\\S]*?)<\\/head>/);
   if (headMatch) {
     html = html.replace(headMatch[0], '');
@@ -3299,6 +3385,7 @@ ${migrationInit ? '    await __runMigrations();\n' : ''}${authInit ? '    __init
     const __coreFetch = async () => {
       const request = __runtimeCtx.request;
       const url = __runtimeCtx.url;
+      const __fragmentId = request.headers.get('x-kuratchi-fragment');
 ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n      { const __rlRes = await __checkRL(); if (__rlRes) return __secHeaders(__rlRes); }\n' : ''}${ac?.hasTurnstile ? '      // Turnstile bot protection\n      { const __tsRes = await __checkTS(); if (__tsRes) return __secHeaders(__tsRes); }\n' : ''}${ac?.hasGuards ? '      // Route guards - redirect if not authenticated\n      { const __gRes = __checkGuard(); if (__gRes) return __secHeaders(__gRes); }\n' : ''}
 
       // Serve static assets from src/assets/
@@ -3357,7 +3444,9 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
 
       // RPC call: GET ?_rpc=fnName&_args=[...] -> JSON response
       const __rpcName = url.searchParams.get('_rpc');
-      if (request.method === 'GET' && __rpcName && route.rpc && Object.hasOwn(route.rpc, __rpcName)) {
+      const __hasRouteRpc = __rpcName && route.rpc && Object.hasOwn(route.rpc, __rpcName);
+      const __hasWorkflowRpc = __rpcName && typeof __workflowStatusRpc !== 'undefined' && Object.hasOwn(__workflowStatusRpc, __rpcName);
+      if (request.method === 'GET' && __rpcName && (__hasRouteRpc || __hasWorkflowRpc)) {
         if (request.headers.get('x-kuratchi-rpc') !== '1') {
           return __secHeaders(new Response(JSON.stringify({ ok: false, error: 'Forbidden' }), {
             status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
@@ -3370,7 +3459,8 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
             const __parsed = JSON.parse(__rpcArgsStr);
             __rpcArgs = Array.isArray(__parsed) ? __parsed : [];
           }
-          const __rpcResult = await route.rpc[__rpcName](...__rpcArgs);
+          const __rpcFn = __hasRouteRpc ? route.rpc[__rpcName] : __workflowStatusRpc[__rpcName];
+          const __rpcResult = await __rpcFn(...__rpcArgs);
           return __secHeaders(new Response(JSON.stringify({ ok: true, data: __rpcResult }), {
             headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
           }));
@@ -3430,7 +3520,7 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
             Object.keys(__allActions).forEach(function(k) { if (!(k in data)) data[k] = { error: undefined, loading: false, success: false }; });
             const __errMsg = (err && err.isActionError) ? err.message : (typeof __kuratchi_DEV__ !== 'undefined' && err && err.message) ? err.message : 'Action failed';
             data[actionName] = { error: __errMsg, loading: false, success: false };
-            return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data);
+            return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data, __fragmentId);
           }
           // Fetch-based actions return lightweight JSON (no page re-render)
           if (isFetchAction) {
@@ -3454,7 +3544,7 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
         data.breadcrumbs = __getLocals().__breadcrumbs ?? [];
         const __allActionsGet = Object.assign({}, route.actions, __layoutActions || {});
         Object.keys(__allActionsGet).forEach(function(k) { if (!(k in data)) data[k] = { error: undefined, loading: false, success: false }; });
-        return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data);
+        return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data, __fragmentId);
       } catch (err) {
         if (err && err.isRedirectError) {
           const __redirectTo = err.location || url.pathname;

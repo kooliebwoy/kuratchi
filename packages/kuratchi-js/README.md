@@ -349,13 +349,30 @@ Navigate to a URL on click (respects `http:`/`https:` only):
 
 ### `data-poll` — polling
 
-Refresh a section automatically on an interval (milliseconds):
+Poll and update an element's content at a human-readable interval with automatic exponential backoff:
 
 ```html
-<div data-refresh="/status" data-poll="3000">
+<div data-poll={getStatus(itemId)} data-interval="2s">
   {status}
 </div>
 ```
+
+**How it works:**
+1. Client sends a fragment request with `x-kuratchi-fragment` header
+2. Server re-renders the route but returns **only the fragment's innerHTML** — not the full page
+3. Client swaps the element's content — minimal payload, no full page reload
+
+This fragment-based architecture is the foundation for partial rendering and scales to Astro-style islands.
+
+**Interval formats:**
+- `2s` — 2 seconds
+- `500ms` — 500 milliseconds
+- `1m` — 1 minute
+- Default: `30s` with exponential backoff (30s → 45s → 67s → ... capped at 5 minutes)
+
+**Options:**
+- `data-interval` — polling interval (human-readable, default `30s`)
+- `data-backoff="false"` — disable exponential backoff
 
 ### `data-select-all` / `data-select-item` — checkbox groups
 
@@ -541,6 +558,46 @@ Examples:
 - `migration.workflow.ts` → `MIGRATION_WORKFLOW` binding
 - `bond.workflow.ts` → `BOND_WORKFLOW` binding
 - `new-site.workflow.ts` → `NEW_SITE_WORKFLOW` binding
+
+### Workflow Status Polling
+
+Kuratchi auto-generates status polling RPCs for each discovered workflow. Poll workflow status with zero setup:
+
+```html
+<div data-poll={migrationWorkflowStatus(instanceId)} data-interval="2s">
+  if (workflowStatus.status === 'running') {
+    <div class="spinner">Running...</div>
+  } else if (workflowStatus.status === 'complete') {
+    <div>✓ Complete</div>
+  }
+</div>
+```
+
+The element's innerHTML updates automatically when the workflow status changes — no page reload needed.
+
+**Auto-generated RPC naming** (camelCase):
+- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId)`
+- `james-bond.workflow.ts` → `jamesBondWorkflowStatus(instanceId)`
+- `site.workflow.ts` → `siteWorkflowStatus(instanceId)`
+
+**Multiple workflows on one page:** Each `data-poll` element is independent. You can poll multiple workflow instances without collision:
+
+```html
+for (const job of jobs) {
+  <div data-poll={migrationWorkflowStatus(job.instanceId)} data-interval="2s">
+    {job.name}: polling...
+  </div>
+}
+```
+
+The status RPC returns the Cloudflare `InstanceStatus` object:
+```ts
+{
+  status: 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'unknown';
+  error?: { name: string; message: string; };
+  output?: unknown;
+}
+```
 
 ## Containers
 
