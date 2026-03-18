@@ -100,24 +100,44 @@
     "data-action": "Call server action via fetch, no page reload",
     "data-refresh": "Re-fetch content after data-action succeeds",
     "data-get": "Declarative client-side navigation on click",
-    "data-poll": "Auto-refresh on interval (milliseconds)",
+    "data-poll": {
+      "description": "Fragment-based polling with human-readable intervals",
+      "syntax": "data-poll={rpcFunction(args)} data-interval=\"2s\"",
+      "intervals": ["2s", "500ms", "1m", "default: 30s with exponential backoff"],
+      "options": ["data-interval", "data-backoff=\"false\""],
+      "behavior": "Server returns only fragment innerHTML, client swaps content"
+    },
     "data-select-all": "Sync 'select all' checkbox with group",
     "data-select-item": "Individual checkbox in a select group"
   },
   "durable_objects": {
     "handler_suffix": ".do.ts",
-    "recommended_mode": "function — exported functions become RPC methods",
-    "class_mode": "kuratchiDO base class supported",
-    "proxy_import_alias": "$durable-objects/*",
-    "context_in_function_mode": ["this.db", "this.env", "this.ctx"],
-    "lifecycle_exports": ["onInit()", "onAlarm(...args)", "onMessage(...args)"],
+    "mode": "class-only — extend native DurableObject from cloudflare:workers",
+    "auto_discovery": true,
+    "proxy_import_alias": "$do/*",
+    "naming_convention": "user.do.ts → binding USER_DO",
+    "override_binding": "static binding = 'CUSTOM_BINDING'",
+    "rpc_rules": {
+      "public_methods": "RPC-accessible",
+      "underscore_prefix": "NOT RPC-accessible",
+      "private_protected": "NOT RPC-accessible",
+      "lifecycle_methods": "NOT RPC-accessible (constructor, fetch, alarm, etc.)"
+    },
     "quickstart_steps": [
       "Create src/server/<name>.do.ts",
-      "Export functions to expose RPC methods",
-      "Configure durableObjects in kuratchi.config.ts",
-      "Add wrangler durable_objects binding + migrations",
-      "Import from $durable-objects/<name>"
-    ]
+      "Export default class extending DurableObject",
+      "Public methods become RPC methods automatically",
+      "Import from $do/<name> (without .do suffix)",
+      "Framework auto-syncs to wrangler.jsonc"
+    ],
+    "config_optional": "Only needed for stubId (auth integration)"
+  },
+  "workflows": {
+    "handler_suffix": ".workflow.ts",
+    "auto_discovery": true,
+    "base_class": "WorkflowEntrypoint from cloudflare:workers",
+    "status_rpc_naming": "migration.workflow.ts → migrationWorkflowStatus(instanceId)",
+    "polling_example": "data-poll={migrationWorkflowStatus(job.instanceId)} data-interval=\"2s\""
   },
   "agents": {
     "handler_suffix": ".agent.ts",
@@ -182,10 +202,11 @@
         "config_fn": "kuratchiAuthConfig({ cookieName, sessionEnabled, guards, rateLimit, turnstile })"
       },
       "durableObjects": {
-        "format": "{ BINDING: { className, files } }"
+        "format": "{ BINDING: { stubId } }",
+        "note": "Only needed for auth-based stub resolution"
       }
     },
-    "note": "Optional — compiler falls back to defaults without it"
+    "note": "Optional — Durable Objects are auto-discovered, config only needed for ORM/auth/UI integrations"
   },
   "kuratchi_runtime": {
     "file": "src/server/runtime.hook.ts",
