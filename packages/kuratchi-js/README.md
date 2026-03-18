@@ -414,77 +414,70 @@ Durable Object behavior is enabled by filename suffix.
 - Any file not ending in `.do.ts` is treated as a normal server module.
 - No required folder name. `src/server/auth.do.ts`, `src/server/foo/bar/sites.do.ts`, etc. all work.
 
-### Function mode (recommended)
+### Writing a Durable Object
 
-Write plain exported functions in a `.do.ts` file. Exported functions become DO RPC methods.
-Use `this.db`, `this.env`, and `this.ctx` inside those functions.
-
-```ts
-// src/server/auth/auth.do.ts
-import { getCurrentUser, hashPassword } from '@kuratchi/auth';
-import { redirect } from '@kuratchi/js';
-
-async function randomPassword(length = 24): Promise<string> {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let out = '';
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
-
-export async function getOrgUsers() {
-  const result = await this.db.users.orderBy({ createdAt: 'asc' }).many();
-  return result.data ?? [];
-}
-
-export async function createOrgUser(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user?.orgId) throw new Error('Not authenticated');
-
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  if (!email) throw new Error('Email is required');
-
-  const passwordHash = await hashPassword(await randomPassword(), undefined, this.env.AUTH_SECRET);
-  await this.db.users.insert({ email, role: 'member', passwordHash });
-  redirect('/settings/users');
-}
-```
-
-Optional lifecycle exports in function mode:
-
-- `export async function onInit()`
-- `export async function onAlarm(...args)`
-- `export function onMessage(...args)`
-
-These lifecycle names are not exposed as RPC methods.
-
-### Class mode (optional)
-
-Class-based handlers are still supported in `.do.ts` files:
+Extend the native Cloudflare `DurableObject` class. Public methods automatically become RPC-accessible:
 
 ```ts
-import { kuratchiDO } from '@kuratchi/js';
+// src/server/user.do.ts
+import { DurableObject } from 'cloudflare:workers';
 
-export default class NotesDO extends kuratchiDO {
-  static binding = 'NOTES_DO';
+export default class UserDO extends DurableObject {
+  async getName() {
+    return await this.ctx.storage.get('name');
+  }
 
-  async getNotes() {
-    return (await this.db.notes.orderBy({ created_at: 'desc' }).many()).data ?? [];
+  async setName(name: string) {
+    this._validate(name);
+    await this.ctx.storage.put('name', name);
+  }
+
+  // NOT RPC-accessible (underscore prefix)
+  _validate(name: string) {
+    if (!name) throw new Error('Name required');
+  }
+
+  // NOT RPC-accessible (lifecycle method)
+  async alarm() {
+    // Handle alarm
   }
 }
 ```
 
-Declare it in `kuratchi.config.ts` and in `wrangler.jsonc`. The compiler exports DO classes from `.kuratchi/worker.js` automatically.
+**RPC rules:**
+- **Public methods** (`getName`, `setName`) → RPC-accessible
+- **Underscore prefix** (`_validate`) → NOT RPC-accessible
+- **Private/protected** (`private foo()`) → NOT RPC-accessible
+- **Lifecycle methods** (`constructor`, `fetch`, `alarm`, `webSocketMessage`, etc.) → NOT RPC-accessible
+
+### Using from routes
+
+Import from `$do/<filename>` (without the `.do` suffix):
+
+```html
+<script server>
+import { getName, setName } from '$do/user';
+
+const name = await getName();
+</script>
+
+<h1>Hello, {name}</h1>
+```
+
+The framework handles RPC wiring automatically.
+
+### Configuration
+
+Declare in `kuratchi.config.ts` and `wrangler.jsonc`:
 
 ```jsonc
 // wrangler.jsonc
 {
   "durable_objects": {
-    "bindings": [{ "name": "NOTES_DO", "class_name": "NotesDO" }]
+    "bindings": [{ "name": "USER_DO", "class_name": "UserDO" }]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["NotesDO"] }
+    { "tag": "v1", "new_sqlite_classes": ["UserDO"] }
   ]
 }
 ```

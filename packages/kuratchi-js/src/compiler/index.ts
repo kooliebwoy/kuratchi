@@ -2410,8 +2410,8 @@ function discoverContainerFiles(projectDir: string): WorkerClassConfigEntry[] {
 
 /**
  * Scan DO handler files.
- * - Class mode: default class extends kuratchiDO
- * - Function mode: exported functions in *.do.ts files (compiler wraps into DO class)
+ * Class mode only: default class extends DurableObject
+ * Public methods are auto-wired for RPC.
  */
 function discoverDoHandlers(
   srcDir: string,
@@ -2443,12 +2443,12 @@ function discoverDoHandlers(
     const file = path.basename(absPath);
     const source = fs.readFileSync(absPath, 'utf-8');
 
-    const exportedFunctions = extractExportedFunctions(source);
-    const hasClass = /extends\s+kuratchiDO\b/.test(source);
-    if (!hasClass && exportedFunctions.length === 0) continue;
+    // Class mode only: extends DurableObject (native Cloudflare class)
+    const hasClass = /extends\s+DurableObject\b/.test(source);
+    if (!hasClass) continue;
 
-    // Extract class name when class mode is used.
-    const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+kuratchiDO/);
+    // Extract class name
+    const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+DurableObject/);
     const className = classMatch?.[1] ?? null;
     if (hasClass && !className) continue;
 
@@ -2474,8 +2474,8 @@ function discoverDoHandlers(
     if (!binding) continue;
     if (!bindings.has(binding)) continue;
 
-    // Extract class methods in class mode
-    const classMethods = className ? extractClassMethods(source, className) : [];
+    // Extract public class methods for RPC
+    const classMethods = extractClassMethods(source, className!);
 
     const fileName = file.replace(/\.ts$/, '');
     const existing = fileNameToAbsPath.get(fileName);
@@ -2490,10 +2490,10 @@ function discoverDoHandlers(
       fileName,
       absPath,
       binding,
-      mode: hasClass ? 'class' : 'function',
-      className: className ?? undefined,
+      mode: 'class',
+      className: className!,
       classMethods,
-      exportedFunctions,
+      exportedFunctions: [],
     });
   }
 
@@ -2502,10 +2502,11 @@ function discoverDoHandlers(
 
 /**
  * Extract method names from a class body using brace-balanced parsing.
+ * Only public methods (no private/protected/underscore prefix) are RPC-accessible.
  */
 function extractClassMethods(source: string, className: string): DoClassMethodEntry[] {
-  // Find: class ClassName extends kuratchiDO {
-  const classIdx = source.search(new RegExp(`class\\s+${className}\\s+extends\\s+kuratchiDO`));
+  // Find: class ClassName extends DurableObject {
+  const classIdx = source.search(new RegExp(`class\\s+${className}\\s+extends\\s+DurableObject`));
   if (classIdx === -1) return [];
 
   const braceStart = source.indexOf('{', classIdx);
@@ -2592,23 +2593,25 @@ function extractExportedFunctions(source: string): string[] {
  * Generate a proxy module for a DO handler file.
  *
  * The proxy provides auto-RPC function exports.
- * - Class mode: public class methods become RPC exports.
- * - Function mode: exported functions become RPC exports, excluding lifecycle hooks.
+ * Class mode only: public class methods become RPC exports.
+ * Methods starting with underscore or marked private/protected are excluded.
  */
 function generateHandlerProxy(handler: DoHandlerEntry, projectDir: string): string {
   const doDir = path.join(projectDir, '.kuratchi', 'do');
   const origRelPath = path.relative(doDir, handler.absPath).replace(/\\/g, '/').replace(/\.ts$/, '.js');
   const handlerLocal = `__handler_${toSafeIdentifier(handler.fileName)}`;
-  const lifecycle = new Set(['onInit', 'onAlarm', 'onMessage']);
-  const rpcFunctions =
-    handler.mode === 'function'
-      ? handler.exportedFunctions.filter((n) => !lifecycle.has(n))
-      : handler.classMethods.filter((m) => m.visibility === 'public').map((m) => m.name);
+  // Lifecycle methods excluded from RPC
+  const lifecycle = new Set(['constructor', 'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError']);
+  
+  // Only public methods (not starting with _) are RPC-accessible
+  const rpcFunctions = handler.classMethods
+    .filter((m) => m.visibility === 'public' && !m.name.startsWith('_') && !lifecycle.has(m.name))
+    .map((m) => m.name);
 
   const methods = handler.classMethods.map((m) => ({ ...m }));
   const methodMap = new Map(methods.map((m) => [m.name, m]));
   let changed = true;
-  while (changed && handler.mode === 'class') {
+  while (changed) {
     changed = false;
     for (const m of methods) {
       if (m.hasWorkerContextCalls) continue;
@@ -2623,17 +2626,15 @@ function generateHandlerProxy(handler: DoHandlerEntry, projectDir: string): stri
     }
   }
 
-  const workerContextMethods = handler.mode === 'class'
-    ? methods.filter((m) => m.visibility === 'public' && m.hasWorkerContextCalls).map((m) => m.name)
-    : [];
-  const asyncMethods = handler.mode === 'class'
-    ? methods.filter((m) => m.isAsync).map((m) => m.name)
-    : [];
+  const workerContextMethods = methods
+    .filter((m) => m.visibility === 'public' && m.hasWorkerContextCalls)
+    .map((m) => m.name);
+  const asyncMethods = methods.filter((m) => m.isAsync).map((m) => m.name);
 
   const lines: string[] = [
     `// Auto-generated by KuratchiJS compiler �" do not edit.`,
     `import { __getDoStub } from '${RUNTIME_DO_IMPORT}';`,
-    ...(handler.mode === 'class' ? [`import ${handlerLocal} from '${origRelPath}';`] : []),
+    `import ${handlerLocal} from '${origRelPath}';`,
     ``,
     `const __FD_TAG = '__kuratchi_form_data__';`,
     `function __isPlainObject(__v) {`,
@@ -2958,14 +2959,10 @@ ${initLines.join('\n')}
       handlersByBinding.set(h.binding, list);
     }
 
-    // Import handler files + schema for each DO
+    // Import handler files + schema for each DO (class mode only)
     for (const doEntry of opts.doConfig) {
       const handlers = handlersByBinding.get(doEntry.binding) ?? [];
       const ormDb = opts.ormDatabases.find(d => d.binding === doEntry.binding);
-      const fnHandlers = handlers.filter((h) => h.mode === 'function');
-      const initHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onInit'));
-      const alarmHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onAlarm'));
-      const messageHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onMessage'));
 
       // Import schema (paths are relative to project root; prefix ../ since we're in .kuratchi/)
       if (ormDb) {
@@ -2973,7 +2970,7 @@ ${initLines.join('\n')}
         doImportLines.push(`import { ${ormDb.schemaExportName} as __doSchema_${doEntry.binding} } from '${schemaPath}';`);
       }
 
-      // Import handler classes
+      // Import handler classes (class mode only - extends DurableObject)
       for (const h of handlers) {
         let handlerImportPath = path
           .relative(path.join(opts.projectDir, '.kuratchi'), h.absPath)
@@ -2981,27 +2978,20 @@ ${initLines.join('\n')}
           .replace(/\.ts$/, '.js');
         if (!handlerImportPath.startsWith('.')) handlerImportPath = './' + handlerImportPath;
         const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        if (h.mode === 'class') {
-          doImportLines.push(`import ${handlerVar} from '${handlerImportPath}';`);
-        } else {
-          doImportLines.push(`import * as ${handlerVar} from '${handlerImportPath}';`);
-        }
+        doImportLines.push(`import ${handlerVar} from '${handlerImportPath}';`);
       }
 
-      // Generate DO class
-      doClassLines.push(`export class ${doEntry.className} extends __DO {`);
-      doClassLines.push(`  constructor(ctx, env) {`);
-      doClassLines.push(`    super(ctx, env);`);
+      // Generate DO class that extends the user's class (for ORM integration)
+      // If no ORM, we just re-export the user's class directly
       if (ormDb) {
+        const handler = handlers[0];
+        const handlerVar = handler ? `__handler_${toSafeIdentifier(handler.fileName)}` : '__DO';
+        const baseClass = handler ? handlerVar : '__DO';
+        doClassLines.push(`export class ${doEntry.className} extends ${baseClass} {`);
+        doClassLines.push(`  constructor(ctx, env) {`);
+        doClassLines.push(`    super(ctx, env);`);
         doClassLines.push(`    this.db = __initDO(ctx.storage.sql, __doSchema_${doEntry.binding});`);
-      }
-      for (const h of initHandlers) {
-        const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        doClassLines.push(`    __setDoContext(this);`);
-        doClassLines.push(`    Promise.resolve(${handlerVar}.onInit.call(this)).catch((err) => console.error('[kuratchi] DO onInit failed:', err?.message || err));`);
-      }
-      doClassLines.push(`  }`);
-      if (ormDb) {
+        doClassLines.push(`  }`);
         doClassLines.push(`  async __kuratchiLogActivity(payload) {`);
         doClassLines.push(`    const now = new Date().toISOString();`);
         doClassLines.push(`    try {`);
@@ -3037,41 +3027,18 @@ ${initLines.join('\n')}
         doClassLines.push(`    if (Number.isFinite(limit) && limit > 0) return rows.slice(0, Math.floor(limit));`);
         doClassLines.push(`    return rows;`);
         doClassLines.push(`  }`);
+        doClassLines.push(`}`);
+      } else if (handlers.length > 0) {
+        // No ORM - just re-export the user's class directly
+        const handler = handlers[0];
+        const handlerVar = `__handler_${toSafeIdentifier(handler.fileName)}`;
+        doClassLines.push(`export { ${handlerVar} as ${doEntry.className} };`);
       }
-      // Function-mode lifecycle dispatchers
-      if (alarmHandlers.length > 0) {
-        doClassLines.push(`  async alarm(...args) {`);
-        doClassLines.push(`    __setDoContext(this);`);
-        for (const h of alarmHandlers) {
-          const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-          doClassLines.push(`    await ${handlerVar}.onAlarm.call(this, ...args);`);
-        }
-        doClassLines.push(`  }`);
-      }
-      if (messageHandlers.length > 0) {
-        doClassLines.push(`  webSocketMessage(...args) {`);
-        doClassLines.push(`    __setDoContext(this);`);
-        for (const h of messageHandlers) {
-          const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-          doClassLines.push(`    ${handlerVar}.onMessage.call(this, ...args);`);
-        }
-        doClassLines.push(`  }`);
-      }
-      doClassLines.push(`}`);
 
-      // Apply handler methods to prototype (outside class body)
+      // Register class binding for RPC
       for (const h of handlers) {
         const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        if (h.mode === 'class') {
-          doClassLines.push(`for (const __k of Object.getOwnPropertyNames(${handlerVar}.prototype)) { if (__k !== 'constructor') ${doEntry.className}.prototype[__k] = function(...__a){ __setDoContext(this); return ${handlerVar}.prototype[__k].apply(this, __a.map(__decodeDoArg)); }; }`);
-          doResolverLines.push(`  __registerDoClassBinding(${handlerVar}, '${doEntry.binding}');`);
-        } else {
-          const lifecycle = new Set(['onInit', 'onAlarm', 'onMessage']);
-          for (const fn of h.exportedFunctions) {
-            if (lifecycle.has(fn)) continue;
-            doClassLines.push(`${doEntry.className}.prototype[${JSON.stringify(fn)}] = function(...__a){ __setDoContext(this); return ${handlerVar}.${fn}.apply(this, __a.map(__decodeDoArg)); };`);
-          }
-        }
+        doResolverLines.push(`  __registerDoClassBinding(${handlerVar}, '${doEntry.binding}');`);
       }
 
       // Register stub resolver
