@@ -526,31 +526,47 @@ export function compile(options: CompileOptions): string {
     if(typeof dialog.showModal === 'function') dialog.showModal();
   }, true);
   (function initPoll(){
-    var prev = {};
+    // Parse human-readable interval: 2s, 500ms, 1m, 30s (default 30s)
+    function parseInterval(str){
+      if(!str) return 30000;
+      var m = str.match(/^(\d+(?:\.\d+)?)(ms|s|m)?$/i);
+      if(!m) return 30000;
+      var n = parseFloat(m[1]);
+      var u = (m[2] || 's').toLowerCase();
+      if(u === 'ms') return n;
+      if(u === 'm') return n * 60000;
+      return n * 1000;
+    }
     function bindPollEl(el){
       if(!el || !el.getAttribute) return;
       if(el.getAttribute('data-kuratchi-poll-bound') === '1') return;
       var fn = el.getAttribute('data-poll');
       if(!fn) return;
       el.setAttribute('data-kuratchi-poll-bound', '1');
-      var args = el.getAttribute('data-poll-args') || '[]';
-      var iv = parseInt(el.getAttribute('data-interval') || '', 10) || 3000;
-      var key = String(fn) + args;
-      if(!(key in prev)) prev[key] = null;
+      var pollId = el.getAttribute('data-poll-id');
+      if(!pollId) return; // Server must provide stable poll ID
+      var baseIv = parseInterval(el.getAttribute('data-interval'));
+      var maxIv = Math.min(baseIv * 10, 300000); // cap at 5 minutes
+      var backoff = el.getAttribute('data-backoff') !== 'false';
+      var prevHtml = el.innerHTML;
+      var currentIv = baseIv;
       (function tick(){
         setTimeout(function(){
-          fetch(location.pathname + '?_rpc=' + encodeURIComponent(String(fn)) + '&_args=' + encodeURIComponent(args), { headers: { 'x-kuratchi-rpc': '1' } })
-            .then(function(r){ return r.json(); })
-            .then(function(j){
-              if(j && j.ok){
-                var s = JSON.stringify(j.data);
-                if(prev[key] !== null && prev[key] !== s){ location.reload(); return; }
-                prev[key] = s;
+          // Request only the fragment, not the full page
+          fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
+            .then(function(r){ return r.text(); })
+            .then(function(html){
+              if(prevHtml !== html){
+                el.innerHTML = html;
+                prevHtml = html;
+                currentIv = baseIv; // Reset backoff on change
+              } else if(backoff && currentIv < maxIv){
+                currentIv = Math.min(currentIv * 1.5, maxIv);
               }
               tick();
             })
-            .catch(function(){ tick(); });
-        }, iv);
+            .catch(function(){ currentIv = baseIv; tick(); });
+        }, currentIv);
       })();
     }
     function scan(){
@@ -798,15 +814,13 @@ export function compile(options: CompileOptions): string {
   // Read auth config from kuratchi.config.ts
   const authConfig = readAuthConfig(projectDir);
 
-  // Read Durable Object config and discover handler files
-  const doConfig = readDoConfig(projectDir);
+  // Auto-discover Durable Objects from .do.ts files (config optional, only needed for stubId)
+  const configDoEntries = readDoConfig(projectDir);
+  const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir, configDoEntries, ormDatabases);
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);
   const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agent.ts', '.agent');
-  const doHandlers = doConfig.length > 0
-    ? discoverDoHandlers(srcDir, doConfig, ormDatabases)
-    : [];
 
   // Generate handler proxy modules in .kuratchi/do/ (must happen BEFORE route processing
   // so that $durable-objects/X imports can be redirected to the generated proxies)
@@ -1356,6 +1370,7 @@ export function compile(options: CompileOptions): string {
     authConfig,
     doConfig,
     doHandlers,
+    workflowConfig,
     isDev: options.isDev ?? false,
     isLayoutAsync,
     compiledLayoutActions,
@@ -2396,73 +2411,69 @@ function discoverContainerFiles(projectDir: string): WorkerClassConfigEntry[] {
 }
 
 /**
- * Scan DO handler files.
- * - Class mode: default class extends kuratchiDO
- * - Function mode: exported functions in *.do.ts files (compiler wraps into DO class)
+ * Auto-discover Durable Objects from .do.ts files.
+ * Returns both DoConfigEntry (for wrangler sync) and DoHandlerEntry (for code gen).
+ * 
+ * Convention:
+ * - File: user.do.ts → Binding: USER_DO
+ * - Class: export default class UserDO extends DurableObject
+ * - Optional: static binding = 'CUSTOM_BINDING' to override
  */
-function discoverDoHandlers(
+function discoverDurableObjects(
   srcDir: string,
-  doConfig: DoConfigEntry[],
+  configDoEntries: DoConfigEntry[],
   ormDatabases: OrmDatabaseEntry[],
-): DoHandlerEntry[] {
+): { config: DoConfigEntry[]; handlers: DoHandlerEntry[] } {
   const serverDir = path.join(srcDir, 'server');
   const legacyDir = path.join(srcDir, 'durable-objects');
   const serverDoFiles = discoverFilesWithSuffix(serverDir, '.do.ts');
   const legacyDoFiles = discoverFilesWithSuffix(legacyDir, '.ts');
   const discoveredFiles = Array.from(new Set([...serverDoFiles, ...legacyDoFiles]));
-  if (discoveredFiles.length === 0) return [];
-
-  const bindings = new Set(doConfig.map(d => d.binding));
-  const fileToBinding = new Map<string, string>();
-  for (const entry of doConfig) {
-    for (const rawFile of entry.files ?? []) {
-      const normalized = rawFile.trim().replace(/^\.?[\\/]/, '').replace(/\\/g, '/').toLowerCase();
-      if (!normalized) continue;
-      fileToBinding.set(normalized, entry.binding);
-      const base = path.basename(normalized);
-      if (!fileToBinding.has(base)) fileToBinding.set(base, entry.binding);
-    }
+  
+  if (discoveredFiles.length === 0) {
+    return { config: configDoEntries, handlers: [] };
   }
+
+  // Build lookup from config for stubId (still needed for auth integration)
+  const configByBinding = new Map<string, DoConfigEntry>();
+  for (const entry of configDoEntries) {
+    configByBinding.set(entry.binding, entry);
+  }
+
   const handlers: DoHandlerEntry[] = [];
+  const discoveredConfig: DoConfigEntry[] = [];
   const fileNameToAbsPath = new Map<string, string>();
+  const seenBindings = new Set<string>();
 
   for (const absPath of discoveredFiles) {
     const file = path.basename(absPath);
     const source = fs.readFileSync(absPath, 'utf-8');
 
-    const exportedFunctions = extractExportedFunctions(source);
-    const hasClass = /extends\s+kuratchiDO\b/.test(source);
-    if (!hasClass && exportedFunctions.length === 0) continue;
+    // Must extend DurableObject
+    const hasClass = /extends\s+DurableObject\b/.test(source);
+    if (!hasClass) continue;
 
-    // Extract class name when class mode is used.
-    const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+kuratchiDO/);
+    // Extract class name
+    const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+DurableObject/);
     const className = classMatch?.[1] ?? null;
-    if (hasClass && !className) continue;
+    if (!className) continue;
 
-    // Binding resolution:
-    // 1) explicit static binding in class
-    // 2) config-mapped file name (supports .do.ts convention)
-    // 3) if exactly one DO binding exists, infer that binding
-    let binding: string | null = null;
+    // Derive binding from filename or static binding property
+    // user.do.ts → USER_DO
     const bindingMatch = source.match(/static\s+binding\s*=\s*['"](\w+)['"]/);
-    if (bindingMatch) {
-      binding = bindingMatch[1];
-    } else {
-      const normalizedFile = file.replace(/\\/g, '/').toLowerCase();
-      const normalizedRelFromSrc = path
-        .relative(srcDir, absPath)
-        .replace(/\\/g, '/')
-        .toLowerCase();
-      binding = fileToBinding.get(normalizedRelFromSrc) ?? fileToBinding.get(normalizedFile) ?? null;
-      if (!binding && doConfig.length === 1) {
-        binding = doConfig[0].binding;
-      }
-    }
-    if (!binding) continue;
-    if (!bindings.has(binding)) continue;
+    const baseName = file.replace(/\.do\.ts$/, '').replace(/\.ts$/, '');
+    const derivedBinding = baseName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() + '_DO';
+    const binding = bindingMatch?.[1] ?? derivedBinding;
 
-    // Extract class methods in class mode
-    const classMethods = className ? extractClassMethods(source, className) : [];
+    if (seenBindings.has(binding)) {
+      throw new Error(
+        `[KuratchiJS] Duplicate DO binding '${binding}' detected. Use 'static binding = "UNIQUE_NAME"' in one of the classes.`,
+      );
+    }
+    seenBindings.add(binding);
+
+    // Extract public class methods for RPC
+    const classMethods = extractClassMethods(source, className);
 
     const fileName = file.replace(/\.ts$/, '');
     const existing = fileNameToAbsPath.get(fileName);
@@ -2473,26 +2484,37 @@ function discoverDoHandlers(
     }
     fileNameToAbsPath.set(fileName, absPath);
 
+    // Merge with config entry if exists (for stubId)
+    const configEntry = configByBinding.get(binding);
+    
+    discoveredConfig.push({
+      binding,
+      className,
+      stubId: configEntry?.stubId,
+      files: [file],
+    });
+
     handlers.push({
       fileName,
       absPath,
       binding,
-      mode: hasClass ? 'class' : 'function',
-      className: className ?? undefined,
+      mode: 'class',
+      className,
       classMethods,
-      exportedFunctions,
+      exportedFunctions: [],
     });
   }
 
-  return handlers;
+  return { config: discoveredConfig, handlers };
 }
 
 /**
  * Extract method names from a class body using brace-balanced parsing.
+ * Only public methods (no private/protected/underscore prefix) are RPC-accessible.
  */
 function extractClassMethods(source: string, className: string): DoClassMethodEntry[] {
-  // Find: class ClassName extends kuratchiDO {
-  const classIdx = source.search(new RegExp(`class\\s+${className}\\s+extends\\s+kuratchiDO`));
+  // Find: class ClassName extends DurableObject {
+  const classIdx = source.search(new RegExp(`class\\s+${className}\\s+extends\\s+DurableObject`));
   if (classIdx === -1) return [];
 
   const braceStart = source.indexOf('{', classIdx);
@@ -2579,23 +2601,25 @@ function extractExportedFunctions(source: string): string[] {
  * Generate a proxy module for a DO handler file.
  *
  * The proxy provides auto-RPC function exports.
- * - Class mode: public class methods become RPC exports.
- * - Function mode: exported functions become RPC exports, excluding lifecycle hooks.
+ * Class mode only: public class methods become RPC exports.
+ * Methods starting with underscore or marked private/protected are excluded.
  */
 function generateHandlerProxy(handler: DoHandlerEntry, projectDir: string): string {
   const doDir = path.join(projectDir, '.kuratchi', 'do');
   const origRelPath = path.relative(doDir, handler.absPath).replace(/\\/g, '/').replace(/\.ts$/, '.js');
   const handlerLocal = `__handler_${toSafeIdentifier(handler.fileName)}`;
-  const lifecycle = new Set(['onInit', 'onAlarm', 'onMessage']);
-  const rpcFunctions =
-    handler.mode === 'function'
-      ? handler.exportedFunctions.filter((n) => !lifecycle.has(n))
-      : handler.classMethods.filter((m) => m.visibility === 'public').map((m) => m.name);
+  // Lifecycle methods excluded from RPC
+  const lifecycle = new Set(['constructor', 'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError']);
+  
+  // Only public methods (not starting with _) are RPC-accessible
+  const rpcFunctions = handler.classMethods
+    .filter((m) => m.visibility === 'public' && !m.name.startsWith('_') && !lifecycle.has(m.name))
+    .map((m) => m.name);
 
   const methods = handler.classMethods.map((m) => ({ ...m }));
   const methodMap = new Map(methods.map((m) => [m.name, m]));
   let changed = true;
-  while (changed && handler.mode === 'class') {
+  while (changed) {
     changed = false;
     for (const m of methods) {
       if (m.hasWorkerContextCalls) continue;
@@ -2610,17 +2634,15 @@ function generateHandlerProxy(handler: DoHandlerEntry, projectDir: string): stri
     }
   }
 
-  const workerContextMethods = handler.mode === 'class'
-    ? methods.filter((m) => m.visibility === 'public' && m.hasWorkerContextCalls).map((m) => m.name)
-    : [];
-  const asyncMethods = handler.mode === 'class'
-    ? methods.filter((m) => m.isAsync).map((m) => m.name)
-    : [];
+  const workerContextMethods = methods
+    .filter((m) => m.visibility === 'public' && m.hasWorkerContextCalls)
+    .map((m) => m.name);
+  const asyncMethods = methods.filter((m) => m.isAsync).map((m) => m.name);
 
   const lines: string[] = [
     `// Auto-generated by KuratchiJS compiler �" do not edit.`,
     `import { __getDoStub } from '${RUNTIME_DO_IMPORT}';`,
-    ...(handler.mode === 'class' ? [`import ${handlerLocal} from '${origRelPath}';`] : []),
+    `import ${handlerLocal} from '${origRelPath}';`,
     ``,
     `const __FD_TAG = '__kuratchi_form_data__';`,
     `function __isPlainObject(__v) {`,
@@ -2716,6 +2738,7 @@ function generateRoutesModule(opts: {
   authConfig: AuthConfigEntry | null;
   doConfig: DoConfigEntry[];
   doHandlers: DoHandlerEntry[];
+  workflowConfig: WorkerClassConfigEntry[];
   isLayoutAsync: boolean;
   compiledLayoutActions: string | null;
   hasRuntime: boolean;
@@ -2944,14 +2967,10 @@ ${initLines.join('\n')}
       handlersByBinding.set(h.binding, list);
     }
 
-    // Import handler files + schema for each DO
+    // Import handler files + schema for each DO (class mode only)
     for (const doEntry of opts.doConfig) {
       const handlers = handlersByBinding.get(doEntry.binding) ?? [];
       const ormDb = opts.ormDatabases.find(d => d.binding === doEntry.binding);
-      const fnHandlers = handlers.filter((h) => h.mode === 'function');
-      const initHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onInit'));
-      const alarmHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onAlarm'));
-      const messageHandlers = fnHandlers.filter((h) => h.exportedFunctions.includes('onMessage'));
 
       // Import schema (paths are relative to project root; prefix ../ since we're in .kuratchi/)
       if (ormDb) {
@@ -2959,7 +2978,7 @@ ${initLines.join('\n')}
         doImportLines.push(`import { ${ormDb.schemaExportName} as __doSchema_${doEntry.binding} } from '${schemaPath}';`);
       }
 
-      // Import handler classes
+      // Import handler classes (class mode only - extends DurableObject)
       for (const h of handlers) {
         let handlerImportPath = path
           .relative(path.join(opts.projectDir, '.kuratchi'), h.absPath)
@@ -2967,27 +2986,20 @@ ${initLines.join('\n')}
           .replace(/\.ts$/, '.js');
         if (!handlerImportPath.startsWith('.')) handlerImportPath = './' + handlerImportPath;
         const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        if (h.mode === 'class') {
-          doImportLines.push(`import ${handlerVar} from '${handlerImportPath}';`);
-        } else {
-          doImportLines.push(`import * as ${handlerVar} from '${handlerImportPath}';`);
-        }
+        doImportLines.push(`import ${handlerVar} from '${handlerImportPath}';`);
       }
 
-      // Generate DO class
-      doClassLines.push(`export class ${doEntry.className} extends __DO {`);
-      doClassLines.push(`  constructor(ctx, env) {`);
-      doClassLines.push(`    super(ctx, env);`);
+      // Generate DO class that extends the user's class (for ORM integration)
+      // If no ORM, we just re-export the user's class directly
       if (ormDb) {
+        const handler = handlers[0];
+        const handlerVar = handler ? `__handler_${toSafeIdentifier(handler.fileName)}` : '__DO';
+        const baseClass = handler ? handlerVar : '__DO';
+        doClassLines.push(`export class ${doEntry.className} extends ${baseClass} {`);
+        doClassLines.push(`  constructor(ctx, env) {`);
+        doClassLines.push(`    super(ctx, env);`);
         doClassLines.push(`    this.db = __initDO(ctx.storage.sql, __doSchema_${doEntry.binding});`);
-      }
-      for (const h of initHandlers) {
-        const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        doClassLines.push(`    __setDoContext(this);`);
-        doClassLines.push(`    Promise.resolve(${handlerVar}.onInit.call(this)).catch((err) => console.error('[kuratchi] DO onInit failed:', err?.message || err));`);
-      }
-      doClassLines.push(`  }`);
-      if (ormDb) {
+        doClassLines.push(`  }`);
         doClassLines.push(`  async __kuratchiLogActivity(payload) {`);
         doClassLines.push(`    const now = new Date().toISOString();`);
         doClassLines.push(`    try {`);
@@ -3023,41 +3035,18 @@ ${initLines.join('\n')}
         doClassLines.push(`    if (Number.isFinite(limit) && limit > 0) return rows.slice(0, Math.floor(limit));`);
         doClassLines.push(`    return rows;`);
         doClassLines.push(`  }`);
+        doClassLines.push(`}`);
+      } else if (handlers.length > 0) {
+        // No ORM - just re-export the user's class directly
+        const handler = handlers[0];
+        const handlerVar = `__handler_${toSafeIdentifier(handler.fileName)}`;
+        doClassLines.push(`export { ${handlerVar} as ${doEntry.className} };`);
       }
-      // Function-mode lifecycle dispatchers
-      if (alarmHandlers.length > 0) {
-        doClassLines.push(`  async alarm(...args) {`);
-        doClassLines.push(`    __setDoContext(this);`);
-        for (const h of alarmHandlers) {
-          const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-          doClassLines.push(`    await ${handlerVar}.onAlarm.call(this, ...args);`);
-        }
-        doClassLines.push(`  }`);
-      }
-      if (messageHandlers.length > 0) {
-        doClassLines.push(`  webSocketMessage(...args) {`);
-        doClassLines.push(`    __setDoContext(this);`);
-        for (const h of messageHandlers) {
-          const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-          doClassLines.push(`    ${handlerVar}.onMessage.call(this, ...args);`);
-        }
-        doClassLines.push(`  }`);
-      }
-      doClassLines.push(`}`);
 
-      // Apply handler methods to prototype (outside class body)
+      // Register class binding for RPC
       for (const h of handlers) {
         const handlerVar = `__handler_${toSafeIdentifier(h.fileName)}`;
-        if (h.mode === 'class') {
-          doClassLines.push(`for (const __k of Object.getOwnPropertyNames(${handlerVar}.prototype)) { if (__k !== 'constructor') ${doEntry.className}.prototype[__k] = function(...__a){ __setDoContext(this); return ${handlerVar}.prototype[__k].apply(this, __a.map(__decodeDoArg)); }; }`);
-          doResolverLines.push(`  __registerDoClassBinding(${handlerVar}, '${doEntry.binding}');`);
-        } else {
-          const lifecycle = new Set(['onInit', 'onAlarm', 'onMessage']);
-          for (const fn of h.exportedFunctions) {
-            if (lifecycle.has(fn)) continue;
-            doClassLines.push(`${doEntry.className}.prototype[${JSON.stringify(fn)}] = function(...__a){ __setDoContext(this); return ${handlerVar}.${fn}.apply(this, __a.map(__decodeDoArg)); };`);
-          }
-        }
+        doResolverLines.push(`  __registerDoClassBinding(${handlerVar}, '${doEntry.binding}');`);
       }
 
       // Register stub resolver
@@ -3077,8 +3066,34 @@ ${initLines.join('\n')}
     }
 
     doImports = doImportLines.join('\n');
-    doClassCode = `\n// �"��"� Durable Object Classes (generated) �"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"�\n\n` + doClassLines.join('\n') + '\n';
+    doClassCode = `\n// ── Durable Object Classes (generated) ─────────────────────────\n\n` + doClassLines.join('\n') + '\n';
     doResolverInit = `\nfunction __initDoResolvers() {\n${doResolverLines.join('\n')}\n}\n`;
+  }
+
+  // Generate workflow status RPC handlers for auto-discovered workflows
+  // Naming: migration.workflow.ts -> migrationWorkflowStatus(instanceId)
+  let workflowStatusRpc = '';
+  if (opts.workflowConfig.length > 0) {
+    const rpcLines: string[] = [];
+    rpcLines.push(`\n// ── Workflow Status RPCs (auto-generated) ─────────────────────`);
+    rpcLines.push(`const __workflowStatusRpc = {`);
+    for (const wf of opts.workflowConfig) {
+      // file: src/server/migration.workflow.ts -> camelCase RPC name: migrationWorkflowStatus
+      const baseName = wf.file.split('/').pop()?.replace(/\.workflow\.ts$/, '') || '';
+      const camelName = baseName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const rpcName = `${camelName}WorkflowStatus`;
+      rpcLines.push(`  '${rpcName}': async (instanceId) => {`);
+      rpcLines.push(`    if (!instanceId) return { status: 'unknown', error: { name: 'Error', message: 'Missing instanceId' } };`);
+      rpcLines.push(`    try {`);
+      rpcLines.push(`      const instance = await __env.${wf.binding}.get(instanceId);`);
+      rpcLines.push(`      return await instance.status();`);
+      rpcLines.push(`    } catch (err) {`);
+      rpcLines.push(`      return { status: 'errored', error: { name: err?.name || 'Error', message: err?.message || 'Unknown error' } };`);
+      rpcLines.push(`    }`);
+      rpcLines.push(`  },`);
+    }
+    rpcLines.push(`};`);
+    workflowStatusRpc = rpcLines.join('\n');
   }
 
   return `// Generated by KuratchiJS compiler �" do not edit.
@@ -3086,8 +3101,9 @@ ${opts.isDev ? '\nglobalThis.__kuratchi_DEV__ = true;\n' : ''}
 ${workerImport}
 ${contextImport}
 ${runtimeImport ? runtimeImport + '\n' : ''}${migrationImports ? migrationImports + '\n' : ''}${authPluginImports ? authPluginImports + '\n' : ''}${doImports ? doImports + '\n' : ''}${opts.serverImports.join('\n')}
+${workflowStatusRpc}
 
-// �"��"� Assets �"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"��"�
+// ── Assets ─────────────────────────────────────────────────────
 
 const __assets = {
 ${opts.compiledAssets.map(a => `  ${JSON.stringify(a.name)}: { content: ${JSON.stringify(a.content)}, mime: ${JSON.stringify(a.mime)}, etag: ${JSON.stringify(a.etag)} }`).join(',\n')}
@@ -3216,8 +3232,49 @@ function __isSameOrigin(request, url) {
   try { return new URL(origin).origin === url.origin; } catch { return false; }
 }
 
-${opts.isLayoutAsync ? 'async ' : ''}function __render(route, data) {
+// Extract fragment content by ID from rendered HTML
+function __extractFragment(html, fragmentId) {
+  // Find the element with data-poll-id="fragmentId" and extract its innerHTML
+  const escaped = fragmentId.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+  const openTagRegex = new RegExp('<([a-z][a-z0-9]*)\\\\s[^>]*data-poll-id="' + escaped + '"[^>]*>', 'i');
+  const match = html.match(openTagRegex);
+  if (!match) return null;
+  const tagName = match[1];
+  const startIdx = match.index + match[0].length;
+  // Find matching closing tag (handle nesting)
+  let depth = 1;
+  let i = startIdx;
+  const closeTag = '</' + tagName + '>';
+  const openTag = '<' + tagName;
+  while (i < html.length && depth > 0) {
+    const nextClose = html.indexOf(closeTag, i);
+    const nextOpen = html.indexOf(openTag, i);
+    if (nextClose === -1) break;
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++;
+      i = nextOpen + openTag.length;
+    } else {
+      depth--;
+      if (depth === 0) return html.slice(startIdx, nextClose);
+      i = nextClose + closeTag.length;
+    }
+  }
+  return null;
+}
+
+${opts.isLayoutAsync ? 'async ' : ''}function __render(route, data, fragmentId) {
   let html = route.render(data);
+  
+  // Fragment request: return only the fragment's innerHTML
+  if (fragmentId) {
+    const fragment = __extractFragment(html, fragmentId);
+    if (fragment !== null) {
+      return new Response(fragment, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    }
+    return new Response('Fragment not found', { status: 404 });
+  }
+  
+  // Full page render
   const headMatch = html.match(/<head>([\\s\\S]*?)<\\/head>/);
   if (headMatch) {
     html = html.replace(headMatch[0], '');
@@ -3303,6 +3360,7 @@ ${migrationInit ? '    await __runMigrations();\n' : ''}${authInit ? '    __init
     const __coreFetch = async () => {
       const request = __runtimeCtx.request;
       const url = __runtimeCtx.url;
+      const __fragmentId = request.headers.get('x-kuratchi-fragment');
 ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n      { const __rlRes = await __checkRL(); if (__rlRes) return __secHeaders(__rlRes); }\n' : ''}${ac?.hasTurnstile ? '      // Turnstile bot protection\n      { const __tsRes = await __checkTS(); if (__tsRes) return __secHeaders(__tsRes); }\n' : ''}${ac?.hasGuards ? '      // Route guards - redirect if not authenticated\n      { const __gRes = __checkGuard(); if (__gRes) return __secHeaders(__gRes); }\n' : ''}
 
       // Serve static assets from src/assets/
@@ -3361,7 +3419,9 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
 
       // RPC call: GET ?_rpc=fnName&_args=[...] -> JSON response
       const __rpcName = url.searchParams.get('_rpc');
-      if (request.method === 'GET' && __rpcName && route.rpc && Object.hasOwn(route.rpc, __rpcName)) {
+      const __hasRouteRpc = __rpcName && route.rpc && Object.hasOwn(route.rpc, __rpcName);
+      const __hasWorkflowRpc = __rpcName && typeof __workflowStatusRpc !== 'undefined' && Object.hasOwn(__workflowStatusRpc, __rpcName);
+      if (request.method === 'GET' && __rpcName && (__hasRouteRpc || __hasWorkflowRpc)) {
         if (request.headers.get('x-kuratchi-rpc') !== '1') {
           return __secHeaders(new Response(JSON.stringify({ ok: false, error: 'Forbidden' }), {
             status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
@@ -3374,7 +3434,8 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
             const __parsed = JSON.parse(__rpcArgsStr);
             __rpcArgs = Array.isArray(__parsed) ? __parsed : [];
           }
-          const __rpcResult = await route.rpc[__rpcName](...__rpcArgs);
+          const __rpcFn = __hasRouteRpc ? route.rpc[__rpcName] : __workflowStatusRpc[__rpcName];
+          const __rpcResult = await __rpcFn(...__rpcArgs);
           return __secHeaders(new Response(JSON.stringify({ ok: true, data: __rpcResult }), {
             headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
           }));
@@ -3434,7 +3495,7 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
             Object.keys(__allActions).forEach(function(k) { if (!(k in data)) data[k] = { error: undefined, loading: false, success: false }; });
             const __errMsg = (err && err.isActionError) ? err.message : (typeof __kuratchi_DEV__ !== 'undefined' && err && err.message) ? err.message : 'Action failed';
             data[actionName] = { error: __errMsg, loading: false, success: false };
-            return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data);
+            return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data, __fragmentId);
           }
           // Fetch-based actions return lightweight JSON (no page re-render)
           if (isFetchAction) {
@@ -3458,7 +3519,7 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
         data.breadcrumbs = __getLocals().__breadcrumbs ?? [];
         const __allActionsGet = Object.assign({}, route.actions, __layoutActions || {});
         Object.keys(__allActionsGet).forEach(function(k) { if (!(k in data)) data[k] = { error: undefined, loading: false, success: false }; });
-        return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data);
+        return ${opts.isLayoutAsync ? 'await ' : ''}__render(route, data, __fragmentId);
       } catch (err) {
         if (err && err.isRedirectError) {
           const __redirectTo = err.location || url.pathname;

@@ -349,13 +349,30 @@ Navigate to a URL on click (respects `http:`/`https:` only):
 
 ### `data-poll` — polling
 
-Refresh a section automatically on an interval (milliseconds):
+Poll and update an element's content at a human-readable interval with automatic exponential backoff:
 
 ```html
-<div data-refresh="/status" data-poll="3000">
+<div data-poll={getStatus(itemId)} data-interval="2s">
   {status}
 </div>
 ```
+
+**How it works:**
+1. Client sends a fragment request with `x-kuratchi-fragment` header
+2. Server re-renders the route but returns **only the fragment's innerHTML** — not the full page
+3. Client swaps the element's content — minimal payload, no full page reload
+
+This fragment-based architecture is the foundation for partial rendering and scales to Astro-style islands.
+
+**Interval formats:**
+- `2s` — 2 seconds
+- `500ms` — 500 milliseconds
+- `1m` — 1 minute
+- Default: `30s` with exponential backoff (30s → 45s → 67s → ... capped at 5 minutes)
+
+**Options:**
+- `data-interval` — polling interval (human-readable, default `30s`)
+- `data-backoff="false"` — disable exponential backoff
 
 ### `data-select-all` / `data-select-item` — checkbox groups
 
@@ -397,79 +414,87 @@ Durable Object behavior is enabled by filename suffix.
 - Any file not ending in `.do.ts` is treated as a normal server module.
 - No required folder name. `src/server/auth.do.ts`, `src/server/foo/bar/sites.do.ts`, etc. all work.
 
-### Function mode (recommended)
+### Writing a Durable Object
 
-Write plain exported functions in a `.do.ts` file. Exported functions become DO RPC methods.
-Use `this.db`, `this.env`, and `this.ctx` inside those functions.
-
-```ts
-// src/server/auth/auth.do.ts
-import { getCurrentUser, hashPassword } from '@kuratchi/auth';
-import { redirect } from '@kuratchi/js';
-
-async function randomPassword(length = 24): Promise<string> {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let out = '';
-  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
-
-export async function getOrgUsers() {
-  const result = await this.db.users.orderBy({ createdAt: 'asc' }).many();
-  return result.data ?? [];
-}
-
-export async function createOrgUser(formData: FormData) {
-  const user = await getCurrentUser();
-  if (!user?.orgId) throw new Error('Not authenticated');
-
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  if (!email) throw new Error('Email is required');
-
-  const passwordHash = await hashPassword(await randomPassword(), undefined, this.env.AUTH_SECRET);
-  await this.db.users.insert({ email, role: 'member', passwordHash });
-  redirect('/settings/users');
-}
-```
-
-Optional lifecycle exports in function mode:
-
-- `export async function onInit()`
-- `export async function onAlarm(...args)`
-- `export function onMessage(...args)`
-
-These lifecycle names are not exposed as RPC methods.
-
-### Class mode (optional)
-
-Class-based handlers are still supported in `.do.ts` files:
+Extend the native Cloudflare `DurableObject` class. Public methods automatically become RPC-accessible:
 
 ```ts
-import { kuratchiDO } from '@kuratchi/js';
+// src/server/user.do.ts
+import { DurableObject } from 'cloudflare:workers';
 
-export default class NotesDO extends kuratchiDO {
-  static binding = 'NOTES_DO';
+export default class UserDO extends DurableObject {
+  async getName() {
+    return await this.ctx.storage.get('name');
+  }
 
-  async getNotes() {
-    return (await this.db.notes.orderBy({ created_at: 'desc' }).many()).data ?? [];
+  async setName(name: string) {
+    this._validate(name);
+    await this.ctx.storage.put('name', name);
+  }
+
+  // NOT RPC-accessible (underscore prefix)
+  _validate(name: string) {
+    if (!name) throw new Error('Name required');
+  }
+
+  // NOT RPC-accessible (lifecycle method)
+  async alarm() {
+    // Handle alarm
   }
 }
 ```
 
-Declare it in `kuratchi.config.ts` and in `wrangler.jsonc`. The compiler exports DO classes from `.kuratchi/worker.js` automatically.
+**RPC rules:**
+- **Public methods** (`getName`, `setName`) → RPC-accessible
+- **Underscore prefix** (`_validate`) → NOT RPC-accessible
+- **Private/protected** (`private foo()`) → NOT RPC-accessible
+- **Lifecycle methods** (`constructor`, `fetch`, `alarm`, `webSocketMessage`, etc.) → NOT RPC-accessible
 
-```jsonc
-// wrangler.jsonc
-{
-  "durable_objects": {
-    "bindings": [{ "name": "NOTES_DO", "class_name": "NotesDO" }]
-  },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["NotesDO"] }
-  ]
+### Using from routes
+
+Import from `$do/<filename>` (without the `.do` suffix):
+
+```html
+<script server>
+import { getName, setName } from '$do/user';
+
+const name = await getName();
+</script>
+
+<h1>Hello, {name}</h1>
+```
+
+The framework handles RPC wiring automatically.
+
+### Auto-Discovery
+
+Durable Objects are auto-discovered from `.do.ts` files. **No config needed.**
+
+**Naming convention:**
+- `user.do.ts` → binding `USER_DO`
+- `org-settings.do.ts` → binding `ORG_SETTINGS_DO`
+
+**Override binding name** with `static binding`:
+```ts
+export default class UserDO extends DurableObject {
+  static binding = 'CUSTOM_BINDING';  // Optional override
+  // ...
 }
+```
+
+The framework auto-syncs discovered DOs to `wrangler.jsonc`.
+
+### Optional: stubId for auth integration
+
+If you need automatic stub resolution based on user context, add `stubId` in `kuratchi.config.ts`:
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  durableObjects: {
+    USER_DO: { stubId: 'user.orgId' },  // Only needed for auth integration
+  },
+});
 ```
 
 ## Agents
@@ -541,6 +566,46 @@ Examples:
 - `migration.workflow.ts` → `MIGRATION_WORKFLOW` binding
 - `bond.workflow.ts` → `BOND_WORKFLOW` binding
 - `new-site.workflow.ts` → `NEW_SITE_WORKFLOW` binding
+
+### Workflow Status Polling
+
+Kuratchi auto-generates status polling RPCs for each discovered workflow. Poll workflow status with zero setup:
+
+```html
+<div data-poll={migrationWorkflowStatus(instanceId)} data-interval="2s">
+  if (workflowStatus.status === 'running') {
+    <div class="spinner">Running...</div>
+  } else if (workflowStatus.status === 'complete') {
+    <div>✓ Complete</div>
+  }
+</div>
+```
+
+The element's innerHTML updates automatically when the workflow status changes — no page reload needed.
+
+**Auto-generated RPC naming** (camelCase):
+- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId)`
+- `james-bond.workflow.ts` → `jamesBondWorkflowStatus(instanceId)`
+- `site.workflow.ts` → `siteWorkflowStatus(instanceId)`
+
+**Multiple workflows on one page:** Each `data-poll` element is independent. You can poll multiple workflow instances without collision:
+
+```html
+for (const job of jobs) {
+  <div data-poll={migrationWorkflowStatus(job.instanceId)} data-interval="2s">
+    {job.name}: polling...
+  </div>
+}
+```
+
+The status RPC returns the Cloudflare `InstanceStatus` object:
+```ts
+{
+  status: 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'unknown';
+  error?: { name: string; message: string; };
+  output?: unknown;
+}
+```
 
 ## Containers
 
@@ -701,7 +766,9 @@ Kuratchi also exposes a framework build-mode flag:
 
 ## `kuratchi.config.ts`
 
-Optional. Required only when using framework integrations or Durable Objects.
+Optional. Required only when using framework integrations (ORM, auth, UI).
+
+**Durable Objects are auto-discovered** — no config needed unless you need `stubId` for auth integration.
 
 ```ts
 import { defineConfig } from '@kuratchi/js';
@@ -717,16 +784,14 @@ export default defineConfig({
       NOTES_DO: { schema: notesSchema, type: 'do' },
     },
   }),
-  durableObjects: {
-    NOTES_DO: {
-      className: 'NotesDO',
-      files: ['notes.do.ts'],
-    },
-  },
   auth: kuratchiAuthConfig({
     cookieName: 'kuratchi_session',
     sessionEnabled: true,
   }),
+  // Optional: only needed for auth-based stub resolution
+  durableObjects: {
+    NOTES_DO: { stubId: 'user.orgId' },
+  },
 });
 ```
 

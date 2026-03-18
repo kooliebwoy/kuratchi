@@ -810,7 +810,7 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-poll') {
-          // data-poll={fn(args)} â†’ data-poll="fnName" data-poll-args="[serialized]"
+          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]" data-poll-id="stable-id"
           const pollCallMatch = inner.match(/^(\w+)\((.*)\)$/);
           if (pollCallMatch) {
             const fnName = pollCallMatch[1];
@@ -818,10 +818,15 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
             const argsExpr = pollCallMatch[2].trim();
             // Remove the trailing "data-poll=" we already appended
             result = result.replace(/\s*data-poll=$/, '');
-            // Emit data-poll and data-poll-args attributes
+            // Emit data-poll, data-poll-args, and stable data-poll-id (based on fn + args expression)
             result += ` data-poll="${rpcName}"`;
             if (argsExpr) {
               result += ` data-poll-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
+              // Stable ID based on args so same data produces same ID across renders
+              result += ` data-poll-id="\${__esc('__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_'))}"`;
+            } else {
+              // No args - use function name as ID
+              result += ` data-poll-id="__poll_${rpcName}"`;
             }
           }
           hasExpr = true;
