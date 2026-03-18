@@ -814,15 +814,13 @@ export function compile(options: CompileOptions): string {
   // Read auth config from kuratchi.config.ts
   const authConfig = readAuthConfig(projectDir);
 
-  // Read Durable Object config and discover handler files
-  const doConfig = readDoConfig(projectDir);
+  // Auto-discover Durable Objects from .do.ts files (config optional, only needed for stubId)
+  const configDoEntries = readDoConfig(projectDir);
+  const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir, configDoEntries, ormDatabases);
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);
   const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agent.ts', '.agent');
-  const doHandlers = doConfig.length > 0
-    ? discoverDoHandlers(srcDir, doConfig, ormDatabases)
-    : [];
 
   // Generate handler proxy modules in .kuratchi/do/ (must happen BEFORE route processing
   // so that $durable-objects/X imports can be redirected to the generated proxies)
@@ -2409,73 +2407,69 @@ function discoverContainerFiles(projectDir: string): WorkerClassConfigEntry[] {
 }
 
 /**
- * Scan DO handler files.
- * Class mode only: default class extends DurableObject
- * Public methods are auto-wired for RPC.
+ * Auto-discover Durable Objects from .do.ts files.
+ * Returns both DoConfigEntry (for wrangler sync) and DoHandlerEntry (for code gen).
+ * 
+ * Convention:
+ * - File: user.do.ts → Binding: USER_DO
+ * - Class: export default class UserDO extends DurableObject
+ * - Optional: static binding = 'CUSTOM_BINDING' to override
  */
-function discoverDoHandlers(
+function discoverDurableObjects(
   srcDir: string,
-  doConfig: DoConfigEntry[],
+  configDoEntries: DoConfigEntry[],
   ormDatabases: OrmDatabaseEntry[],
-): DoHandlerEntry[] {
+): { config: DoConfigEntry[]; handlers: DoHandlerEntry[] } {
   const serverDir = path.join(srcDir, 'server');
   const legacyDir = path.join(srcDir, 'durable-objects');
   const serverDoFiles = discoverFilesWithSuffix(serverDir, '.do.ts');
   const legacyDoFiles = discoverFilesWithSuffix(legacyDir, '.ts');
   const discoveredFiles = Array.from(new Set([...serverDoFiles, ...legacyDoFiles]));
-  if (discoveredFiles.length === 0) return [];
-
-  const bindings = new Set(doConfig.map(d => d.binding));
-  const fileToBinding = new Map<string, string>();
-  for (const entry of doConfig) {
-    for (const rawFile of entry.files ?? []) {
-      const normalized = rawFile.trim().replace(/^\.?[\\/]/, '').replace(/\\/g, '/').toLowerCase();
-      if (!normalized) continue;
-      fileToBinding.set(normalized, entry.binding);
-      const base = path.basename(normalized);
-      if (!fileToBinding.has(base)) fileToBinding.set(base, entry.binding);
-    }
+  
+  if (discoveredFiles.length === 0) {
+    return { config: configDoEntries, handlers: [] };
   }
+
+  // Build lookup from config for stubId (still needed for auth integration)
+  const configByBinding = new Map<string, DoConfigEntry>();
+  for (const entry of configDoEntries) {
+    configByBinding.set(entry.binding, entry);
+  }
+
   const handlers: DoHandlerEntry[] = [];
+  const discoveredConfig: DoConfigEntry[] = [];
   const fileNameToAbsPath = new Map<string, string>();
+  const seenBindings = new Set<string>();
 
   for (const absPath of discoveredFiles) {
     const file = path.basename(absPath);
     const source = fs.readFileSync(absPath, 'utf-8');
 
-    // Class mode only: extends DurableObject (native Cloudflare class)
+    // Must extend DurableObject
     const hasClass = /extends\s+DurableObject\b/.test(source);
     if (!hasClass) continue;
 
     // Extract class name
     const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+DurableObject/);
     const className = classMatch?.[1] ?? null;
-    if (hasClass && !className) continue;
+    if (!className) continue;
 
-    // Binding resolution:
-    // 1) explicit static binding in class
-    // 2) config-mapped file name (supports .do.ts convention)
-    // 3) if exactly one DO binding exists, infer that binding
-    let binding: string | null = null;
+    // Derive binding from filename or static binding property
+    // user.do.ts → USER_DO
     const bindingMatch = source.match(/static\s+binding\s*=\s*['"](\w+)['"]/);
-    if (bindingMatch) {
-      binding = bindingMatch[1];
-    } else {
-      const normalizedFile = file.replace(/\\/g, '/').toLowerCase();
-      const normalizedRelFromSrc = path
-        .relative(srcDir, absPath)
-        .replace(/\\/g, '/')
-        .toLowerCase();
-      binding = fileToBinding.get(normalizedRelFromSrc) ?? fileToBinding.get(normalizedFile) ?? null;
-      if (!binding && doConfig.length === 1) {
-        binding = doConfig[0].binding;
-      }
+    const baseName = file.replace(/\.do\.ts$/, '').replace(/\.ts$/, '');
+    const derivedBinding = baseName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() + '_DO';
+    const binding = bindingMatch?.[1] ?? derivedBinding;
+
+    if (seenBindings.has(binding)) {
+      throw new Error(
+        `[KuratchiJS] Duplicate DO binding '${binding}' detected. Use 'static binding = "UNIQUE_NAME"' in one of the classes.`,
+      );
     }
-    if (!binding) continue;
-    if (!bindings.has(binding)) continue;
+    seenBindings.add(binding);
 
     // Extract public class methods for RPC
-    const classMethods = extractClassMethods(source, className!);
+    const classMethods = extractClassMethods(source, className);
 
     const fileName = file.replace(/\.ts$/, '');
     const existing = fileNameToAbsPath.get(fileName);
@@ -2486,18 +2480,28 @@ function discoverDoHandlers(
     }
     fileNameToAbsPath.set(fileName, absPath);
 
+    // Merge with config entry if exists (for stubId)
+    const configEntry = configByBinding.get(binding);
+    
+    discoveredConfig.push({
+      binding,
+      className,
+      stubId: configEntry?.stubId,
+      files: [file],
+    });
+
     handlers.push({
       fileName,
       absPath,
       binding,
       mode: 'class',
-      className: className!,
+      className,
       classMethods,
       exportedFunctions: [],
     });
   }
 
-  return handlers;
+  return { config: discoveredConfig, handlers };
 }
 
 /**

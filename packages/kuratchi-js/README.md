@@ -466,20 +466,35 @@ const name = await getName();
 
 The framework handles RPC wiring automatically.
 
-### Configuration
+### Auto-Discovery
 
-Declare in `kuratchi.config.ts` and `wrangler.jsonc`:
+Durable Objects are auto-discovered from `.do.ts` files. **No config needed.**
 
-```jsonc
-// wrangler.jsonc
-{
-  "durable_objects": {
-    "bindings": [{ "name": "USER_DO", "class_name": "UserDO" }]
-  },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["UserDO"] }
-  ]
+**Naming convention:**
+- `user.do.ts` → binding `USER_DO`
+- `org-settings.do.ts` → binding `ORG_SETTINGS_DO`
+
+**Override binding name** with `static binding`:
+```ts
+export default class UserDO extends DurableObject {
+  static binding = 'CUSTOM_BINDING';  // Optional override
+  // ...
 }
+```
+
+The framework auto-syncs discovered DOs to `wrangler.jsonc`.
+
+### Optional: stubId for auth integration
+
+If you need automatic stub resolution based on user context, add `stubId` in `kuratchi.config.ts`:
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  durableObjects: {
+    USER_DO: { stubId: 'user.orgId' },  // Only needed for auth integration
+  },
+});
 ```
 
 ## Agents
@@ -751,7 +766,9 @@ Kuratchi also exposes a framework build-mode flag:
 
 ## `kuratchi.config.ts`
 
-Optional. Required only when using framework integrations or Durable Objects.
+Optional. Required only when using framework integrations (ORM, auth, UI).
+
+**Durable Objects are auto-discovered** — no config needed unless you need `stubId` for auth integration.
 
 ```ts
 import { defineConfig } from '@kuratchi/js';
@@ -767,16 +784,14 @@ export default defineConfig({
       NOTES_DO: { schema: notesSchema, type: 'do' },
     },
   }),
-  durableObjects: {
-    NOTES_DO: {
-      className: 'NotesDO',
-      files: ['notes.do.ts'],
-    },
-  },
   auth: kuratchiAuthConfig({
     cookieName: 'kuratchi_session',
     sessionEnabled: true,
   }),
+  // Optional: only needed for auth-based stub resolution
+  durableObjects: {
+    NOTES_DO: { stubId: 'user.orgId' },
+  },
 });
 ```
 
