@@ -1837,7 +1837,11 @@ function buildRouteObject(opts: {
     explicitLoadFunction = transpileTypeScript(explicitLoadFunction, `route-load:${pattern}.ts`);
   }
   const scriptReturnVars = parsed.script
-    ? parsed.dataVars.filter((v) => !queryVars.includes(v))
+    ? parsed.dataVars.filter((v) =>
+      !queryVars.includes(v) &&
+      !parsed.actionFunctions.includes(v) &&
+      !parsed.pollFunctions.includes(v),
+    )
     : [];
 
   // Load function �" internal server prepass for async route script bodies
