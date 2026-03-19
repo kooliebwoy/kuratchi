@@ -89,6 +89,7 @@ export interface SiteInfo {
   name: string;
   workerName?: string;
   customDomain?: string;
+  previewUrl?: string;
   isActive: boolean;
   fileCount: number;
   totalSize: number;
@@ -220,7 +221,7 @@ export class PlatformClient {
       delete: (id: string) =>
         this.request<void>(`/api/v1/platform/sites/${id}`, { method: 'DELETE' }),
 
-      /** Upload files to a site and deploy. Each entry is { file, path? }. */
+      /** Upload files to a site and deploy. Each entry is { file, path? }. Paths should be relative to the site root, e.g. "assets/app.js". */
       uploadFiles: async (siteId: string, files: { file: Blob | File; path?: string }[]): Promise<ApiResponse> => {
         const form = new FormData();
         for (const entry of files) {
@@ -274,4 +275,3 @@ export class PlatformClient {
     };
   }
 }
-

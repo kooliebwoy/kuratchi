@@ -1,6 +1,7 @@
 import type { RouteContext } from '@kuratchi/js';
 import { jsonResponse, requirePlatformToken, handleCorsPreflight } from '$server/api/utils';
 import { db } from '$server/api/db';
+import { getSitePreviewUrl } from '$server/database/sites';
 
 export async function GET(ctx: RouteContext): Promise<Response> {
   const auth = await requirePlatformToken(ctx.request);
@@ -9,7 +10,10 @@ export async function GET(ctx: RouteContext): Promise<Response> {
   const result = await db.sites.where({ id: siteId, isActive: true, organizationId: auth.organizationId }).first();
   if (!result.data) return jsonResponse({ success: false, error: 'Site not found' }, 404);
   const files = await db.siteFiles.where({ siteId }).many();
-  return jsonResponse({ success: true, data: { ...(result.data as any), files: files.data ?? [] } });
+  return jsonResponse({
+    success: true,
+    data: { ...(result.data as any), previewUrl: getSitePreviewUrl(result.data as any), files: files.data ?? [] },
+  });
 }
 
 export async function DELETE(ctx: RouteContext): Promise<Response> {

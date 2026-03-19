@@ -2,6 +2,7 @@ import { getAgentByName, routeAgentRequest } from 'agents';
 import type { RuntimeDefinition } from '@kuratchi/js';
 import { jsonResponse } from '$server/api/utils';
 import { verifyAgentConnectionToken } from '$server/ai/live-auth';
+import { resolveSiteRequest } from '$server/database/sites';
 
 const AGENT_PREFIX = '/agents/';
 const IDE_LIVE_PATH = '/api/v1/ai/ide/live';
@@ -18,6 +19,13 @@ function extractSecret(env: Record<string, any>): string {
 }
 
 const runtime: RuntimeDefinition = {
+  sites: {
+    async request(ctx, next) {
+      const siteResponse = await resolveSiteRequest(ctx.request);
+      if (siteResponse) return siteResponse;
+      return next();
+    },
+  },
   agents: {
     async request(ctx, next) {
       if (!ctx.url.pathname.startsWith(AGENT_PREFIX) && ctx.url.pathname !== IDE_LIVE_PATH) {

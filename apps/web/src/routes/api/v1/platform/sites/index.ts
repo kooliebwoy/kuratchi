@@ -1,12 +1,14 @@
 import type { RouteContext } from '@kuratchi/js';
 import { jsonResponse, requirePlatformToken, handleCorsPreflight } from '$server/api/utils';
 import { db } from '$server/api/db';
+import { getSitePreviewUrl } from '$server/database/sites';
 
 export async function GET(ctx: RouteContext): Promise<Response> {
   const auth = await requirePlatformToken(ctx.request);
   if (auth instanceof Response) return auth;
   const result = await db.sites.where({ isActive: true, organizationId: auth.organizationId }).many();
-  return jsonResponse({ success: true, data: result.data ?? [] });
+  const sites = ((result.data ?? []) as any[]).map((site) => ({ ...site, previewUrl: getSitePreviewUrl(site) }));
+  return jsonResponse({ success: true, data: sites });
 }
 
 export async function POST(ctx: RouteContext): Promise<Response> {
@@ -19,7 +21,8 @@ export async function POST(ctx: RouteContext): Promise<Response> {
   try {
     await createSite(form);
     const result = await db.sites.where({ name: body.name, isActive: true, organizationId: auth.organizationId }).first();
-    return jsonResponse({ success: true, data: result.data });
+    const site = result.data ? { ...(result.data as any), previewUrl: getSitePreviewUrl(result.data as any) } : null;
+    return jsonResponse({ success: true, data: site });
   } catch (e: any) {
     return jsonResponse({ success: false, error: e.message }, 400);
   }

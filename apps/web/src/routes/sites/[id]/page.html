@@ -1,6 +1,7 @@
 <script>
   import { getParam } from '@kuratchi/js';
   import { getSite, getSiteFiles, uploadSiteFiles, deleteSiteFile, deleteSite } from '$server/database/sites';
+  import { getSitePreviewUrl } from '$server/database/sites';
   import Badge from '@kuratchi/ui/badge.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
@@ -10,6 +11,7 @@
   const id = getParam('id');
   const site = await getSite(id);
   const files = site ? await getSiteFiles(id) : [];
+  const previewUrl = site ? getSitePreviewUrl(site) : null;
 
   function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -19,14 +21,14 @@
   }
 
   function getFileIcon(contentType) {
-    if (!contentType) return '📄';
-    if (contentType.startsWith('text/html')) return '🌐';
-    if (contentType.startsWith('text/css')) return '🎨';
-    if (contentType.includes('javascript')) return '⚡';
-    if (contentType.startsWith('image/')) return '🖼️';
-    if (contentType.includes('json')) return '📋';
-    if (contentType.includes('font')) return '🔤';
-    return '📄';
+    if (!contentType) return 'doc';
+    if (contentType.startsWith('text/html')) return 'web';
+    if (contentType.startsWith('text/css')) return 'style';
+    if (contentType.includes('javascript')) return 'js';
+    if (contentType.startsWith('image/')) return 'image';
+    if (contentType.includes('json')) return 'json';
+    if (contentType.includes('font')) return 'font';
+    return 'file';
   }
 </script>
 
@@ -34,9 +36,13 @@ if (!site) {
   <EmptyState title="Site not found" description="This site doesn't exist or you don't have access." />
 } else {
   <header>
-    <div>
+    <div data-flex data-align="center" data-gap="sm">
       <h1>{site.name}</h1>
-      <p data-muted>{files.length} file{files.length !== 1 ? 's' : ''} · {formatBytes(site.totalSize || 0)}</p>
+      if (site.isActive) {
+        <Badge data-variant="success">Active</Badge>
+      } else {
+        <Badge data-variant="muted">Inactive</Badge>
+      }
     </div>
     <div data-flex data-gap="sm">
       <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
@@ -48,112 +54,112 @@ if (!site) {
     </div>
   </header>
 
-  <div data-grid data-cols="3" data-gap="md">
+  if (previewUrl) {
     <Card>
-      <div data-stat>
-        <p data-muted>Status</p>
-        if (site.isActive) {
-          <Badge data-variant="success">Active</Badge>
-        } else {
-          <Badge data-variant="muted">Inactive</Badge>
-        }
-      </div>
-    </Card>
-    <Card>
-      <div data-stat>
-        <p data-muted>Files</p>
-        <p data-large>{site.fileCount || 0}</p>
-      </div>
-    </Card>
-    <Card>
-      <div data-stat>
-        <p data-muted>Total Size</p>
-        <p data-large>{formatBytes(site.totalSize || 0)}</p>
-      </div>
-    </Card>
-  </div>
-
-  if (site.workerName) {
-    <Card>
-      <div data-flex data-justify="between" data-align="center">
-        <div>
-          <p data-muted>Worker</p>
-          <code>{site.workerName}</code>
+      <div data-flex data-justify="between" data-align="center" data-gap="md">
+        <div data-flex data-direction="column" data-gap="xs">
+          <p data-muted>Site Domain</p>
+          <div data-flex data-align="center" data-gap="sm">
+            <a href={previewUrl} target="_blank" rel="noopener noreferrer" style="font-size: 1.125rem; font-weight: 500;">
+              {previewUrl.replace(/^https?:\/\//, '')}
+            </a>
+            <button data-variant="ghost" data-size="sm" title="Copy to clipboard" onclick={`navigator.clipboard.writeText('${previewUrl}')`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+          <p data-muted style="font-size: 0.875rem; margin-top: 0.25rem;">
+            This is your live site address. Visitors can access your content at this URL once you deploy.
+          </p>
         </div>
       </div>
     </Card>
   }
 
   <section>
-    <h2>Files</h2>
+    <div data-flex data-direction="column" data-gap="xs" style="margin-bottom: 1rem;">
+      <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500;">Files</h2>
+      <p data-muted style="font-size: 0.875rem;">Manage the files that make up your site. Ensure an <code>index.html</code> is present at the root to serve the site over the domain.</p>
+    </div>
+    
     if (files.length === 0) {
       <EmptyState
-        title="No files uploaded"
-        description="Upload HTML, CSS, JS, images, or any static files to serve."
+        title="No files published"
+        description="Ready to go live? Upload an HTML build, static assets or manual code."
       >
         <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
           Upload Files
         </button>
       </EmptyState>
     } else {
-      <div data-scroll>
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Path</th>
-              <th>Type</th>
-              <th>Size</th>
-              <th>Updated</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            for (const file of files) {
+      <Card style="padding: 0; overflow: hidden;">
+        <div data-scroll>
+          <table>
+            <thead>
               <tr>
-                <td>{getFileIcon(file.contentType)}</td>
-                <td><code>{file.path}</code></td>
-                <td data-muted>{file.contentType || '-'}</td>
-                <td data-muted>{formatBytes(file.size)}</td>
-                <td data-muted>{file.updated_at ? new Date(file.updated_at).toLocaleDateString() : '-'}</td>
-                <td>
-                  <form action={deleteSiteFile} method="POST" data-action data-inline>
-                    <input type="hidden" name="siteId" value={site.id} />
-                    <input type="hidden" name="fileId" value={file.id} />
-                    <button type="submit" data-variant="danger-ghost" data-size="sm">Delete</button>
-                  </form>
-                </td>
+                <th></th>
+                <th>Path</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Updated</th>
+                <th></th>
               </tr>
-            }
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              for (const file of files) {
+                <tr>
+                  <td data-muted>{getFileIcon(file.contentType)}</td>
+                  <td><code>{file.path}</code></td>
+                  <td data-muted>{file.contentType || '-'}</td>
+                  <td data-muted>{formatBytes(file.size)}</td>
+                  <td data-muted>{file.updated_at ? new Date(file.updated_at).toLocaleDateString() : '-'}</td>
+                  <td style="text-align: right;">
+                    <form action={deleteSiteFile} method="POST" data-action data-inline>
+                      <input type="hidden" name="siteId" value={site.id} />
+                      <input type="hidden" name="fileId" value={file.id} />
+                      <button type="submit" data-variant="danger-ghost" data-size="sm">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </Card>
     }
   </section>
 
   <Dialog id="upload-dialog" closedby="any">
     <div data-dialog="header">
       <h2>Upload Files</h2>
-      <p>Upload files to deploy to your site. All files are deployed together.</p>
+      <p>Upload a full build output or individual files. All files are deployed together as one manifest.</p>
     </div>
-    <form action={uploadSiteFiles} method="POST" enctype="multipart/form-data">
+    <form id="site-upload-form" action={uploadSiteFiles} method="POST" enctype="multipart/form-data">
       <input type="hidden" name="siteId" value={site.id} />
       <div data-field>
-        <label for="file">Files</label>
-        <input type="file" id="file" name="file" required multiple />
-        <small>Select one or more files. They'll be served at their filename paths.</small>
+        <label for="site-directory">Build folder</label>
+        <input type="file" id="site-directory" name="file" required multiple webkitdirectory directory />
+        <small>Select a built folder like <code>dist/</code>. Relative paths are preserved in the upload manifest.</small>
       </div>
       <div data-field>
-        <label for="path">Path prefix (optional)</label>
+        <label for="site-files">Or individual files</label>
+        <input type="file" id="site-files" name="file" multiple />
+        <small>Use this for ad hoc files. Without a folder upload, files are served from their filenames unless you set a path prefix.</small>
+      </div>
+      <div data-field>
+        <label for="path-prefix">Path prefix (optional)</label>
         <input
           type="text"
-          id="path"
-          name="path"
-          placeholder="css/ or leave blank for root"
+          id="path-prefix"
+          name="pathPrefix"
+          placeholder="preview-build or leave blank for site root"
           autocomplete="off"
         />
-        <small>Prefix added to all filenames. Leave blank to serve from root.</small>
+        <small>Applied before each relative file path. Leave blank to deploy the build at the site root.</small>
       </div>
+      <div id="site-upload-paths"></div>
       if (uploadSiteFiles.error) {
         <Alert data-variant="danger">{uploadSiteFiles.error}</Alert>
       }
@@ -178,4 +184,48 @@ if (!site) {
       </div>
     </form>
   </Dialog>
+
+  <script>
+    const uploadForm = document.getElementById('site-upload-form');
+    const directoryInput = document.getElementById('site-directory');
+    const filesInput = document.getElementById('site-files');
+    const pathsContainer = document.getElementById('site-upload-paths');
+
+    function selectedFiles() {
+      const directoryFiles = Array.from(directoryInput?.files || []);
+      if (directoryFiles.length > 0) return directoryFiles;
+      return Array.from(filesInput?.files || []);
+    }
+
+    function syncManifestPaths() {
+      if (!pathsContainer) return;
+      pathsContainer.innerHTML = '';
+
+      for (const file of selectedFiles()) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'path';
+        input.value = file.webkitRelativePath || file.name || '';
+        pathsContainer.appendChild(input);
+      }
+    }
+
+    directoryInput?.addEventListener('change', () => {
+      if (directoryInput.files?.length) {
+        filesInput.value = '';
+      }
+      syncManifestPaths();
+    });
+
+    filesInput?.addEventListener('change', () => {
+      if (filesInput.files?.length) {
+        directoryInput.value = '';
+      }
+      syncManifestPaths();
+    });
+
+    uploadForm?.addEventListener('submit', () => {
+      syncManifestPaths();
+    });
+  </script>
 }

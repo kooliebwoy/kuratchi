@@ -28,6 +28,44 @@ function getEnvVars() {
   return { accountId, apiToken, namespace };
 }
 
+function getPreviewDomain(): string {
+  return String((env as any).SITE_PREVIEW_DOMAIN || 'kuratchi.site').trim().toLowerCase();
+}
+
+function normalizeHostname(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '');
+}
+
+export function getSitePreviewUrl(site: { name?: string | null; customDomain?: string | null } | null | undefined): string | null {
+  if (!site) return null;
+  const customDomain = normalizeHostname(site.customDomain);
+  if (customDomain) return `https://${customDomain}`;
+  const name = String(site.name || '').trim().toLowerCase();
+  if (!name) return null;
+  return `https://${name}.${getPreviewDomain()}`;
+}
+
+async function findSiteByHostname(hostname: string) {
+  const host = normalizeHostname(hostname);
+  if (!host) return null;
+
+  const customDomainMatch = await db.sites.where({ customDomain: host, isActive: true }).first();
+  if (customDomainMatch.data) return customDomainMatch.data as any;
+
+  const previewDomain = getPreviewDomain();
+  const suffix = `.${previewDomain}`;
+  if (!previewDomain || !host.endsWith(suffix)) return null;
+
+  const siteName = host.slice(0, -suffix.length);
+  if (!siteName || siteName.includes('.')) return null;
+
+  const result = await db.sites.where({ name: siteName, isActive: true }).first();
+  return (result.data ?? null) as any;
+}
+
 
 
 const SITE_WORKER_SCRIPT = `
@@ -83,6 +121,31 @@ function guessContentType(key: string): string {
     wasm: 'application/wasm',
   };
   return types[ext || ''] || 'application/octet-stream';
+}
+
+function normalizeSiteFilePath(input: string): string {
+  let value = String(input || '').trim();
+  value = value.replace(/\\/g, '/');
+  value = value.replace(/^\.\//, '');
+  value = value.replace(/^\/+/, '');
+  value = value.replace(/\/+/g, '/');
+
+  const segments = value
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const safeSegments: string[] = [];
+  for (const segment of segments) {
+    if (segment === '.' || segment === '..') continue;
+    safeSegments.push(segment);
+  }
+
+  if (safeSegments.length === 0) {
+    throw new Error('File path cannot be empty');
+  }
+
+  return `/${safeSegments.join('/')}`;
 }
 
 // Queries
@@ -153,14 +216,19 @@ export async function uploadSiteFiles(formData: FormData): Promise<void> {
   const fileEntries: { path: string; data: ArrayBuffer; contentType: string; size: number }[] = [];
   const files = formData.getAll('file') as File[];
   const paths = formData.getAll('path') as string[];
+  const pathPrefixRaw = (formData.get('pathPrefix') as string | null)?.trim() || '';
+  const normalizedPrefix = pathPrefixRaw
+    ? normalizeSiteFilePath(pathPrefixRaw).replace(/^\/+/, '').replace(/\/+$/, '')
+    : '';
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     if (!file || file.size === 0) continue;
-    let filePath = (paths[i] || file.name || '').trim();
-    if (!filePath.startsWith('/')) filePath = '/' + filePath;
-    filePath = filePath.replace(/\/\/+/g, '/');
-    if (filePath === '/') throw new Error('File path cannot be root');
+    const browserRelativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || '';
+    const submittedPath = String(paths[i] || '').trim();
+    const rawFilePath = submittedPath || browserRelativePath || file.name || '';
+    const prefixedPath = normalizedPrefix ? `${normalizedPrefix}/${rawFilePath}` : rawFilePath;
+    const filePath = normalizeSiteFilePath(prefixedPath);
 
     fileEntries.push({
       path: filePath,
@@ -452,4 +520,11 @@ export async function dispatchSiteRequest(workerName: string, request: Request):
   }
   const userWorker = dispatcher.get(workerName);
   return userWorker.fetch(request);
+}
+
+export async function resolveSiteRequest(request: Request): Promise<Response | null> {
+  const url = new URL(request.url);
+  const site = await findSiteByHostname(url.hostname);
+  if (!site?.workerName) return null;
+  return dispatchSiteRequest(site.workerName, request);
 }

@@ -5,9 +5,13 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-   "routes": [
+  "routes": [
     {
       "pattern": "kuratchi.cloud",
+      "custom_domain": true
+    },
+    {
+      "pattern": "kuratchi.site",
       "custom_domain": true
     }
   ],
@@ -70,6 +74,7 @@
   "vars": {
     "CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
     "DISPATCH_NAMESPACE": "kuratchi-platform",
+    "SITE_PREVIEW_DOMAIN": "kuratchi.site",
     "TURNSTILE_SITE_KEY": "0x4AAAAAACny9P3q0-WsXWGq"
   },
   "keep_vars": true,

@@ -1,6 +1,6 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.13",
+    "version": "0.0.15",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
     "license": "MIT",
     "type": "module",
