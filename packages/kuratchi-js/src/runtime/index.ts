@@ -1,4 +1,5 @@
 export { createApp } from './app.js';
+export { createGeneratedWorker } from './generated-worker.js';
 export { defineConfig } from './config.js';
 export { defineRuntime } from './runtime.js';
 export { Router, filePathToPattern } from './router.js';
@@ -47,6 +48,8 @@ export type {
   ApiRouteModule,
   HttpMethod,
   LayoutModule,
+  PageRenderOutput,
+  PageRenderResult,
   RuntimeContext,
   RuntimeDefinition,
   RuntimeStep,

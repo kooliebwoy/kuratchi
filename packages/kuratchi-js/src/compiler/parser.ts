@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { collectReferencedIdentifiers, parseNamedImportBindings } from './import-linking.js';
 
 /**
  * HTML file parser.
@@ -33,6 +34,10 @@ export interface ParsedFile {
   dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; rpcId?: string }>;
   /** Imports found in a top-level client script block */
   clientImports: string[];
+  /** Top-level route/layout imports from $client/* */
+  routeClientImports: string[];
+  /** Local binding names introduced by top-level $client/* imports */
+  routeClientImportBindings: string[];
   /** Top-level names returned from explicit load() */
   loadReturnVars: string[];
   /** Local aliases for Cloudflare Workers env imported from cloudflare:workers */
@@ -84,6 +89,25 @@ export function stripTopLevelImports(source: string): string {
 
 function hasReactiveLabel(scriptBody: string): boolean {
   return /\$\s*:/.test(scriptBody);
+}
+
+const TEMPLATE_JS_CONTROL_PATTERNS = [
+  /^\s*for\s*\(/,
+  /^\s*if\s*\(/,
+  /^\s*switch\s*\(/,
+  /^\s*case\s+.+:\s*$/,
+  /^\s*default\s*:\s*$/,
+  /^\s*break\s*;\s*$/,
+  /^\s*continue\s*;\s*$/,
+  /^\s*\}\s*else\s*if\s*\(/,
+  /^\s*\}\s*else\s*\{?\s*$/,
+  /^\s*\}\s*$/,
+  /^\s*\w[\w.]*\s*(\+\+|--)\s*;\s*$/,
+  /^\s*(let|const|var)\s+/,
+];
+
+function isTemplateJsControlLine(line: string): boolean {
+  return TEMPLATE_JS_CONTROL_PATTERNS.some((pattern) => pattern.test(line));
 }
 
 function splitTopLevel(input: string, delimiter: string): string[] {
@@ -322,6 +346,296 @@ function extractReturnObjectKeys(body: string): string[] {
   }
 
   return keys;
+}
+
+interface TemplateTag {
+  name: string;
+  attrs: Map<string, string>;
+  closing: boolean;
+}
+
+function findTemplateTagEnd(source: string, start: number): number {
+  let quote: '"' | "'" | '`' | null = null;
+  let escaped = false;
+  let braceDepth = 0;
+
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch as '"' | "'" | '`';
+      continue;
+    }
+    if (ch === '{') {
+      braceDepth++;
+      continue;
+    }
+    if (ch === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (ch === '>' && braceDepth === 0) return i;
+  }
+
+  return -1;
+}
+
+function parseTemplateTagAttributes(source: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  let i = 0;
+
+  while (i < source.length) {
+    while (i < source.length && /\s/.test(source[i])) i++;
+    if (i >= source.length) break;
+
+    const nameStart = i;
+    while (i < source.length && /[^\s=/>]/.test(source[i])) i++;
+    const name = source.slice(nameStart, i);
+    if (!name) break;
+
+    while (i < source.length && /\s/.test(source[i])) i++;
+    if (source[i] !== '=') {
+      attrs.set(name, '');
+      continue;
+    }
+
+    i++;
+    while (i < source.length && /\s/.test(source[i])) i++;
+    if (i >= source.length) {
+      attrs.set(name, '');
+      break;
+    }
+
+    if (source[i] === '"' || source[i] === "'") {
+      const quote = source[i];
+      const valueStart = i;
+      i++;
+      while (i < source.length) {
+        if (source[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (source[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      attrs.set(name, source.slice(valueStart, i));
+      continue;
+    }
+
+    if (source[i] === '{') {
+      const valueStart = i;
+      const closeIdx = findMatchingToken(source, i, '{', '}');
+      if (closeIdx === -1) {
+        attrs.set(name, source.slice(valueStart));
+        break;
+      }
+      i = closeIdx + 1;
+      attrs.set(name, source.slice(valueStart, i));
+      continue;
+    }
+
+    const valueStart = i;
+    while (i < source.length && /[^\s>]/.test(source[i])) i++;
+    attrs.set(name, source.slice(valueStart, i));
+  }
+
+  return attrs;
+}
+
+function tokenizeTemplateTags(template: string): TemplateTag[] {
+  const tags: TemplateTag[] = [];
+  let cursor = 0;
+
+  while (cursor < template.length) {
+    const lt = template.indexOf('<', cursor);
+    if (lt === -1) break;
+
+    if (template.startsWith('<!--', lt)) {
+      const commentEnd = template.indexOf('-->', lt + 4);
+      if (commentEnd === -1) break;
+      cursor = commentEnd + 3;
+      continue;
+    }
+
+    const tagEnd = findTemplateTagEnd(template, lt + 1);
+    if (tagEnd === -1) break;
+    const raw = template.slice(lt + 1, tagEnd).trim();
+    cursor = tagEnd + 1;
+    if (!raw || raw.startsWith('!')) continue;
+
+    const closing = raw.startsWith('/');
+    const normalized = closing ? raw.slice(1).trim() : raw;
+    const nameMatch = normalized.match(/^([A-Za-z][\w:-]*)/);
+    if (!nameMatch) continue;
+
+    const name = nameMatch[1];
+    const attrSource = normalized.slice(name.length).replace(/\/\s*$/, '').trim();
+    tags.push({
+      name,
+      attrs: closing ? new Map() : parseTemplateTagAttributes(attrSource),
+      closing,
+    });
+  }
+
+  return tags;
+}
+
+function extractBracedAttributeExpression(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  return trimmed.slice(1, -1).trim();
+}
+
+function extractAttributeText(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  const braced = extractBracedAttributeExpression(trimmed);
+  if (braced && /^[A-Za-z_$][\w$]*$/.test(braced)) return braced;
+  return trimmed || null;
+}
+
+function extractCallExpression(value: string | undefined): { fnName: string; argsExpr: string } | null {
+  const expr = extractBracedAttributeExpression(value);
+  if (!expr) return null;
+  const match = expr.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
+  if (!match) return null;
+  return {
+    fnName: match[1],
+    argsExpr: (match[2] || '').trim(),
+  };
+}
+
+function extractTopLevelImportNames(source: string): string[] {
+  const sourceFile = ts.createSourceFile('kuratchi-inline-client.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const names: string[] = [];
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const clause = statement.importClause;
+    if (!clause) continue;
+    if (clause.name) pushIdentifier(clause.name.text, names);
+    if (!clause.namedBindings) continue;
+    if (ts.isNamedImports(clause.namedBindings)) {
+      for (const element of clause.namedBindings.elements) {
+        pushIdentifier(element.name.text, names);
+      }
+    } else if (ts.isNamespaceImport(clause.namedBindings)) {
+      pushIdentifier(clause.namedBindings.name.text, names);
+    }
+  }
+
+  return names;
+}
+
+function extractImportModuleSpecifier(source: string): string | null {
+  const sourceFile = ts.createSourceFile('kuratchi-import-spec.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const statement = sourceFile.statements.find(ts.isImportDeclaration);
+  if (!statement || !ts.isStringLiteral(statement.moduleSpecifier)) return null;
+  return statement.moduleSpecifier.text;
+}
+
+function isExecutableTemplateScript(attrs: string): boolean {
+  if (/\bsrc\s*=/i.test(attrs)) return false;
+  const typeMatch = attrs.match(/\btype\s*=\s*(['"])(.*?)\1/i);
+  const type = typeMatch?.[2]?.trim().toLowerCase();
+  if (!type) return true;
+  return type === 'module' || type === 'text/javascript' || type === 'application/javascript';
+}
+
+function collectTemplateClientDeclaredNames(template: string): string[] {
+  const declared = new Set<string>();
+  const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = scriptRegex.exec(template)) !== null) {
+    const attrs = match[1] || '';
+    const body = match[2] || '';
+    if (!isExecutableTemplateScript(attrs)) continue;
+    const transpiled = transpileTypeScript(body, 'template-client-script.ts');
+    for (const name of extractTopLevelImportNames(transpiled)) declared.add(name);
+    for (const name of extractTopLevelDataVars(transpiled)) declared.add(name);
+    for (const name of extractTopLevelFunctionNames(transpiled)) declared.add(name);
+  }
+
+  return Array.from(declared);
+}
+
+function stripLeadingTopLevelScriptBlock(template: string): string {
+  return template.replace(/^(\s*)<script(\s[^>]*)?\s*>[\s\S]*?<\/script>\s*/i, '');
+}
+
+function stripTemplateRawBlocks(template: string): string {
+  return template
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '');
+}
+
+function extractBraceExpressions(line: string): Array<{ expression: string; attrName: string | null }> {
+  const expressions: Array<{ expression: string; attrName: string | null }> = [];
+  let cursor = 0;
+
+  while (cursor < line.length) {
+    const openIdx = line.indexOf('{', cursor);
+    if (openIdx === -1) break;
+    const closeIdx = findMatchingToken(line, openIdx, '{', '}');
+    if (closeIdx === -1) break;
+
+    const expression = line.slice(openIdx + 1, closeIdx).trim();
+    const beforeBrace = line.slice(0, openIdx);
+    const charBefore = openIdx > 0 ? line[openIdx - 1] : '';
+    let attrName: string | null = null;
+    if (charBefore === '=') {
+      const attrMatch = beforeBrace.match(/([\w-]+)=$/);
+      attrName = attrMatch ? attrMatch[1] : null;
+    }
+
+    expressions.push({ expression, attrName });
+    cursor = closeIdx + 1;
+  }
+
+  return expressions;
+}
+
+function collectServerTemplateReferences(template: string): Set<string> {
+  const refs = new Set<string>();
+  const stripped = stripTemplateRawBlocks(template);
+  const lines = stripped.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (isTemplateJsControlLine(trimmed)) {
+      for (const ref of collectReferencedIdentifiers(trimmed)) refs.add(ref);
+    }
+
+    for (const entry of extractBraceExpressions(line)) {
+      if (!entry.expression) continue;
+      if (entry.attrName && /^on[A-Za-z]+$/i.test(entry.attrName)) continue;
+      for (const ref of collectReferencedIdentifiers(entry.expression)) refs.add(ref);
+    }
+  }
+
+  return refs;
 }
 
 function extractExplicitLoad(scriptBody: string): { loadFunction: string | null; remainingScript: string; returnVars: string[] } {
@@ -755,12 +1069,15 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   // Extract all imports from script
   const serverImports: string[] = [];
   const clientImports: string[] = [];
+  const routeClientImports: string[] = [];
+  const routeClientImportBindings: string[] = [];
   const componentImports: Record<string, string> = {};
   const workerEnvAliases: string[] = [];
   const devAliases: string[] = [];
   if (script) {
     for (const statement of getTopLevelImportStatements(script)) {
       const line = statement.text.trim();
+      const moduleSpecifier = extractImportModuleSpecifier(line);
       // Check for component imports: import Name from '$lib/file.html' or '@kuratchi/ui/file.html'
       const libMatch = line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]\$lib\/([^'"]+\.html)['"]/s);
       const pkgMatch = !libMatch ? line.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"](@[^/'"]+\/[^/'"]+)\/([^'"]+\.html)['"]/s) : null;
@@ -778,6 +1095,13 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
         if (devImportAliases.length > 0) {
           for (const alias of devImportAliases) {
             if (!devAliases.includes(alias)) devAliases.push(alias);
+          }
+          continue;
+        }
+        if (moduleSpecifier?.startsWith('$client/')) {
+          routeClientImports.push(line);
+          for (const binding of extractTopLevelImportNames(line)) {
+            if (!routeClientImportBindings.includes(binding)) routeClientImportBindings.push(binding);
           }
           continue;
         }
@@ -845,6 +1169,19 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     }
 
     const transpiledScriptBody = transpileTypeScript(scriptBody, 'route-script.ts');
+    const serverScriptRefs = new Set<string>(collectReferencedIdentifiers(transpiledScriptBody));
+    if (loadFunction) {
+      const transpiledLoadFunction = transpileTypeScript(loadFunction, 'route-load.ts');
+      for (const ref of collectReferencedIdentifiers(transpiledLoadFunction)) serverScriptRefs.add(ref);
+    }
+    const leakedClientScriptBindings = routeClientImportBindings.filter((name) => serverScriptRefs.has(name));
+    if (leakedClientScriptBindings.length > 0) {
+      throw new Error(
+        `[kuratchi compiler] ${options.filePath || kind}\n` +
+        `Top-level $client imports cannot be used in server route code: ${leakedClientScriptBindings.join(', ')}.\n` +
+        `Move this usage to a client event handler or client bridge code, or import from $shared instead.`,
+      );
+    }
     const topLevelVars = extractTopLevelDataVars(transpiledScriptBody);
     for (const v of topLevelVars) dataVars.push(v);
     const topLevelFns = extractTopLevelFunctionNames(transpiledScriptBody);
@@ -857,13 +1194,8 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
 
     // Server import named bindings are also data vars (available in templates)
     for (const line of serverImports) {
-      const namesMatch = line.match(/import\s*\{([^}]+)\}/);
-      if (!namesMatch) continue;
-      for (const part of namesMatch[1].split(',')) {
-        const trimmed = part.trim();
-        if (!trimmed) continue;
-        const segments = trimmed.split(/\s+as\s+/);
-        const localName = (segments[1] || segments[0]).trim();
+      for (const binding of parseNamedImportBindings(line)) {
+        const localName = binding.local.trim();
         if (localName && !dataVars.includes(localName)) dataVars.push(localName);
       }
     }
@@ -875,7 +1207,76 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   // This prevents commented-out code (<!-- ... -->) from being parsed as live
   // action expressions, which would cause false "Invalid action expression" errors.
   const templateWithoutComments = template.replace(/<!--[\s\S]*?-->/g, '');
+  const templateTags = tokenizeTemplateTags(templateWithoutComments);
+  const actionFunctions: string[] = [];
+  const pollFunctions: string[] = [];
+  const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string }> = [];
 
+  for (const tag of templateTags) {
+    if (tag.closing) continue;
+
+    const actionExpr = extractBracedAttributeExpression(tag.attrs.get('action'));
+    if (actionExpr && /^[A-Za-z_$][\w$]*$/.test(actionExpr) && !actionFunctions.includes(actionExpr)) {
+      actionFunctions.push(actionExpr);
+    }
+
+    for (const [attrName, attrValue] of tag.attrs.entries()) {
+      if (/^on[A-Za-z]+$/i.test(attrName)) {
+        const actionCall = extractCallExpression(attrValue);
+        if (actionCall && !actionFunctions.includes(actionCall.fnName)) actionFunctions.push(actionCall.fnName);
+      }
+      if (/^data-(post|put|patch|delete)$/.test(attrName)) {
+        const methodCall = extractCallExpression(attrValue);
+        if (methodCall && !actionFunctions.includes(methodCall.fnName)) actionFunctions.push(methodCall.fnName);
+      }
+    }
+
+    const pollCall = extractCallExpression(tag.attrs.get('data-poll'));
+    if (pollCall && !pollFunctions.includes(pollCall.fnName)) {
+      pollFunctions.push(pollCall.fnName);
+    }
+
+    const getCall = extractCallExpression(tag.attrs.get('data-get'));
+    const asName = extractAttributeText(tag.attrs.get('data-as'));
+    if (!getCall || !asName || !/^[A-Za-z_$][\w$]*$/.test(asName)) continue;
+
+    const key = (extractAttributeText(tag.attrs.get('data-key')) || asName).trim();
+
+    if (!pollFunctions.includes(getCall.fnName)) pollFunctions.push(getCall.fnName);
+    if (!dataVars.includes(asName)) dataVars.push(asName);
+
+    const exists = dataGetQueries.some((q) => q.asName === asName);
+    if (!exists) dataGetQueries.push({ fnName: getCall.fnName, argsExpr: getCall.argsExpr, asName, key });
+  }
+
+  for (const clientBinding of routeClientImportBindings) {
+    const idx = actionFunctions.indexOf(clientBinding);
+    if (idx !== -1) actionFunctions.splice(idx, 1);
+  }
+
+  const templateTemplateScriptSource = clientScript ? stripLeadingTopLevelScriptBlock(template) : template;
+  const templateClientDeclaredNames = collectTemplateClientDeclaredNames(templateTemplateScriptSource);
+  const serverTemplateRefs = collectServerTemplateReferences(template);
+  const leakedRouteClientTemplateBindings = routeClientImportBindings.filter((name) => serverTemplateRefs.has(name));
+  if (leakedRouteClientTemplateBindings.length > 0) {
+    throw new Error(
+      `[kuratchi compiler] ${options.filePath || kind}\n` +
+      `Top-level $client imports cannot be used in server-rendered template output: ${leakedRouteClientTemplateBindings.join(', ')}.\n` +
+      `Use $shared for portable helpers or move this usage into a client event handler.`,
+    );
+  }
+  if (templateClientDeclaredNames.length > 0) {
+    const leakedNames = templateClientDeclaredNames.filter((name) => serverTemplateRefs.has(name));
+    if (leakedNames.length > 0) {
+      throw new Error(
+        `[kuratchi compiler] ${options.filePath || kind}\n` +
+        `Client template <script> bindings cannot be used in server-rendered template output: ${leakedNames.join(', ')}.\n` +
+        `Move shared/pure helpers into the top route <script> or a $shared module.`,
+      );
+    }
+  }
+
+  /*
   // Extract action functions referenced in template: action={fnName}
   const actionFunctions: string[] = [];
   const actionRegex = /action=\{(\w+)\}/g;
@@ -946,6 +1347,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     const exists = dataGetQueries.some((q) => q.asName === asName);
     if (!exists) dataGetQueries.push({ fnName, argsExpr, asName, key });
   }
+  */
 
   return {
     script,
@@ -959,6 +1361,8 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     pollFunctions,
     dataGetQueries,
     clientImports,
+    routeClientImports,
+    routeClientImportBindings,
     loadReturnVars,
     workerEnvAliases,
     devAliases,
@@ -966,4 +1370,3 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
 }
 
 import { transpileTypeScript } from './transpile.js';
-

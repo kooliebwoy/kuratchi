@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "predev": "bun run --cwd ../.. build",
-    "dev": "bun run --bun ../../packages/kuratchi-js/src/cli.ts dev",
+    "dev": "node ../../packages/kuratchi-js/dist/cli.js dev",
     "prebuild": "bun run --cwd ../.. build",
-    "build": "bun run --bun ../../packages/kuratchi-js/src/cli.ts build"
+    "build": "node ../../packages/kuratchi-js/dist/cli.js build"
   },
   "dependencies": {
     "@cloudflare/ai-chat": "^0.1.8",

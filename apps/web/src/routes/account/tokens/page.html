@@ -1,6 +1,7 @@
 <script>
   import { headers } from '@kuratchi/js/request';
   import { getLocals } from '@kuratchi/js';
+  import { handleScopeChange } from '$client/account/tokens';
   import { getCurrentUser } from '$server/database/auth';
   import { getAllTokens, createScopedToken, revokeAnyToken } from '$server/database/tokens';
   import { getDatabases } from '$server/database/databases';
@@ -91,7 +92,7 @@ if (!user) {
                   <form action={revokeAnyToken} method="POST">
                     <input type="hidden" name="tokenId" value={t.id} />
                     <input type="hidden" name="scope" value={t.scope} />
-                    <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Revoke this token? Clients using it will lose access.')">Revoke</button>
+                    <button type="submit" data-variant="danger" data-size="sm" confirm="Revoke this token? Clients using it will lose access.">Revoke</button>
                   </form>
                 </td>
               </tr>
@@ -110,19 +111,7 @@ if (!user) {
     <form action={createScopedToken} method="POST">
       <div data-field>
         <label for="token-scope">Scope</label>
-        <select id="token-scope" name="scope" required onchange="
-          var rf = document.getElementById('resource-field');
-          var rs = document.getElementById('token-resource');
-          if (this.value === 'platform') {
-            rf.style.display = 'none';
-            rs.removeAttribute('required');
-          } else {
-            rf.style.display = '';
-            rs.setAttribute('required', '');
-            var opts = JSON.parse(document.getElementById('scope-data-' + this.value)?.textContent || '[]');
-            rs.innerHTML = '<option value=\x22\x22>Select a resource...</option>' + opts.map(function(o) { return '<option value=\x22' + o.id + '\x22>' + o.name + '</option>'; }).join('');
-          }
-        ">
+        <select id="token-scope" name="scope" required onchange={handleScopeChange()}>
           <option value="">Select scope...</option>
           <option value="platform">Platform (all resources)</option>
           <option value="database">Database</option>

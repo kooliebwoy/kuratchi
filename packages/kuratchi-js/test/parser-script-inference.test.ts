@@ -45,4 +45,30 @@ export async function load() {
     expect(parsed.loadReturnVars).toContain('turnstileSiteKey');
     expect(parsed.dataVars).toContain('turnstileSiteKey');
   });
+
+  it('rejects client template script bindings used in server-rendered template output', () => {
+    const source = `<div>{formatBytes(1024)}</div>
+
+<script>
+  function formatBytes(bytes) {
+    return String(bytes);
+  }
+</script>`;
+
+    expect(() => parseFile(source, { filePath: 'src/routes/sites/page.html' })).toThrow(
+      'Client template <script> bindings cannot be used in server-rendered template output: formatBytes.',
+    );
+  });
+
+  it('rejects top-level $client imports used in server-rendered template output', () => {
+    const source = `<script>
+  import { copyText } from '$client/clipboard';
+</script>
+
+<button>{copyText}</button>`;
+
+    expect(() => parseFile(source, { filePath: 'src/routes/sites/page.html' })).toThrow(
+      'Top-level $client imports cannot be used in server-rendered template output: copyText.',
+    );
+  });
 });

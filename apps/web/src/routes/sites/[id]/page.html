@@ -1,7 +1,9 @@
 <script>
   import { getParam } from '@kuratchi/js';
+  import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$client/sites/upload-form';
   import { getSite, getSiteFiles, uploadSiteFiles, deleteSiteFile, deleteSite } from '$server/database/sites';
   import { getSitePreviewUrl } from '$server/database/sites';
+  import { formatBytes } from '$shared/format';
   import Badge from '@kuratchi/ui/badge.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
@@ -12,13 +14,6 @@
   const site = await getSite(id);
   const files = site ? await getSiteFiles(id) : [];
   const previewUrl = site ? getSitePreviewUrl(site) : null;
-
-  function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-  }
 
   function getFileIcon(contentType) {
     if (!contentType) return 'doc';
@@ -63,7 +58,7 @@ if (!site) {
             <a href={previewUrl} target="_blank" rel="noopener noreferrer" style="font-size: 1.125rem; font-weight: 500;">
               {previewUrl.replace(/^https?:\/\//, '')}
             </a>
-            <button data-variant="ghost" data-size="sm" title="Copy to clipboard" onclick={`navigator.clipboard.writeText('${previewUrl}')`}>
+            <button data-variant="ghost" data-size="sm" title="Copy to clipboard" onclick={copyText(previewUrl)}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -136,7 +131,7 @@ if (!site) {
       <h2>Upload Files</h2>
       <p>Choose one upload mode. Everything selected is deployed together as one site manifest.</p>
     </div>
-    <form id="site-upload-form" action={uploadSiteFiles} method="POST" enctype="multipart/form-data">
+    <form id="site-upload-form" action={uploadSiteFiles} method="POST" enctype="multipart/form-data" onsubmit={handleUploadSubmit()}>
       <input type="hidden" name="siteId" value={site.id} />
       <Card>
         <div data-flex data-direction="column" data-gap="xs">
@@ -145,7 +140,7 @@ if (!site) {
         </div>
         <div data-field style="margin-top: 0.75rem;">
           <label for="site-directory">Folder upload</label>
-          <input type="file" id="site-directory" name="file" multiple webkitdirectory directory />
+          <input type="file" id="site-directory" name="file" multiple webkitdirectory directory onchange={handleDirectoryChange()} />
           <small>Best for Astro, SvelteKit static, Vite, and other generated sites.</small>
         </div>
       </Card>
@@ -159,7 +154,7 @@ if (!site) {
         </div>
         <div data-field style="margin-top: 0.75rem;">
           <label for="site-files">File upload</label>
-          <input type="file" id="site-files" name="file" multiple />
+          <input type="file" id="site-files" name="file" multiple onchange={handleFilesChange()} />
           <small>Good for quick HTML, CSS, JS, image, or config uploads.</small>
         </div>
       </Card>
@@ -202,61 +197,4 @@ if (!site) {
       </div>
     </form>
   </Dialog>
-
-  <script>
-    const uploadForm = document.getElementById('site-upload-form');
-    const directoryInput = document.getElementById('site-directory');
-    const filesInput = document.getElementById('site-files');
-    const pathsContainer = document.getElementById('site-upload-paths');
-    const clientError = document.getElementById('site-upload-client-error');
-
-    function selectedFiles() {
-      const directoryFiles = Array.from(directoryInput?.files || []);
-      if (directoryFiles.length > 0) return directoryFiles;
-      return Array.from(filesInput?.files || []);
-    }
-
-    function syncManifestPaths() {
-      if (!pathsContainer) return;
-      pathsContainer.innerHTML = '';
-
-      for (const file of selectedFiles()) {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'path';
-        input.value = file.webkitRelativePath || file.name || '';
-        pathsContainer.appendChild(input);
-      }
-    }
-
-    function clearClientError() {
-      clientError?.setAttribute('hidden', '');
-    }
-
-    directoryInput?.addEventListener('change', () => {
-      if (directoryInput.files?.length) {
-        filesInput.value = '';
-      }
-      clearClientError();
-      syncManifestPaths();
-    });
-
-    filesInput?.addEventListener('change', () => {
-      if (filesInput.files?.length) {
-        directoryInput.value = '';
-      }
-      clearClientError();
-      syncManifestPaths();
-    });
-
-    uploadForm?.addEventListener('submit', (event) => {
-      if (selectedFiles().length === 0) {
-        event.preventDefault();
-        clientError?.removeAttribute('hidden');
-        return;
-      }
-      clearClientError();
-      syncManifestPaths();
-    });
-  </script>
 }

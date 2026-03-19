@@ -28,6 +28,8 @@ bun run dev
 
 Point wrangler at the entry and you're done. **No `src/index.ts` needed.**
 
+For the framework's internal compiler/runtime orchestration and tracked implementation roadmap, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ```jsonc
 // wrangler.jsonc
 {

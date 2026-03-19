@@ -3,6 +3,19 @@ export interface UiConfigValues {
   radius: string;
 }
 
+const ROOT_HEAD_SLOT = '<!--__KURATCHI_ROOT_HEAD_SLOT__-->';
+const ROOT_BODY_SLOT = '<!--__KURATCHI_ROOT_BODY_SLOT__-->';
+
+function insertBeforeClosingTag(source: string, tagName: 'head' | 'body', marker: string): string {
+  const lower = source.toLowerCase();
+  const closingTag = `</${tagName}>`;
+  const idx = lower.lastIndexOf(closingTag);
+  if (idx === -1) {
+    return tagName === 'head' ? `${marker}\n${source}` : `${source}\n${marker}`;
+  }
+  return source.slice(0, idx) + marker + '\n' + source.slice(idx);
+}
+
 function compactInlineJs(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -55,6 +68,19 @@ function patchHtmlTag(source: string, theme: string, radius: string): string {
 const BRIDGE_SOURCE = `(function(){
   function by(sel, root){ return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   var __refreshSeq = Object.create(null);
+  var __clientHandlers = Object.create(null);
+  window.__kuratchiClient = window.__kuratchiClient || {
+    register: function(routeId, handlers){
+      if(!routeId || !handlers) return;
+      __clientHandlers[String(routeId)] = Object.assign(__clientHandlers[String(routeId)] || {}, handlers);
+    },
+    invoke: function(routeId, handlerId, args, event, element){
+      var routeHandlers = __clientHandlers[String(routeId)] || null;
+      var handler = routeHandlers ? routeHandlers[String(handlerId)] : null;
+      if(typeof handler !== 'function') return;
+      return handler(Array.isArray(args) ? args : [], event, element);
+    }
+  };
   function syncGroup(group){
     var items = by('[data-select-item]').filter(function(el){ return el.getAttribute('data-select-item') === group; });
     var masters = by('[data-select-all]').filter(function(el){ return el.getAttribute('data-select-all') === group; });
@@ -175,6 +201,30 @@ const BRIDGE_SOURCE = `(function(){
     return Promise.all(keys.map(function(k){ return replaceBlocksWithKey('key:' + k); })).then(function(){});
   }
   function act(e){
+    var clientSel = '[data-client-event="' + e.type + '"]';
+    var clientEl = e.target && e.target.closest ? e.target.closest(clientSel) : null;
+    if(clientEl){
+      var routeId = clientEl.getAttribute('data-client-route') || '';
+      var handlerId = clientEl.getAttribute('data-client-handler') || '';
+      var argsRaw = clientEl.getAttribute('data-client-args') || '[]';
+      var args = [];
+      try {
+        var parsedArgs = JSON.parse(argsRaw);
+        args = Array.isArray(parsedArgs) ? parsedArgs : [];
+      } catch(_err) {}
+      try {
+        var result = window.__kuratchiClient && typeof window.__kuratchiClient.invoke === 'function'
+          ? window.__kuratchiClient.invoke(routeId, handlerId, args, e, clientEl)
+          : undefined;
+        if(result === false){
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      } catch(err) {
+        console.error('[kuratchi] client handler error:', err);
+      }
+    }
     if(e.type === 'click'){
       var g = e.target && e.target.closest ? e.target.closest('[data-get]') : null;
       if(g && !g.hasAttribute('data-as') && !g.hasAttribute('data-action')){
@@ -224,7 +274,7 @@ const BRIDGE_SOURCE = `(function(){
       })
       .catch(function(err){ console.error('[kuratchi] client action error:', err); });
   }
-  ['click','change','input','focus','blur'].forEach(function(ev){ document.addEventListener(ev, act, true); });
+  ['click','change','input','focus','blur','submit'].forEach(function(ev){ document.addEventListener(ev, act, true); });
   function autoLoadQueries(){
     var seen = Object.create(null);
     by('[data-get][data-as]').forEach(function(el){
@@ -455,6 +505,8 @@ export function prepareRootLayoutSource(opts: {
   uiConfigValues: UiConfigValues | null;
 }): string {
   let source = opts.source;
+  const headInjections: string[] = [];
+  const bodyInjections: string[] = [];
 
   if (opts.uiConfigValues) {
     source = patchHtmlTag(source, opts.uiConfigValues.theme, opts.uiConfigValues.radius);
@@ -462,23 +514,24 @@ export function prepareRootLayoutSource(opts: {
 
   if (opts.uiConfigValues) {
     const themeInitScript = `<script>(function(){try{var d=document.documentElement;var s=localStorage.getItem('kui-theme');var fallback=d.getAttribute('data-theme')==='system'?'system':(d.classList.contains('dark')?'dark':'light');var p=(s==='light'||s==='dark'||s==='system')?s:fallback;d.classList.remove('dark');d.removeAttribute('data-theme');if(p==='dark'){d.classList.add('dark');}else if(p==='system'){d.setAttribute('data-theme','system');}}catch(e){}})()</script>`;
-    source = source.replace('</head>', themeInitScript + '\n</head>');
+    headInjections.push(themeInitScript);
   }
 
   if (opts.themeCss) {
-    source = source.replace('</head>', `<style>${opts.themeCss}</style>\n</head>`);
+    headInjections.push(`<style>${opts.themeCss}</style>`);
   }
 
-  source = source.replace('</head>', `<style>@view-transition { navigation: auto; }</style>\n</head>`);
+  headInjections.push(`<style>@view-transition { navigation: auto; }</style>`);
 
   const actionScript = `<script>${opts.isDev ? BRIDGE_SOURCE : compactInlineJs(BRIDGE_SOURCE)}</script>`;
   const reactiveRuntimeScript = `<script>${opts.isDev ? REACTIVE_RUNTIME_SOURCE : compactInlineJs(REACTIVE_RUNTIME_SOURCE)}</script>`;
-  if (source.includes('</head>')) {
-    source = source.replace('</head>', reactiveRuntimeScript + '\n</head>');
-  } else {
-    source = reactiveRuntimeScript + '\n' + source;
-  }
-  source = source.replace('</body>', actionScript + '\n</body>');
+  headInjections.push(reactiveRuntimeScript);
+  bodyInjections.push(actionScript);
+
+  source = insertBeforeClosingTag(source, 'head', ROOT_HEAD_SLOT);
+  source = insertBeforeClosingTag(source, 'body', ROOT_BODY_SLOT);
+  source = source.replace(ROOT_HEAD_SLOT, headInjections.join('\n'));
+  source = source.replace(ROOT_BODY_SLOT, bodyInjections.join('\n'));
 
   return source;
 }

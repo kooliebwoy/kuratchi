@@ -39,7 +39,9 @@ export interface RouteRenderPlan {
   prelude: string;
   dataVars: string[];
   body: string;
+  headBody: string;
   componentStyles: string[];
+  clientModuleHref?: string | null;
 }
 
 export interface RouteBuildPlan {
@@ -58,15 +60,22 @@ export interface RoutePipelineParsedFile extends ParsedFile {
 interface AnalyzeRouteOptions {
   pattern: string;
   renderBody: string;
+  renderHeadBody: string;
   isDev: boolean;
   parsed: RoutePipelineParsedFile;
   fnToModule: Record<string, string>;
   rpcNameMap?: Map<string, string>;
   componentStyles: string[];
+  clientModuleHref?: string | null;
 }
 
 function dedupe(items: string[]): string[] {
   return Array.from(new Set(items));
+}
+
+function extractDeclaredConstName(statement: string): string | null {
+  const match = statement.trim().match(/^const\s+([A-Za-z_$][\w$]*)\s*=/);
+  return match ? match[1] : null;
 }
 
 function buildLoadQueryStateCode(opts: {
@@ -176,16 +185,26 @@ function assertRoutePlanInvariants(opts: {
 }
 
 export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
-  const { pattern, renderBody, isDev, parsed, fnToModule, rpcNameMap, componentStyles } = opts;
+  const { pattern, renderBody, renderHeadBody, isDev, parsed, fnToModule, rpcNameMap, componentStyles, clientModuleHref } = opts;
   const hasFns = Object.keys(fnToModule).length > 0;
   const queryDefs = parsed.dataGetQueries ?? [];
   const queryVars = queryDefs.map((query) => query.asName);
   const scriptSegments = (parsed.scriptSegments ?? []).filter((segment) => !!segment.script);
   const hasSegmentedScripts = scriptSegments.length > 1;
   const routeDevDecls = buildDevAliasDeclarations(parsed.devAliases, isDev);
-  const routeImportDecls = (parsed.scriptImportDecls ?? []).join('\n');
+  const routeImportDeclLines = parsed.scriptImportDecls ?? [];
+  const routeImportDecls = routeImportDeclLines.join('\n');
+  const importedBindingNames = new Set(Object.keys(fnToModule));
+  const renderScopeActionNames = new Set(parsed.actionFunctions);
+  const renderImportPrelude = routeImportDeclLines
+    .filter((statement) => {
+      const declaredName = extractDeclaredConstName(statement);
+      return declaredName ? !renderScopeActionNames.has(declaredName) : true;
+    })
+    .join('\n');
 
   let scriptBody = '';
+  let renderPreludeSource = '';
   let scriptUsesAwait = false;
   if (hasSegmentedScripts) {
     const combinedScript = scriptSegments.map((segment) => stripTopLevelImports(segment.script)).join('\n');
@@ -199,13 +218,25 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
       isDev,
       asyncMode: scriptUsesAwait,
     });
+    renderPreludeSource = buildSegmentedScriptBody({
+      segments: scriptSegments,
+      fnToModule,
+      importDecls: renderImportPrelude,
+      workerEnvAliases: parsed.workerEnvAliases,
+      devAliases: parsed.devAliases,
+      isDev,
+      asyncMode: false,
+    });
   } else {
-    scriptBody = parsed.script
+    const strippedScriptBody = parsed.script
       ? stripTopLevelImports(parsed.script)
       : '';
-    scriptBody = [routeDevDecls, routeImportDecls, scriptBody].filter(Boolean).join('\n');
+    scriptBody = [routeDevDecls, routeImportDecls, strippedScriptBody].filter(Boolean).join('\n');
+    renderPreludeSource = [routeDevDecls, renderImportPrelude, strippedScriptBody].filter(Boolean).join('\n');
     scriptBody = rewriteImportedFunctionCalls(scriptBody, fnToModule);
     scriptBody = rewriteWorkerEnvAliases(scriptBody, parsed.workerEnvAliases);
+    renderPreludeSource = rewriteImportedFunctionCalls(renderPreludeSource, fnToModule);
+    renderPreludeSource = rewriteWorkerEnvAliases(renderPreludeSource, parsed.workerEnvAliases);
     scriptUsesAwait = /\bawait\b/.test(scriptBody);
   }
 
@@ -228,6 +259,9 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
   if (scriptBody) {
     scriptBody = transpileTypeScript(scriptBody, `route-script:${pattern}.ts`);
   }
+  if (renderPreludeSource) {
+    renderPreludeSource = transpileTypeScript(renderPreludeSource, `route-render:${pattern}.ts`);
+  }
   if (explicitLoadFunction) {
     explicitLoadFunction = transpileTypeScript(explicitLoadFunction, `route-load:${pattern}.ts`);
   }
@@ -235,6 +269,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
   const scriptReturnVars = parsed.script
     ? parsed.dataVars.filter((name) =>
       !queryVars.includes(name) &&
+      !importedBindingNames.has(name) &&
       !parsed.actionFunctions.includes(name) &&
       !parsed.pollFunctions.includes(name),
     )
@@ -294,6 +329,9 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     'params',
     'breadcrumbs',
   ]);
+  const renderPrelude = !scriptUsesAwait
+    ? renderPreludeSource
+    : renderImportPrelude;
 
   return {
     pattern,
@@ -301,10 +339,12 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     actions,
     rpc,
     render: {
-      prelude: scriptBody && !scriptUsesAwait ? scriptBody : '',
+      prelude: renderPrelude,
       dataVars: renderDataVars,
       body: renderBody,
+      headBody: renderHeadBody,
       componentStyles,
+      clientModuleHref: clientModuleHref ?? null,
     },
   };
 }
@@ -332,16 +372,45 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
   }
 
   const destructure = `const { ${plan.render.dataVars.join(', ')} } = data;\n      `;
-  let finalRenderBody = plan.render.body;
+  let finalHeadRenderBody = plan.render.headBody;
   if (plan.render.componentStyles.length > 0) {
-    const lines = plan.render.body.split('\n');
+    const lines = plan.render.headBody.split('\n');
     const styleLines = plan.render.componentStyles.map((css) => `__html += \`${css}\\n\`;`);
-    finalRenderBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
+    finalHeadRenderBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
+  }
+  if (plan.render.clientModuleHref) {
+    finalHeadRenderBody += `\n__html += \`<script type="module" src="${plan.render.clientModuleHref}"></script>\\n\`;`;
   }
 
   parts.push(`    render(data) {
-      ${destructure}${plan.render.prelude ? plan.render.prelude + '\n      ' : ''}${finalRenderBody}
-      return __html;
+      ${destructure}${plan.render.prelude ? plan.render.prelude + '\n      ' : ''}const __head = (() => {
+        ${finalHeadRenderBody}
+        return __html;
+      })();
+      const __rendered = (() => {
+        const __fragments = Object.create(null);
+        const __fragmentStack = [];
+        const __emit = (chunk) => {
+          const __value = chunk == null ? '' : String(chunk);
+          __html += __value;
+          for (const __fragmentId of __fragmentStack) {
+            __fragments[__fragmentId] = (__fragments[__fragmentId] || '') + __value;
+          }
+        };
+        const __pushFragment = (id) => {
+          const __key = String(id);
+          if (!Object.prototype.hasOwnProperty.call(__fragments, __key)) {
+            __fragments[__key] = '';
+          }
+          __fragmentStack.push(__key);
+        };
+        const __popFragment = () => {
+          __fragmentStack.pop();
+        };
+        ${plan.render.body}
+        return { html: __html, fragments: __fragments };
+      })();
+      return { html: __rendered.html, head: __head, fragments: __rendered.fragments };
     }`);
 
   return `  {\n${parts.join(',\n')}\n  }`;

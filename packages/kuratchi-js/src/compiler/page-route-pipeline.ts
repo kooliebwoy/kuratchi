@@ -1,8 +1,9 @@
 import * as path from 'node:path';
-import { compileTemplate } from './template.js';
+import { compileTemplate, splitTemplateRenderSections } from './template.js';
 import { analyzeRouteBuild, emitRouteObject } from './route-pipeline.js';
 import { linkRouteServerImports } from './import-linking.js';
 import type { ComponentCompiler } from './component-pipeline.js';
+import type { ClientModuleCompiler } from './client-module-pipeline.js';
 import type { RouteStatePlan } from './route-state-pipeline.js';
 
 export function compilePageRoute(opts: {
@@ -12,6 +13,8 @@ export function compilePageRoute(opts: {
   isDev: boolean;
   routeState: RouteStatePlan;
   componentCompiler: ComponentCompiler;
+  clientModuleCompiler: ClientModuleCompiler;
+  assetsPrefix: string;
   resolveCompiledImportPath: (origPath: string, importerDir: string, outFileDir: string) => string;
   allocateModuleId: () => string;
   pushImport: (statement: string) => void;
@@ -65,21 +68,38 @@ export function compilePageRoute(opts: {
     query.rpcId = rpcNameMap.get(query.fnName)!;
   }
 
+  const clientRouteRegistry = opts.clientModuleCompiler.createRouteRegistry(
+    opts.routeIndex,
+    opts.routeState.routeBrowserImportEntries,
+  );
+  const renderSections = splitTemplateRenderSections(opts.routeState.effectiveTemplate);
   const renderBody = compileTemplate(
-    opts.routeState.effectiveTemplate,
+    renderSections.bodyTemplate,
     routeComponentNames,
     actionNames,
     rpcNameMap,
+    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry },
   );
+  const renderHeadBody = compileTemplate(
+    renderSections.headTemplate,
+    routeComponentNames,
+    actionNames,
+    rpcNameMap,
+    { clientRouteRegistry },
+  );
+  const clientEntryAsset = clientRouteRegistry.buildEntryAsset();
+  const clientModuleHref = clientEntryAsset ? `${opts.assetsPrefix}${clientEntryAsset.assetName}` : null;
 
   const routePlan = analyzeRouteBuild({
     pattern: opts.pattern,
     renderBody,
+    renderHeadBody,
     isDev: opts.isDev,
     parsed: opts.routeState.mergedParsed,
     fnToModule,
     rpcNameMap,
     componentStyles: opts.componentCompiler.collectStyles(routeComponentNames),
+    clientModuleHref,
   });
 
   return emitRouteObject(routePlan);

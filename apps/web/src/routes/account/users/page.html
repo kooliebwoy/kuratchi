@@ -83,7 +83,7 @@ if (!user) {
                     }
                     <form action={deleteUser} method="POST">
                       <input type="hidden" name="id" value={u.id} />
-                      <button type="submit" data-variant="danger" data-size="sm" onclick="return confirm('Delete this user?')">Delete</button>
+                      <button type="submit" data-variant="danger" data-size="sm" confirm="Delete this user?">Delete</button>
                     </form>
                   </div>
                 } else {

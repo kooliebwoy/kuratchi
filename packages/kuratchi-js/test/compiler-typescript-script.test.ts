@@ -348,4 +348,216 @@ $: if (dev) console.log(count);
       'Client <script> blocks cannot import from @kuratchi/js/environment.',
     );
   });
+
+  it('emits route client assets for top-level $client event handlers', () => {
+    const projectDir = createTempProject('route-client-handlers');
+    fs.mkdirSync(path.join(projectDir, 'src', 'client'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'client', 'form.ts'),
+      `export function copyText(value: string) {
+  return navigator.clipboard.writeText(value);
+}
+
+export function validateForm(event?: Event) {
+  event?.preventDefault();
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'actions.ts'),
+      `export async function submitForm(formData: FormData) {
+  return formData;
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { copyText, validateForm } from '$client/form';
+import { submitForm } from '$server/actions';
+</script>
+
+<form action={submitForm} onsubmit={validateForm()}>
+  <button type="button" onclick={copyText('hello')}>Copy</button>
+</form>`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
+    expect(routesCode).toContain('data-client-route="route_0"');
+    expect(routesCode).toContain('data-client-handler="h0"');
+    expect(routesCode).toContain('data-client-handler="h1"');
+    expect(routesCode).toContain('data-client-event="click"');
+    expect(routesCode).toContain('data-client-event="submit"');
+    expect(routesCode).toContain('__kuratchi/client/modules/client/form.js');
+    expect(routesCode).toContain('window.__kuratchiClient?.register(');
+  });
+
+  it('keeps $shared helpers in render scope without returning them from async load output', () => {
+    const projectDir = createTempProject('async-shared-render-helper');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'shared'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'sites.ts'),
+      `export async function getSites() {
+  return [{ id: '1', totalSize: 2048 }];
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'shared', 'format.ts'),
+      `export function formatBytes(bytes: number) {
+  return bytes + ' B';
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { getSites } from '$server/sites';
+import { formatBytes } from '$shared/format';
+const sites = await getSites();
+</script>
+
+<p>{formatBytes(sites[0].totalSize)}</p>`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).not.toContain('return { sites, getSites, formatBytes');
+    expect(routesCode).not.toContain('return { sites, formatBytes');
+    expect(routesCode).toContain('return { sites };');
+    expect(routesCode).toContain('const formatBytes = __m');
+    expect(routesCode).toContain('<p>${__esc(formatBytes(sites[0].totalSize))}</p>');
+  });
+
+  it('does not redeclare action imports in non-async render prelude', () => {
+    const projectDir = createTempProject('non-async-action-render');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'auth.ts'),
+      `export async function signIn(formData: FormData) {
+  return formData;
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { signIn } from '$server/auth';
+</script>
+
+<form action={signIn} method="POST"></form>
+<p>{signIn.error}</p>`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain("actions: { 'signIn': __m0.signIn }");
+    expect(routesCode).not.toContain('const signIn = __m0.signIn;');
+    expect(routesCode).toContain('const { signIn, params, breadcrumbs } = data;');
+  });
+
+  it('emits route client assets for nested layout-level $client event handlers', () => {
+    const projectDir = createTempProject('layout-client-handlers');
+    fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'routes', 'dashboard'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'client', 'ui', 'dialog.ts'),
+      `export function closeNearestDialog(_value?: unknown, _event?: Event, element?: Element | null) {
+  const dialog = element?.closest ? element.closest('dialog') : null;
+  if (dialog && typeof (dialog as HTMLDialogElement).close === 'function') {
+    (dialog as HTMLDialogElement).close();
+  }
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'dashboard', 'layout.html'),
+      `<script>
+import { closeNearestDialog } from '$client/ui/dialog';
+</script>
+
+<dialog open>
+  <button type="button" onclick={closeNearestDialog()}>Close</button>
+</dialog>
+<slot></slot>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'dashboard', 'page.html'),
+      `<p>Hello</p>`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
+    expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
+    expect(routesCode).toContain('data-client-route="route_0"');
+    expect(routesCode).toContain('data-client-event="click"');
+  });
+
+  it('emits root layout client assets for top-level $client event handlers', () => {
+    const projectDir = createTempProject('root-layout-client-handlers');
+    fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'client', 'ui', 'dialog.ts'),
+      `export function closeNearestDialog(_value?: unknown, _event?: Event, element?: Element | null) {
+  const dialog = element?.closest ? element.closest('dialog') : null;
+  if (dialog && typeof (dialog as HTMLDialogElement).close === 'function') {
+    (dialog as HTMLDialogElement).close();
+  }
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'layout.html'),
+      `<script>
+import { closeNearestDialog } from '$client/ui/dialog';
+</script>
+
+<!doctype html>
+<html>
+<head></head>
+<body>
+  <dialog open>
+    <button type="button" onclick={closeNearestDialog()}>Close</button>
+  </dialog>
+  <slot></slot>
+</body>
+</html>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<p>Hello</p>`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
+    expect(routesCode).toContain('__kuratchi/client/routes/layout_root.js');
+    expect(routesCode).toContain('data-client-route="layout_root"');
+    expect(routesCode).toContain('data-client-event="click"');
+    expect(routesCode).not.toContain("import { closeNearestDialog } from '$client/ui/dialog';");
+  });
 });

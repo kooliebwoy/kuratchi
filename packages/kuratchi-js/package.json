@@ -38,6 +38,10 @@
             "types": "./dist/runtime/do.d.ts",
             "import": "./dist/runtime/do.js"
         },
+        "./runtime/generated-worker.js": {
+            "types": "./dist/runtime/generated-worker.d.ts",
+            "import": "./dist/runtime/generated-worker.js"
+        },
         "./compiler": {
             "types": "./dist/compiler/index.d.ts",
             "import": "./dist/compiler/index.js"

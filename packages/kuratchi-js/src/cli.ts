@@ -7,6 +7,7 @@ import { compile } from './compiler/index.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
+import { createRequire } from 'node:module';
 import { spawn, type ChildProcess } from 'node:child_process';
 
 const args = process.argv.slice(2);
@@ -14,21 +15,27 @@ const command = args[0];
 
 const projectDir = process.cwd();
 
-switch (command) {
-  case 'build':
-    runBuild();
-    break;
-  case 'watch':
-    runWatch(false);
-    break;
-  case 'dev':
-    runWatch(true);
-    break;
-  case 'create':
-    runCreate();
-    break;
-  default:
-    console.log(`
+void main().catch((err: any) => {
+  console.error(`[kuratchi] ${err?.message ?? err}`);
+  process.exit(1);
+});
+
+async function main() {
+  switch (command) {
+    case 'build':
+      runBuild();
+      return;
+    case 'watch':
+      await runWatch(false);
+      return;
+    case 'dev':
+      await runWatch(true);
+      return;
+    case 'create':
+      await runCreate();
+      return;
+    default:
+      console.log(`
 KuratchiJS CLI
 
 Usage:
@@ -37,7 +44,8 @@ Usage:
   kuratchi dev            Compile, watch for changes, and start wrangler dev server
   kuratchi watch          Compile + watch only (no wrangler — for custom setups)
 `);
-    process.exit(1);
+      process.exit(1);
+  }
 }
 
 async function runCreate() {
@@ -59,7 +67,7 @@ function runBuild(isDev = false) {
   }
 }
 
-function runWatch(withWrangler = false) {
+async function runWatch(withWrangler = false): Promise<void> {
   runBuild(true);
 
   const routesDir = path.join(projectDir, 'src', 'routes');
@@ -90,11 +98,11 @@ function runWatch(withWrangler = false) {
   // `kuratchi dev` also starts the wrangler dev server.
   // `kuratchi watch` is the compiler-only mode for custom setups.
   if (withWrangler) {
-    startWranglerDev().catch((err: any) => {
-      console.error(`[kuratchi] Failed to start wrangler dev: ${err?.message ?? err}`);
-      process.exit(1);
-    });
+    await startWranglerDev();
+    return;
   }
+
+  await new Promise(() => {});
 }
 
 function hasPortFlag(inputArgs: string[]): boolean {
@@ -127,7 +135,7 @@ async function findOpenPort(start = 8787, end = 8899): Promise<number> {
 
 async function startWranglerDev(): Promise<void> {
   const passthroughArgs = args.slice(1);
-  const wranglerArgs = ['wrangler', 'dev', ...passthroughArgs];
+  const wranglerArgs = ['dev', ...passthroughArgs];
 
   if (!hasPortFlag(passthroughArgs)) {
     const port = await findOpenPort();
@@ -135,19 +143,7 @@ async function startWranglerDev(): Promise<void> {
     console.log(`[kuratchi] Starting wrangler dev on port ${port}`);
   }
 
-  // Use 'pipe' for stdin so wrangler doesn't detect stdin EOF and exit
-  // prematurely when launched via a script runner (e.g. `bun run dev`).
-  const isWin = process.platform === 'win32';
-  const wrangler = isWin
-    ? spawn('npx ' + wranglerArgs.join(' '), {
-        cwd: projectDir,
-        stdio: ['pipe', 'inherit', 'inherit'],
-        shell: true,
-      })
-    : spawn('npx', wranglerArgs, {
-        cwd: projectDir,
-        stdio: ['pipe', 'inherit', 'inherit'],
-      });
+  const wrangler = spawnWranglerProcess(wranglerArgs);
 
   const cleanup = () => {
     if (!wrangler.killed) wrangler.kill();
@@ -156,11 +152,54 @@ async function startWranglerDev(): Promise<void> {
   process.on('SIGINT', () => { cleanup(); process.exit(0); });
   process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 
-  wrangler.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[kuratchi] wrangler exited with code ${code}`);
-    }
-    process.exit(code ?? 0);
+  await new Promise<void>((resolve, reject) => {
+    wrangler.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(`wrangler exited with code ${code}`));
+        return;
+      }
+      resolve();
+    });
+
+    wrangler.on('error', (err) => {
+      reject(err);
+    });
+  }).catch((err: any) => {
+    console.error(`[kuratchi] Failed to start wrangler dev: ${err?.message ?? err}`);
+    process.exit(1);
+  });
+}
+
+function resolveWranglerBin(): string | null {
+  try {
+    const projectPackageJson = path.join(projectDir, 'package.json');
+    const projectRequire = createRequire(projectPackageJson);
+    return projectRequire.resolve('wrangler/bin/wrangler.js');
+  } catch {
+    return null;
+  }
+}
+
+function getNodeExecutable(): string {
+  if (!process.versions.bun) return process.execPath;
+  return 'node';
+}
+
+function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
+  const localWranglerBin = resolveWranglerBin();
+  const stdio: ['pipe', 'inherit', 'inherit'] = ['pipe', 'inherit', 'inherit'];
+
+  if (localWranglerBin) {
+    return spawn(getNodeExecutable(), [localWranglerBin, ...wranglerArgs], {
+      cwd: projectDir,
+      stdio,
+    });
+  }
+
+  const fallbackCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  return spawn(fallbackCommand, ['wrangler', ...wranglerArgs], {
+    cwd: projectDir,
+    stdio,
   });
 }
 

@@ -5,7 +5,7 @@
  */
 
 import { Router, filePathToPattern } from './router.js';
-import type { AppConfig, Env, RouteContext, RouteModule, ApiRouteModule, LayoutModule } from './types.js';
+import type { AppConfig, Env, RouteContext, RouteModule, ApiRouteModule, LayoutModule, PageRenderOutput, PageRenderResult } from './types.js';
 
 /**
  * Create a Cloudflare Worker fetch handler from an AppConfig.
@@ -150,15 +150,28 @@ function renderPage(
   data: Record<string, any>,
   layouts: Record<string, LayoutModule>
 ): Response {
-  const content = route.render(data);
+  const rendered = normalizeRenderOutput(route.render(data));
   const layoutName = route.layout ?? 'default';
   const layout = layouts[layoutName];
 
   const html = layout
-    ? layout.render({ content, data })
-    : content;
+    ? layout.render({ content: rendered.html, data, head: rendered.head })
+    : rendered.html;
 
   return new Response(html, {
     headers: { 'content-type': 'text/html; charset=utf-8' },
   });
+}
+
+function normalizeRenderOutput(output: PageRenderOutput): PageRenderResult {
+  if (typeof output === 'string') {
+    return { html: output, head: '' };
+  }
+  return {
+    html: typeof output?.html === 'string' ? output.html : '',
+    head: typeof output?.head === 'string' ? output.head : '',
+    fragments: output && typeof output === 'object' && !Array.isArray(output) && typeof (output as { fragments?: unknown }).fragments === 'object'
+      ? ((output as { fragments?: Record<string, string> }).fragments ?? {})
+      : {},
+  };
 }

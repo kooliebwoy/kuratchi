@@ -19,11 +19,16 @@ export interface RouteStatePlan {
   routeScriptReferenceSource: string;
   routeServerImportEntries: RouteImportEntry[];
   routeClientImportEntries: RouteImportEntry[];
+  routeBrowserImportEntries: RouteImportEntry[];
   mergedParsed: MergedRouteParsed;
 }
 
 function pushUnique(target: string[], value: string): void {
   if (!target.includes(value)) target.push(value);
+}
+
+function isSharedImport(line: string): boolean {
+  return /\bfrom\s+['"]\$shared\//.test(line);
 }
 
 export function assembleRouteState(opts: {
@@ -45,6 +50,16 @@ export function assembleRouteState(opts: {
     line,
     importerDir: path.dirname(fullPath),
   }));
+  const routeBrowserImportEntries: RouteImportEntry[] = [
+    ...parsed.routeClientImports.map((line) => ({
+      line,
+      importerDir: path.dirname(fullPath),
+    })),
+    ...parsed.serverImports.filter(isSharedImport).map((line) => ({
+      line,
+      importerDir: path.dirname(fullPath),
+    })),
+  ];
   const mergedActionFunctions = [...parsed.actionFunctions];
   const mergedDataVars = [...parsed.dataVars];
   const mergedPollFunctions = [...parsed.pollFunctions];
@@ -52,6 +67,8 @@ export function assembleRouteState(opts: {
   const mergedComponentImports: Record<string, string> = { ...parsed.componentImports };
   const mergedWorkerEnvAliases = [...parsed.workerEnvAliases];
   const mergedDevAliases = [...parsed.devAliases];
+  const mergedRouteClientImports = [...parsed.routeClientImports];
+  const mergedRouteClientImportBindings = [...parsed.routeClientImportBindings];
 
   for (const layoutRelPath of layoutRelativePaths) {
     if (layoutRelPath === 'layout.html') continue;
@@ -80,6 +97,16 @@ export function assembleRouteState(opts: {
     }
     for (const line of layoutParsed.clientImports) {
       routeClientImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
+    }
+    for (const line of layoutParsed.routeClientImports) {
+      routeBrowserImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
+      pushUnique(mergedRouteClientImports, line);
+    }
+    for (const line of layoutParsed.serverImports.filter(isSharedImport)) {
+      routeBrowserImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
+    }
+    for (const binding of layoutParsed.routeClientImportBindings) {
+      pushUnique(mergedRouteClientImportBindings, binding);
     }
     for (const fnName of layoutParsed.actionFunctions) {
       pushUnique(mergedActionFunctions, fnName);
@@ -125,6 +152,8 @@ export function assembleRouteState(opts: {
     script: routeScriptParts.length > 0 ? routeScriptParts.join('\n\n') : parsed.script,
     serverImports: routeServerImportEntries.map((entry) => entry.line),
     clientImports: routeClientImportEntries.map((entry) => entry.line),
+    routeClientImports: mergedRouteClientImports,
+    routeClientImportBindings: mergedRouteClientImportBindings,
     actionFunctions: mergedActionFunctions,
     dataVars: mergedDataVars,
     componentImports: mergedComponentImports,
@@ -142,6 +171,7 @@ export function assembleRouteState(opts: {
     routeScriptReferenceSource,
     routeServerImportEntries,
     routeClientImportEntries,
+    routeBrowserImportEntries,
     mergedParsed,
   };
 }

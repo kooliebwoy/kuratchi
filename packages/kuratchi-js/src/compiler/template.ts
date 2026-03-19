@@ -40,6 +40,274 @@ function isJsControlLine(line: string): boolean {
   return JS_CONTROL_PATTERNS.some(p => p.test(line));
 }
 
+export interface TemplateRenderSections {
+  bodyTemplate: string;
+  headTemplate: string;
+}
+
+export interface CompileTemplateOptions {
+  emitCall?: string;
+  enableFragmentManifest?: boolean;
+  appendNewline?: boolean;
+  clientRouteRegistry?: ClientRouteRegistry;
+}
+
+const FRAGMENT_OPEN_MARKER = '<!--__KURATCHI_FRAGMENT_OPEN:';
+const FRAGMENT_CLOSE_MARKER = '<!--__KURATCHI_FRAGMENT_CLOSE-->';
+
+export function splitTemplateRenderSections(template: string): TemplateRenderSections {
+  const bodyLines: string[] = [];
+  const headLines: string[] = [];
+  const lines = template.split('\n');
+  let inHead = false;
+  let inStyle = false;
+  let inScript = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const opensStyle = /<style[\s>]/i.test(trimmed);
+    const closesStyle = /<\/style>/i.test(trimmed);
+    const opensScript = /<script[\s>]/i.test(trimmed);
+    const closesScript = /<\/script>/i.test(trimmed);
+    const inRawBlock = inStyle || inScript || opensStyle || opensScript;
+
+    if (inRawBlock) {
+      let remaining = line;
+      let bodyLine = '';
+      let headLine = '';
+
+      while (remaining.length > 0) {
+        if (!inHead) {
+          const openMatch = remaining.match(/<head(?:\s[^>]*)?>/i);
+          if (!openMatch || openMatch.index === undefined) {
+            bodyLine += remaining;
+            break;
+          }
+
+          bodyLine += remaining.slice(0, openMatch.index);
+          remaining = remaining.slice(openMatch.index + openMatch[0].length);
+
+          const closeMatch = remaining.match(/<\/head>/i);
+          if (!closeMatch || closeMatch.index === undefined) {
+            headLine += remaining;
+            remaining = '';
+            inHead = true;
+            break;
+          }
+
+          headLine += remaining.slice(0, closeMatch.index);
+          remaining = remaining.slice(closeMatch.index + closeMatch[0].length);
+        } else {
+          const closeMatch = remaining.match(/<\/head>/i);
+          if (!closeMatch || closeMatch.index === undefined) {
+            headLine += remaining;
+            remaining = '';
+            break;
+          }
+
+          headLine += remaining.slice(0, closeMatch.index);
+          remaining = remaining.slice(closeMatch.index + closeMatch[0].length);
+          inHead = false;
+        }
+      }
+
+      bodyLines.push(bodyLine);
+      headLines.push(headLine);
+
+      if (opensStyle && !closesStyle) inStyle = true;
+      if (closesStyle) inStyle = false;
+      if (opensScript && !closesScript) inScript = true;
+      if (closesScript) inScript = false;
+      continue;
+    }
+
+    if (isJsControlLine(trimmed) && !/<\/?head(?:\s|>)/i.test(line)) {
+      bodyLines.push(line);
+      headLines.push(line);
+      continue;
+    }
+
+    let remaining = line;
+    let bodyLine = '';
+    let headLine = '';
+
+    while (remaining.length > 0) {
+      if (!inHead) {
+        const openMatch = remaining.match(/<head(?:\s[^>]*)?>/i);
+        if (!openMatch || openMatch.index === undefined) {
+          bodyLine += remaining;
+          break;
+        }
+
+        bodyLine += remaining.slice(0, openMatch.index);
+        remaining = remaining.slice(openMatch.index + openMatch[0].length);
+
+        const closeMatch = remaining.match(/<\/head>/i);
+        if (!closeMatch || closeMatch.index === undefined) {
+          headLine += remaining;
+          remaining = '';
+          inHead = true;
+          break;
+        }
+
+        headLine += remaining.slice(0, closeMatch.index);
+        remaining = remaining.slice(closeMatch.index + closeMatch[0].length);
+      } else {
+        const closeMatch = remaining.match(/<\/head>/i);
+        if (!closeMatch || closeMatch.index === undefined) {
+          headLine += remaining;
+          remaining = '';
+          break;
+        }
+
+        headLine += remaining.slice(0, closeMatch.index);
+        remaining = remaining.slice(closeMatch.index + closeMatch[0].length);
+        inHead = false;
+      }
+    }
+
+    bodyLines.push(bodyLine);
+    headLines.push(headLine);
+  }
+
+  return {
+    bodyTemplate: bodyLines.join('\n'),
+    headTemplate: headLines.join('\n'),
+  };
+}
+
+function buildAppendStatement(expression: string, emitCall?: string): string {
+  return emitCall ? `${emitCall}(${expression});` : `__html += ${expression};`;
+}
+
+function extractPollFragmentExpr(tagText: string, rpcNameMap?: Map<string, string>): string | null {
+  const pollMatch = tagText.match(/\bdata-poll=\{([\s\S]*?)\}/);
+  if (!pollMatch) return null;
+  const inner = pollMatch[1].trim();
+  const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
+  if (!callMatch) return null;
+
+  const fnName = callMatch[1];
+  const rpcName = rpcNameMap?.get(fnName) || fnName;
+  const argsExpr = (callMatch[2] || '').trim();
+  if (!argsExpr) return JSON.stringify(`__poll_${rpcName}`);
+  return `'__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_')`;
+}
+
+function findTagEnd(template: string, start: number): number {
+  let quote: '"' | "'" | '`' | null = null;
+  let escaped = false;
+  let braceDepth = 0;
+
+  for (let i = start; i < template.length; i++) {
+    const ch = template[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch as '"' | "'" | '`';
+      continue;
+    }
+
+    if (ch === '{') {
+      braceDepth++;
+      continue;
+    }
+    if (ch === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (ch === '>' && braceDepth === 0) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+function instrumentPollFragments(template: string, rpcNameMap?: Map<string, string>): string {
+  const out: string[] = [];
+  const stack: Array<{ tagName: string; fragmentExpr: string | null }> = [];
+  let cursor = 0;
+
+  while (cursor < template.length) {
+    const lt = template.indexOf('<', cursor);
+    if (lt === -1) {
+      out.push(template.slice(cursor));
+      break;
+    }
+
+    out.push(template.slice(cursor, lt));
+
+    if (template.startsWith('<!--', lt)) {
+      const commentEnd = template.indexOf('-->', lt + 4);
+      if (commentEnd === -1) {
+        out.push(template.slice(lt));
+        break;
+      }
+      out.push(template.slice(lt, commentEnd + 3));
+      cursor = commentEnd + 3;
+      continue;
+    }
+
+    const tagEnd = findTagEnd(template, lt + 1);
+    if (tagEnd === -1) {
+      out.push(template.slice(lt));
+      break;
+    }
+
+    const tagText = template.slice(lt, tagEnd + 1);
+    const closingMatch = tagText.match(/^<\s*\/\s*([A-Za-z][\w:-]*)\s*>$/);
+    if (closingMatch) {
+      const closingTag = closingMatch[1].toLowerCase();
+      const last = stack[stack.length - 1];
+      if (last && last.tagName === closingTag) {
+        if (last.fragmentExpr) out.push(FRAGMENT_CLOSE_MARKER);
+        stack.pop();
+      }
+      out.push(tagText);
+      cursor = tagEnd + 1;
+      continue;
+    }
+
+    const openMatch = tagText.match(/^<\s*([A-Za-z][\w:-]*)\b/);
+    out.push(tagText);
+    if (!openMatch) {
+      cursor = tagEnd + 1;
+      continue;
+    }
+
+    const tagName = openMatch[1].toLowerCase();
+    const isVoidLike = /\/\s*>$/.test(tagText) || /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(tagName);
+    const fragmentExpr = extractPollFragmentExpr(tagText, rpcNameMap);
+
+    if (fragmentExpr) {
+      out.push(`${FRAGMENT_OPEN_MARKER}${encodeURIComponent(fragmentExpr)}-->`);
+      if (isVoidLike) {
+        out.push(FRAGMENT_CLOSE_MARKER);
+      }
+    }
+
+    if (!isVoidLike) {
+      stack.push({ tagName, fragmentExpr });
+    }
+
+    cursor = tagEnd + 1;
+  }
+
+  return out.join('');
+}
+
 /**
  * Compile a template string into a JS render function body.
  *
@@ -51,7 +319,12 @@ export function compileTemplate(
   componentNames?: Map<string, string>,
   actionNames?: Set<string>,
   rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
 ): string {
+  const emitCall = options.emitCall;
+  if (options.enableFragmentManifest) {
+    template = instrumentPollFragments(template, rpcNameMap);
+  }
   const out: string[] = ['let __html = "";'];
   const lines = template.split('\n');
   let inStyle = false;
@@ -67,7 +340,7 @@ export function compileTemplate(
     // Track <style> blocks â€” emit CSS as literal, no parsing
     if (trimmed.match(/<style[\s>]/i)) inStyle = true;
     if (inStyle) {
-      out.push(`__html += \`${escapeLiteral(line)}\\n\`;`);
+      out.push(buildAppendStatement(`\`${escapeLiteral(line)}\\n\``, emitCall));
       if (trimmed.match(/<\/style>/i)) inStyle = false;
       continue;
     }
@@ -79,7 +352,7 @@ export function compileTemplate(
       if (trimmed.match(/<\/script>/i)) {
         const transformed = transformClientScriptBlock(scriptBuffer.join('\n'));
         for (const scriptLine of transformed.split('\n')) {
-          out.push(`__html += \`${escapeLiteral(scriptLine)}\\n\`;`);
+          out.push(buildAppendStatement(`\`${escapeLiteral(scriptLine)}\\n\``, emitCall));
         }
         scriptBuffer = [];
         inScript = false;
@@ -91,7 +364,7 @@ export function compileTemplate(
       if (trimmed.match(/<\/script>/i)) {
         const transformed = transformClientScriptBlock(scriptBuffer.join('\n'));
         for (const scriptLine of transformed.split('\n')) {
-          out.push(`__html += \`${escapeLiteral(scriptLine)}\\n\`;`);
+          out.push(buildAppendStatement(`\`${escapeLiteral(scriptLine)}\\n\``, emitCall));
         }
         scriptBuffer = [];
         inScript = false;
@@ -102,7 +375,7 @@ export function compileTemplate(
     const startedInsideQuotedAttr = !!htmlAttrQuote;
     const nextHtmlState = advanceHtmlTagState(line, inHtmlTag, htmlAttrQuote);
     if (startedInsideQuotedAttr) {
-      out.push(`__html += \`${escapeLiteral(line)}\n\`;`);
+      out.push(buildAppendStatement(`\`${escapeLiteral(line)}\n\``, emitCall));
       inHtmlTag = nextHtmlState.inTag;
       htmlAttrQuote = nextHtmlState.quote;
       continue;
@@ -113,14 +386,14 @@ export function compileTemplate(
 
     // Skip empty lines
     if (!trimmed) {
-      out.push('__html += "\\n";');
+      out.push(buildAppendStatement(`"\\n"`, emitCall));
       continue;
     }
 
     // One-line inline if/else with branch content:
     // if (cond) { text/html } else { text/html }
     // Compile branch content as template output instead of raw JS.
-    const inlineIfElse = tryCompileInlineIfElseLine(trimmed, actionNames, rpcNameMap);
+    const inlineIfElse = tryCompileInlineIfElseLine(trimmed, actionNames, rpcNameMap, options);
     if (inlineIfElse) {
       out.push(...inlineIfElse);
       continue;
@@ -152,7 +425,7 @@ export function compileTemplate(
       }
 
       // Self-closing: <Card attr="x" />
-      const componentLine = tryCompileComponentTag(joinedTrimmed, componentNames, actionNames, rpcNameMap);
+      const componentLine = tryCompileComponentTag(joinedTrimmed, componentNames, actionNames, rpcNameMap, options);
       if (componentLine) {
         i += joinedExtra;
         out.push(componentLine);
@@ -183,10 +456,12 @@ export function compileTemplate(
 
         // Compile children into a sub-render block
         const childTemplate = childLines.join('\n');
-        const childBody = compileTemplate(childTemplate, componentNames, actionNames, rpcNameMap);
+        const childBody = compileTemplate(childTemplate, componentNames, actionNames, rpcNameMap, {
+          clientRouteRegistry: options.clientRouteRegistry,
+        });
         // Wrap in an IIFE that returns the children HTML
         const childrenExpr = `(function() { ${childBody}; return __html; })()`;
-        out.push(`__html += ${openResult.funcName}({ ${openResult.propsStr}${openResult.propsStr ? ', ' : ''}children: ${childrenExpr} }, __esc);`);
+        out.push(buildAppendStatement(`${openResult.funcName}({ ${openResult.propsStr}${openResult.propsStr ? ', ' : ''}children: ${childrenExpr} }, __esc)`, emitCall));
         continue;
       }
     }
@@ -204,7 +479,7 @@ export function compileTemplate(
       }
       i += extraLines;
     }
-    out.push(compileHtmlLine(htmlLine, actionNames, rpcNameMap));
+    out.push(...compileHtmlLineStatements(htmlLine, actionNames, rpcNameMap, options));
   }
   return out.join('\n');
 }
@@ -478,14 +753,23 @@ function findMatching(src: string, openPos: number, openChar: string, closeChar:
   return -1;
 }
 
-function compileInlineBranchContent(content: string, actionNames?: Set<string>, rpcNameMap?: Map<string, string>): string[] {
+function compileInlineBranchContent(
+  content: string,
+  actionNames?: Set<string>,
+  rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
+): string[] {
   const c = content.trim();
   if (!c) return [];
-  const compiled = compileHtmlLine(c, actionNames, rpcNameMap);
-  return [compiled.replace(/\\n`;/, '`;')];
+  return compileHtmlLineStatements(c, actionNames, rpcNameMap, { ...options, appendNewline: false });
 }
 
-function tryCompileInlineIfElseLine(line: string, actionNames?: Set<string>, rpcNameMap?: Map<string, string>): string[] | null {
+function tryCompileInlineIfElseLine(
+  line: string,
+  actionNames?: Set<string>,
+  rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
+): string[] | null {
   if (!line.startsWith('if')) return null;
   const ifMatch = line.match(/^if\s*\(/);
   if (!ifMatch) return null;
@@ -522,9 +806,9 @@ function tryCompileInlineIfElseLine(line: string, actionNames?: Set<string>, rpc
 
   const out: string[] = [];
   out.push(`if (${condition}) {`);
-  out.push(...compileInlineBranchContent(thenContent, actionNames, rpcNameMap));
+  out.push(...compileInlineBranchContent(thenContent, actionNames, rpcNameMap, options));
   out.push(`} else {`);
-  out.push(...compileInlineBranchContent(elseContent, actionNames, rpcNameMap));
+  out.push(...compileInlineBranchContent(elseContent, actionNames, rpcNameMap, options));
   out.push(`}`);
   return out;
 }
@@ -617,6 +901,7 @@ function tryCompileComponentTag(
   componentNames: Map<string, string>,
   actionNames?: Set<string>,
   rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
 ): string | null {
   // Match self-closing tags: <TagName ...attrs... />
   const selfCloseMatch = line.match(/^<([A-Z]\w*)\s*(.*?)\s*\/>\s*$/);
@@ -632,7 +917,7 @@ function tryCompileComponentTag(
     if (!fileName) return null;
     const funcName = componentFuncName(fileName);
     const propsStr = parseComponentAttrs(match[2].trim(), actionNames);
-    return `__html += ${funcName}({ ${propsStr} }, __esc);`;
+    return buildAppendStatement(`${funcName}({ ${propsStr} }, __esc)`, options.emitCall);
   }
 
   if (inlinePairMatch) {
@@ -643,9 +928,11 @@ function tryCompileComponentTag(
     const propsStr = parseComponentAttrs(inlinePairMatch[2].trim(), actionNames);
     const innerContent = inlinePairMatch[3];
     // Compile the inline content as a mini-template to handle {expr} interpolation
-    const childBody = compileTemplate(innerContent, componentNames, actionNames, rpcNameMap);
+    const childBody = compileTemplate(innerContent, componentNames, actionNames, rpcNameMap, {
+      clientRouteRegistry: options.clientRouteRegistry,
+    });
     const childrenExpr = `(function() { ${childBody}; return __html; })()`;
-    return `__html += ${funcName}({ ${propsStr}${propsStr ? ', ' : ''}children: ${childrenExpr} }, __esc);`;
+    return buildAppendStatement(`${funcName}({ ${propsStr}${propsStr ? ', ' : ''}children: ${childrenExpr} }, __esc)`, options.emitCall);
   }
 
   return null;
@@ -691,18 +978,65 @@ function expandShorthands(line: string): string {
   return line;
 }
 
+function compileHtmlLineStatements(
+  line: string,
+  actionNames?: Set<string>,
+  rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
+): string[] {
+  const markerRegex = /<!--__KURATCHI_FRAGMENT_(OPEN:([\s\S]*?)|CLOSE)-->/g;
+  const statements: string[] = [];
+  let cursor = 0;
+  let sawLiteral = false;
+  let match: RegExpExecArray | null;
+
+  while ((match = markerRegex.exec(line)) !== null) {
+    const literal = line.slice(cursor, match.index);
+    if (literal) {
+      statements.push(compileHtmlSegment(literal, actionNames, rpcNameMap, { ...options, appendNewline: false }));
+      sawLiteral = true;
+    }
+
+    if (match[1].startsWith('OPEN:')) {
+      const encodedExpr = match[2] || '';
+      statements.push(`__pushFragment(${decodeURIComponent(encodedExpr)});`);
+    } else {
+      statements.push(`__popFragment();`);
+    }
+
+    cursor = match.index + match[0].length;
+  }
+
+  const tail = line.slice(cursor);
+  if (tail || sawLiteral || options.appendNewline !== false) {
+    const appendNewline = options.appendNewline !== false;
+    if (tail || appendNewline) {
+      statements.push(compileHtmlSegment(tail, actionNames, rpcNameMap, { ...options, appendNewline }));
+    }
+  }
+
+  return statements.filter(Boolean);
+}
+
+import type { ClientRouteRegistry } from './client-module-pipeline.js';
+
 /**
- * Compile a single HTML line, replacing {expr} with escaped output,
+ * Compile a single HTML segment, replacing {expr} with escaped output,
  * {@html expr} with sanitized HTML, and {@raw expr} with raw output.
  * Handles attribute values like value={x}.
  */
-function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: Map<string, string>): string {
+function compileHtmlSegment(
+  line: string,
+  actionNames?: Set<string>,
+  rpcNameMap?: Map<string, string>,
+  options: CompileTemplateOptions = {},
+): string {
   // Expand shorthand syntax before main compilation
   line = expandShorthands(line);
 
   let result = '';
   let pos = 0;
-  let hasExpr = false;
+  let pendingActionHiddenInput: string | null = null;
 
   while (pos < line.length) {
     const braceIdx = findNextTemplateBrace(line, pos);
@@ -726,17 +1060,14 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
     if (inner.startsWith('@html ')) {
       const expr = inner.slice(6).trim();
       result += `\${__sanitizeHtml(${expr})}`;
-      hasExpr = true;
     } else if (inner.startsWith('@raw ')) {
       // Unsafe raw HTML: {@raw expr}
       const expr = inner.slice(5).trim();
       result += `\${__rawHtml(${expr})}`;
-      hasExpr = true;
     } else if (inner.startsWith('=html ')) {
       // Legacy alias for raw HTML: {=html expr}
       const expr = inner.slice(6).trim();
       result += `\${__rawHtml(${expr})}`;
-      hasExpr = true;
     } else {
       // Check if this is an attribute value: attr={expr}
       const charBefore = braceIdx > 0 ? line[braceIdx - 1] : '';
@@ -750,7 +1081,6 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
         if (attrName === 'data-dialog-data') {
           // data-dialog-data={expr} â†’ data-dialog-data="JSON.stringify(expr)" (HTML-escaped)
           result += `"\${__esc(JSON.stringify(${inner}))}"`;
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-refresh') {
@@ -770,7 +1100,6 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
           } else {
             result += ` data-refresh="\${__esc(${inner})}"`;
           }
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-post' || attrName === 'data-put' || attrName === 'data-patch' || attrName === 'data-delete') {
@@ -786,7 +1115,6 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
           } else {
             result += ` ${attrName}="${escapeLiteral(inner)}"`;
           }
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-get' || attrName === 'data-loading' || attrName === 'data-error' || attrName === 'data-empty' || attrName === 'data-success') {
@@ -806,7 +1134,6 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
             // Non-call expression mode (e.g., data-get={someUrl})
             result += ` ${attrName}="\${__esc(${inner})}"`;
           }
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-poll') {
@@ -829,7 +1156,6 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
               result += ` data-poll-id="__poll_${rpcName}"`;
             }
           }
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'action') {
@@ -846,22 +1172,13 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
 
           // Remove trailing `action=` from output and inject _action hidden field.
           result = result.replace(/\s*action=$/, '');
+          const actionValue = actionNames === undefined
+            ? `\${__esc(${inner})}`
+            : inner;
+          pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">`;
           pos = closeIdx + 1;
-          const tagEnd = line.indexOf('>', pos);
-          if (tagEnd !== -1) {
-            result += escapeLiteral(line.slice(pos, tagEnd + 1));
-            // In a route context, inner is the literal action function name (a string key).
-            // In a component context (actionNames === undefined), inner is a prop name whose
-            // value at runtime is the action name string â€” emit it as a dynamic expression.
-            const actionValue = actionNames === undefined
-              ? `\${__esc(${inner})}`
-              : inner;
-            result += `\\n<input type="hidden" name="_action" value="${actionValue}">`;
-            pos = tagEnd + 1;
-          }
-          hasExpr = true;
           continue;
-        } else if (/^on[A-Za-z]+$/.test(attrName)) {
+        } else if (/^on[A-Za-z]+$/i.test(attrName)) {
           // onClick/onChange/...={expr} â€” check if it's a server action or plain client JS
           const eventName = attrName.slice(2).toLowerCase();
           const actionCallMatch = inner.match(/^(\w+)\((.*)\)$/);
@@ -875,12 +1192,25 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
             // Emit data-action, data-args, and which browser event should trigger it.
             result += ` data-action="${fnName}" data-args="\${__esc(JSON.stringify([${argsExpr}]))}" data-action-event="${eventName}"`;
           } else {
-            // Plain client-side event handler: onClick={myFn()}
-            // Emit as native inline handler (lowercased event attribute).
-            result = result.replace(new RegExp(`\\s*${attrName}=$`), ` on${eventName}=`);
-            result += `"${escapeLiteral(inner)}"`;
+            const clientRegistration = options.clientRouteRegistry?.registerEventHandler(eventName, inner) ?? null;
+            if (clientRegistration) {
+              result = result.replace(new RegExp(`\\s*${attrName}=$`), '');
+              result += ` data-client-route="${clientRegistration.routeId}" data-client-handler="${clientRegistration.handlerId}" data-client-event="${eventName}"`;
+              if (clientRegistration.argsExpr) {
+                result += ` data-client-args="\${__esc(JSON.stringify([${clientRegistration.argsExpr}]))}"`;
+              }
+            } else if (options.clientRouteRegistry?.hasBindingReference(inner)) {
+              throw new Error(
+                `Unsupported client handler expression: "${inner}". ` +
+                `Top-level $client/$shared event handlers must be a direct function reference or call, like onClick={openDialog()} or onClick={helpers.openDialog()}.`,
+              );
+            } else {
+              // Plain client-side event handler: onClick={myFn()}
+              // Emit as native inline handler (lowercased event attribute).
+              result = result.replace(new RegExp(`\\s*${attrName}=$`), ` on${eventName}=`);
+              result += `"${escapeLiteral(inner)}"`;
+            }
           }
-          hasExpr = true;
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'disabled' || attrName === 'checked' || attrName === 'hidden' || attrName === 'readonly') {
@@ -893,18 +1223,17 @@ function compileHtmlLine(line: string, actionNames?: Set<string>, rpcNameMap?: M
       } else {
         result += `\${__esc(${inner})}`;
       }
-      hasExpr = true;
     }
 
     pos = closeIdx + 1;
   }
 
-  // If the line had expressions, use template literal; otherwise plain string
-  if (hasExpr) {
-    return `__html += \`${result}\\n\`;`;
-  } else {
-    return `__html += \`${result}\\n\`;`;
+  if (pendingActionHiddenInput && result.includes('>')) {
+    const gtIndex = result.indexOf('>');
+    result = result.slice(0, gtIndex + 1) + pendingActionHiddenInput + result.slice(gtIndex + 1);
   }
+
+  return buildAppendStatement(`\`${result}${options.appendNewline === false ? '' : '\\n'}\``, options.emitCall);
 }
 
 /** Escape characters that would break a JS template literal. */

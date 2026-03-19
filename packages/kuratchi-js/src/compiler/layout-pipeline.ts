@@ -2,7 +2,8 @@ import * as path from 'node:path';
 import { parseFile, stripTopLevelImports, type ParsedFile } from './parser.js';
 import { compileTemplate } from './template.js';
 import type { ComponentCompiler } from './component-pipeline.js';
-import { parseNamedImportBindings } from './import-linking.js';
+import type { ClientModuleCompiler } from './client-module-pipeline.js';
+import { parseImportStatement, parseNamedImportBindings, type RouteImportEntry } from './import-linking.js';
 import { buildDevAliasDeclarations, rewriteImportedFunctionCalls } from './script-transform.js';
 
 export interface LayoutBuildPlan {
@@ -11,12 +12,49 @@ export interface LayoutBuildPlan {
   importParsed: ParsedFile | null;
 }
 
+const HEAD_MARKER = '<!--__KURATCHI_HEAD__-->';
+
+function injectLayoutHeadPlaceholder(source: string, marker: string): string {
+  const lower = source.toLowerCase();
+  const idx = lower.lastIndexOf('</head>');
+  if (idx !== -1) {
+    return source.slice(0, idx) + `${marker}\n` + source.slice(idx);
+  }
+  return `${marker}\n${source}`;
+}
+
+function buildLayoutBrowserImportEntries(importParsed: ParsedFile, layoutFile: string): RouteImportEntry[] {
+  const importerDir = path.dirname(layoutFile);
+  const entries = new Map<string, RouteImportEntry>();
+  const addEntry = (line: string) => {
+    if (!entries.has(line)) {
+      entries.set(line, { line, importerDir });
+    }
+  };
+
+  for (const line of importParsed.routeClientImports) {
+    addEntry(line);
+  }
+
+  for (const line of importParsed.serverImports) {
+    const parsed = parseImportStatement(line);
+    if (parsed.moduleSpecifier?.startsWith('$shared/')) {
+      addEntry(line);
+    }
+  }
+
+  return Array.from(entries.values());
+}
+
 export function compileLayoutPlan(opts: {
   renderSource: string;
   importSource: string;
   layoutFile: string;
   isDev: boolean;
   componentCompiler: ComponentCompiler;
+  clientModuleCompiler?: ClientModuleCompiler;
+  assetsPrefix?: string;
+  clientScopeId?: string;
 }): LayoutBuildPlan {
   const importParsed = parseFile(opts.importSource, { kind: 'layout', filePath: opts.layoutFile });
   let renderTemplateSource = opts.renderSource;
@@ -29,10 +67,18 @@ export function compileLayoutPlan(opts: {
     }
   }
   const componentNames = opts.componentCompiler.collectComponentMap(importParsed.componentImports);
+  const browserImportEntries = opts.clientModuleCompiler
+    ? buildLayoutBrowserImportEntries(importParsed, opts.layoutFile)
+    : [];
+  const clientRouteRegistry = opts.clientModuleCompiler && opts.clientScopeId && browserImportEntries.length > 0
+    ? opts.clientModuleCompiler.createRegistry(opts.clientScopeId, browserImportEntries)
+    : null;
+  const hasClientBindings = !!clientRouteRegistry?.hasBindings();
   const hasLayoutScript = !!(importParsed.script && (componentNames.size > 0 || importParsed.hasLoad));
 
-  if (hasLayoutScript) {
-    let layoutTemplate = renderTemplateSource.replace(/<slot\s*><\/slot>/g, '{@raw __content}');
+  if (hasLayoutScript || hasClientBindings) {
+    let layoutTemplate = injectLayoutHeadPlaceholder(renderTemplateSource, '{@raw __layoutHead}');
+    layoutTemplate = layoutTemplate.replace(/<slot\s*><\/slot>/g, '{@raw __content}');
     layoutTemplate = layoutTemplate.replace(/<slot\s*\/>/g, '{@raw __content}');
 
     const layoutActionNames = new Set(importParsed.actionFunctions);
@@ -40,7 +86,13 @@ export function compileLayoutPlan(opts: {
       layoutActionNames.add(fnName);
     }
 
-    const layoutRenderBody = compileTemplate(layoutTemplate, componentNames, layoutActionNames);
+    const layoutRenderBody = compileTemplate(
+      layoutTemplate,
+      componentNames,
+      layoutActionNames,
+      undefined,
+      { clientRouteRegistry: clientRouteRegistry ?? undefined },
+    );
     const layoutComponentStyles = opts.componentCompiler.collectStyles(componentNames);
     let finalLayoutBody = layoutRenderBody;
     if (layoutComponentStyles.length > 0) {
@@ -49,13 +101,23 @@ export function compileLayoutPlan(opts: {
       finalLayoutBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
     }
 
-    let layoutScriptBody = stripTopLevelImports(importParsed.script!);
+    let layoutScriptBody = importParsed.script
+      ? stripTopLevelImports(importParsed.script)
+      : '';
     const layoutDevDecls = buildDevAliasDeclarations(importParsed.devAliases, opts.isDev);
     layoutScriptBody = [layoutDevDecls, layoutScriptBody].filter(Boolean).join('\n');
+    const clientEntryAsset = clientRouteRegistry?.buildEntryAsset() ?? null;
+    const clientModuleHref = clientEntryAsset && opts.assetsPrefix
+      ? `${opts.assetsPrefix}${clientEntryAsset.assetName}`
+      : null;
+    const layoutHeadAssignment = clientModuleHref
+      ? `const __layoutHead = __head + ${JSON.stringify(`<script type="module" src="${clientModuleHref}"></script>\n`)};`
+      : `const __layoutHead = __head;`;
 
     return {
-      compiledLayout: `function __layout(__content) {
+      compiledLayout: `function __layout(__content, __head = '') {
   const __esc = (v) => { if (v == null) return ''; return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
+  ${layoutHeadAssignment}
   ${layoutScriptBody ? layoutScriptBody + '\n  ' : ''}${finalLayoutBody}
   return __html;
 }`,
@@ -65,17 +127,18 @@ export function compileLayoutPlan(opts: {
   }
 
   const slotMarker = '<slot></slot>';
-  const slotIdx = opts.renderSource.indexOf(slotMarker);
+  const layoutSource = injectLayoutHeadPlaceholder(renderTemplateSource, HEAD_MARKER);
+  const slotIdx = layoutSource.indexOf(slotMarker);
   if (slotIdx === -1) {
     throw new Error('layout.html must contain <slot></slot>');
   }
 
   const escLayout = (source: string) => source.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, () => '\\$');
-  const before = escLayout(opts.renderSource.slice(0, slotIdx));
-  const after = escLayout(opts.renderSource.slice(slotIdx + slotMarker.length));
+  const before = escLayout(layoutSource.slice(0, slotIdx));
+  const after = escLayout(layoutSource.slice(slotIdx + slotMarker.length));
 
   return {
-    compiledLayout: `const __layoutBefore = \`${before}\`;\nconst __layoutAfter = \`${after}\`;\nfunction __layout(content) {\n  return __layoutBefore + content + __layoutAfter;\n}`,
+    compiledLayout: `const __layoutBefore = \`${before}\`;\nconst __layoutAfter = \`${after}\`;\nfunction __layout(content, head = '') {\n  return (__layoutBefore + content + __layoutAfter).replace(${JSON.stringify(HEAD_MARKER)}, head);\n}`,
     componentNames,
     importParsed,
   };

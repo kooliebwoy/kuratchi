@@ -19,10 +19,16 @@ interface CompiledRoute {
 }
 
 export class Router {
-  private routes: CompiledRoute[] = [];
+  private staticRoutes = new Map<string, number>();
+  private dynamicRoutes: CompiledRoute[] = [];
 
   /** Register a pattern (e.g. '/blog/:slug') and associate it with an index. */
   add(pattern: string, index: number): void {
+    if (!pattern.includes(':') && !pattern.includes('*')) {
+      this.staticRoutes.set(pattern, index);
+      return;
+    }
+
     const paramNames: string[] = [];
 
     // Convert pattern to regex
@@ -43,7 +49,7 @@ export class Router {
     // Anchor
     regexStr = `^${regexStr}$`;
 
-    this.routes.push({
+    this.dynamicRoutes.push({
       regex: new RegExp(regexStr),
       paramNames,
       index,
@@ -55,7 +61,12 @@ export class Router {
     // Normalize: strip trailing slash (except root)
     const normalized = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
 
-    for (const route of this.routes) {
+    const staticIdx = this.staticRoutes.get(normalized);
+    if (staticIdx !== undefined) {
+      return { params: {}, index: staticIdx };
+    }
+
+    for (const route of this.dynamicRoutes) {
       const m = normalized.match(route.regex);
       if (m) {
         const params: Record<string, string> = {};
