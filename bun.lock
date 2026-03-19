@@ -9,9 +9,12 @@
         "typescript": "^5.8.0",
       },
     },
+    "apps/docs": {
+      "name": "@kuratchi/docs",
+    },
     "apps/site": {
       "name": "@kuratchi/site",
-      "version": "0.0.6",
+      "version": "0.0.8",
       "dependencies": {
         "@kuratchi/js": "workspace:*",
       },
@@ -22,7 +25,7 @@
     },
     "apps/web": {
       "name": "@kuratchi/web",
-      "version": "0.0.1",
+      "version": "0.0.3",
       "dependencies": {
         "@cloudflare/ai-chat": "^0.1.8",
         "@kuratchi/auth": "workspace:*",
@@ -44,7 +47,7 @@
     },
     "packages/kuratchi-auth": {
       "name": "@kuratchi/auth",
-      "version": "0.0.1",
+      "version": "0.0.3",
       "dependencies": {
         "@kuratchi/orm": "^0.0.1",
       },
@@ -59,7 +62,7 @@
     },
     "packages/kuratchi-js": {
       "name": "@kuratchi/js",
-      "version": "0.0.9",
+      "version": "0.0.15",
       "bin": {
         "kuratchi": "./dist/cli.js",
       },
@@ -94,7 +97,7 @@
     },
     "packages/kuratchi-orm": {
       "name": "@kuratchi/orm",
-      "version": "0.0.1",
+      "version": "0.0.3",
     },
     "packages/kuratchi-sdk": {
       "name": "@kuratchi/sdk",
@@ -298,6 +301,8 @@
     "@kuratchi/auth": ["@kuratchi/auth@workspace:packages/kuratchi-auth"],
 
     "@kuratchi/db-studio": ["@kuratchi/db-studio@workspace:packages/kuratchi-db-studio"],
+
+    "@kuratchi/docs": ["@kuratchi/docs@workspace:apps/docs"],
 
     "@kuratchi/file-explorer": ["@kuratchi/file-explorer@workspace:packages/kuratchi-file-explorer"],
 

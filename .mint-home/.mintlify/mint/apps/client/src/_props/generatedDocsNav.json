@@ -1,0 +1,181 @@
+{
+  "global": {
+    "anchors": [
+      {
+        "anchor": "Platform",
+        "href": "https://kuratchi.cloud"
+      },
+      {
+        "anchor": "GitHub",
+        "href": "https://github.com/kooliebwoy/kuratchi"
+      }
+    ]
+  },
+  "tabs": [
+    {
+      "tab": "Framework",
+      "groups": [
+        {
+          "group": "Introduction",
+          "pages": [
+            {
+              "title": "Kuratchi Docs",
+              "description": "Documentation for the Kuratchi framework and packages",
+              "href": "/index"
+            },
+            {
+              "title": "Getting Started",
+              "description": "Install @kuratchi/js and boot a first KuratchiJS app",
+              "href": "/framework/getting-started"
+            },
+            {
+              "title": "Development",
+              "description": "Understand the compile pipeline and local development loop",
+              "href": "/framework/development"
+            }
+          ]
+        },
+        {
+          "group": "Core concepts",
+          "pages": [
+            {
+              "title": "Routing",
+              "description": "File-based routing, layouts, template syntax, and client reactivity",
+              "href": "/framework/routing"
+            },
+            {
+              "title": "Actions",
+              "description": "Form actions, ActionError, redirects, and progressive enhancement",
+              "href": "/framework/actions"
+            },
+            {
+              "title": "Runtime APIs",
+              "description": "Request context, redirects, environment helpers, and runtime hooks",
+              "href": "/framework/runtime"
+            }
+          ]
+        },
+        {
+          "group": "Cloudflare primitives",
+          "pages": [
+            {
+              "title": "Durable Objects and Agents",
+              "description": "Build RPC-style Durable Objects, workflows, and agent entrypoints",
+              "href": "/framework/durable-objects-and-agents"
+            },
+            {
+              "title": "Configuration",
+              "description": "Use kuratchi.config.ts for framework integrations and runtime customization",
+              "href": "/framework/configuration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tab": "ORM",
+      "groups": [
+        {
+          "group": "Introduction",
+          "pages": [
+            {
+              "title": "@kuratchi/orm",
+              "description": "Workers-native ORM docs for Cloudflare D1 and Durable Object SQLite",
+              "href": "/orm/index"
+            },
+            {
+              "title": "Getting Started",
+              "description": "Install @kuratchi/orm and use it with D1 or Durable Object SQLite",
+              "href": "/orm/getting-started"
+            }
+          ]
+        },
+        {
+          "group": "Core concepts",
+          "pages": [
+            {
+              "title": "Schema DSL",
+              "description": "Define tables, columns, mixins, indexes, and references with SchemaDsl",
+              "href": "/orm/schema-dsl"
+            },
+            {
+              "title": "Querying",
+              "description": "Use the chainable table API for inserts, filters, includes, updates, and deletes",
+              "href": "/orm/querying"
+            }
+          ]
+        },
+        {
+          "group": "Runtime integration",
+          "pages": [
+            {
+              "title": "Migrations",
+              "description": "Generate SQL, diff schemas, and run tracked runtime migrations",
+              "href": "/orm/migrations"
+            },
+            {
+              "title": "Kuratchi Integration",
+              "description": "Wire @kuratchi/orm into kuratchi.config.ts and framework runtime code",
+              "href": "/orm/kuratchi-integration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tab": "Auth",
+      "groups": [
+        {
+          "group": "Introduction",
+          "pages": [
+            {
+              "title": "@kuratchi/auth",
+              "description": "Config-driven auth docs for Kuratchi apps",
+              "href": "/auth/index"
+            },
+            {
+              "title": "Getting Started",
+              "description": "Install @kuratchi/auth and wire it into kuratchi.config.ts",
+              "href": "/auth/getting-started"
+            }
+          ]
+        },
+        {
+          "group": "Core flows",
+          "pages": [
+            {
+              "title": "Credentials and Sessions",
+              "description": "Signup, signin, signout, current-user lookup, and password reset flows",
+              "href": "/auth/credentials-and-sessions"
+            },
+            {
+              "title": "Auth Context",
+              "description": "Use getAuth() for lazy session access, role checks, cookies, and redirect helpers",
+              "href": "/auth/auth-context"
+            },
+            {
+              "title": "OAuth and RBAC",
+              "description": "Configure provider login, define roles, and check permissions",
+              "href": "/auth/oauth-and-rbac"
+            }
+          ]
+        },
+        {
+          "group": "Runtime controls",
+          "pages": [
+            {
+              "title": "Guards, Rate Limits, and Turnstile",
+              "description": "Apply runtime auth controls before route handlers run",
+              "href": "/auth/guards-rate-limit-turnstile"
+            },
+            {
+              "title": "Organizations and Schema",
+              "description": "Use DO-backed multi-tenancy and built-in auth table definitions",
+              "href": "/auth/organizations-and-schema"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

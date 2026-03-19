@@ -1,0 +1,51 @@
+---
+title: "Configuration"
+description: "Use kuratchi.config.ts for framework integrations and runtime customization"
+---
+
+## `kuratchi.config.ts`
+
+The config file is optional. You only need it when wiring framework integrations such as UI, ORM, auth, or custom Durable Object stub behavior.
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
+import { kuratchiAuthConfig } from '@kuratchi/auth/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ theme: 'default' }),
+  orm: kuratchiOrmConfig({
+    databases: {
+      DB: { schema: appSchema },
+      NOTES_DO: { schema: notesSchema, type: 'do' },
+    },
+  }),
+  auth: kuratchiAuthConfig({
+    cookieName: 'kuratchi_session',
+    sessionEnabled: true,
+  }),
+  durableObjects: {
+    NOTES_DO: { stubId: 'user.orgId' },
+  },
+});
+```
+
+Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
+
+## What belongs here
+
+Use the config file for:
+
+- UI adapter setup
+- ORM schema bindings
+- Auth configuration
+- Optional Durable Object stub resolution
+
+Routing, Durable Object discovery, and generated worker output are handled by the compiler.
+
+## Runtime hook vs config
+
+Use `kuratchi.config.ts` for static framework integration.
+
+Use `src/server/runtime.hook.ts` when you need request-time interception such as agent routing, middleware-style gates, or pre-route auth checks.

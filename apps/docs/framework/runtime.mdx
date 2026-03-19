@@ -1,0 +1,75 @@
+---
+title: "Runtime APIs"
+description: "Request context, redirects, environment helpers, and runtime hooks"
+---
+
+## Core server APIs
+
+These helpers are available in server-side route code:
+
+```ts
+import {
+  getCtx,
+  getRequest,
+  getLocals,
+  getParams,
+  getParam,
+  redirect,
+  goto,
+  RedirectError,
+} from '@kuratchi/js';
+```
+
+## Request helpers
+
+Import route-derived values from `@kuratchi/js/request`:
+
+```ts
+import { url, pathname, searchParams, slug } from '@kuratchi/js/request';
+
+const currentPath = pathname;
+const tab = searchParams.get('tab');
+const postSlug = slug;
+```
+
+The request helper module exposes `url`, `pathname`, `searchParams`, `slug`, `headers`, `method`, and `params`.
+
+## Environment helpers
+
+The framework exposes a compile-time environment flag:
+
+```ts
+import { dev } from '@kuratchi/js/environment';
+```
+
+For Worker bindings, read directly from Cloudflare:
+
+```ts
+import { env } from 'cloudflare:workers';
+
+const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '';
+```
+
+Keep binding access in server code. Templates and client scripts should receive precomputed values instead.
+
+## Runtime hook
+
+If you need to intercept requests before the router, add `src/server/runtime.hook.ts`:
+
+```ts
+import type { RuntimeDefinition } from '@kuratchi/js';
+
+const runtime: RuntimeDefinition = {
+  agents: {
+    async request(ctx, next) {
+      if (!ctx.url.pathname.startsWith('/agents/')) {
+        return next();
+      }
+
+      return new Response('Agent response');
+    },
+  },
+};
+
+export default runtime;
+```

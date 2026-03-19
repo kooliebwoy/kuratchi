@@ -1,0 +1,123 @@
+---
+title: "Schema DSL"
+description: "Define tables, columns, mixins, indexes, and references with SchemaDsl"
+---
+
+## Basic shape
+
+Define schemas with `SchemaDsl`:
+
+```ts
+import type { SchemaDsl } from '@kuratchi/orm';
+
+export const appSchema: SchemaDsl = {
+  name: 'app',
+  version: 1,
+  tables: {
+    todos: {
+      id: 'integer primary key',
+      title: 'text not null',
+      done: 'integer not null default 0',
+    },
+  },
+};
+```
+
+## Supported column types
+
+Column definition strings use:
+
+```text
+<type> [constraints...]
+```
+
+Supported types:
+
+- `text`
+- `integer`
+- `real`
+- `blob`
+- `json`
+- `boolean`
+- `timestamp_ms`
+
+`boolean` and `timestamp_ms` normalize to integer columns with mode metadata.
+
+## Constraints and defaults
+
+Supported modifiers include:
+
+- `primary key`
+- `not null`
+- `unique`
+- `default now`
+- `default null`
+- `default 0`
+- `default (json_object())`
+- `enum(active,inactive,lead)`
+- `-> users.id`
+- `-> users.id cascade`
+
+Example:
+
+```ts
+roles: {
+  id: 'text primary key not null',
+  name: 'text not null unique',
+  permissions: 'json',
+  status: 'enum(active,inactive,lead)',
+  ownerId: 'text not null -> users.id cascade',
+}
+```
+
+## Mixins
+
+Use mixins to share column sets across tables:
+
+```ts
+export const appSchema: SchemaDsl = {
+  name: 'app',
+  version: 1,
+  mixins: {
+    timestamps: {
+      updated_at: 'text default now',
+      created_at: 'text default now',
+      deleted_at: 'text',
+    },
+  },
+  tables: {
+    todos: {
+      id: 'integer primary key',
+      title: 'text not null',
+      '...timestamps': true,
+    },
+  },
+};
+```
+
+## Indexes
+
+Indexes are declared per table:
+
+```ts
+indexes: {
+  todos: {
+    idx_todos_done: { columns: ['done'] },
+    idx_todos_title: { columns: ['title'], unique: true },
+  },
+}
+```
+
+## JSON columns
+
+Columns declared as `json` are stored as `TEXT`, then auto-serialized on writes and parsed on reads when using a schema-aware client.
+
+## Normalization
+
+The ORM exposes:
+
+- `normalizeSchema()`
+- `ensureNormalizedSchema()`
+- `isDatabaseSchema()`
+
+Use them when you need the internal `DatabaseSchema` form for tooling or migration generation.

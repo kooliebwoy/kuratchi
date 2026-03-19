@@ -1,0 +1,8 @@
+{
+  "name": "@kuratchi/docs",
+  "private": true,
+  "scripts": {
+    "dev": "bunx mint dev",
+    "update": "bunx mint update"
+  }
+}

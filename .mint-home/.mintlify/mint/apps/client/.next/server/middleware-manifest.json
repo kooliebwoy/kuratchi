@@ -1,0 +1,186 @@
+{
+  "version": 3,
+  "middleware": {
+    "/": {
+      "files": [
+        "server/edge-instrumentation.js",
+        "server/edge-runtime-webpack.js",
+        "server/src/middleware.js"
+      ],
+      "name": "src/middleware",
+      "page": "/",
+      "matchers": [
+        {
+          "regexp": "^/.*$",
+          "originalSource": "/:path*"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "TZcu1shEyYfpnPZj1nZw3",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "iwPHF7oHl309brP0CxcOyJ0xf7U4Ci1pxjjGr9eTDaQ=",
+        "__NEXT_PREVIEW_MODE_ID": "5a5df98898bff10ff826d40237a87b79",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e446f5256559b3b2e61dcbfd7e45773763d12e238a95382b6b25c9613494fcb3",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "0309f12e613075c935b26641ab1d921ba1726547537ac0468f29aa98edef0947"
+      }
+    }
+  },
+  "functions": {
+    "/_mintlify/api-public/assistant/[subdomain]/message/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/_mintlify/api-public/assistant/[subdomain]/message/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-instrumentation.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/349.js",
+        "server/edge-chunks/500.js",
+        "server/app/_mintlify/api-public/assistant/[subdomain]/message/route.js"
+      ],
+      "name": "app/_mintlify/api-public/assistant/[subdomain]/message/route",
+      "page": "/_mintlify/api-public/assistant/[subdomain]/message/route",
+      "matchers": [
+        {
+          "regexp": "^/_mintlify/api\\-public/assistant/(?<subdomain>[^/]+?)/message$",
+          "originalSource": "/_mintlify/api-public/assistant/[subdomain]/message"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "TZcu1shEyYfpnPZj1nZw3",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "iwPHF7oHl309brP0CxcOyJ0xf7U4Ci1pxjjGr9eTDaQ=",
+        "__NEXT_PREVIEW_MODE_ID": "5a5df98898bff10ff826d40237a87b79",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e446f5256559b3b2e61dcbfd7e45773763d12e238a95382b6b25c9613494fcb3",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "0309f12e613075c935b26641ab1d921ba1726547537ac0468f29aa98edef0947"
+      }
+    },
+    "/_mintlify/api/assistant/message/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/_mintlify/api/assistant/message/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-instrumentation.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/349.js",
+        "server/edge-chunks/500.js",
+        "server/app/_mintlify/api/assistant/message/route.js"
+      ],
+      "name": "app/_mintlify/api/assistant/message/route",
+      "page": "/_mintlify/api/assistant/message/route",
+      "matchers": [
+        {
+          "regexp": "^/_mintlify/api/assistant/message$",
+          "originalSource": "/_mintlify/api/assistant/message"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "TZcu1shEyYfpnPZj1nZw3",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "iwPHF7oHl309brP0CxcOyJ0xf7U4Ci1pxjjGr9eTDaQ=",
+        "__NEXT_PREVIEW_MODE_ID": "5a5df98898bff10ff826d40237a87b79",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e446f5256559b3b2e61dcbfd7e45773763d12e238a95382b6b25c9613494fcb3",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "0309f12e613075c935b26641ab1d921ba1726547537ac0468f29aa98edef0947"
+      }
+    },
+    "/_mintlify/api/og/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/_mintlify/api/og/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-instrumentation.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/349.js",
+        "server/app/_mintlify/api/og/route.js"
+      ],
+      "name": "app/_mintlify/api/og/route",
+      "page": "/_mintlify/api/og/route",
+      "matchers": [
+        {
+          "regexp": "^/_mintlify/api/og$",
+          "originalSource": "/_mintlify/api/og"
+        }
+      ],
+      "wasm": [
+        {
+          "name": "wasm_77d9faebf7af9e421806970ce10a58e9d83116d7",
+          "filePath": "server/edge-chunks/wasm_77d9faebf7af9e421806970ce10a58e9d83116d7.wasm"
+        },
+        {
+          "name": "wasm_ef4866ecae192fd87727067cf2c0c0cf9fb8b020",
+          "filePath": "server/edge-chunks/wasm_ef4866ecae192fd87727067cf2c0c0cf9fb8b020.wasm"
+        }
+      ],
+      "assets": [
+        {
+          "name": "Inter-Regular.1b761fdd19cb582a.ttf",
+          "filePath": "server/edge-chunks/asset_Inter-Regular.1b761fdd19cb582a.ttf"
+        },
+        {
+          "name": "Inter-SemiBold.2a2f0a2acb227a56.ttf",
+          "filePath": "server/edge-chunks/asset_Inter-SemiBold.2a2f0a2acb227a56.ttf"
+        },
+        {
+          "name": "Inter-Bold.191af3d4d658a092.ttf",
+          "filePath": "server/edge-chunks/asset_Inter-Bold.191af3d4d658a092.ttf"
+        },
+        {
+          "name": "noto-sans-v27-latin-regular.5dda3fca77107598.ttf",
+          "filePath": "server/edge-chunks/asset_noto-sans-v27-latin-regular.5dda3fca77107598.ttf"
+        }
+      ],
+      "env": {
+        "__NEXT_BUILD_ID": "TZcu1shEyYfpnPZj1nZw3",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "iwPHF7oHl309brP0CxcOyJ0xf7U4Ci1pxjjGr9eTDaQ=",
+        "__NEXT_PREVIEW_MODE_ID": "5a5df98898bff10ff826d40237a87b79",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e446f5256559b3b2e61dcbfd7e45773763d12e238a95382b6b25c9613494fcb3",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "0309f12e613075c935b26641ab1d921ba1726547537ac0468f29aa98edef0947"
+      }
+    },
+    "/api/og/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/api/og/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-instrumentation.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/349.js",
+        "server/app/api/og/route.js"
+      ],
+      "name": "app/api/og/route",
+      "page": "/api/og/route",
+      "matchers": [
+        {
+          "regexp": "^/api/og$",
+          "originalSource": "/api/og"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "TZcu1shEyYfpnPZj1nZw3",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "iwPHF7oHl309brP0CxcOyJ0xf7U4Ci1pxjjGr9eTDaQ=",
+        "__NEXT_PREVIEW_MODE_ID": "5a5df98898bff10ff826d40237a87b79",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e446f5256559b3b2e61dcbfd7e45773763d12e238a95382b6b25c9613494fcb3",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "0309f12e613075c935b26641ab1d921ba1726547537ac0468f29aa98edef0947"
+      }
+    }
+  },
+  "sortedMiddleware": [
+    "/"
+  ]
+}

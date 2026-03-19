@@ -1,0 +1,66 @@
+---
+title: "Kuratchi Integration"
+description: "Wire @kuratchi/orm into kuratchi.config.ts and framework runtime code"
+---
+
+## Configure the framework
+
+Use `kuratchiOrmConfig()` inside `kuratchi.config.ts`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
+import { appSchema } from './src/server/schemas/app';
+
+export default defineConfig({
+  orm: kuratchiOrmConfig({
+    databases: {
+      DB: { schema: appSchema },
+      NOTES_DO: { schema: notesSchema, type: 'do' },
+    },
+  }),
+});
+```
+
+Notes:
+
+* the `DB` key should match the Wrangler binding name
+* `type: 'do'` marks Durable Object SQLite storage
+* `skipMigrations` is available per database config when you need to opt out
+
+## What the runtime gets
+
+The framework can use those schema definitions for:
+
+* runtime ORM initialization
+* migration generation
+* schema-aware JSON handling
+* Durable Object database setup
+
+## Durable Object example
+
+```ts
+export async function listNotes() {
+  const result = await this.db.notes
+    .orderBy({ created_at: 'desc' })
+    .many();
+
+  return result.data ?? [];
+}
+```
+
+## Recommended pattern
+
+For D1 in Worker code, use:
+
+```ts
+const db = kuratchiORM(() => env.DB);
+```
+
+For Durable Objects, use:
+
+```ts
+const db = initDO(ctx.storage.sql, appSchema);
+```
+
+That keeps D1 binding access lazy and DO setup explicit.

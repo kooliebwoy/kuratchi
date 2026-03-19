@@ -1,0 +1,110 @@
+---
+title: "Getting Started"
+description: "Install @kuratchi/js and boot a first KuratchiJS app"
+---
+
+## Install
+
+```bash
+npm install @kuratchi/js
+```
+
+To scaffold a new app:
+
+```bash
+npx kuratchi create my-app
+cd my-app
+bun run dev
+```
+
+## Minimal project shape
+
+KuratchiJS compiles routes from `src/routes` and writes generated worker output into `.kuratchi`.
+
+```text
+my-app/
+  package.json
+  wrangler.jsonc
+  kuratchi.config.ts
+  src/routes/layout.html
+  src/routes/page.html
+```
+
+## Required worker entry
+
+Your Wrangler entrypoint should point at the generated worker:
+
+```json
+{
+  "main": ".kuratchi/worker.js",
+  "compatibility_flags": ["nodejs_compat"]
+}
+```
+
+You do not need a hand-written `src/index.ts`.
+
+## Minimal scripts
+
+```json
+{
+  "scripts": {
+    "dev": "kuratchi dev",
+    "build": "kuratchi build"
+  }
+}
+```
+
+## First layout
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My App</title>
+</head>
+<body>
+  <header><a href="/">Home</a></header>
+  <main><slot></slot></main>
+</body>
+</html>
+```
+
+Every app should have a `src/routes/layout.html` containing `<slot></slot>`.
+
+## First page
+
+```html
+<script>
+  const items = ['Alpha', 'Bravo', 'Charlie'];
+</script>
+
+<h1>Hello KuratchiJS</h1>
+
+if (items.length > 0) {
+  <ul>
+    for (const item of items) {
+      <li>{item}</li>
+    }
+  </ul>
+} else {
+  <p>No items yet.</p>
+}
+```
+
+The top-level `<script>` runs on the server. Inline `if` and `for` blocks render directly in the template.
+
+## Run locally
+
+```bash
+bun install
+bun run build
+bun run dev
+```
+
+## What to read next
+
+- [Routing](/framework/routing)
+- [Actions](/framework/actions)
+- [Configuration](/framework/configuration)

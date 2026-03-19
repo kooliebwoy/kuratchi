@@ -53,7 +53,6 @@ export interface RouteBuildPlan {
 export interface RoutePipelineParsedFile extends ParsedFile {
   scriptImportDecls?: string[];
   scriptSegments?: RouteScriptSegment[];
-  dataGetQueries?: RouteDataGetQuery[];
 }
 
 interface AnalyzeRouteOptions {

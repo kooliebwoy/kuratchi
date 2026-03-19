@@ -1,0 +1,158 @@
+---
+title: "Querying"
+description: "Use the chainable table API for inserts, filters, includes, updates, and deletes"
+---
+
+## Query result shape
+
+Most ORM operations return:
+
+```ts
+type QueryResult<T> = {
+  success: boolean;
+  data?: T;
+  results?: T;
+  error?: string;
+  meta?: {
+    rowsRead?: number;
+    rowsWritten?: number;
+    duration?: number;
+  };
+}
+```
+
+## Inserts
+
+```ts
+await db.todos.insert({ title: 'Hello', done: 0 });
+
+await db.todos.insert([
+  { title: 'First' },
+  { title: 'Second' },
+]);
+```
+
+Fields not present in the schema are skipped when using a schema-aware client.
+
+## Reads
+
+```ts
+const many = await db.todos.many();
+const first = await db.todos.first();
+const one = await db.todos.where({ id: 1 }).one();
+const exists = await db.todos.where({ id: 1 }).exists();
+const count = await db.todos.count();
+const distinctTitles = await db.todos.distinct('title');
+```
+
+## Filtering
+
+Equality:
+
+```ts
+db.todos.where({ done: 0 })
+```
+
+Comparison operators:
+
+```ts
+db.todos.where({ id: { gt: 5 } })
+db.todos.where({ id: { gte: 5 } })
+db.todos.where({ id: { lt: 10 } })
+db.todos.where({ id: { lte: 10 } })
+db.todos.where({ id: { ne: 3 } })
+db.todos.where({ title: { like: '%hello%' } })
+db.todos.where({ id: { in: [1, 2, 3] } })
+db.todos.where({ id: { notIn: [4, 5] } })
+db.todos.where({ deleted_at: { isNullish: true } })
+```
+
+OR-style helpers:
+
+```ts
+db.todos.where({ done: 0 }).orWhere({ title: 'Important' })
+
+db.todos.whereAny([
+  { done: 0 },
+  { title: '%urgent%' },
+])
+```
+
+Shorthand:
+
+```ts
+db.todos.whereIn('id', [1, 2, 3])
+```
+
+## Raw SQL conditions
+
+You can add raw predicates without giving up parameter binding:
+
+```ts
+db.todos.sql({
+  query: 'title LIKE ? OR done = ?',
+  params: ['%hello%', 1],
+})
+```
+
+The query builder rejects obvious interpolation and multi-statement patterns. Use `?` placeholders and a params array.
+
+## Ordering and selection
+
+```ts
+db.todos.orderBy({ created_at: 'desc' })
+db.todos.orderBy([{ done: 'asc' }, { created_at: 'desc' }])
+db.todos.orderBy('created_at DESC')
+
+db.todos.select(['id', 'title'])
+db.todos.limit(10).offset(20)
+```
+
+## Updates and deletes
+
+Updates require a `where` clause:
+
+```ts
+await db.todos.update({ done: 1 }).where({ id: 1 }).update();
+await db.todos.where({ done: 0 }).updateMany({ done: 1 });
+```
+
+Deletes also require a filter for safety:
+
+```ts
+await db.todos.delete({ id: 1 });
+await db.todos.where({ done: 1 }).delete();
+```
+
+## Includes
+
+Use `include()` for eager loading:
+
+```ts
+const result = await db.todos.include({ categories: true }).many();
+```
+
+Explicit key mapping:
+
+```ts
+const result = await db.todos.include({
+  categories: {
+    foreignKey: 'todoId',
+    localKey: 'id',
+  },
+}).many();
+```
+
+You can also alias the included field with `as`.
+
+## Soft delete
+
+If a table has a `deleted_at` column, the ORM filters soft-deleted rows by default. Use `withDeleted()` on the query builder when you need everything:
+
+```ts
+const allTodos = await db.todos.withDeleted().many();
+```
+
+## JSON columns
+
+When the table is backed by a schema-aware client, JSON values are stringified on write and parsed on read automatically.

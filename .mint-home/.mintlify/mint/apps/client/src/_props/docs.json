@@ -1,0 +1,138 @@
+{
+  "theme": "mint",
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Kuratchi Docs",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#07C983",
+    "dark": "#15803D"
+  },
+  "navbar": {
+    "links": [
+      {
+        "href": "https://github.com/kooliebwoy/kuratchi",
+        "label": "GitHub"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Open Platform",
+      "href": "https://kuratchi.cloud"
+    }
+  },
+  "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Platform",
+          "href": "https://kuratchi.cloud"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/kooliebwoy/kuratchi"
+        }
+      ]
+    },
+    "tabs": [
+      {
+        "tab": "Framework",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "index",
+              "framework/getting-started",
+              "framework/development"
+            ]
+          },
+          {
+            "group": "Core concepts",
+            "pages": [
+              "framework/routing",
+              "framework/actions",
+              "framework/runtime"
+            ]
+          },
+          {
+            "group": "Cloudflare primitives",
+            "pages": [
+              "framework/durable-objects-and-agents",
+              "framework/configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "ORM",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "orm/index",
+              "orm/getting-started"
+            ]
+          },
+          {
+            "group": "Core concepts",
+            "pages": [
+              "orm/schema-dsl",
+              "orm/querying"
+            ]
+          },
+          {
+            "group": "Runtime integration",
+            "pages": [
+              "orm/migrations",
+              "orm/kuratchi-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Auth",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "auth/index",
+              "auth/getting-started"
+            ]
+          },
+          {
+            "group": "Core flows",
+            "pages": [
+              "auth/credentials-and-sessions",
+              "auth/auth-context",
+              "auth/oauth-and-rbac"
+            ]
+          },
+          {
+            "group": "Runtime controls",
+            "pages": [
+              "auth/guards-rate-limit-turnstile",
+              "auth/organizations-and-schema"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/kooliebwoy/kuratchi"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ],
+    "display": "header"
+  }
+}

@@ -1,0 +1,44 @@
+---
+title: "@kuratchi/orm"
+description: "Workers-native ORM docs for Cloudflare D1 and Durable Object SQLite"
+---
+
+## SQLite for the runtime you already have
+
+`@kuratchi/orm` is a lightweight ORM for Cloudflare D1 and Durable Object SQLite. It keeps the API Worker-safe, uses a compact schema DSL, and stays close to SQL instead of hiding the database behind a large abstraction layer.
+
+## What it gives you
+
+<CardGroup cols={2}>
+  <Card title="Schema DSL" icon="table-columns" href="/orm/schema-dsl">
+    Define tables, mixins, indexes, JSON columns, enums, and foreign keys with a compact object format.
+  </Card>
+
+  <Card title="Chainable queries" icon="magnifying-glass" href="/orm/querying">
+    Query with `where`, `orderBy`, `include`, `limit`, `offset`, `count`, and `distinct` without leaving SQL-shaped concepts behind.
+  </Card>
+
+  <Card title="D1 and DO support" icon="database" href="/orm/getting-started">
+    Use the same ORM across D1 bindings and Durable Object SQLite storage.
+  </Card>
+
+  <Card title="Migration helpers" icon="arrows-rotate" href="/orm/migrations">
+    Generate initial SQL, diff schemas, and run tracked runtime migrations when needed.
+  </Card>
+</CardGroup>
+
+## Design constraints
+
+The ORM is built around a few hard constraints:
+
+* No Node-only runtime assumptions
+* No dependency-heavy query layer
+* SQL semantics stay visible
+* Same mental model across D1 and Durable Object SQLite
+
+## Read next
+
+* [Getting Started](/orm/getting-started)
+* [Schema DSL](/orm/schema-dsl)
+* [Querying](/orm/querying)
+* [Migrations](/orm/migrations)

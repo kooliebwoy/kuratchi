@@ -1,0 +1,93 @@
+---
+title: "Durable Objects and Agents"
+description: "Build RPC-style Durable Objects, workflows, and agent entrypoints"
+---
+
+## Durable Objects
+
+KuratchiJS auto-discovers `.do.ts` files. Public methods become RPC-accessible automatically.
+
+```ts
+import { DurableObject } from 'cloudflare:workers';
+
+export default class UserDO extends DurableObject {
+  async getName() {
+    return await this.ctx.storage.get('name');
+  }
+
+  async setName(name: string) {
+    if (!name) throw new Error('Name required');
+    await this.ctx.storage.put('name', name);
+  }
+
+  _validate() {}
+}
+```
+
+RPC rules:
+
+- Public methods are callable through generated proxies.
+- Underscore-prefixed methods are not exposed.
+- Lifecycle methods like `fetch()` and `alarm()` are not treated as RPC methods.
+
+## Route usage
+
+Import from `$do/<filename>` without the `.do` suffix:
+
+```html
+<script>
+  import { getName, setName } from '$do/user';
+  const name = await getName();
+</script>
+
+<h1>Hello, {name}</h1>
+```
+
+Binding names are generated automatically:
+
+- `user.do.ts` -> `USER_DO`
+- `org-settings.do.ts` -> `ORG_SETTINGS_DO`
+
+## Optional `stubId`
+
+Durable Objects do not require config by default. Add `stubId` only when you need auth-aware stub resolution:
+
+```ts
+export default defineConfig({
+  durableObjects: {
+    USER_DO: { stubId: 'user.orgId' },
+  },
+});
+```
+
+## Workflows
+
+KuratchiJS also auto-discovers `.workflow.ts` files:
+
+```ts
+import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
+
+export class MigrationWorkflow extends WorkflowEntrypoint {
+  async run(event: WorkflowEvent, step: WorkflowStep) {
+    return await step.do('migrate-data', async () => {
+      return { migrated: 100 };
+    });
+  }
+}
+```
+
+## Agents
+
+Files under `src/server/**/*.agent.ts` are treated as first-class Worker exports.
+
+```ts
+import { Agent } from 'agents';
+
+export class SessionAgent extends Agent {
+  async onRequest() {
+    return Response.json({ ok: true });
+  }
+}
+```
+
+Agent files are re-exported from `.kuratchi/worker.js`, but Wrangler still needs matching bindings and migrations.

@@ -1,0 +1,49 @@
+---
+title: "Development"
+description: "Understand the compile pipeline and local development loop"
+---
+
+## What `kuratchi build` generates
+
+The compiler scans `src/routes/` and writes generated runtime files into `.kuratchi/`.
+
+| File                  | Purpose                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| `.kuratchi/routes.js` | Compiled routes, render functions, actions, and RPC handlers           |
+| `.kuratchi/worker.js` | Stable Wrangler entrypoint re-exporting the router plus Worker classes |
+| `.kuratchi/do/*.js`   | Generated Durable Object proxy modules                                 |
+
+That build artifact layout is the framework contract. Route files are source code. `.kuratchi` is generated output.
+
+## Local loop
+
+```bash
+bun run dev
+```
+
+During development, keep these rules in mind:
+
+* Route files are server-rendered, not client entry files.
+* `src/server` is private server-only code.
+* Browser reactivity uses `$:` inside client-side template scripts.
+* Wrangler should continue pointing to `.kuratchi/worker.js`.
+
+## Execution model
+
+KuratchiJS is server-first:
+
+* Top-level route `<script>` blocks run on the server.
+* Template expressions render on the server.
+* Form actions execute on the server.
+* Browser behavior is opt-in through progressive enhancement and `$:` labels.
+
+That keeps the default mental model closer to Worker request handling than SPA hydration.
+
+## Production check
+
+Before shipping, verify:
+
+* `src/routes/layout.html` exists
+* `src/routes/page.html` or another entry route exists
+* `wrangler.jsonc` points at `.kuratchi/worker.js`
+* `bun run build` succeeds

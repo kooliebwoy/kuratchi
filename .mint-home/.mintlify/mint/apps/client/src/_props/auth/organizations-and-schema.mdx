@@ -1,0 +1,63 @@
+---
+title: "Organizations and Schema"
+description: "Use DO-backed multi-tenancy and built-in auth table definitions"
+---
+
+## Organization mode
+
+`@kuratchi/auth` can run in organization-aware mode using a Durable Object namespace for per-org storage plus an admin D1 database for mappings.
+
+Configuration:
+
+```ts
+organizations: {
+  binding: 'ORG_DB',
+}
+```
+
+Available helpers:
+
+* `configureOrganization()`
+* `getOrgStubByName(doName)`
+* `getOrgClient(organizationId)`
+* `createOrgDatabase({ organizationId, organizationName })`
+* `getOrgDatabaseInfo(organizationId)`
+* `resolveOrgDatabaseName(organizationId)`
+* `isOrgAvailable()`
+
+## Runtime model
+
+In org mode:
+
+* admin D1 stores organization records and email-to-org mappings
+* each org gets a DO-backed database
+* credentials and session operations are dispatched through the org DO stub
+
+That lets signup and signin stay on the same high-level helpers while the storage target changes underneath.
+
+## Built-in schema exports
+
+The package exports two table maps:
+
+* `authAdminTables`
+* `authOrgTables`
+
+These schema objects cover auth persistence for:
+
+* `users`
+* `sessions`
+* `passwordResets`
+* `oauthAccounts`
+* `organizations`
+* `userMappings`
+* `activityLog`
+
+`authOrgTables` is the smaller per-organization subset.
+
+## Binding model
+
+The auth package also keeps track of the auth database binding through its config plumbing, defaulting to `DB` unless overridden in credentials config.
+
+## Recommended use
+
+Use the built-in auth schema exports when you want the package’s expected table shape instead of re-creating it manually from scratch.

@@ -1,0 +1,45 @@
+---
+title: "@kuratchi/auth"
+description: "Config-driven auth docs for Kuratchi apps"
+---
+
+## Auth that stays inside the framework runtime
+
+`@kuratchi/auth` is a config-driven auth package for Kuratchi apps. It is built around Worker runtime constraints, D1 or DO-backed persistence, and compiler-integrated request hooks for session cookies, guards, rate limiting, and Turnstile.
+
+## What it gives you
+
+<CardGroup cols={2}>
+  <Card title="Credentials and sessions" icon="key" href="/auth/credentials-and-sessions">
+    Email and password signup, signin, signout, session cookies, current-user lookup, and password reset flows.
+  </Card>
+  <Card title="Auth context" icon="user-shield" href="/auth/auth-context">
+    Use `getAuth()` for lazy session access, role checks, cookie helpers, redirects, and auth-aware JSON responses.
+  </Card>
+  <Card title="OAuth and RBAC" icon="badge-check" href="/auth/oauth-and-rbac">
+    Configure GitHub or Google login, define roles, and check permissions with wildcard support.
+  </Card>
+  <Card title="Runtime controls" icon="shield-halved" href="/auth/guards-rate-limit-turnstile">
+    Protect routes, throttle requests, and require Turnstile verification before route handlers run.
+  </Card>
+</CardGroup>
+
+## Package model
+
+The package is split into focused runtime modules:
+
+- credentials and sessions
+- low-level auth context
+- activity logging
+- OAuth providers
+- guards
+- rate limiting
+- Turnstile verification
+- organization-aware multi-tenancy
+
+## Read next
+
+- [Getting Started](/auth/getting-started)
+- [Credentials and Sessions](/auth/credentials-and-sessions)
+- [Auth Context](/auth/auth-context)
+- [OAuth and RBAC](/auth/oauth-and-rbac)

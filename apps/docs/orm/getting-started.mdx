@@ -1,0 +1,70 @@
+---
+title: "Getting Started"
+description: "Install @kuratchi/orm and use it with D1 or Durable Object SQLite"
+---
+
+## Install
+
+```bash
+npm install @kuratchi/orm
+```
+
+## D1 usage
+
+You can bind the ORM directly to a D1 database:
+
+```ts
+import { kuratchiORM } from '@kuratchi/orm';
+import { env } from 'cloudflare:workers';
+
+const db = kuratchiORM(env.DB);
+```
+
+For module-level singletons, prefer lazy binding so the database is resolved at query time:
+
+```ts
+import { kuratchiORM } from '@kuratchi/orm';
+import { env } from 'cloudflare:workers';
+
+const db = kuratchiORM(() => env.DB);
+```
+
+## Basic D1 operations
+
+```ts
+await db.todos.insert({ title: 'Hello' });
+
+const todos = await db.todos
+  .orderBy({ created_at: 'desc' })
+  .many();
+```
+
+## Durable Object SQLite usage
+
+Inside a Durable Object, initialize the ORM with `ctx.storage.sql` and your schema:
+
+```ts
+import { initDO } from '@kuratchi/orm';
+
+const db = initDO(ctx.storage.sql, appSchema);
+```
+
+`initDO()` runs initial table creation, applies additive column migrations for pre-existing DO tables, and returns the same table API you use with D1.
+
+## Core exports
+
+The package exports:
+
+- `kuratchiORM`
+- `initDO`
+- `createRuntimeOrm`
+- `createSchemaClient`
+- schema helpers from `@kuratchi/orm`
+- migration helpers from `@kuratchi/orm/migrations`
+- `kuratchiOrmConfig` from `@kuratchi/orm/adapter`
+
+## Read next
+
+- [Schema DSL](/orm/schema-dsl)
+- [Querying](/orm/querying)
+- [Kuratchi Integration](/orm/kuratchi-integration)

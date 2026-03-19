@@ -1,0 +1,108 @@
+---
+title: "Kuratchi Docs"
+description: "Documentation for the Kuratchi framework and packages"
+---
+
+## Packages that stay close to Cloudflare
+
+Kuratchi docs now cover the framework and package surface directly inside the monorepo. The current sections in place are `@kuratchi/js`, `@kuratchi/orm`, and `@kuratchi/auth`.
+
+<CardGroup cols={3}>
+  <Card title="@kuratchi/js" icon="rocket" href="/framework/getting-started">
+    Start with the Workers-native framework: routing, actions, runtime APIs, Durable Objects, workflows, and agents.
+  </Card>
+  <Card title="@kuratchi/orm" icon="database" href="/orm/getting-started">
+    Build on D1 and Durable Object SQLite with the schema DSL, query builder, migrations, and framework integration.
+  </Card>
+  <Card title="@kuratchi/auth" icon="shield" href="/auth/getting-started">
+    Add config-driven credentials, sessions, OAuth, RBAC, route guards, Turnstile, and org-aware auth flows.
+  </Card>
+</CardGroup>
+
+## Framework highlights
+
+<CardGroup cols={2}>
+  <Card
+    title="File-based routes"
+    icon="route"
+    href="/framework/routing"
+  >
+    Build pages with `.html` route files, shared layouts, inline control flow, and server-first rendering.
+  </Card>
+  <Card
+    title="Server actions"
+    icon="square-terminal"
+    href="/framework/actions"
+  >
+    Use native forms and exported server functions instead of shipping framework-specific mutation clients.
+  </Card>
+  <Card
+    title="Runtime APIs"
+    icon="bolt"
+    href="/framework/runtime"
+  >
+    Reach request context, params, redirects, and environment helpers directly from route code.
+  </Card>
+  <Card
+    title="Cloudflare primitives"
+    icon="cloud"
+    href="/framework/durable-objects-and-agents"
+  >
+    Treat Durable Objects, workflows, and agents as first-class framework concepts.
+  </Card>
+</CardGroup>
+
+## ORM highlights
+
+<CardGroup cols={2}>
+  <Card title="Schema DSL" icon="table-columns" href="/orm/schema-dsl">
+    Define tables, indexes, references, JSON columns, and shared mixins with a compact schema object.
+  </Card>
+  <Card title="Query builder" icon="magnifying-glass" href="/orm/querying">
+    Query with `where`, `include`, `orderBy`, `count`, `distinct`, and safe raw predicates.
+  </Card>
+  <Card title="Migrations" icon="arrows-rotate" href="/orm/migrations">
+    Generate initial SQL, diff schemas, and track runtime migrations with `_kuratchi_migrations`.
+  </Card>
+  <Card title="Framework integration" icon="plug" href="/orm/kuratchi-integration">
+    Plug ORM schemas into `kuratchi.config.ts` and use the same table API in Worker and DO contexts.
+  </Card>
+</CardGroup>
+
+## Auth highlights
+
+<CardGroup cols={2}>
+  <Card title="Credentials" icon="key" href="/auth/credentials-and-sessions">
+    Ship signup, signin, signout, password reset, and current-user lookup on top of Worker-native session handling.
+  </Card>
+  <Card title="Auth context" icon="user-shield" href="/auth/auth-context">
+    Use `getAuth()` for lazy session resolution, permission checks, safe redirects, and cookie helpers.
+  </Card>
+  <Card title="OAuth and RBAC" icon="badge-check" href="/auth/oauth-and-rbac">
+    Configure GitHub or Google login, define roles, and check wildcard permissions.
+  </Card>
+  <Card title="Runtime controls" icon="shield-halved" href="/auth/guards-rate-limit-turnstile">
+    Guard routes, apply per-IP throttling, and enforce Turnstile verification before handlers run.
+  </Card>
+</CardGroup>
+
+## Framework build model
+
+`kuratchi build` scans `src/routes/` and generates a stable worker entrypoint at `.kuratchi/worker.js`.
+
+```json
+{
+  "main": ".kuratchi/worker.js"
+}
+```
+
+That lets application code stay focused on routes and server modules while the compiler owns the generated worker plumbing.
+
+## Read next
+
+- [Getting Started](/framework/getting-started)
+- [Routing](/framework/routing)
+- [Actions](/framework/actions)
+- [Durable Objects and Agents](/framework/durable-objects-and-agents)
+- [ORM Getting Started](/orm/getting-started)
+- [Auth Getting Started](/auth/getting-started)

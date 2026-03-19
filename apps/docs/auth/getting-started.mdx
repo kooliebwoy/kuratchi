@@ -1,0 +1,73 @@
+---
+title: "Getting Started"
+description: "Install @kuratchi/auth and wire it into kuratchi.config.ts"
+---
+
+## Install
+
+```bash
+npm install @kuratchi/auth @kuratchi/orm
+```
+
+`@kuratchi/auth` depends on ORM-backed tables for users, sessions, OAuth accounts, activity logs, and related auth state.
+
+## Minimal config
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiAuthConfig } from '@kuratchi/auth/adapter';
+
+export default defineConfig({
+  auth: kuratchiAuthConfig({
+    cookieName: 'kuratchi_session',
+    sessionEnabled: true,
+  }),
+});
+```
+
+Default adapter behavior:
+
+- `cookieName`: `kuratchi_session`
+- `secretEnvKey`: `AUTH_SECRET`
+- `sessionEnabled`: `true`
+
+## Common imports
+
+```ts
+import {
+  signUp,
+  signIn,
+  signOut,
+  getCurrentUser,
+  getAuth,
+  logActivity,
+  startOAuth,
+  handleOAuthCallback,
+  requireAuthGuard,
+  verifyTurnstile,
+} from '@kuratchi/auth';
+```
+
+## Required env
+
+At minimum, auth flows expect:
+
+- `AUTH_SECRET`
+
+Feature-specific flows can also require:
+
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `TURNSTILE_SECRET`
+- `TURNSTILE_SITE_KEY`
+- `ORIGIN`
+
+## What to read next
+
+- [Credentials and Sessions](/auth/credentials-and-sessions)
+- [Auth Context](/auth/auth-context)
+- [Organizations and Schema](/auth/organizations-and-schema)

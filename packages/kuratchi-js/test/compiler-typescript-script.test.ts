@@ -170,6 +170,166 @@ export async function createUser(formData: FormData) {
     expect(routesCode).not.toContain('return { user, getUser, createUser');
   });
 
+  it('promotes component action props into the route actions map', () => {
+    const projectDir = createTempProject('component-action-prop');
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import FormShell from '$lib/form-shell.html';
+import { submitForm } from '$server/actions';
+</script>
+
+<FormShell submitAction={submitForm} />`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'lib', 'form-shell.html'),
+      `<form action={submitAction} method="POST"></form>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'actions.ts'),
+      `export async function submitForm(formData: FormData) {
+  return formData;
+}
+`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain("actions: { 'submitForm': __m0.submitForm }");
+  });
+
+  it('promotes layout component action props into layout actions', () => {
+    const projectDir = createTempProject('layout-action-prop');
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'layout.html'),
+      `<script>
+import Shell from '$lib/shell.html';
+import { signOut } from '$server/actions';
+</script>
+
+<Shell submitAction={signOut}>
+  <slot></slot>
+</Shell>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<p>Layout action test</p>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'lib', 'shell.html'),
+      `<form action={submitAction} method="POST"><slot></slot></form>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'actions.ts'),
+      `export async function signOut(formData: FormData) {
+  return formData;
+}
+`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain("const __layoutActions = { 'signOut':");
+  });
+
+  it('rewrites nested project imports inside transformed server modules', () => {
+    const projectDir = createTempProject('server-module-rewrite');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { getTitle } from '$server/loaders';
+const title = await getTitle();
+</script>
+
+<h1>{title}</h1>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'loaders.ts'),
+      `import { baseTitle } from '$server/helpers';
+
+export async function getTitle() {
+  return baseTitle + ' Docs';
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'helpers.ts'),
+      `export const baseTitle = 'Kuratchi';
+`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+
+    const rewrittenModule = fs.readFileSync(
+      path.join(projectDir, '.kuratchi', 'modules', 'src', 'server', 'loaders.ts'),
+      'utf-8',
+    );
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(rewrittenModule).toContain("from './helpers.ts'");
+    expect(routesCode).toContain("import * as __m0 from './modules/src/server/loaders.ts';");
+  });
+
+  it('merges nested layout server state into child route compilation', () => {
+    const projectDir = createTempProject('nested-layout-merge');
+    fs.mkdirSync(path.join(projectDir, 'src', 'routes', 'dashboard', 'reports'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'dashboard', 'layout.html'),
+      `<script>
+import { getSection } from '$server/layout-data';
+const section = await getSection();
+</script>
+
+<main>
+  <h1>{section}</h1>
+  <slot></slot>
+</main>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'dashboard', 'reports', 'page.html'),
+      `<script>
+const title = 'Quarterly';
+</script>
+
+<p>{title}</p>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'layout-data.ts'),
+      `export async function getSection() {
+  return 'Reports';
+}
+`,
+      'utf-8',
+    );
+
+    compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+
+    expect(routesCode).toContain('const section = await __m0.getSection();');
+    expect(routesCode).toContain('<h1>${__esc(section)}</h1>');
+    expect(routesCode).toContain('<p>${__esc(title)}</p>');
+  });
+
   it('rejects @kuratchi/js/environment imports in client reactive scripts', () => {
     const projectDir = createTempProject('framework-dev-client');
     fs.writeFileSync(

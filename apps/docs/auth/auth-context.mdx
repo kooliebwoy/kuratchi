@@ -1,0 +1,63 @@
+---
+title: "Auth Context"
+description: "Use getAuth() for lazy session access, role checks, cookies, and redirect helpers"
+---
+
+## `getAuth()`
+
+`getAuth()` is the low-level backend auth API for route loads, actions, RPC handlers, and other server code.
+
+```ts
+import { getAuth } from '@kuratchi/auth';
+
+const auth = getAuth();
+const session = await auth.getSession();
+```
+
+## What it exposes
+
+The returned auth context includes:
+
+- `getSession()`
+- `getUser()`
+- `isAuthenticated()`
+- `hasPermission()`
+- `hasRole()`
+- `getPermissions()`
+- `getSessionCookie()`
+- `getCookies()`
+- `buildSetCookie()`
+- `buildClearCookie()`
+- `redirect()`
+- `forbidden()`
+- `json()`
+- `getAuthEnv()`
+- `getLocals()`
+- `getRequest()`
+- `getEnv()`
+
+## Session loading model
+
+`getAuth()` is lazy:
+
+- it reads from the current Kuratchi request context
+- it decrypts the session cookie only when needed
+- it caches the resolved session for the lifetime of the `getAuth()` instance
+
+If you need to customize the session pipeline, `getAuth()` accepts options for:
+
+- custom env mapping
+- custom session decoding
+- custom session loading
+- static role-to-permission maps
+- explicit runtime context injection
+
+## Redirect safety
+
+The built-in `auth.redirect()` helper blocks open redirects. Relative paths are allowed, but external origins are rejected and replaced with `/`.
+
+## When to use this layer
+
+Use `getAuth()` when you need explicit request-scoped auth behavior.
+
+Use `getCurrentUser()` when all you need is the authenticated user object for the current request.

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "functions": {
+    "/_mintlify/api-public/assistant/[subdomain]/message": {},
+    "/_mintlify/api/assistant/message": {},
+    "/_mintlify/api/og": {},
+    "/api/og": {}
+  }
+}

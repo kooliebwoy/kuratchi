@@ -1,0 +1,93 @@
+---
+title: "OAuth and RBAC"
+description: "Configure provider login, define roles, and check permissions"
+---
+
+## OAuth providers
+
+The package currently includes built-in provider wiring for:
+
+* GitHub
+* Google
+
+Configure providers with `configureOAuth()` through `kuratchi.config.ts` integration:
+
+```ts
+oauth: {
+  providers: {
+    github: {
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
+    },
+    google: {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+    },
+  },
+  loginRedirect: '/admin',
+}
+```
+
+Runtime helpers:
+
+* `getOAuthData()`
+* `startOAuth(formData)`
+* `handleOAuthCallback()`
+* `getOAuthProviders()`
+
+The callback flow:
+
+* verifies state
+* exchanges the code for tokens
+* fetches the profile
+* creates or links the user
+* stores encrypted OAuth tokens
+* creates a normal auth session
+
+## Roles
+
+Define role mappings with `defineRoles()`:
+
+```ts
+const Roles = defineRoles({
+  admin: ['*'],
+  editor: ['posts.*', 'users.read'],
+  user: ['posts.read'],
+}, {
+  defaultRole: 'user',
+});
+```
+
+Available helpers:
+
+* `hasRole(user, role)`
+* `hasPermission(user, permission)`
+* `getPermissionsForRole(role)`
+* `getRoleDefinitions()`
+* `getAllRoles()`
+* `getDefaultRole()`
+
+Wildcard behavior:
+
+* `*` matches everything
+* `posts.*` matches `posts.read`, `posts.create`, and the base `posts` namespace
+
+## Assigning roles
+
+`assignRole(formData)` reads:
+
+* `userId`
+* `role`
+
+and requires the current user to have `users.update`.
+
+## Activity helpers
+
+The auth package also includes built-in activity logging:
+
+* `defineActivities()`
+* `logActivity()`
+* `getActivity()`
+* `getActivityDefinitions()`
+
+Use this layer for audit-friendly auth and admin events.

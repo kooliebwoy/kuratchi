@@ -1,0 +1,93 @@
+---
+title: "Guards, Rate Limits, and Turnstile"
+description: "Apply runtime auth controls before route handlers run"
+---
+
+## Guards
+
+Guards are configured with:
+
+* `paths`
+* `exclude`
+* `redirectTo`
+
+Example:
+
+```ts
+guards: {
+  paths: ['/admin/*', '/dashboard/*'],
+  exclude: ['/auth/login'],
+  redirectTo: '/auth/login',
+}
+```
+
+Runtime helpers:
+
+* `checkGuard()`
+* `requireAuthGuard`
+
+Important behavior:
+
+`checkGuard()` only checks for the presence of the session cookie. It does not fully validate the session record. Route code should still call `getCurrentUser()` or `getAuth().getSession()` before trusting the request as authenticated.
+
+## Rate limiting
+
+Configure rate limits per route:
+
+```ts
+rateLimit: {
+  defaultWindowMs: 60000,
+  defaultMaxRequests: 10,
+  kvBinding: 'RATE_LIMIT',
+  routes: [
+    {
+      id: 'auth-signin',
+      path: '/auth/signin',
+      methods: ['POST'],
+      maxRequests: 5,
+      windowMs: 60000,
+      message: 'Too many sign-in attempts.',
+    },
+  ],
+}
+```
+
+Runtime helpers:
+
+* `checkRateLimit()`
+* `getRateLimitInfo(routeId)`
+
+The limiter uses `cf-connecting-ip` and can persist counts in KV when configured, with an in-memory fallback per isolate.
+
+## Turnstile
+
+Configure Turnstile with:
+
+* `secretEnv`
+* `siteKeyEnv`
+* `skipInDev`
+* `routes`
+
+Example:
+
+```ts
+turnstile: {
+  secretEnv: 'TURNSTILE_SECRET',
+  siteKeyEnv: 'TURNSTILE_SITE_KEY',
+  routes: [
+    {
+      id: 'auth-signin',
+      path: '/auth/signin',
+      methods: ['POST'],
+      expectedAction: 'signin',
+    },
+  ],
+}
+```
+
+Runtime helpers:
+
+* `checkTurnstile()`
+* `verifyTurnstile(token, options)`
+
+The verifier reads tokens from common headers or form fields, then calls Cloudflare’s Turnstile verification endpoint.

@@ -1,0 +1,122 @@
+---
+title: "Routing"
+description: "File-based routing, layouts, template syntax, and client reactivity"
+---
+
+## Route conventions
+
+Place `.html` files inside `src/routes/`. File paths become URL patterns.
+
+```text
+src/routes/page.html               -> /
+src/routes/about/page.html         -> /about
+src/routes/items/page.html         -> /items
+src/routes/blog/[slug]/page.html   -> /blog/:slug
+src/routes/layout.html             -> shared layout
+```
+
+## Server-first route files
+
+Top-level route scripts run on the server:
+
+```html
+<script>
+  import { getItems } from '$database/items';
+  const items = await getItems();
+</script>
+
+<ul>
+  for (const item of items) {
+    <li>{item.title}</li>
+  }
+</ul>
+```
+
+Use `src/server` for private modules. Route files are rendered output, not browser modules.
+
+## Layouts
+
+`src/routes/layout.html` wraps every page. Use `<slot></slot>` where route content should render.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My App</title>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/items">Items</a>
+  </nav>
+  <main>
+    <slot></slot>
+  </main>
+</body>
+</html>
+```
+
+## Template syntax
+
+### Interpolation
+
+```html
+<p>{title}</p>
+<p>{@html bodyHtml}</p>
+<p>{@raw trustedHtml}</p>
+```
+
+### Conditionals
+
+```html
+if (items.length === 0) {
+  <p>Nothing here yet.</p>
+} else {
+  <p>{items.length} items</p>
+}
+```
+
+### Loops
+
+```html
+for (const item of items) {
+  <li>{item.title}</li>
+}
+```
+
+### Components
+
+```html
+<script>
+  import Card from '$lib/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+</script>
+
+<Card title="Stack">
+  <Badge variant="success">Live</Badge>
+</Card>
+```
+
+## Client reactivity
+
+Use `$:` inside browser-side template scripts when you need client updates:
+
+```html
+<script>
+  let users = ['Alice'];
+
+  $: console.log(`Users: ${users.length}`);
+
+  function addUser() {
+    users.push('Bob');
+  }
+</script>
+```
+
+Rules:
+
+- `$:` is the browser-side escape hatch.
+- Top-level route scripts are still server-only.
+- Proxy-backed array and object mutation works when `$:` is active.
+- You should not need browser guards in normal route code.

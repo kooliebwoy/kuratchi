@@ -1,0 +1,457 @@
+{
+  "version": 3,
+  "pages404": true,
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)?",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
+      ],
+      "regex": "^(?:/(.*))?(?:/)?$"
+    }
+  ],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/_live-preview/[subdomain]/[[...slug]]",
+      "regex": "^/_live\\-preview/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_live\\-preview/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/_markdown/_sites/[subdomain]/[[...slug]]",
+      "regex": "^/_mintlify/_markdown/_sites/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_mintlify/_markdown/_sites/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/rss/[subdomain]/[[...slug]]",
+      "regex": "^/_mintlify/api/rss/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_mintlify/api/rss/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api-public/assistant/[subdomain]/message",
+      "regex": "^/_mintlify/api\\-public/assistant/([^/]+?)/message(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/api\\-public/assistant/(?<nxtPsubdomain>[^/]+?)/message(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api-public/search/[subdomain]",
+      "regex": "^/_mintlify/api\\-public/search/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/api\\-public/search/(?<nxtPsubdomain>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/auth-metadata/[subdomain]/[[...slug]]",
+      "regex": "^/_mintlify/auth\\-metadata/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_mintlify/auth\\-metadata/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/favicons/[subdomain]/[[...path]]",
+      "regex": "^/_mintlify/favicons/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPpath": "nxtPpath"
+      },
+      "namedRegex": "^/_mintlify/favicons/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPpath>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/feedback/[subdomain]/code-snippet-feedback",
+      "regex": "^/_mintlify/feedback/([^/]+?)/code\\-snippet\\-feedback(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/feedback/(?<nxtPsubdomain>[^/]+?)/code\\-snippet\\-feedback(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/feedback/[subdomain]/contextual-feedback",
+      "regex": "^/_mintlify/feedback/([^/]+?)/contextual\\-feedback(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/feedback/(?<nxtPsubdomain>[^/]+?)/contextual\\-feedback(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/auth/[subdomain]/[transport]",
+      "regex": "^/_mintlify/mcp/auth/([^/]+?)/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPtransport": "nxtPtransport"
+      },
+      "namedRegex": "^/_mintlify/mcp/auth/(?<nxtPsubdomain>[^/]+?)/(?<nxtPtransport>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/.well-known/oauth-authorization-server",
+      "regex": "^/_mintlify/mcp/([^/]+?)/\\.well\\-known/oauth\\-authorization\\-server(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/oauth\\-authorization\\-server(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/.well-known/oauth-protected-resource",
+      "regex": "^/_mintlify/mcp/([^/]+?)/\\.well\\-known/oauth\\-protected\\-resource(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/oauth\\-protected\\-resource(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/oauth/authorize",
+      "regex": "^/_mintlify/mcp/([^/]+?)/oauth/authorize(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/oauth/authorize(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/oauth/callback",
+      "regex": "^/_mintlify/mcp/([^/]+?)/oauth/callback(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/oauth/callback(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/oauth/register",
+      "regex": "^/_mintlify/mcp/([^/]+?)/oauth/register(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/oauth/register(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/oauth/token",
+      "regex": "^/_mintlify/mcp/([^/]+?)/oauth/token(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/oauth/token(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/mcp/[subdomain]/[transport]",
+      "regex": "^/_mintlify/mcp/([^/]+?)/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPtransport": "nxtPtransport"
+      },
+      "namedRegex": "^/_mintlify/mcp/(?<nxtPsubdomain>[^/]+?)/(?<nxtPtransport>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/static/[subdomain]/[...path]",
+      "regex": "^/_mintlify/static/([^/]+?)/(.+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPpath": "nxtPpath"
+      },
+      "namedRegex": "^/_mintlify/static/(?<nxtPsubdomain>[^/]+?)/(?<nxtPpath>.+?)(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/_hidden-login-pages/login",
+      "regex": "^/_sites/([^/]+?)/_hidden\\-login\\-pages/login(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/_hidden\\-login\\-pages/login(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/_hidden-login-pages/login/jwt-callback",
+      "regex": "^/_sites/([^/]+?)/_hidden\\-login\\-pages/login/jwt\\-callback(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/_hidden\\-login\\-pages/login/jwt\\-callback(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/_hidden-login-pages/login/mintlify-callback",
+      "regex": "^/_sites/([^/]+?)/_hidden\\-login\\-pages/login/mintlify\\-callback(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/_hidden\\-login\\-pages/login/mintlify\\-callback(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/_minimal/[[...slug]]",
+      "regex": "^/_sites/([^/]+?)/_minimal(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/_minimal(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/_pdf/[[...slug]]",
+      "regex": "^/_sites/([^/]+?)/_pdf(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/_pdf(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/.well-known/llms-full.txt",
+      "regex": "^/_sites/([^/]+?)/\\.well\\-known/llms\\-full\\.txt(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/llms\\-full\\.txt(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/.well-known/llms.txt",
+      "regex": "^/_sites/([^/]+?)/\\.well\\-known/llms\\.txt(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/llms\\.txt(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/.well-known/skills/index.json",
+      "regex": "^/_sites/([^/]+?)/\\.well\\-known/skills/index\\.json(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/skills/index\\.json(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/.well-known/skills/[skillName]/skill.md",
+      "regex": "^/_sites/([^/]+?)/\\.well\\-known/skills/([^/]+?)/skill\\.md(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPskillName": "nxtPskillName"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/\\.well\\-known/skills/(?<nxtPskillName>[^/]+?)/skill\\.md(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/llms-full.txt",
+      "regex": "^/_sites/([^/]+?)/llms\\-full\\.txt(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/llms\\-full\\.txt(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/llms.txt",
+      "regex": "^/_sites/([^/]+?)/llms\\.txt(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/llms\\.txt(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/robots.txt",
+      "regex": "^/_sites/([^/]+?)/robots\\.txt(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/robots\\.txt(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/sitemap.xml",
+      "regex": "^/_sites/([^/]+?)/sitemap\\.xml(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/sitemap\\.xml(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/skill.md",
+      "regex": "^/_sites/([^/]+?)/skill\\.md(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)/skill\\.md(?:/)?$"
+    },
+    {
+      "page": "/_sites/[subdomain]/[[...slug]]",
+      "regex": "^/_sites/([^/]+?)(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsubdomain": "nxtPsubdomain",
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/_sites/(?<nxtPsubdomain>[^/]+?)(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/[[...slug]]",
+      "regex": "^(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^(?:/(?<nxtPslug>.+?))?(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/_mintlify/api/assistant/message",
+      "regex": "^/_mintlify/api/assistant/message(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/assistant/message(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/compile-mdx",
+      "regex": "^/_mintlify/api/compile\\-mdx(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/compile\\-mdx(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/demo",
+      "regex": "^/_mintlify/api/demo(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/demo(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/file-request",
+      "regex": "^/_mintlify/api/file\\-request(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/file\\-request(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/get-static-page",
+      "regex": "^/_mintlify/api/get\\-static\\-page(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/get\\-static\\-page(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/get-static-props",
+      "regex": "^/_mintlify/api/get\\-static\\-props(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/get\\-static\\-props(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/invalidate-tag",
+      "regex": "^/_mintlify/api/invalidate\\-tag(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/invalidate\\-tag(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/not-found-context",
+      "regex": "^/_mintlify/api/not\\-found\\-context(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/not\\-found\\-context(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/og",
+      "regex": "^/_mintlify/api/og(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/og(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/purge-tag",
+      "regex": "^/_mintlify/api/purge\\-tag(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/purge\\-tag(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/request",
+      "regex": "^/_mintlify/api/request(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/request(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/revalidate",
+      "regex": "^/_mintlify/api/revalidate(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/revalidate(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/search",
+      "regex": "^/_mintlify/api/search(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/search(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/user",
+      "regex": "^/_mintlify/api/user(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/user(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/api/v1/e",
+      "regex": "^/_mintlify/api/v1/e(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/api/v1/e(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/navigation",
+      "regex": "^/_mintlify/navigation(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/navigation(?:/)?$"
+    },
+    {
+      "page": "/_mintlify/revalidate",
+      "regex": "^/_mintlify/revalidate(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_mintlify/revalidate(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/404",
+      "regex": "^/404(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/404(?:/)?$"
+    },
+    {
+      "page": "/500",
+      "regex": "^/500(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/500(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSuffix": ".prefetch.rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments"
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

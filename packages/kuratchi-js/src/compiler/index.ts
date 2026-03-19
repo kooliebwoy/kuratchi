@@ -4,14 +4,32 @@
  */
 
 import { parseFile, stripTopLevelImports } from './parser.js';
+import { compileAssets } from './asset-pipeline.js';
+import { compileApiRoute } from './api-route-pipeline.js';
+import { createComponentCompiler } from './component-pipeline.js';
+import { compileErrorPages } from './error-page-pipeline.js';
+import { compileLayoutPlan, finalizeLayoutPlan, type LayoutBuildPlan } from './layout-pipeline.js';
+import { compilePageRoute } from './page-route-pipeline.js';
+import { discoverRoutes as discoverRoutesPipeline } from './route-discovery.js';
+import { prepareRootLayoutSource } from './root-layout-pipeline.js';
+import { assembleRouteState } from './route-state-pipeline.js';
+import { createServerModuleCompiler } from './server-module-pipeline.js';
 import { compileTemplate } from './template.js';
 import { transpileTypeScript } from './transpile.js';
-import { analyzeRouteBuild, emitRouteObject } from './route-pipeline.js';
-import { buildDevAliasDeclarations } from './script-transform.js';
+import {
+  buildWorkerEntrypointSource,
+  resolveRuntimeImportPath as resolveRuntimeImportPathPipeline,
+} from './worker-output-pipeline.js';
+import { syncWranglerConfig as syncWranglerConfigPipeline } from './wrangler-sync.js';
+import {
+  buildDevAliasDeclarations,
+  buildSegmentedScriptBody,
+  rewriteImportedFunctionCalls,
+  rewriteWorkerEnvAliases,
+} from './script-transform.js';
 import { filePathToPattern } from '../runtime/router.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as crypto from 'node:crypto';
 
 export { parseFile } from './parser.js';
 export { compileTemplate, generateRenderFunction } from './template.js';
@@ -52,52 +70,6 @@ export interface CompiledRoute {
   hasRpc: boolean;
 }
 
-function compactInlineJs(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\n+/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s*([{}();,:])\s*/g, '$1')
-    .trim();
-}
-
-interface ImportBinding {
-  imported: string;
-  local: string;
-}
-
-function parseNamedImportBindings(line: string): ImportBinding[] {
-  const namesMatch = line.match(/import\s*\{([^}]+)\}/);
-  if (!namesMatch) return [];
-  return namesMatch[1]
-    .split(',')
-    .map(n => n.trim())
-    .filter(Boolean)
-    .map(n => {
-      const parts = n.split(/\s+as\s+/).map(p => p.trim()).filter(Boolean);
-      return {
-        imported: parts[0] || '',
-        local: parts[1] || parts[0] || '',
-      };
-    })
-    .filter((binding) => !!binding.imported && !!binding.local);
-}
-
-function filterClientImportsForServer(
-  imports: string[],
-  neededFns: Set<string>,
-): string[] {
-  const selected: string[] = [];
-  for (const line of imports) {
-    const bindings = parseNamedImportBindings(line);
-    if (bindings.length === 0) continue;
-    if (bindings.some((binding) => neededFns.has(binding.local))) {
-      selected.push(line);
-    }
-  }
-  return selected;
-}
-
 /**
  * Compile a project's src/routes/ into .kuratchi/routes.js
  *
@@ -117,667 +89,40 @@ export function compile(options: CompileOptions): string {
   }
 
   // Discover all .html route files
-  const routeFiles = discoverRoutes(routesDir);
-
-  // Component compilation cache �" only compile components that are actually imported
-  const libDir = path.join(srcDir, 'lib');
-  const compiledComponentCache: Map<string, string> = new Map(); // fileName �' compiled function code
-  const componentStyleCache: Map<string, string> = new Map(); // fileName �' escaped CSS string (or empty)
-  // Tracks which prop names inside a component are used as action={propName}.
-  // e.g. db-studio uses action={runQueryAction} �' stores 'runQueryAction'.
-  // When the route passes runQueryAction={runAdminSqlQuery}, the compiler knows
-  // to add 'runAdminSqlQuery' to the route's actionFunctions.
-  const componentActionCache: Map<string, Set<string>> = new Map(); // fileName �' Set of action prop names
-
-  function compileComponent(fileName: string): string | null {
-    if (compiledComponentCache.has(fileName)) return compiledComponentCache.get(fileName)!;
-
-    let filePath: string;
-    let funcName: string;
-
-    // Package component: "@kuratchi/ui:badge" �' resolve from package
-    const pkgMatch = fileName.match(/^(@[^:]+):(.+)$/);
-    if (pkgMatch) {
-      const pkgName = pkgMatch[1]; // e.g. "@kuratchi/ui"
-      const componentFile = pkgMatch[2]; // e.g. "badge"
-      funcName = '__c_' + componentFile.replace(/[\/\-]/g, '_');
-      // Resolve the package's src/lib/ directory
-      filePath = resolvePackageComponent(projectDir, pkgName, componentFile);
-      if (!filePath || !fs.existsSync(filePath)) return null;
-    } else {
-      // Local component: resolve from src/lib/
-      funcName = '__c_' + fileName.replace(/[\/\-]/g, '_');
-      filePath = path.join(libDir, fileName + '.html');
-      if (!fs.existsSync(filePath)) return null;
-    }
-    // Generate a short scope hash for scoped CSS
-    const scopeHash = 'dz-' + crypto.createHash('md5').update(fileName).digest('hex').slice(0, 6);
-    const rawSource = fs.readFileSync(filePath, 'utf-8');
-
-    // Use parseFile to properly split the <script> block from the template, and to
-    // separate component imports (import X from '@kuratchi/ui/x.html') from regular code.
-    // This prevents import lines from being inlined verbatim in the compiled function body.
-    const compParsed = parseFile(rawSource, { kind: 'component', filePath });
-
-    // propsCode = script body with all import lines stripped out
-    const propsCode = compParsed.script
-      ? stripTopLevelImports(compParsed.script)
-      : '';
-    const devDecls = buildDevAliasDeclarations(compParsed.devAliases, !!options.isDev);
-    const effectivePropsCode = [devDecls, propsCode].filter(Boolean).join('\n');
-    const transpiledPropsCode = propsCode
-      ? transpileTypeScript(effectivePropsCode, `component-script:${fileName}.ts`)
-      : devDecls
-        ? transpileTypeScript(devDecls, `component-script:${fileName}.ts`)
-      : '';
-
-    // template source (parseFile already removes the <script> block)
-    let source = compParsed.template;
-
-    // Extract optional <style> block �" CSS is scoped and injected once per route at compile time
-    let styleBlock = '';
-    const styleMatch = source.match(/<style[\s>][\s\S]*?<\/style>/i);
-    if (styleMatch) {
-      styleBlock = styleMatch[0];
-      source = source.replace(styleMatch[0], '').trim();
-    }
-
-    // Scope the CSS: prefix every selector with .dz-{hash}
-    let scopedStyle = '';
-    if (styleBlock) {
-      // Extract the CSS content between <style> and </style>
-      const cssContent = styleBlock.replace(/<style[^>]*>/i, '').replace(/<\/style>/i, '').trim();
-      // Prefix each rule's selector(s) with the scope class
-      const scopedCSS = cssContent.replace(
-        /([^{}]+)\{/g,
-        (match, selectors: string) => {
-          const scoped = selectors
-            .split(',')
-            .map((s: string) => `.${scopeHash} ${s.trim()}`)
-            .join(', ');
-          return scoped + ' {';
-        }
-      );
-      scopedStyle = `<style>${scopedCSS}</style>`;
-    }
-
-    // Store escaped scoped CSS separately for compile-time injection into routes
-    const escapedStyle = scopedStyle
-      ? scopedStyle.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
-      : '';
-    componentStyleCache.set(fileName, escapedStyle);
-
-    // Replace <slot></slot> and <slot /> with children output
-    source = source.replace(/<slot\s*><\/slot>/g, '{@raw props.children || ""}');
-    source = source.replace(/<slot\s*\/>/g, '{@raw props.children || ""}');
-
-    // Build a sub-component map from the component's own component imports so that
-    // <Alert>, <Badge>, <Dialog>, etc. get expanded instead of emitted as raw tags.
-    const subComponentNames: Map<string, string> = new Map();
-    for (const [subPascal, subFileName] of Object.entries(compParsed.componentImports)) {
-      compileComponent(subFileName); // compile on first use (cached)
-      subComponentNames.set(subPascal, subFileName);
-      // Collect sub-component styles so they're available when the route gathers styles
-      const subStyle = componentStyleCache.get(subFileName);
-      if (subStyle) {
-        const existing = componentStyleCache.get(fileName) || '';
-        if (!existing.includes(subStyle)) {
-          componentStyleCache.set(fileName, existing + subStyle);
-        }
-      }
-    }
-
-    // Scan the component template for action={propName} uses.
-    // These prop names are "action props" �" when the route passes actionProp={routeFn},
-    // the compiler knows to add routeFn to the route's actionFunctions so it ends up
-    // in the route's actions map and can be dispatched at runtime.
-    const actionPropNames = new Set<string>();
-    for (const match of source.matchAll(/\baction=\{([A-Za-z_$][\w$]*)\}/g)) {
-      actionPropNames.add(match[1]);
-    }
-    componentActionCache.set(fileName, actionPropNames);
-
-    const body = compileTemplate(source, subComponentNames, undefined, undefined);
-    // Wrap component output in a scoped div
-    const scopeOpen = `__html += '<div class="${scopeHash}">';`;
-    const scopeClose = `__html += '</div>';`;
-    // Insert scope open after 'let __html = "";' (first line of body) and scope close at end
-    const bodyLines = body.split('\n');
-    const scopedBody = [bodyLines[0], scopeOpen, ...bodyLines.slice(1), scopeClose].join('\n');
-    const fnBody = transpiledPropsCode ? `${transpiledPropsCode}\n  ${scopedBody}` : scopedBody;
-    const compiled = `function ${funcName}(props, __esc) {\n  ${fnBody}\n  return __html;\n}`;
-    compiledComponentCache.set(fileName, compiled);
-    return compiled;
-  }
+  const routeFiles = discoverRoutesPipeline(routesDir);
+  const componentCompiler = createComponentCompiler({
+    projectDir,
+    srcDir,
+    isDev: !!options.isDev,
+  });
 
   // App layout: src/routes/layout.html (convention �" wraps all routes automatically)
   const layoutFile = path.join(routesDir, 'layout.html');
   let compiledLayout: string | null = null;
-  const layoutComponentNames: Map<string, string> = new Map();
+  let layoutPlan: LayoutBuildPlan | null = null;
   if (fs.existsSync(layoutFile)) {
-    let source = fs.readFileSync(layoutFile, 'utf-8');
-
-    // Inject UI theme CSS if configured in kuratchi.config.ts
+    const layoutImportSource = fs.readFileSync(layoutFile, 'utf-8');
     const themeCSS = readUiTheme(projectDir);
     const uiConfigValues = readUiConfigValues(projectDir);
-
-    // Patch <html> tag: set server-default theme class and data-radius from config
-    if (uiConfigValues) {
-      source = patchHtmlTag(source, uiConfigValues.theme, uiConfigValues.radius);
-    }
-
-    // Inject anti-FOUC theme init before CSS so saved light/dark/system preference
-    // is restored before first paint, preventing a flash on hard navigations.
-    if (uiConfigValues) {
-      const themeInitScript = `<script>(function(){try{var d=document.documentElement;var s=localStorage.getItem('kui-theme');var fallback=d.getAttribute('data-theme')==='system'?'system':(d.classList.contains('dark')?'dark':'light');var p=(s==='light'||s==='dark'||s==='system')?s:fallback;d.classList.remove('dark');d.removeAttribute('data-theme');if(p==='dark'){d.classList.add('dark');}else if(p==='system'){d.setAttribute('data-theme','system');}}catch(e){}})()</script>`;
-      source = source.replace('</head>', themeInitScript + '\n</head>');
-    }
-
-    if (themeCSS) {
-      source = source.replace('</head>', `<style>${themeCSS}</style>\n</head>`);
-    }
-
-    // Inject @view-transition CSS for cross-document transitions (MPA)
-    const viewTransitionCSS = `<style>@view-transition { navigation: auto; }</style>`;
-    source = source.replace('</head>', viewTransitionCSS + '\n</head>');
-
-    // Inject progressive client bridge:
-    // - server actions bound via onX={serverAction(...)} -> [data-action][data-action-event]
-    // - declarative confirm="..."
-    // - declarative checkbox groups: data-select-all / data-select-item
-    const bridgeSource = `(function(){
-  function by(sel, root){ return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
-  var __refreshSeq = Object.create(null);
-  function syncGroup(group){
-    var items = by('[data-select-item]').filter(function(el){ return el.getAttribute('data-select-item') === group; });
-    var masters = by('[data-select-all]').filter(function(el){ return el.getAttribute('data-select-all') === group; });
-    if(!items.length || !masters.length) return;
-    var all = items.every(function(i){ return !!i.checked; });
-    var any = items.some(function(i){ return !!i.checked; });
-    masters.forEach(function(m){ m.checked = all; m.indeterminate = any && !all; });
-  }
-  function inferQueryKey(getName, argsRaw){
-    if(!getName) return '';
-    return 'query:' + String(getName) + '|' + (argsRaw || '[]');
-  }
-  function blockKey(el){
-    if(!el || !el.getAttribute) return '';
-    var explicit = el.getAttribute('data-key');
-    if(explicit) return 'key:' + explicit;
-    var inferred = inferQueryKey(el.getAttribute('data-get'), el.getAttribute('data-get-args'));
-    if(inferred) return inferred;
-    var asName = el.getAttribute('data-as');
-    if(asName) return 'as:' + asName;
-    return '';
-  }
-  function escHtml(v){
-    return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  function setBlocksLoading(blocks){
-    blocks.forEach(function(el){
-      el.setAttribute('aria-busy','true');
-      el.setAttribute('data-kuratchi-loading','1');
-      var text = el.getAttribute('data-loading-text');
-      if(text && !el.hasAttribute('data-as')){ el.innerHTML = '<p>' + escHtml(text) + '</p>'; return; }
-      el.style.opacity = '0.6';
+    const source = prepareRootLayoutSource({
+      source: layoutImportSource,
+      isDev: !!options.isDev,
+      themeCss: themeCSS,
+      uiConfigValues,
     });
-  }
-  function clearBlocksLoading(blocks){
-    blocks.forEach(function(el){
-      el.removeAttribute('aria-busy');
-      el.removeAttribute('data-kuratchi-loading');
-      el.style.opacity = '';
+    layoutPlan = compileLayoutPlan({
+      renderSource: source,
+      importSource: layoutImportSource,
+      layoutFile,
+      isDev: !!options.isDev,
+      componentCompiler,
     });
-  }
-  function replaceBlocksWithKey(key){
-    if(!key || typeof DOMParser === 'undefined'){ location.reload(); return Promise.resolve(); }
-    var oldBlocks = by('[data-get]').filter(function(el){ return blockKey(el) === key; });
-    if(!oldBlocks.length){ location.reload(); return Promise.resolve(); }
-    var first = oldBlocks[0];
-    var qFn = first ? (first.getAttribute('data-get') || '') : '';
-    var qArgs = first ? String(first.getAttribute('data-get-args') || '[]') : '[]';
-    var seq = (__refreshSeq[key] || 0) + 1;
-    __refreshSeq[key] = seq;
-    setBlocksLoading(oldBlocks);
-    var headers = { 'x-kuratchi-refresh': '1' };
-    if(qFn){ headers['x-kuratchi-query-fn'] = String(qFn); headers['x-kuratchi-query-args'] = qArgs; }
-    return fetch(location.pathname + location.search, { headers: headers })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function(html){
-        if(__refreshSeq[key] !== seq) return;
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var newBlocks = by('[data-get]', doc).filter(function(el){ return blockKey(el) === key; });
-        if(!oldBlocks.length || !newBlocks.length){ location.reload(); return; }
-        for(var i=0;i<oldBlocks.length;i++){ if(newBlocks[i]) oldBlocks[i].outerHTML = newBlocks[i].outerHTML; }
-        by('[data-select-all]').forEach(function(m){ var g=m.getAttribute('data-select-all'); if(g) syncGroup(g); });
-      })
-      .catch(function(){
-        if(__refreshSeq[key] === seq) clearBlocksLoading(oldBlocks);
-        location.reload();
-      });
-  }
-  function replaceBlocksByDescriptor(fnName, argsRaw){
-    if(!fnName || typeof DOMParser === 'undefined'){ location.reload(); return Promise.resolve(); }
-    var normalizedArgs = String(argsRaw || '[]');
-    var oldBlocks = by('[data-get]').filter(function(el){
-      return (el.getAttribute('data-get') || '') === String(fnName) &&
-        String(el.getAttribute('data-get-args') || '[]') === normalizedArgs;
-    });
-    if(!oldBlocks.length){ location.reload(); return Promise.resolve(); }
-    var key = 'fn:' + String(fnName) + '|' + normalizedArgs;
-    var seq = (__refreshSeq[key] || 0) + 1;
-    __refreshSeq[key] = seq;
-    setBlocksLoading(oldBlocks);
-    return fetch(location.pathname + location.search, {
-      headers: {
-        'x-kuratchi-refresh': '1',
-        'x-kuratchi-query-fn': String(fnName),
-        'x-kuratchi-query-args': normalizedArgs,
-      }
-    })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function(html){
-        if(__refreshSeq[key] !== seq) return;
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var newBlocks = by('[data-get]', doc).filter(function(el){
-          return (el.getAttribute('data-get') || '') === String(fnName) &&
-            String(el.getAttribute('data-get-args') || '[]') === normalizedArgs;
-        });
-        if(!newBlocks.length){ location.reload(); return; }
-        for(var i=0;i<oldBlocks.length;i++){ if(newBlocks[i]) oldBlocks[i].outerHTML = newBlocks[i].outerHTML; }
-        by('[data-select-all]').forEach(function(m){ var g=m.getAttribute('data-select-all'); if(g) syncGroup(g); });
-      })
-      .catch(function(){
-        if(__refreshSeq[key] === seq) clearBlocksLoading(oldBlocks);
-        location.reload();
-      });
-  }
-  function refreshByDescriptor(fnName, argsRaw){
-    if(!fnName) { location.reload(); return Promise.resolve(); }
-    return replaceBlocksByDescriptor(fnName, argsRaw || '[]');
-  }
-  function refreshNearest(el){
-    var host = el && el.closest ? el.closest('[data-get]') : null;
-    if(!host){ location.reload(); return Promise.resolve(); }
-    return replaceBlocksWithKey(blockKey(host));
-  }
-  function refreshTargets(raw){
-    if(!raw){ location.reload(); return Promise.resolve(); }
-    var keys = String(raw).split(',').map(function(v){ return v.trim(); }).filter(Boolean);
-    if(!keys.length){ location.reload(); return Promise.resolve(); }
-    return Promise.all(keys.map(function(k){ return replaceBlocksWithKey('key:' + k); })).then(function(){});
-  }
-  function act(e){
-    if(e.type === 'click'){
-      var g = e.target && e.target.closest ? e.target.closest('[data-get]') : null;
-      if(g && !g.hasAttribute('data-as') && !g.hasAttribute('data-action')){
-        var getUrl = g.getAttribute('data-get');
-        if(getUrl){
-          if(/^[a-z][a-z0-9+\-.]*:/i.test(getUrl) && !/^https?:/i.test(getUrl)) return;
-          e.preventDefault();
-          location.assign(getUrl);
-          return;
-        }
-      }
-      var r = e.target && e.target.closest ? e.target.closest('[data-refresh]') : null;
-      if(r && !r.hasAttribute('data-action')){
-        e.preventDefault();
-        var rf = r.getAttribute('data-refresh');
-        var ra = r.getAttribute('data-refresh-args');
-        if(ra !== null){ refreshByDescriptor(rf, ra || '[]'); return; }
-        if(rf && rf.trim()){ refreshTargets(rf); return; }
-        refreshNearest(r);
-        return;
-      }
-    }
-    var sel = '[data-action][data-action-event="' + e.type + '"]';
-    var b = e.target && e.target.closest ? e.target.closest(sel) : null;
-    if(!b) return;
-    e.preventDefault();
-    var fd = new FormData();
-    fd.append('_action', b.getAttribute('data-action') || '');
-    fd.append('_args', b.getAttribute('data-args') || '[]');
-    var m = b.getAttribute('data-action-method');
-    if(m) fd.append('_method', String(m).toUpperCase());
-    fetch(location.pathname, { method: 'POST', body: fd })
-      .then(function(r){
-        if(!r.ok){
-          return r.json().then(function(j){ throw new Error((j && j.error) || ('HTTP ' + r.status)); }).catch(function(){ throw new Error('HTTP ' + r.status); });
-        }
-        return r.json();
-      })
-      .then(function(j){
-        if(j && j.redirectTo){ location.assign(j.redirectTo); return; }
-        if(!b.hasAttribute('data-refresh')) return;
-        var refreshFn = b.getAttribute('data-refresh');
-        var refreshArgs = b.getAttribute('data-refresh-args');
-        if(refreshArgs !== null){ return refreshByDescriptor(refreshFn, refreshArgs || '[]'); }
-        if(refreshFn && refreshFn.trim()){ return refreshTargets(refreshFn); }
-        return refreshNearest(b);
-      })
-      .catch(function(err){ console.error('[kuratchi] client action error:', err); });
-  }
-  ['click','change','input','focus','blur'].forEach(function(ev){ document.addEventListener(ev, act, true); });
-  function autoLoadQueries(){
-    var seen = Object.create(null);
-    by('[data-get][data-as]').forEach(function(el){
-      var fn = el.getAttribute('data-get');
-      if(!fn) return;
-      var args = String(el.getAttribute('data-get-args') || '[]');
-      var key = String(fn) + '|' + args;
-      if(seen[key]) return;
-      seen[key] = true;
-      replaceBlocksByDescriptor(fn, args);
-    });
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', autoLoadQueries, { once: true });
-  } else {
-    autoLoadQueries();
-  }
-  document.addEventListener('click', function(e){
-    var b = e.target && e.target.closest ? e.target.closest('[command="fill-dialog"]') : null;
-    if(!b) return;
-    var targetId = b.getAttribute('commandfor');
-    if(!targetId) return;
-    var dialog = document.getElementById(targetId);
-    if(!dialog) return;
-    var raw = b.getAttribute('data-dialog-data');
-    if(!raw) return;
-    var data;
-    try { data = JSON.parse(raw); } catch(_err) { return; }
-    Object.keys(data).forEach(function(k){
-      var inp = dialog.querySelector('[name="col_' + k + '"]');
-      if(inp){
-        inp.value = data[k] === null || data[k] === undefined ? '' : String(data[k]);
-        inp.placeholder = data[k] === null || data[k] === undefined ? 'NULL' : '';
-      }
-      var hidden = dialog.querySelector('#dialog-field-' + k);
-      if(hidden){
-        hidden.value = data[k] === null || data[k] === undefined ? '' : String(data[k]);
-      }
-    });
-    var rowidInp = dialog.querySelector('[name="rowid"]');
-    if(rowidInp && data.rowid !== undefined) rowidInp.value = String(data.rowid);
-    if(typeof dialog.showModal === 'function') dialog.showModal();
-  }, true);
-  (function initPoll(){
-    function parseInterval(str){
-      if(!str) return 30000;
-      var m = str.match(/^(\\d+(?:\\.\\d+)?)(ms|s|m)?$/i);
-      if(!m) return 30000;
-      var n = parseFloat(m[1]);
-      var u = (m[2] || 's').toLowerCase();
-      if(u === 'ms') return n;
-      if(u === 'm') return n * 60000;
-      return n * 1000;
-    }
-    function bindPollEl(el){
-      if(!el || !el.getAttribute) return;
-      if(el.getAttribute('data-kuratchi-poll-bound') === '1') return;
-      var fn = el.getAttribute('data-poll');
-      if(!fn) return;
-      el.setAttribute('data-kuratchi-poll-bound', '1');
-      var pollId = el.getAttribute('data-poll-id');
-      if(!pollId) return;
-      var baseIv = parseInterval(el.getAttribute('data-interval'));
-      var maxIv = Math.min(baseIv * 10, 300000);
-      var backoff = el.getAttribute('data-backoff') !== 'false';
-      var prevHtml = el.innerHTML;
-      var currentIv = baseIv;
-      (function tick(){
-        setTimeout(function(){
-          fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
-            .then(function(r){ return r.text(); })
-            .then(function(html){
-              if(prevHtml !== html){
-                el.innerHTML = html;
-                prevHtml = html;
-                currentIv = baseIv;
-              } else if(backoff && currentIv < maxIv){
-                currentIv = Math.min(currentIv * 1.5, maxIv);
-              }
-              tick();
-            })
-            .catch(function(){ currentIv = baseIv; tick(); });
-        }, currentIv);
-      })();
-    }
-    function scan(){
-      by('[data-poll]').forEach(bindPollEl);
-    }
-    scan();
-    setInterval(scan, 500);
-  })();
-  function confirmClick(e){
-    var el = e.target && e.target.closest ? e.target.closest('[confirm]') : null;
-    if(!el) return;
-    var msg = el.getAttribute('confirm');
-    if(!msg) return;
-    if(!window.confirm(msg)){ e.preventDefault(); e.stopPropagation(); }
-  }
-  document.addEventListener('click', confirmClick, true);
-  document.addEventListener('submit', function(e){
-    var f = e.target && e.target.matches && e.target.matches('form[confirm]') ? e.target : null;
-    if(!f) return;
-    var msg = f.getAttribute('confirm');
-    if(!msg) return;
-    if(!window.confirm(msg)){ e.preventDefault(); e.stopPropagation(); }
-  }, true);
-  document.addEventListener('submit', function(e){
-    if(e.defaultPrevented) return;
-    var f = e.target;
-    if(!f || !f.querySelector) return;
-    var aInput = f.querySelector('input[name="_action"]');
-    if(!aInput) return;
-    var aName = aInput.value;
-    if(!aName) return;
-    f.setAttribute('data-action-loading', aName);
-    Array.prototype.slice.call(f.querySelectorAll('button[type="submit"],button:not([type="button"]):not([type="reset"])')).forEach(function(b){ b.disabled = true; });
-  }, true);
-  document.addEventListener('change', function(e){
-    var t = e.target;
-    if(!t || !t.getAttribute) return;
-    var gAll = t.getAttribute('data-select-all');
-    if(gAll){
-      by('[data-select-item]').filter(function(i){ return i.getAttribute('data-select-item') === gAll; }).forEach(function(i){ i.checked = !!t.checked; });
-      syncGroup(gAll);
-      return;
-    }
-    var gItem = t.getAttribute('data-select-item');
-    if(gItem) syncGroup(gItem);
-  }, true);
-  by('[data-select-all]').forEach(function(m){ var g = m.getAttribute('data-select-all'); if(g) syncGroup(g); });
-})();`;
-    const reactiveRuntimeSource = `(function(g){
-  if(g.__kuratchiReactive) return;
-  const targetMap = new WeakMap();
-  const proxyMap = new WeakMap();
-  let active = null;
-  const queue = new Set();
-  let flushing = false;
-  function queueRun(fn){
-    queue.add(fn);
-    if(flushing) return;
-    flushing = true;
-    Promise.resolve().then(function(){
-      try {
-        const jobs = Array.from(queue);
-        queue.clear();
-        for (const job of jobs) job();
-      } finally {
-        flushing = false;
-      }
-    });
-  }
-  function cleanup(effect){
-    const deps = effect.__deps || [];
-    for (const dep of deps) dep.delete(effect);
-    effect.__deps = [];
-  }
-  function track(target, key){
-    if(!active) return;
-    let depsMap = targetMap.get(target);
-    if(!depsMap){ depsMap = new Map(); targetMap.set(target, depsMap); }
-    let dep = depsMap.get(key);
-    if(!dep){ dep = new Set(); depsMap.set(key, dep); }
-    if(dep.has(active)) return;
-    dep.add(active);
-    if(!active.__deps) active.__deps = [];
-    active.__deps.push(dep);
-  }
-  function trigger(target, key){
-    const depsMap = targetMap.get(target);
-    if(!depsMap) return;
-    const effects = new Set();
-    const add = function(k){
-      const dep = depsMap.get(k);
-      if(dep) dep.forEach(function(e){ effects.add(e); });
-    };
-    add(key);
-    add('*');
-    effects.forEach(function(e){ queueRun(e); });
-  }
-  function isObject(value){ return value !== null && typeof value === 'object'; }
-  function proxify(value){
-    if(!isObject(value)) return value;
-    if(proxyMap.has(value)) return proxyMap.get(value);
-    const proxy = new Proxy(value, {
-      get(target, key, receiver){
-        track(target, key);
-        const out = Reflect.get(target, key, receiver);
-        return isObject(out) ? proxify(out) : out;
-      },
-      set(target, key, next, receiver){
-        const prev = target[key];
-        const result = Reflect.set(target, key, next, receiver);
-        if(prev !== next) trigger(target, key);
-        if(Array.isArray(target) && key !== 'length') trigger(target, 'length');
-        return result;
-      },
-      deleteProperty(target, key){
-        const had = Object.prototype.hasOwnProperty.call(target, key);
-        const result = Reflect.deleteProperty(target, key);
-        if(had) trigger(target, key);
-        return result;
-      }
-    });
-    proxyMap.set(value, proxy);
-    return proxy;
-  }
-  function effect(fn){
-    const run = function(){
-      cleanup(run);
-      active = run;
-      try { fn(); } finally { active = null; }
-    };
-    run.__deps = [];
-    run();
-    return function(){ cleanup(run); };
-  }
-  function state(initial){ return proxify(initial); }
-  function replace(_prev, next){ return proxify(next); }
-  g.__kuratchiReactive = { state, effect, replace };
-})(window);`;
-    const actionScript = `<script>${options.isDev ? bridgeSource : compactInlineJs(bridgeSource)}</script>`;
-    const reactiveRuntimeScript = `<script>${options.isDev ? reactiveRuntimeSource : compactInlineJs(reactiveRuntimeSource)}</script>`;
-    if (source.includes('</head>')) {
-      source = source.replace('</head>', reactiveRuntimeScript + '\n</head>');
-    } else {
-      source = reactiveRuntimeScript + '\n' + source;
-    }
-    source = source.replace('</body>', actionScript + '\n</body>');
-
-    // Parse layout for <script> block (component imports + data vars)
-    const layoutParsed = parseFile(source, { kind: 'layout', filePath: layoutFile });
-    const hasLayoutScript = layoutParsed.script && (Object.keys(layoutParsed.componentImports).length > 0 || layoutParsed.hasLoad);
-
-    if (hasLayoutScript) {
-      // Dynamic layout �" has component imports and/or data declarations
-      // Compile component imports from layout
-      for (const [pascalName, fileName] of Object.entries(layoutParsed.componentImports)) {
-        compileComponent(fileName);
-        layoutComponentNames.set(pascalName, fileName);
-      }
-
-      // Replace <slot></slot> with content parameter injection
-      let layoutTemplate = layoutParsed.template.replace(/<slot\s*><\/slot>/g, '{@raw __content}');
-      layoutTemplate = layoutTemplate.replace(/<slot\s*\/>/g, '{@raw __content}');
-
-      // Build layout action names so action={fn} works in layouts, including action props
-      // passed through child components like <Dashboard footerSignOutAction={signOut}>.
-      const layoutActionNames = new Set(layoutParsed.actionFunctions);
-      for (const [pascalName, compFileName] of layoutComponentNames.entries()) {
-        const actionPropNames = componentActionCache.get(compFileName);
-        const compTagRegex = new RegExp(`<${pascalName}\\b([\\s\\S]*?)(?:/?)>`, 'g');
-        for (const tagMatch of layoutParsed.template.matchAll(compTagRegex)) {
-          const attrs = tagMatch[1];
-          if (actionPropNames && actionPropNames.size > 0) {
-            for (const propName of actionPropNames) {
-              const propRegex = new RegExp(`\\b${propName}=\\{([A-Za-z_$][\\w$]*)\\}`);
-              const propMatch = attrs.match(propRegex);
-              if (propMatch) {
-                layoutActionNames.add(propMatch[1]);
-              }
-            }
-          }
-        }
-      }
-
-      // Compile the layout template with component + action support
-      const layoutRenderBody = compileTemplate(layoutTemplate, layoutComponentNames, layoutActionNames);
-
-      // Collect component CSS for layout
-      const layoutComponentStyles: string[] = [];
-      for (const fileName of layoutComponentNames.values()) {
-        const css = componentStyleCache.get(fileName);
-        if (css) layoutComponentStyles.push(css);
-      }
-
-      // Inject component CSS after 'let __html = "";'
-      let finalLayoutBody = layoutRenderBody;
-      if (layoutComponentStyles.length > 0) {
-        const lines = layoutRenderBody.split('\n');
-        const styleLines = layoutComponentStyles.map(css => `__html += \`${css}\\n\`;`);
-        finalLayoutBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
-      }
-
-      // Build the layout script body (data vars, etc.)
-      let layoutScriptBody = stripTopLevelImports(layoutParsed.script!);
-      const layoutDevDecls = buildDevAliasDeclarations(layoutParsed.devAliases, !!options.isDev);
-      layoutScriptBody = [layoutDevDecls, layoutScriptBody].filter(Boolean).join('\n');
-
-      compiledLayout = `function __layout(__content) {
-  const __esc = (v) => { if (v == null) return ''; return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
-  ${layoutScriptBody ? layoutScriptBody + '\n  ' : ''}${finalLayoutBody}
-  return __html;
-}`;
-    } else {
-      // Static layout �" no components, use fast string split (original behavior)
-      const slotMarker = '<slot></slot>';
-      const slotIdx = source.indexOf(slotMarker);
-      if (slotIdx === -1) {
-        throw new Error('layout.html must contain <slot></slot>');
-      }
-      const escLayout = (s: string) => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, () => '\\$');
-      const before = escLayout(source.slice(0, slotIdx));
-      const after = escLayout(source.slice(slotIdx + slotMarker.length));
-      compiledLayout = `const __layoutBefore = \`${before}\`;\nconst __layoutAfter = \`${after}\`;\nfunction __layout(content) {\n  return __layoutBefore + content + __layoutAfter;\n}`;
-    }
+    compiledLayout = layoutPlan.compiledLayout;
   }
 
   // Custom error pages: src/routes/NNN.html (e.g. 404.html, 500.html, 401.html, 403.html)
   // Only compiled if the user explicitly creates them �" otherwise the framework's built-in default is used
-  const compiledErrorPages: Map<number, string> = new Map();
-  for (const file of fs.readdirSync(routesDir)) {
-    const match = file.match(/^(\d{3})\.html$/);
-    if (!match) continue;
-    const status = parseInt(match[1], 10);
-    const source = fs.readFileSync(path.join(routesDir, file), 'utf-8');
-    const body = compileTemplate(source);
-    // 500.html receives `error` as a variable; others don't need it
-    compiledErrorPages.set(status, `function __error_${status}(error) {\n  ${body}\n  return __html;\n}`);
-  }
+  const compiledErrorPages = compileErrorPages(routesDir);
 
   // Read assets prefix from kuratchi.config.ts (default: /assets/)
   const assetsPrefix = readAssetsPrefix(projectDir);
@@ -834,126 +179,12 @@ export function compile(options: CompileOptions): string {
       }
     }
   }
-
-  const resolveExistingModuleFile = (absBase: string): string | null => {
-    const candidates = [
-      absBase,
-      absBase + '.ts',
-      absBase + '.js',
-      absBase + '.mjs',
-      absBase + '.cjs',
-      path.join(absBase, 'index.ts'),
-      path.join(absBase, 'index.js'),
-      path.join(absBase, 'index.mjs'),
-      path.join(absBase, 'index.cjs'),
-    ];
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
-    }
-    return null;
-  };
-
-  const toModuleSpecifier = (fromFileAbs: string, toFileAbs: string): string => {
-    let rel = path.relative(path.dirname(fromFileAbs), toFileAbs).replace(/\\/g, '/');
-    if (!rel.startsWith('.')) rel = './' + rel;
-    return rel;
-  };
-
-  const transformedServerModules = new Map<string, string>();
-  const modulesOutDir = path.join(projectDir, '.kuratchi', 'modules');
-
-  const resolveDoProxyTarget = (absPath: string): string | null => {
-    const normalizedNoExt = absPath.replace(/\\/g, '/').replace(/\.[^.\/]+$/, '');
-    const proxyNoExt = doHandlerProxyPaths.get(normalizedNoExt);
-    if (!proxyNoExt) return null;
-    return resolveExistingModuleFile(proxyNoExt) ?? (fs.existsSync(proxyNoExt + '.js') ? proxyNoExt + '.js' : null);
-  };
-
-  const resolveImportTarget = (importerAbs: string, spec: string): string | null => {
-    if (spec.startsWith('$')) {
-      const slashIdx = spec.indexOf('/');
-      const folder = slashIdx === -1 ? spec.slice(1) : spec.slice(1, slashIdx);
-      const rest = slashIdx === -1 ? '' : spec.slice(slashIdx + 1);
-      if (!folder) return null;
-      const abs = path.join(srcDir, folder, rest);
-      return resolveExistingModuleFile(abs) ?? abs;
-    }
-    if (spec.startsWith('.')) {
-      const abs = path.resolve(path.dirname(importerAbs), spec);
-      return resolveExistingModuleFile(abs) ?? abs;
-    }
-    return null;
-  };
-
-  const transformServerModule = (entryAbsPath: string): string => {
-    const resolved = resolveExistingModuleFile(entryAbsPath) ?? entryAbsPath;
-    const normalized = resolved.replace(/\\/g, '/');
-    const cached = transformedServerModules.get(normalized);
-    if (cached) return cached;
-
-    const relFromProject = path.relative(projectDir, resolved);
-    const outPath = path.join(modulesOutDir, relFromProject);
-    transformedServerModules.set(normalized, outPath);
-
-    const outDir = path.dirname(outPath);
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-
-    if (!/\.(ts|js|mjs|cjs)$/i.test(resolved) || !fs.existsSync(resolved)) {
-      const passthrough = resolved;
-      transformedServerModules.set(normalized, passthrough);
-      return passthrough;
-    }
-
-    const source = fs.readFileSync(resolved, 'utf-8');
-    const rewriteSpecifier = (spec: string): string => {
-      const target = resolveImportTarget(resolved, spec);
-      if (!target) return spec;
-
-      const doProxyTarget = resolveDoProxyTarget(target);
-      if (doProxyTarget) return toModuleSpecifier(outPath, doProxyTarget);
-
-      const normalizedTarget = target.replace(/\\/g, '/');
-      const inProject = normalizedTarget.startsWith(projectDir.replace(/\\/g, '/') + '/');
-      if (!inProject) return spec;
-
-      const targetResolved = resolveExistingModuleFile(target) ?? target;
-      if (!/\.(ts|js|mjs|cjs)$/i.test(targetResolved)) return spec;
-      const rewrittenTarget = transformServerModule(targetResolved);
-      return toModuleSpecifier(outPath, rewrittenTarget);
-    };
-
-    let rewritten = source.replace(/(from\s+)(['"])([^'"]+)\2/g, (_m, p1: string, q: string, spec: string) => {
-      return `${p1}${q}${rewriteSpecifier(spec)}${q}`;
-    });
-    rewritten = rewritten.replace(/(import\s*\(\s*)(['"])([^'"]+)\2(\s*\))/g, (_m, p1: string, q: string, spec: string, p4: string) => {
-      return `${p1}${q}${rewriteSpecifier(spec)}${q}${p4}`;
-    });
-
-    writeIfChanged(outPath, rewritten);
-    return outPath;
-  };
-
-  const resolveCompiledImportPath = (origPath: string, importerDir: string, outFileDir: string): string => {
-    const isBareModule = !origPath.startsWith('.') && !origPath.startsWith('/') && !origPath.startsWith('$');
-    if (isBareModule) return origPath;
-
-    let absImport: string;
-    if (origPath.startsWith('$')) {
-      const slashIdx = origPath.indexOf('/');
-      const folder = slashIdx === -1 ? origPath.slice(1) : origPath.slice(1, slashIdx);
-      const rest = slashIdx === -1 ? '' : origPath.slice(slashIdx + 1);
-      absImport = path.join(srcDir, folder, rest);
-    } else {
-      absImport = path.resolve(importerDir, origPath);
-    }
-
-    const doProxyTarget = resolveDoProxyTarget(absImport);
-    const target = doProxyTarget ?? transformServerModule(absImport);
-
-    let relPath = path.relative(outFileDir, target).replace(/\\/g, '/');
-    if (!relPath.startsWith('.')) relPath = './' + relPath;
-    return relPath;
-  };
+  const serverModuleCompiler = createServerModuleCompiler({
+    projectDir,
+    srcDir,
+    doHandlerProxyPaths,
+    writeFile: writeIfChanged,
+  });
 
   // Parse and compile each route
   const compiledRoutes: string[] = [];
@@ -964,87 +195,19 @@ export function compile(options: CompileOptions): string {
   // Layout server import resolution �" resolve non-component imports to module IDs
   let isLayoutAsync = false;
   let compiledLayoutActions: string | null = null;
-  if (compiledLayout && fs.existsSync(path.join(routesDir, 'layout.html'))) {
-    const layoutSource = fs.readFileSync(path.join(routesDir, 'layout.html'), 'utf-8');
-    const layoutParsedForImports = parseFile(layoutSource, { kind: 'layout', filePath: layoutFile });
-    if (layoutParsedForImports.serverImports.length > 0) {
-      const layoutFileDir = routesDir;
-      const outFileDir = path.join(projectDir, '.kuratchi');
-      const layoutFnToModule: Record<string, string> = {};
-
-      for (const imp of layoutParsedForImports.serverImports) {
-        const pathMatch = imp.match(/from\s+['"]([^'"]+)['"]/);
-        if (!pathMatch) continue;
-        const origPath = pathMatch[1];
-        const importPath = resolveCompiledImportPath(origPath, layoutFileDir, outFileDir);
-
-        const moduleId = `__m${moduleCounter++}`;
-        allImports.push(`import * as ${moduleId} from '${importPath}';`);
-
-        const namesMatch = imp.match(/import\s*\{([^}]+)\}/);
-        if (namesMatch) {
-          const names = namesMatch[1]
-            .split(',')
-            .map(n => n.trim())
-            .filter(Boolean)
-            .map(n => {
-              const parts = n.split(/\s+as\s+/).map(p => p.trim()).filter(Boolean);
-              return parts[1] || parts[0] || '';
-            })
-            .filter(Boolean);
-          for (const name of names) {
-            layoutFnToModule[name] = moduleId;
-          }
-        }
-        const starMatch = imp.match(/import\s*\*\s*as\s+(\w+)/);
-        if (starMatch) {
-          layoutFnToModule[starMatch[1]] = moduleId;
-        }
-      }
-
-      // Rewrite function calls in the compiled layout body
-      for (const [fnName, moduleId] of Object.entries(layoutFnToModule)) {
-        if (!/^[A-Za-z_$][\w$]*$/.test(fnName)) continue;
-        const callRegex = new RegExp(`\\b${fnName}\\s*\\(`, 'g');
-        compiledLayout = compiledLayout!.replace(callRegex, `${moduleId}.${fnName}(`);
-      }
-
-      // Generate layout actions map for action={fn} in layouts and action props passed
-      // through layout components.
-      const layoutActionNames = new Set(layoutParsedForImports.actionFunctions);
-      for (const [pascalName, compFileName] of layoutComponentNames.entries()) {
-        const actionPropNames = componentActionCache.get(compFileName);
-        const compTagRegex = new RegExp(`<${pascalName}\\b([\\s\\S]*?)(?:/?)>`, 'g');
-        for (const tagMatch of layoutParsedForImports.template.matchAll(compTagRegex)) {
-          const attrs = tagMatch[1];
-          if (actionPropNames && actionPropNames.size > 0) {
-            for (const propName of actionPropNames) {
-              const propRegex = new RegExp(`\\b${propName}=\\{([A-Za-z_$][\\w$]*)\\}`);
-              const propMatch = attrs.match(propRegex);
-              if (propMatch) {
-                layoutActionNames.add(propMatch[1]);
-              }
-            }
-          }
-        }
-      }
-
-      if (layoutActionNames.size > 0) {
-        const actionEntries = Array.from(layoutActionNames)
-          .filter(fn => fn in layoutFnToModule)
-          .map(fn => `'${fn}': ${layoutFnToModule[fn]}.${fn}`)
-          .join(', ');
-        if (actionEntries) {
-          compiledLayoutActions = `{ ${actionEntries} }`;
-        }
-      }
-    }
-
-    // Detect if the compiled layout uses await �' make it async
-    isLayoutAsync = /\bawait\b/.test(compiledLayout!);
-    if (isLayoutAsync) {
-      compiledLayout = compiledLayout!.replace(/^function __layout\(/, 'async function __layout(');
-    }
+  if (layoutPlan) {
+    const finalizedLayout = finalizeLayoutPlan({
+      plan: layoutPlan,
+      layoutFile,
+      projectDir,
+      resolveCompiledImportPath: serverModuleCompiler.resolveCompiledImportPath,
+      allocateModuleId: () => `__m${moduleCounter++}`,
+      pushImport: (statement) => allImports.push(statement),
+      componentCompiler,
+    });
+    compiledLayout = finalizedLayout.compiledLayout;
+    compiledLayoutActions = finalizedLayout.compiledLayoutActions;
+    isLayoutAsync = finalizedLayout.isLayoutAsync;
   }
 
   for (let i = 0; i < routeFiles.length; i++) {
@@ -1054,279 +217,56 @@ export function compile(options: CompileOptions): string {
 
     // -- API route (index.ts / index.js) --
     if (rf.type === 'api') {
-      const outFileDir = path.join(projectDir, '.kuratchi');
-      // Resolve the route file's absolute path through transformServerModule
-      // so that $-prefixed imports inside it get rewritten correctly
-      const absRoutePath = transformServerModule(fullPath);
-      let importPath = path.relative(outFileDir, absRoutePath).replace(/\\/g, '/');
-      if (!importPath.startsWith('.')) importPath = './' + importPath;
-      const moduleId = `__m${moduleCounter++}`;
-      allImports.push(`import * as ${moduleId} from '${importPath}';`);
-
-      // Scan the source for exported method handlers (only include what exists)
-      const apiSource = fs.readFileSync(fullPath, 'utf-8');
-      const allMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-      const exportedMethods = allMethods.filter(m => {
-        // Match: export function GET, export async function GET, export { ... as GET }
-        const fnPattern = new RegExp(`export\\s+(async\\s+)?function\\s+${m}\\b`);
-        const reExportPattern = new RegExp(`export\\s*\\{[^}]*\\b\\w+\\s+as\\s+${m}\\b`);
-        const namedExportPattern = new RegExp(`export\\s*\\{[^}]*\\b${m}\\b`);
-        return fnPattern.test(apiSource) || reExportPattern.test(apiSource) || namedExportPattern.test(apiSource);
-      });
-      const methodEntries = exportedMethods
-        .map(m => `${m}: ${moduleId}.${m}`)
-        .join(', ');
-      compiledRoutes.push(`{ pattern: '${pattern}', __api: true, ${methodEntries} }`);
+      compiledRoutes.push(compileApiRoute({
+        pattern,
+        fullPath,
+        projectDir,
+        transformModule: serverModuleCompiler.transformModule,
+        allocateModuleId: () => `__m${moduleCounter++}`,
+        pushImport: (statement) => allImports.push(statement),
+      }));
       continue;
     }
 
     // -- Page route (page.html) --
     const source = fs.readFileSync(fullPath, 'utf-8');
     const parsed = parseFile(source, { kind: 'route', filePath: fullPath });
-
-    let effectiveTemplate = parsed.template;
-    const routeScriptParts: string[] = [];
-    const routeScriptSegments: Array<{ script: string; dataVars: string[] }> = [];
-    const routeServerImportEntries: Array<{ line: string; importerDir: string }> = parsed.serverImports.map((line) => ({
-      line,
-      importerDir: path.dirname(fullPath),
-    }));
-    const routeClientImportEntries: Array<{ line: string; importerDir: string }> = parsed.clientImports.map((line) => ({
-      line,
-      importerDir: path.dirname(fullPath),
-    }));
-    const mergedActionFunctions = [...parsed.actionFunctions];
-    const mergedDataVars = [...parsed.dataVars];
-    const mergedPollFunctions = [...parsed.pollFunctions];
-    const mergedDataGetQueries = parsed.dataGetQueries.map((query) => ({ ...query }));
-    const mergedComponentImports: Record<string, string> = { ...parsed.componentImports };
-    const mergedWorkerEnvAliases = [...parsed.workerEnvAliases];
-    const mergedDevAliases = [...parsed.devAliases];
-
-    for (const layoutRelPath of rf.layouts) {
-      if (layoutRelPath === 'layout.html') continue;
-      const layoutPath = path.join(routesDir, layoutRelPath);
-      if (!fs.existsSync(layoutPath)) continue;
-      const layoutSource = fs.readFileSync(layoutPath, 'utf-8');
-      const layoutParsed = parseFile(layoutSource, { kind: 'layout', filePath: layoutPath });
-      if (layoutParsed.loadFunction) {
-        throw new Error(`${layoutRelPath} cannot export load(); nested layouts currently share the child route load lifecycle.`);
-      }
-      const layoutSlot = layoutParsed.template.match(/<slot\s*><\/slot>|<slot\s*\/>/);
-      if (!layoutSlot) {
-        throw new Error(`${layoutRelPath} must contain <slot></slot> or <slot />`);
-      }
-      if (layoutParsed.script) {
-        routeScriptParts.push(layoutParsed.script);
-        routeScriptSegments.push({ script: layoutParsed.script, dataVars: [...layoutParsed.dataVars] });
-      }
-      for (const line of layoutParsed.serverImports) {
-        routeServerImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
-      }
-      for (const line of layoutParsed.clientImports) {
-        routeClientImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
-      }
-      for (const fnName of layoutParsed.actionFunctions) {
-        if (!mergedActionFunctions.includes(fnName)) mergedActionFunctions.push(fnName);
-      }
-      for (const varName of layoutParsed.dataVars) {
-        if (!mergedDataVars.includes(varName)) mergedDataVars.push(varName);
-      }
-      for (const fnName of layoutParsed.pollFunctions) {
-        if (!mergedPollFunctions.includes(fnName)) mergedPollFunctions.push(fnName);
-      }
-      for (const query of layoutParsed.dataGetQueries) {
-        if (!mergedDataGetQueries.some((existing) => existing.asName === query.asName)) {
-          mergedDataGetQueries.push({ ...query });
-        }
-      }
-      for (const [pascalName, fileName] of Object.entries(layoutParsed.componentImports)) {
-        mergedComponentImports[pascalName] = fileName;
-      }
-      for (const alias of layoutParsed.workerEnvAliases) {
-        if (!mergedWorkerEnvAliases.includes(alias)) mergedWorkerEnvAliases.push(alias);
-      }
-      for (const alias of layoutParsed.devAliases) {
-        if (!mergedDevAliases.includes(alias)) mergedDevAliases.push(alias);
-      }
-      effectiveTemplate = layoutParsed.template.replace(layoutSlot[0], effectiveTemplate);
-    }
-
-    if (parsed.script) {
-      routeScriptParts.push(parsed.script);
-      routeScriptSegments.push({ script: parsed.script, dataVars: [...parsed.dataVars] });
-    }
-
-    const routeImportDecls: string[] = [];
-    const routeImportDeclMap = new Map<string, string>();
-    const routeScriptReferenceSource = [ ...routeScriptParts.map((script) => stripTopLevelImports(script)), parsed.loadFunction || '' ].join('\n');
-
-    const mergedParsed = {
-      ...parsed,
-      template: effectiveTemplate,
-      script: routeScriptParts.length > 0 ? routeScriptParts.join('\n\n') : parsed.script,
-      serverImports: routeServerImportEntries.map((entry) => entry.line),
-      clientImports: routeClientImportEntries.map((entry) => entry.line),
-      actionFunctions: mergedActionFunctions,
-      dataVars: mergedDataVars,
-      componentImports: mergedComponentImports,
-      pollFunctions: mergedPollFunctions,
-      dataGetQueries: mergedDataGetQueries,
-      workerEnvAliases: mergedWorkerEnvAliases,
-      devAliases: mergedDevAliases,
-      scriptImportDecls: routeImportDecls,
-      scriptSegments: routeScriptSegments,
-    };
-
-    // Build a mapping: functionName ? moduleId for all imports in this route
-    const fnToModule: Record<string, string> = {};
-    const outFileDir = path.join(projectDir, '.kuratchi');
-
-    const neededServerFns = new Set<string>([
-      ...mergedActionFunctions,
-      ...mergedPollFunctions,
-      ...mergedDataGetQueries.map((q) => q.fnName),
-    ]);
-    const routeServerImports = routeServerImportEntries.length > 0
-      ? routeServerImportEntries
-      : routeClientImportEntries.filter((entry) => filterClientImportsForServer([entry.line], neededServerFns).length > 0);
-
-    if (routeServerImports.length > 0) {
-      for (const entry of routeServerImports) {
-        const imp = entry.line;
-        const pathMatch = imp.match(/from\s+['"]([^'"]+)['"]/);
-        if (!pathMatch) continue;
-        const origPath = pathMatch[1];
-
-        const importPath = resolveCompiledImportPath(origPath, entry.importerDir, outFileDir);
-
-        const moduleId = `__m${moduleCounter++}`;
-        allImports.push(`import * as ${moduleId} from '${importPath}';`);
-
-        const namedBindings = parseNamedImportBindings(imp);
-        if (namedBindings.length > 0) {
-          for (const binding of namedBindings) {
-            fnToModule[binding.local] = moduleId;
-            if (routeScriptReferenceSource.includes(binding.local) && !routeImportDeclMap.has(binding.local)) {
-              routeImportDeclMap.set(binding.local, `const ${binding.local} = ${moduleId}.${binding.imported};`);
-            }
-          }
-        }
-        const starMatch = imp.match(/import\s*\*\s*as\s+(\w+)/);
-        if (starMatch) {
-          fnToModule[starMatch[1]] = moduleId;
-          if (routeScriptReferenceSource.includes(starMatch[1]) && !routeImportDeclMap.has(starMatch[1])) {
-            routeImportDeclMap.set(starMatch[1], `const ${starMatch[1]} = ${moduleId};`);
-          }
-        }
-      }
-    }
-    routeImportDecls.push(...routeImportDeclMap.values());
-    const routeComponentNames: Map<string, string> = new Map();
-    for (const [pascalName, fileName] of Object.entries(mergedComponentImports)) {
-      compileComponent(fileName);
-      routeComponentNames.set(pascalName, fileName);
-    }
-
-    for (const [pascalName, compFileName] of routeComponentNames.entries()) {
-      const actionPropNames = componentActionCache.get(compFileName);
-      const compTagRegex = new RegExp(`<${pascalName}\\b([\\s\\S]*?)(?:/?)>`, 'g');
-      for (const tagMatch of effectiveTemplate.matchAll(compTagRegex)) {
-        const attrs = tagMatch[1];
-        if (actionPropNames && actionPropNames.size > 0) {
-          for (const propName of actionPropNames) {
-            const propRegex = new RegExp(`\\b${propName}=\\{([A-Za-z_$][\\w$]*)\\}`);
-            const propMatch = attrs.match(propRegex);
-            if (propMatch) {
-              const routeFnName = propMatch[1];
-              if (routeFnName in fnToModule && !mergedActionFunctions.includes(routeFnName)) {
-                mergedActionFunctions.push(routeFnName);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    const dataVarsSet = new Set(mergedDataVars);
-    const actionNames = new Set(mergedActionFunctions.filter(fn => fn in fnToModule || dataVarsSet.has(fn)));
-    const rpcNameMap = new Map<string, string>();
-    let rpcCounter = 0;
-    for (const fnName of mergedPollFunctions) {
-      if (!rpcNameMap.has(fnName)) {
-        rpcNameMap.set(fnName, `rpc_${i}_${rpcCounter++}`);
-      }
-    }
-    for (const q of mergedDataGetQueries) {
-      if (!rpcNameMap.has(q.fnName)) {
-        rpcNameMap.set(q.fnName, `rpc_${i}_${rpcCounter++}`);
-      }
-      q.rpcId = rpcNameMap.get(q.fnName)!;
-    }
-
-    const renderBody = compileTemplate(effectiveTemplate, routeComponentNames, actionNames, rpcNameMap);
-
-    // Collect component CSS for this route (compile-time dedup)
-    const routeComponentStyles: string[] = [];
-    for (const fileName of routeComponentNames.values()) {
-      const css = componentStyleCache.get(fileName);
-      if (css) routeComponentStyles.push(css);
-    }
-
-    const routePlan = analyzeRouteBuild({
-      pattern,
-      renderBody,
-      isDev: !!options.isDev,
-      parsed: mergedParsed,
-      fnToModule,
-      rpcNameMap,
-      componentStyles: routeComponentStyles,
+    const routeState = assembleRouteState({
+      parsed,
+      fullPath,
+      routesDir,
+      layoutRelativePaths: rf.layouts,
     });
-    compiledRoutes.push(emitRouteObject(routePlan));
+
+    compiledRoutes.push(compilePageRoute({
+      pattern,
+      routeIndex: i,
+      projectDir,
+      isDev: !!options.isDev,
+      routeState,
+      componentCompiler,
+      resolveCompiledImportPath: serverModuleCompiler.resolveCompiledImportPath,
+      allocateModuleId: () => `__m${moduleCounter++}`,
+      pushImport: (statement) => allImports.push(statement),
+    }));
   }
 
   // Scan src/assets/ for static files to embed (recursive)
-  const assetsDir = path.join(srcDir, 'assets');
-  const compiledAssets: { name: string; content: string; mime: string; etag: string }[] = [];
-  if (fs.existsSync(assetsDir)) {
-    const mimeTypes: Record<string, string> = {
-      '.css': 'text/css; charset=utf-8',
-      '.js': 'text/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.svg': 'image/svg+xml',
-      '.txt': 'text/plain; charset=utf-8',
-    };
-    const scanAssets = (dir: string, prefix: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (entry.isDirectory()) {
-          scanAssets(path.join(dir, entry.name), prefix ? `${prefix}/${entry.name}` : entry.name);
-          continue;
-        }
-        const ext = path.extname(entry.name).toLowerCase();
-        const mime = mimeTypes[ext];
-        if (!mime) continue;
-        const content = fs.readFileSync(path.join(dir, entry.name), 'utf-8');
-        const etag = '"' + crypto.createHash('md5').update(content).digest('hex').slice(0, 12) + '"';
-        const name = prefix ? `${prefix}/${entry.name}` : entry.name;
-        compiledAssets.push({ name, content, mime, etag });
-      }
-    };
-    scanAssets(assetsDir, '');
-  }
+  const compiledAssets = compileAssets(path.join(srcDir, 'assets'));
 
   // Collect only the components that were actually imported by routes
-  const compiledComponents = Array.from(compiledComponentCache.values());
+  const compiledComponents = componentCompiler.getCompiledComponents();
 
   // Generate the routes module
-  const rawRuntimeImportPath = resolveRuntimeImportPath(projectDir);
+  const rawRuntimeImportPath = resolveRuntimeImportPathPipeline(projectDir);
   let runtimeImportPath: string | undefined;
   if (rawRuntimeImportPath) {
-    // Resolve the runtime file's absolute path and pass it through transformServerModule
+    // Resolve the runtime file's absolute path and pass it through the server module compiler
     // so that $durable-objects/* and other project imports get rewritten to their proxies.
     const runtimeAbs = path.resolve(path.join(projectDir, '.kuratchi'), rawRuntimeImportPath);
-    const transformedRuntimePath = transformServerModule(runtimeAbs);
+    const transformedRuntimePath = serverModuleCompiler.transformModule(runtimeAbs);
     const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.js');
-    runtimeImportPath = toModuleSpecifier(outFile, transformedRuntimePath);
+    runtimeImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedRuntimePath);
   }
   const hasRuntime = !!runtimeImportPath;
   const output = generateRoutesModule({
@@ -1363,28 +303,22 @@ export function compile(options: CompileOptions): string {
   // worker.js explicitly re-exports them so wrangler.jsonc can reference a
   // stable filename while routes.js is freely regenerated.
   const workerFile = path.join(outDir, 'worker.js');
-  const workerClassExports = [...agentConfig, ...containerConfig, ...workflowConfig]
-    .map((entry) => {
-      const importPath = toWorkerImportPath(projectDir, outDir, entry.file);
-      if (entry.exportKind === 'default') {
-        return `export { default as ${entry.className} } from '${importPath}';`;
-      }
-      return `export { ${entry.className} } from '${importPath}';`;
-    });
-  const workerLines = [
-    '// Auto-generated by kuratchi \u2014 do not edit.',
-    "export { default } from './routes.js';",
-    ...doConfig.map(c => `export { ${c.className} } from './routes.js';`),
-    ...workerClassExports,
-    '',
-  ];
-  writeIfChanged(workerFile, workerLines.join('\n'));
+  writeIfChanged(workerFile, buildWorkerEntrypointSource({
+    projectDir,
+    outDir,
+    doClassNames: doConfig.map((entry) => entry.className),
+    workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
+  }));
 
   // Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts
-  syncWranglerConfig(projectDir, {
-    workflows: workflowConfig,
-    containers: containerConfig,
-    durableObjects: doConfig,
+  syncWranglerConfigPipeline({
+    projectDir,
+    config: {
+      workflows: workflowConfig,
+      containers: containerConfig,
+      durableObjects: doConfig,
+    },
+    writeFile: writeIfChanged,
   });
 
   return workerFile;
@@ -1527,67 +461,6 @@ function readUiConfigValues(projectDir: string): { theme: string; radius: string
  * theme='system' ? removes class="dark", sets data-theme="system".
  * radius='none'|'full' ? sets data-radius; radius='default' ? removes it.
  */
-function patchHtmlTag(source: string, theme: string, radius: string): string {
-  return source.replace(/(<html\b)([^>]*)(>)/i, (_m: string, open: string, attrs: string, close: string) => {
-    if (theme === 'dark') {
-      if (/\bclass\s*=\s*"([^"]*)"/i.test(attrs)) {
-        attrs = attrs.replace(/class\s*=\s*"([^"]*)"/i, (_mc: string, cls: string) => {
-          const classes = cls.split(/\s+/).filter(Boolean);
-          if (!classes.includes('dark')) classes.unshift('dark');
-          return `class="${classes.join(' ')}"`;
-        });
-      } else {
-        attrs += ' class="dark"';
-      }
-      attrs = attrs.replace(/\s*data-theme\s*=\s*"[^"]*"/i, '');
-    } else if (theme === 'light') {
-      attrs = attrs.replace(/class\s*=\s*"([^"]*)"/i, (_mc: string, cls: string) => {
-        const classes = cls.split(/\s+/).filter(Boolean).filter((c: string) => c !== 'dark');
-        return classes.length ? `class="${classes.join(' ')}"` : '';
-      });
-      attrs = attrs.replace(/\s*data-theme\s*=\s*"[^"]*"/i, '');
-    } else if (theme === 'system') {
-      attrs = attrs.replace(/class\s*=\s*"([^"]*)"/i, (_mc: string, cls: string) => {
-        const classes = cls.split(/\s+/).filter(Boolean).filter((c: string) => c !== 'dark');
-        return classes.length ? `class="${classes.join(' ')}"` : '';
-      });
-      if (/data-theme\s*=/i.test(attrs)) {
-        attrs = attrs.replace(/data-theme\s*=\s*"[^"]*"/i, 'data-theme="system"');
-      } else {
-        attrs += ' data-theme="system"';
-      }
-    }
-    attrs = attrs.replace(/\s*data-radius\s*=\s*"[^"]*"/i, '');
-    if (radius === 'none' || radius === 'full') {
-      attrs += ` data-radius="${radius}"`;
-    }
-    return open + attrs + close;
-  });
-}
-
-/**
- * Resolve a component .html file from a package (e.g. @kuratchi/ui).
- * Searches: node_modules, then workspace siblings (../../packages/).
- */
-function resolvePackageComponent(projectDir: string, pkgName: string, componentFile: string): string {
-  // 1. Try node_modules (standard resolution)
-  const nmPath = path.join(projectDir, 'node_modules', pkgName, 'src', 'lib', componentFile + '.html');
-  if (fs.existsSync(nmPath)) return nmPath;
-
-  // 2. Try workspace layout: project is in apps/X or packages/X, sibling packages in packages/
-  // @kuratchi/ui �' kuratchi-ui (convention: scope stripped, slash �' dash)
-  const pkgDirName = pkgName.replace(/^@/, '').replace(/\//g, '-');
-  const workspaceRoot = path.resolve(projectDir, '../..');
-  const wsPath = path.join(workspaceRoot, 'packages', pkgDirName, 'src', 'lib', componentFile + '.html');
-  if (fs.existsSync(wsPath)) return wsPath;
-
-  // 3. Try one level up (monorepo root node_modules)
-  const rootNmPath = path.join(workspaceRoot, 'node_modules', pkgName, 'src', 'lib', componentFile + '.html');
-  if (fs.existsSync(rootNmPath)) return rootNmPath;
-
-  return '';
-}
-
 interface RouteFile {
   /** File path relative to routes/ (e.g., 'todos.html') */
   file: string;
@@ -1691,53 +564,6 @@ function discoverRoutes(routesDir: string): RouteFile[] {
   return results;
 }
 
-function buildSegmentedScriptBody(opts: {
-  segments: Array<{ script: string; dataVars: string[] }>;
-  fnToModule: Record<string, string>;
-  importDecls?: string;
-  workerEnvAliases: string[];
-  devAliases: string[];
-  isDev: boolean;
-  asyncMode: boolean;
-}): string {
-  const { segments, fnToModule, importDecls, workerEnvAliases, devAliases, isDev, asyncMode } = opts;
-  const lines: string[] = [];
-  const routeDevDecls = buildDevAliasDeclarations(devAliases, isDev);
-  if (routeDevDecls) lines.push(routeDevDecls);
-  if (importDecls) lines.push(importDecls);
-  lines.push('const __segmentData: Record<string, any> = {};');
-
-  const availableVars: string[] = [];
-  let segmentIndex = 0;
-  for (const segment of segments) {
-    if (!segment.script) continue;
-    let segmentBody = stripTopLevelImports(segment.script);
-    segmentBody = rewriteImportedFunctionCalls(segmentBody, fnToModule);
-    segmentBody = rewriteWorkerEnvAliases(segmentBody, workerEnvAliases);
-    if (!segmentBody.trim()) continue;
-
-    const returnVars = segment.dataVars.filter((name) => /^[A-Za-z_$][\w$]*$/.test(name));
-    const segmentVar = '__segment_' + segmentIndex++;
-    const invokePrefix = asyncMode ? 'await ' : '';
-    const factoryPrefix = asyncMode ? 'async ' : '';
-
-    lines.push('const ' + segmentVar + ' = ' + invokePrefix + '(' + factoryPrefix + '(__ctx: Record<string, any>) => {');
-    lines.push(segmentBody);
-    lines.push(returnVars.length > 0 ? 'return { ' + returnVars.join(', ') + ' };' : 'return {};');
-    lines.push('})(__segmentData);');
-    lines.push('Object.assign(__segmentData, ' + segmentVar + ');');
-
-    for (const name of returnVars) {
-      if (!availableVars.includes(name)) availableVars.push(name);
-    }
-  }
-
-  if (!asyncMode && availableVars.length > 0) {
-    lines.push('const { ' + availableVars.join(', ') + ' } = __segmentData;');
-  }
-
-  return lines.join('\n');
-}
 function buildRouteObject(opts: {
   index: number;
   pattern: string;
@@ -3522,25 +2348,6 @@ ${ac?.hasRateLimit ? '\n      // Rate limiting - check before route handlers\n  
 
 
 
-
-function resolveRuntimeImportPath(projectDir: string): string | null {
-  const candidates: Array<{ file: string; importPath: string }> = [
-    { file: 'src/server/runtime.hook.ts', importPath: '../src/server/runtime.hook' },
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(path.join(projectDir, candidate.file))) {
-      return candidate.importPath;
-    }
-  }
-  return null;
-}
-
-function toWorkerImportPath(projectDir: string, outDir: string, filePath: string): string {
-  const absPath = path.isAbsolute(filePath) ? filePath : path.join(projectDir, filePath);
-  let rel = path.relative(outDir, absPath).replace(/\\/g, '/');
-  if (!rel.startsWith('.')) rel = `./${rel}`;
-  return rel.replace(/\.(ts|js|mjs|cjs)$/, '');
-}
 
 interface WranglerSyncConfig {
   workflows: WorkerClassConfigEntry[];

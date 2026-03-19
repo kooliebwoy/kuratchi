@@ -1,0 +1,113 @@
+---
+title: "Actions"
+description: "Form actions, ActionError, redirects, and progressive enhancement"
+---
+
+## Form actions
+
+Export a server function from the route `<script>` block and reference it with `action={fn}`.
+
+```html
+<script>
+  import { addItem } from '$database/items';
+</script>
+
+<form action={addItem} method="POST">
+  <input type="text" name="title" required />
+  <button type="submit">Add</button>
+</form>
+```
+
+The action receives raw `FormData`.
+
+```ts
+import { ActionError } from '@kuratchi/js';
+
+export async function addItem(formData: FormData): Promise<void> {
+  const title = (formData.get('title') as string)?.trim();
+  if (!title) throw new ActionError('Title is required');
+}
+```
+
+## Redirect after write
+
+Use `redirect()` for POST-redirect-get flows:
+
+```ts
+import { redirect } from '@kuratchi/js';
+
+export async function createItem(formData: FormData): Promise<void> {
+  const id = await db.items.insert({ title: formData.get('title') });
+  redirect(`/items/${id}`);
+}
+```
+
+## Action errors
+
+Throw `ActionError` for user-facing validation failures:
+
+```ts
+import { ActionError } from '@kuratchi/js';
+
+export async function signIn(formData: FormData) {
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
+  if (!email || !password) throw new ActionError('Email and password are required');
+}
+```
+
+The action state is exposed in the template under the function name:
+
+```html
+<form action={signIn}>
+  if (signIn.error) {
+    <p class="error">{signIn.error}</p>
+  }
+  <input type="email" name="email" />
+  <input type="password" name="password" />
+  <button type="submit">Sign in</button>
+</form>
+```
+
+## Page errors
+
+Throw `PageError` when a route should render an HTTP error page:
+
+```ts
+import { PageError } from '@kuratchi/js';
+
+if (!post) throw new PageError(404);
+if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403, 'Admin only');
+```
+
+## Progressive enhancement helpers
+
+KuratchiJS also supports declarative client-side triggers.
+
+### `data-action`
+
+```html
+<button data-action="deleteItem" data-args={JSON.stringify([item.id])}>Delete</button>
+```
+
+### `data-refresh`
+
+```html
+<section data-refresh="/items">
+  <article>{item.title}</article>
+</section>
+```
+
+### `data-get`
+
+```html
+<div data-get="/items/{item.id}">Click to navigate</div>
+```
+
+### `data-poll`
+
+```html
+<div data-poll={getStatus(itemId)} data-interval="2s">
+  {status}
+</div>
+```

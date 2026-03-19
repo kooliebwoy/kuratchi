@@ -6,6 +6,8 @@
     "apps/*"
   ],
   "scripts": {
+    "docs:dev": "bun run --cwd apps/docs dev",
+    "docs:update": "bun run --cwd apps/docs update",
     "build": "bun run --cwd packages/kuratchi-js build && bun run --cwd packages/kuratchi-sdk build && bun run --cwd packages/kuratchi-observability build",
     "check": "bun run --cwd packages/kuratchi-js check && bun run --cwd packages/kuratchi-sdk check && bun run --cwd packages/kuratchi-observability check",
     "release": "changeset publish"
