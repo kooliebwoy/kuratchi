@@ -134,20 +134,35 @@ if (!site) {
   <Dialog id="upload-dialog" closedby="any">
     <div data-dialog="header">
       <h2>Upload Files</h2>
-      <p>Upload a full build output or individual files. All files are deployed together as one manifest.</p>
+      <p>Choose one upload mode. Everything selected is deployed together as one site manifest.</p>
     </div>
     <form id="site-upload-form" action={uploadSiteFiles} method="POST" enctype="multipart/form-data">
       <input type="hidden" name="siteId" value={site.id} />
-      <div data-field>
-        <label for="site-directory">Build folder</label>
-        <input type="file" id="site-directory" name="file" required multiple webkitdirectory directory />
-        <small>Select a built folder like <code>dist/</code>. Relative paths are preserved in the upload manifest.</small>
+      <Card>
+        <div data-flex data-direction="column" data-gap="xs">
+          <strong>Option 1: Build folder</strong>
+          <p data-muted>Select a built output folder like <code>dist/</code> or <code>build/</code>. Relative paths are preserved automatically.</p>
+        </div>
+        <div data-field style="margin-top: 0.75rem;">
+          <label for="site-directory">Folder upload</label>
+          <input type="file" id="site-directory" name="file" multiple webkitdirectory directory />
+          <small>Best for Astro, SvelteKit static, Vite, and other generated sites.</small>
+        </div>
+      </Card>
+      <div data-flex data-justify="center" style="margin: 0.75rem 0;">
+        <span data-muted style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;">or</span>
       </div>
-      <div data-field>
-        <label for="site-files">Or individual files</label>
-        <input type="file" id="site-files" name="file" multiple />
-        <small>Use this for ad hoc files. Without a folder upload, files are served from their filenames unless you set a path prefix.</small>
-      </div>
+      <Card>
+        <div data-flex data-direction="column" data-gap="xs">
+          <strong>Option 2: Individual files</strong>
+          <p data-muted>Upload one or more files manually. Use a path prefix if you want them deployed under a subdirectory.</p>
+        </div>
+        <div data-field style="margin-top: 0.75rem;">
+          <label for="site-files">File upload</label>
+          <input type="file" id="site-files" name="file" multiple />
+          <small>Good for quick HTML, CSS, JS, image, or config uploads.</small>
+        </div>
+      </Card>
       <div data-field>
         <label for="path-prefix">Path prefix (optional)</label>
         <input
@@ -160,6 +175,9 @@ if (!site) {
         <small>Applied before each relative file path. Leave blank to deploy the build at the site root.</small>
       </div>
       <div id="site-upload-paths"></div>
+      <Alert id="site-upload-client-error" data-variant="danger" hidden>
+        Select either a build folder or one or more individual files before deploying.
+      </Alert>
       if (uploadSiteFiles.error) {
         <Alert data-variant="danger">{uploadSiteFiles.error}</Alert>
       }
@@ -190,6 +208,7 @@ if (!site) {
     const directoryInput = document.getElementById('site-directory');
     const filesInput = document.getElementById('site-files');
     const pathsContainer = document.getElementById('site-upload-paths');
+    const clientError = document.getElementById('site-upload-client-error');
 
     function selectedFiles() {
       const directoryFiles = Array.from(directoryInput?.files || []);
@@ -210,10 +229,15 @@ if (!site) {
       }
     }
 
+    function clearClientError() {
+      clientError?.setAttribute('hidden', '');
+    }
+
     directoryInput?.addEventListener('change', () => {
       if (directoryInput.files?.length) {
         filesInput.value = '';
       }
+      clearClientError();
       syncManifestPaths();
     });
 
@@ -221,10 +245,17 @@ if (!site) {
       if (filesInput.files?.length) {
         directoryInput.value = '';
       }
+      clearClientError();
       syncManifestPaths();
     });
 
-    uploadForm?.addEventListener('submit', () => {
+    uploadForm?.addEventListener('submit', (event) => {
+      if (selectedFiles().length === 0) {
+        event.preventDefault();
+        clientError?.removeAttribute('hidden');
+        return;
+      }
+      clearClientError();
       syncManifestPaths();
     });
   </script>

@@ -6,6 +6,8 @@
 import { parseFile, stripTopLevelImports } from './parser.js';
 import { compileTemplate } from './template.js';
 import { transpileTypeScript } from './transpile.js';
+import { analyzeRouteBuild, emitRouteObject } from './route-pipeline.js';
+import { buildDevAliasDeclarations } from './script-transform.js';
 import { filePathToPattern } from '../runtime/router.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -57,32 +59,6 @@ function compactInlineJs(source: string): string {
     .replace(/\s{2,}/g, ' ')
     .replace(/\s*([{}();,:])\s*/g, '$1')
     .trim();
-}
-
-function rewriteImportedFunctionCalls(source: string, fnToModule: Record<string, string>): string {
-  let out = source;
-  for (const [fnName, moduleId] of Object.entries(fnToModule)) {
-    if (!/^[A-Za-z_$][\w$]*$/.test(fnName)) continue;
-    const callRegex = new RegExp(`\\b${fnName}\\s*\\(`, 'g');
-    out = out.replace(callRegex, `${moduleId}.${fnName}(`);
-  }
-  return out;
-}
-
-function rewriteWorkerEnvAliases(source: string, aliases: string[]): string {
-  let out = source;
-  for (const alias of aliases) {
-    if (!/^[A-Za-z_$][\w$]*$/.test(alias)) continue;
-    // Negative lookbehind: don't rewrite property accesses like __m16.env
-    const aliasRegex = new RegExp(`(?<!\\.)\\b${alias}\\b`, 'g');
-    out = out.replace(aliasRegex, '__env');
-  }
-  return out;
-}
-
-function buildDevAliasDeclarations(aliases: string[], isDev: boolean): string {
-  if (!aliases || aliases.length === 0) return '';
-  return aliases.map((alias) => `const ${alias} = ${isDev ? 'true' : 'false'};`).join('\n');
 }
 
 interface ImportBinding {
@@ -1297,9 +1273,7 @@ export function compile(options: CompileOptions): string {
       if (css) routeComponentStyles.push(css);
     }
 
-    // Build the route module object
-    const routeObj = buildRouteObject({
-      index: i,
+    const routePlan = analyzeRouteBuild({
       pattern,
       renderBody,
       isDev: !!options.isDev,
@@ -1308,8 +1282,7 @@ export function compile(options: CompileOptions): string {
       rpcNameMap,
       componentStyles: routeComponentStyles,
     });
-
-    compiledRoutes.push(routeObj);
+    compiledRoutes.push(emitRouteObject(routePlan));
   }
 
   // Scan src/assets/ for static files to embed (recursive)
