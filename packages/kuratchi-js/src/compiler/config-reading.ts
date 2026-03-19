@@ -5,6 +5,7 @@ import {
   type AuthConfigEntry,
   type DoConfigEntry,
   type OrmDatabaseEntry,
+  type SecurityConfigEntry,
   type WorkerClassConfigEntry,
 } from './compiler-shared.js';
 
@@ -342,4 +343,72 @@ export function readAssetsPrefix(projectDir: string): string {
   if (!prefix.startsWith('/')) prefix = '/' + prefix;
   if (!prefix.endsWith('/')) prefix += '/';
   return prefix;
+}
+
+export function readSecurityConfig(projectDir: string): SecurityConfigEntry {
+  const defaults: SecurityConfigEntry = {
+    csrfEnabled: true,
+    csrfCookieName: '__kuratchi_csrf',
+    csrfHeaderName: 'x-kuratchi-csrf',
+    rpcRequireAuth: false,
+    actionRequireAuth: false,
+    contentSecurityPolicy: null,
+    strictTransportSecurity: null,
+    permissionsPolicy: null,
+  };
+
+  const configPath = path.join(projectDir, 'kuratchi.config.ts');
+  if (!fs.existsSync(configPath)) return defaults;
+
+  const source = fs.readFileSync(configPath, 'utf-8');
+  const securityBlock = readConfigBlock(source, 'security');
+  if (!securityBlock) return defaults;
+
+  const body = securityBlock.body;
+
+  // Parse CSRF settings
+  const csrfEnabledMatch = body.match(/csrfEnabled\s*:\s*(true|false)/);
+  if (csrfEnabledMatch) {
+    defaults.csrfEnabled = csrfEnabledMatch[1] === 'true';
+  }
+
+  const csrfCookieMatch = body.match(/csrfCookieName\s*:\s*['"]([^'"]+)['"]/);
+  if (csrfCookieMatch) {
+    defaults.csrfCookieName = csrfCookieMatch[1];
+  }
+
+  const csrfHeaderMatch = body.match(/csrfHeaderName\s*:\s*['"]([^'"]+)['"]/);
+  if (csrfHeaderMatch) {
+    defaults.csrfHeaderName = csrfHeaderMatch[1];
+  }
+
+  // Parse RPC settings
+  const rpcAuthMatch = body.match(/rpcRequireAuth\s*:\s*(true|false)/);
+  if (rpcAuthMatch) {
+    defaults.rpcRequireAuth = rpcAuthMatch[1] === 'true';
+  }
+
+  // Parse action settings
+  const actionAuthMatch = body.match(/actionRequireAuth\s*:\s*(true|false)/);
+  if (actionAuthMatch) {
+    defaults.actionRequireAuth = actionAuthMatch[1] === 'true';
+  }
+
+  // Parse security headers
+  const cspMatch = body.match(/contentSecurityPolicy\s*:\s*['"`]([^'"`]+)['"`]/);
+  if (cspMatch) {
+    defaults.contentSecurityPolicy = cspMatch[1];
+  }
+
+  const hstsMatch = body.match(/strictTransportSecurity\s*:\s*['"`]([^'"`]+)['"`]/);
+  if (hstsMatch) {
+    defaults.strictTransportSecurity = hstsMatch[1];
+  }
+
+  const permMatch = body.match(/permissionsPolicy\s*:\s*['"`]([^'"`]+)['"`]/);
+  if (permMatch) {
+    defaults.permissionsPolicy = permMatch[1];
+  }
+
+  return defaults;
 }

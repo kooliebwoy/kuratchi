@@ -13,6 +13,7 @@ import {
   readAuthConfig,
   readDoConfig,
   readOrmConfig,
+  readSecurityConfig,
   readUiConfigValues,
   readUiTheme,
 } from './config-reading.js';
@@ -38,7 +39,9 @@ import {
 import { syncWranglerConfig as syncWranglerConfigPipeline } from './wrangler-sync.js';
 import { filePathToPattern } from '../runtime/router.js';
 import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import type { RouteFile } from './route-discovery.js';
 
 export { parseFile } from './parser.js';
 export { compileTemplate, generateRenderFunction } from './template.js';
@@ -61,7 +64,7 @@ function getFrameworkPackageName(): string {
 export interface CompileOptions {
   /** Absolute path to the project root */
   projectDir: string;
-  /** Override path for routes.js (default: .kuratchi/routes.js). worker.js is always co-located. */
+  /** Override path for routes.ts (default: .kuratchi/routes.ts). worker.ts is always co-located. */
   outFile?: string;
   /** Whether this is a dev build (sets __kuratchi_DEV__ global) */
   isDev?: boolean;
@@ -81,15 +84,50 @@ export interface CompiledRoute {
 }
 
 /**
- * Compile a project's src/routes/ into .kuratchi/routes.js
+ * Pre-read all route files and their layouts in parallel for better I/O performance.
+ * Returns a Map from file path to content.
+ */
+async function preReadFiles(
+  routesDir: string,
+  routeFiles: RouteFile[],
+): Promise<Map<string, string>> {
+  const filesToRead = new Set<string>();
+
+  // Collect all unique files to read
+  for (const rf of routeFiles) {
+    filesToRead.add(path.join(routesDir, rf.file));
+    for (const layout of rf.layouts) {
+      filesToRead.add(path.join(routesDir, layout));
+    }
+  }
+
+  // Also include root layout if it exists
+  const rootLayout = path.join(routesDir, 'layout.html');
+  if (fs.existsSync(rootLayout)) {
+    filesToRead.add(rootLayout);
+  }
+
+  // Read all files in parallel
+  const entries = await Promise.all(
+    Array.from(filesToRead).map(async (filePath) => {
+      const content = await fsp.readFile(filePath, 'utf-8');
+      return [filePath, content] as const;
+    }),
+  );
+
+  return new Map(entries);
+}
+
+/**
+ * Compile a project's src/routes/ into .kuratchi/routes.ts
  *
- * The generated module exports { app } ?" an object with a fetch() method
+ * The generated module exports { app } — an object with a fetch() method
  * that handles routing, load functions, form actions, and rendering.
- * Returns the path to .kuratchi/worker.js ? the stable wrangler entry point that
- * re-exports everything from routes.js (default fetch handler + named DO class exports).
+ * Returns the path to .kuratchi/worker.ts — the stable wrangler entry point that
+ * re-exports everything from routes.ts (default fetch handler + named DO class exports).
  * No src/index.ts is needed in user projects.
  */
-export function compile(options: CompileOptions): string {
+export async function compile(options: CompileOptions): Promise<string> {
   const { projectDir } = options;
   const srcDir = path.join(projectDir, 'src');
   const routesDir = path.join(srcDir, 'routes');
@@ -100,6 +138,9 @@ export function compile(options: CompileOptions): string {
 
   // Discover all .html route files
   const routeFiles = discoverRoutesPipeline(routesDir);
+
+  // Pre-read all files in parallel for better I/O performance
+  const fileContents = await preReadFiles(routesDir, routeFiles);
   const componentCompiler = createComponentCompiler({
     projectDir,
     srcDir,
@@ -115,8 +156,8 @@ export function compile(options: CompileOptions): string {
   const layoutFile = path.join(routesDir, 'layout.html');
   let compiledLayout: string | null = null;
   let layoutPlan: LayoutBuildPlan | null = null;
-  if (fs.existsSync(layoutFile)) {
-    const layoutImportSource = fs.readFileSync(layoutFile, 'utf-8');
+  if (fileContents.has(layoutFile)) {
+    const layoutImportSource = fileContents.get(layoutFile)!;
     const themeCSS = readUiTheme(projectDir);
     const uiConfigValues = readUiConfigValues(projectDir);
     const source = prepareRootLayoutSource({
@@ -148,6 +189,9 @@ export function compile(options: CompileOptions): string {
   // Read auth config from kuratchi.config.ts
   const authConfig = readAuthConfig(projectDir);
 
+  // Read security config from kuratchi.config.ts
+  const securityConfig = readSecurityConfig(projectDir);
+
   // Auto-discover Durable Objects from .do.ts files (config optional, only needed for stubId)
   const configDoEntries = readDoConfig(projectDir);
   const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir, configDoEntries, ormDatabases);
@@ -171,12 +215,12 @@ export function compile(options: CompileOptions): string {
         projectDir,
         runtimeDoImport: RUNTIME_DO_IMPORT,
       });
-      const proxyFile = path.join(doProxyDir, handler.fileName + '.js');
+      const proxyFile = path.join(doProxyDir, handler.fileName + '.ts');
       const proxyFileDir = path.dirname(proxyFile);
       if (!fs.existsSync(proxyFileDir)) fs.mkdirSync(proxyFileDir, { recursive: true });
       writeIfChanged(proxyFile, proxyCode);
       const handlerAbsNoExt = handler.absPath.replace(/\\/g, '/').replace(/\.ts$/, '');
-      const proxyAbsNoExt = proxyFile.replace(/\\/g, '/').replace(/\.js$/, '');
+      const proxyAbsNoExt = proxyFile.replace(/\\/g, '/').replace(/\.ts$/, '');
       registerDoProxyPath(handlerAbsNoExt, proxyAbsNoExt);
       // Backward-compatible alias for '.do' suffix.
       registerDoProxyPath(handlerAbsNoExt.replace(/\.do$/, ''), proxyAbsNoExt.replace(/\.do$/, ''));
@@ -188,12 +232,12 @@ export function compile(options: CompileOptions): string {
       );
       if (handler.fileName.endsWith('.do')) {
         const aliasFileName = handler.fileName.slice(0, -3);
-        const aliasProxyFile = path.join(doProxyDir, aliasFileName + '.js');
-        const aliasCode = `// Auto-generated alias for .do handler\nexport * from './${handler.fileName}.js';\n`;
+        const aliasProxyFile = path.join(doProxyDir, aliasFileName + '.ts');
+        const aliasCode = `// Auto-generated alias for .do handler\nexport * from './${handler.fileName}.ts';\n`;
         const aliasProxyDir = path.dirname(aliasProxyFile);
         if (!fs.existsSync(aliasProxyDir)) fs.mkdirSync(aliasProxyDir, { recursive: true });
         writeIfChanged(aliasProxyFile, aliasCode);
-        registerDoProxyPath(handlerAbsNoExt.replace(/\.do$/, ''), aliasProxyFile.replace(/\\/g, '/').replace(/\.js$/, ''));
+        registerDoProxyPath(handlerAbsNoExt.replace(/\.do$/, ''), aliasProxyFile.replace(/\\/g, '/').replace(/\.ts$/, ''));
       }
     }
   }
@@ -247,13 +291,14 @@ export function compile(options: CompileOptions): string {
     }
 
     // -- Page route (page.html) --
-    const source = fs.readFileSync(fullPath, 'utf-8');
+    const source = fileContents.get(fullPath) ?? fs.readFileSync(fullPath, 'utf-8');
     const parsed = parseFile(source, { kind: 'route', filePath: fullPath });
     const routeState = assembleRouteState({
       parsed,
       fullPath,
       routesDir,
       layoutRelativePaths: rf.layouts,
+      fileContents,
     });
 
     compiledRoutes.push(compilePageRoute({
@@ -288,7 +333,7 @@ export function compile(options: CompileOptions): string {
     // so that $durable-objects/* and other project imports get rewritten to their proxies.
     const runtimeAbs = path.resolve(path.join(projectDir, '.kuratchi'), rawRuntimeImportPath);
     const transformedRuntimePath = serverModuleCompiler.transformModule(runtimeAbs);
-    const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.js');
+    const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.ts');
     runtimeImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedRuntimePath);
   }
   const hasRuntime = !!runtimeImportPath;
@@ -302,6 +347,7 @@ export function compile(options: CompileOptions): string {
     compiledErrorPages,
     ormDatabases,
     authConfig,
+    securityConfig,
     doConfig,
     doHandlers,
     workflowConfig,
@@ -316,19 +362,19 @@ export function compile(options: CompileOptions): string {
     runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
   });
 
-  // Write to .kuratchi/routes.js
-  const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.js');
+  // Write to .kuratchi/routes.ts
+  const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.ts');
   const outDir = path.dirname(outFile);
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
   }
   writeIfChanged(outFile, output);
 
-  // Generate .kuratchi/worker.js ? the stable wrangler entry point.
-  // routes.js already exports the default fetch handler and all named DO classes;
-  // worker.js explicitly re-exports them so wrangler.jsonc can reference a
-  // stable filename while routes.js is freely regenerated.
-  const workerFile = path.join(outDir, 'worker.js');
+  // Generate .kuratchi/worker.ts — the stable wrangler entry point.
+  // routes.ts already exports the default fetch handler and all named DO classes;
+  // worker.ts explicitly re-exports them so wrangler.jsonc can reference a
+  // stable filename while routes.ts is freely regenerated.
+  const workerFile = path.join(outDir, 'worker.ts');
   writeIfChanged(workerFile, buildWorkerEntrypointSource({
     projectDir,
     outDir,

@@ -22,7 +22,7 @@ function createTempProject(name: string): string {
 }
 
 describe('compiler TypeScript transpilation', () => {
-  it('emits valid JavaScript for route server scripts that use TypeScript syntax', () => {
+  it('emits valid JavaScript for route server scripts that use TypeScript syntax', async () => {
     const projectDir = createTempProject('template-script');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
@@ -35,14 +35,14 @@ describe('compiler TypeScript transpilation', () => {
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('const turnstileSiteKey = __env.TURNSTILE_SITE_KEY || "";');
-    expect(routesCode).not.toContain('(env as any)');
+    expect(routesCode).toContain('const turnstileSiteKey = (__env as any).TURNSTILE_SITE_KEY ||');
+    expect(routesCode).toContain('turnstileSiteKey');
   });
 
-  it('tracks typed top-level declarations from route scripts as template data vars', () => {
+  it('tracks typed top-level declarations from route scripts as template data vars', async () => {
     const projectDir = createTempProject('typed-vars');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
@@ -54,15 +54,15 @@ const title: string = 'Secure Sign In';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain('const { params, breadcrumbs } = data;');
-    expect(routesCode).toContain('const title = "Secure Sign In";');
+    expect(routesCode).toContain("const title: string = 'Secure Sign In';");
     expect(routesCode).toContain('<h1>${__esc(title)}</h1>');
   });
 
-  it('rejects Cloudflare env access from component scripts', () => {
+  it('rejects Cloudflare env access from component scripts', async () => {
     const projectDir = createTempProject('component-env');
     fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
     fs.writeFileSync(
@@ -85,12 +85,12 @@ const secret = env.AUTH_SECRET;
       'utf-8',
     );
 
-    expect(() => compile({ projectDir, isDev: true })).toThrow(
+    expect(async () => await compile({ projectDir, isDev: true })).toThrow(
       'Imported env from cloudflare:workers in a component script.',
     );
   });
 
-  it('injects framework dev as a compile-time constant in route scripts', () => {
+  it('injects framework dev as a compile-time constant in route scripts', async () => {
     const projectDir = createTempProject('framework-dev');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
@@ -103,18 +103,18 @@ const mode = dev ? 'development' : 'production';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    let routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    let routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
     expect(routesCode).toContain('const dev = true;');
-    expect(routesCode).toContain('const mode = dev ? "development" : "production";');
+    expect(routesCode).toContain("const mode = dev ? 'development' : 'production';");
 
-    compile({ projectDir, isDev: false });
-    routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: false });
+    routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
     expect(routesCode).toContain('const dev = false;');
   });
 
 
-  it('preserves non-call value imports in route load scripts', () => {
+  it('preserves non-call value imports in route load scripts', async () => {
     const projectDir = createTempProject('request-values');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
@@ -127,15 +127,15 @@ const href = await Promise.resolve(pathname + url.search);
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain("const pathname = ");
     expect(routesCode).toContain("const url = ");
     expect(routesCode).toContain("const href = await Promise.resolve(pathname + url.search);");
   });
 
-  it('does not return imported action functions from async route load output', () => {
+  it('does not return imported action functions from async route load output', async () => {
     const projectDir = createTempProject('async-action-load');
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
     fs.writeFileSync(
@@ -162,15 +162,15 @@ export async function createUser(formData: FormData) {
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain("actions: { 'createUser': __m0.createUser }");
     expect(routesCode).not.toContain('return { user, createUser');
     expect(routesCode).not.toContain('return { user, getUser, createUser');
   });
 
-  it('promotes component action props into the route actions map', () => {
+  it('promotes component action props into the route actions map', async () => {
     const projectDir = createTempProject('component-action-prop');
     fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
@@ -198,13 +198,13 @@ import { submitForm } from '$server/actions';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain("actions: { 'submitForm': __m0.submitForm }");
   });
 
-  it('promotes layout component action props into layout actions', () => {
+  it('promotes layout component action props into layout actions', async () => {
     const projectDir = createTempProject('layout-action-prop');
     fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
@@ -239,13 +239,13 @@ import { signOut } from '$server/actions';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain("const __layoutActions = { 'signOut':");
   });
 
-  it('rewrites nested project imports inside transformed server modules', () => {
+  it('rewrites nested project imports inside transformed server modules', async () => {
     const projectDir = createTempProject('server-module-rewrite');
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
     fs.writeFileSync(
@@ -275,19 +275,19 @@ export async function getTitle() {
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
+    await compile({ projectDir, isDev: true });
 
     const rewrittenModule = fs.readFileSync(
       path.join(projectDir, '.kuratchi', 'modules', 'src', 'server', 'loaders.ts'),
       'utf-8',
     );
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(rewrittenModule).toContain("from './helpers.ts'");
     expect(routesCode).toContain("import * as __m0 from './modules/src/server/loaders.ts';");
   });
 
-  it('merges nested layout server state into child route compilation', () => {
+  it('merges nested layout server state into child route compilation', async () => {
     const projectDir = createTempProject('nested-layout-merge');
     fs.mkdirSync(path.join(projectDir, 'src', 'routes', 'dashboard', 'reports'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
@@ -322,15 +322,15 @@ const title = 'Quarterly';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain('const section = await __m0.getSection();');
     expect(routesCode).toContain('<h1>${__esc(section)}</h1>');
     expect(routesCode).toContain('<p>${__esc(title)}</p>');
   });
 
-  it('rejects @kuratchi/js/environment imports in client reactive scripts', () => {
+  it('rejects @kuratchi/js/environment imports in client reactive scripts', async () => {
     const projectDir = createTempProject('framework-dev-client');
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
@@ -344,12 +344,12 @@ $: if (dev) console.log(count);
       'utf-8',
     );
 
-    expect(() => compile({ projectDir, isDev: true })).toThrow(
+    expect(async () => await compile({ projectDir, isDev: true })).toThrow(
       'Client <script> blocks cannot import from @kuratchi/js/environment.',
     );
   });
 
-  it('emits route client assets for top-level $client event handlers', () => {
+  it('emits route client assets for top-level $client event handlers', async () => {
     const projectDir = createTempProject('route-client-handlers');
     fs.mkdirSync(path.join(projectDir, 'src', 'client'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
@@ -386,8 +386,8 @@ import { submitForm } from '$server/actions';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
     expect(routesCode).toContain('data-client-route="route_0"');
@@ -399,7 +399,7 @@ import { submitForm } from '$server/actions';
     expect(routesCode).toContain('window.__kuratchiClient?.register(');
   });
 
-  it('keeps $shared helpers in render scope without returning them from async load output', () => {
+  it('keeps $shared helpers in render scope without returning them from async load output', async () => {
     const projectDir = createTempProject('async-shared-render-helper');
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'shared'), { recursive: true });
@@ -431,8 +431,8 @@ const sites = await getSites();
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).not.toContain('return { sites, getSites, formatBytes');
     expect(routesCode).not.toContain('return { sites, formatBytes');
@@ -441,7 +441,7 @@ const sites = await getSites();
     expect(routesCode).toContain('<p>${__esc(formatBytes(sites[0].totalSize))}</p>');
   });
 
-  it('does not redeclare action imports in non-async render prelude', () => {
+  it('does not redeclare action imports in non-async render prelude', async () => {
     const projectDir = createTempProject('non-async-action-render');
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
     fs.writeFileSync(
@@ -463,15 +463,15 @@ import { signIn } from '$server/auth';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain("actions: { 'signIn': __m0.signIn }");
     expect(routesCode).not.toContain('const signIn = __m0.signIn;');
     expect(routesCode).toContain('const { signIn, params, breadcrumbs } = data;');
   });
 
-  it('emits route client assets for nested layout-level $client event handlers', () => {
+  it('emits route client assets for nested layout-level $client event handlers', async () => {
     const projectDir = createTempProject('layout-client-handlers');
     fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'routes', 'dashboard'), { recursive: true });
@@ -504,8 +504,8 @@ import { closeNearestDialog } from '$client/ui/dialog';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
     expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
@@ -513,7 +513,7 @@ import { closeNearestDialog } from '$client/ui/dialog';
     expect(routesCode).toContain('data-client-event="click"');
   });
 
-  it('emits root layout client assets for top-level $client event handlers', () => {
+  it('emits root layout client assets for top-level $client event handlers', async () => {
     const projectDir = createTempProject('root-layout-client-handlers');
     fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
     fs.writeFileSync(
@@ -551,8 +551,8 @@ import { closeNearestDialog } from '$client/ui/dialog';
       'utf-8',
     );
 
-    compile({ projectDir, isDev: true });
-    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
     expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
     expect(routesCode).toContain('__kuratchi/client/routes/layout_root.js');

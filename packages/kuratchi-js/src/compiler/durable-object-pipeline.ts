@@ -97,7 +97,7 @@ export function generateHandlerProxy(
   opts: { projectDir: string; runtimeDoImport: string },
 ): string {
   const doDir = path.join(opts.projectDir, '.kuratchi', 'do');
-  const origRelPath = path.relative(doDir, handler.absPath).replace(/\\/g, '/').replace(/\.ts$/, '.js');
+  const origRelPath = path.relative(doDir, handler.absPath).replace(/\\/g, '/');
   const handlerLocal = `__handler_${toSafeIdentifier(handler.fileName)}`;
   const lifecycle = new Set(['constructor', 'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError']);
 

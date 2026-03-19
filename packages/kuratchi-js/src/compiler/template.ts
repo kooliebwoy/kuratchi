@@ -177,7 +177,9 @@ export function splitTemplateRenderSections(template: string): TemplateRenderSec
 }
 
 function buildAppendStatement(expression: string, emitCall?: string): string {
-  return emitCall ? `${emitCall}(${expression});` : `__html += ${expression};`;
+  // When emitCall is provided, use it (e.g., __emit(expr))
+  // Otherwise, use array push for O(n) performance
+  return emitCall ? `${emitCall}(${expression});` : `__parts.push(${expression});`;
 }
 
 function extractPollFragmentExpr(tagText: string, rpcNameMap?: Map<string, string>): string | null {
@@ -325,7 +327,9 @@ export function compileTemplate(
   if (options.enableFragmentManifest) {
     template = instrumentPollFragments(template, rpcNameMap);
   }
-  const out: string[] = ['let __html = "";'];
+  // Use array accumulation for O(n) performance instead of O(n²) string concatenation
+  const useArrayAccum = !emitCall;
+  const out: string[] = useArrayAccum ? ['const __parts = [];'] : ['let __html = "";'];
   const lines = template.split('\n');
   let inStyle = false;
   let inScript = false;
@@ -481,6 +485,10 @@ export function compileTemplate(
     }
     out.push(...compileHtmlLineStatements(htmlLine, actionNames, rpcNameMap, options));
   }
+  // For non-emit mode, add final join to produce __html
+  if (!emitCall) {
+    out.push('let __html = __parts.join(\'\');');
+  }
   return out.join('\n');
 }
 
@@ -568,9 +576,9 @@ function transformClientScriptBlock(block: string): string {
   const openTag = match[1];
   const body = match[2];
   const closeTag = match[3];
+  // TypeScript is preserved — wrangler's esbuild handles transpilation
   if (!/\$\s*:/.test(body)) {
-    const transpiled = transpileTypeScript(body, 'client-script.ts');
-    return `${openTag}${transpiled}${closeTag}`;
+    return `${openTag}${body}${closeTag}`;
   }
 
   const out: string[] = [];
@@ -673,8 +681,8 @@ function transformClientScriptBlock(block: string): string {
   }
   out.splice(insertAt, 0, 'const __k$ = window.__kuratchiReactive;');
 
-  const transpiled = transpileTypeScript(out.join('\n'), 'client-script.ts');
-  return `${openTag}${transpiled}${closeTag}`;
+  // TypeScript is preserved — wrangler's esbuild handles transpilation
+  return `${openTag}${out.join('\n')}${closeTag}`;
 }
 
 function braceDelta(line: string): number {
@@ -1137,7 +1145,7 @@ function compileHtmlSegment(
           pos = closeIdx + 1;
           continue;
         } else if (attrName === 'data-poll') {
-          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]" data-poll-id="stable-id"
+          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]" data-poll-id="signed-id"
           const pollCallMatch = inner.match(/^(\w+)\((.*)\)$/);
           if (pollCallMatch) {
             const fnName = pollCallMatch[1];
@@ -1145,15 +1153,15 @@ function compileHtmlSegment(
             const argsExpr = pollCallMatch[2].trim();
             // Remove the trailing "data-poll=" we already appended
             result = result.replace(/\s*data-poll=$/, '');
-            // Emit data-poll, data-poll-args, and stable data-poll-id (based on fn + args expression)
+            // Emit data-poll, data-poll-args, and signed data-poll-id (signed at runtime for security)
             result += ` data-poll="${rpcName}"`;
             if (argsExpr) {
               result += ` data-poll-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-              // Stable ID based on args so same data produces same ID across renders
-              result += ` data-poll-id="\${__esc('__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_'))}"`;
+              // Sign the fragment ID at runtime with __signFragment(fragmentId, routePath)
+              result += ` data-poll-id="\${__signFragment('__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_'))}"`;
             } else {
-              // No args - use function name as ID
-              result += ` data-poll-id="__poll_${rpcName}"`;
+              // No args - sign with function name as base ID
+              result += ` data-poll-id="\${__signFragment('__poll_${rpcName}')}"`;
             }
           }
           pos = closeIdx + 1;
@@ -1170,12 +1178,13 @@ function compileHtmlSegment(
             throw new Error(`Invalid action expression: "${inner}". Use action={myActionFn} for server actions.`);
           }
 
-          // Remove trailing `action=` from output and inject _action hidden field.
+          // Remove trailing `action=` from output and inject _action hidden field + CSRF token.
           result = result.replace(/\s*action=$/, '');
           const actionValue = actionNames === undefined
             ? `\${__esc(${inner})}`
             : inner;
-          pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">`;
+          // Inject both _action and _csrf hidden fields for server action forms
+          pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">\\n<input type="hidden" name="_csrf" value="\${__getCsrfToken()}">`;
           pos = closeIdx + 1;
           continue;
         } else if (/^on[A-Za-z]+$/i.test(attrName)) {
@@ -1321,4 +1330,4 @@ export function generateRenderFunction(template: string): string {
 }`;
 }
 
-import { transpileTypeScript } from './transpile.js';
+// TypeScript transpilation removed — wrangler's esbuild handles it

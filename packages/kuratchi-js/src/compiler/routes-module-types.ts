@@ -3,6 +3,7 @@ import type {
   DoConfigEntry,
   DoHandlerEntry,
   OrmDatabaseEntry,
+  SecurityConfigEntry,
   WorkerClassConfigEntry,
 } from './compiler-shared.js';
 
@@ -24,6 +25,7 @@ export interface GenerateRoutesModuleOptions {
   compiledErrorPages: Map<number, string>;
   ormDatabases: OrmDatabaseEntry[];
   authConfig: AuthConfigEntry | null;
+  securityConfig: SecurityConfigEntry;
   doConfig: DoConfigEntry[];
   doHandlers: DoHandlerEntry[];
   workflowConfig: WorkerClassConfigEntry[];

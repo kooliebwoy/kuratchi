@@ -36,8 +36,9 @@ export function assembleRouteState(opts: {
   fullPath: string;
   routesDir: string;
   layoutRelativePaths: string[];
+  fileContents?: Map<string, string>;
 }): RouteStatePlan {
-  const { parsed, fullPath, routesDir, layoutRelativePaths } = opts;
+  const { parsed, fullPath, routesDir, layoutRelativePaths, fileContents } = opts;
 
   let effectiveTemplate = parsed.template;
   const routeScriptParts: string[] = [];
@@ -74,9 +75,8 @@ export function assembleRouteState(opts: {
     if (layoutRelPath === 'layout.html') continue;
 
     const layoutPath = path.join(routesDir, layoutRelPath);
-    if (!fs.existsSync(layoutPath)) continue;
-
-    const layoutSource = fs.readFileSync(layoutPath, 'utf-8');
+    const layoutSource = fileContents?.get(layoutPath) ?? (fs.existsSync(layoutPath) ? fs.readFileSync(layoutPath, 'utf-8') : null);
+    if (!layoutSource) continue;
     const layoutParsed = parseFile(layoutSource, { kind: 'layout', filePath: layoutPath });
     if (layoutParsed.loadFunction) {
       throw new Error(`${layoutRelPath} cannot export load(); nested layouts currently share the child route load lifecycle.`);

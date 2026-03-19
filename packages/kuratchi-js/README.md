@@ -766,9 +766,166 @@ Kuratchi also exposes a framework build-mode flag:
 - `dev` is compile-time framework state, not a generic process env var
 - `@kuratchi/js/environment` is intended for server route code, not client `$:` scripts
 
+## Security
+
+Kuratchi includes built-in security features that are enabled by default or configurable via `kuratchi.config.ts`.
+
+### Default Security Headers
+
+All responses include these headers automatically:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+### CSRF Protection
+
+CSRF protection is **enabled by default** for all form actions and RPC calls.
+
+**How it works:**
+1. A cryptographically random token is generated per session and stored in a cookie
+2. The compiler auto-injects a hidden `_csrf` field into forms with `action={fn}`
+3. The client bridge includes the CSRF token header in fetch action requests
+4. Server validates the token using timing-safe comparison
+
+No configuration required — it just works.
+
+```html
+<!-- CSRF token is auto-injected -->
+<form action={submitForm}>
+  <input type="text" name="email" />
+  <button type="submit">Submit</button>
+</form>
+```
+
+### Authentication Enforcement
+
+Optionally require authentication for all RPC calls or form actions:
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  security: {
+    rpcRequireAuth: true,      // Require auth for all RPC calls (default: false)
+    actionRequireAuth: true,   // Require auth for all form actions (default: false)
+  },
+});
+```
+
+When enabled, unauthenticated requests return `401 Authentication required`. The check looks for `locals.user` or `locals.session.user`, which is populated by `@kuratchi/auth`.
+
+For per-function control, use guards in individual functions instead:
+
+```ts
+import { requireAuth } from '@kuratchi/auth';
+
+export async function deleteItem(formData: FormData) {
+  await requireAuth(); // Throws 401 if not authenticated
+  // ... action logic
+}
+```
+
+### Configurable Security Headers
+
+Add CSP, HSTS, and Permissions-Policy headers:
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  security: {
+    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+    strictTransportSecurity: "max-age=31536000; includeSubDomains",
+    permissionsPolicy: "camera=(), microphone=(), geolocation=()",
+  },
+});
+```
+
+### HTML Sanitization
+
+The `{@html}` directive automatically sanitizes output to prevent XSS:
+
+- Removes dangerous elements: `<script>`, `<iframe>`, `<object>`, `<embed>`, `<style>`, `<template>`, etc.
+- Strips all `on*` event handlers
+- Neutralizes `javascript:` and `vbscript:` URLs
+- Removes `data:` URLs from `src` attributes
+
+For user-generated HTML, we recommend using DOMPurify on the client side for maximum security.
+
+### Fragment Refresh Security
+
+Fragment IDs used for `data-poll` are automatically signed to prevent attackers from probing for data:
+
+- Fragment IDs are signed at render time with the session's CSRF token
+- Server validates signatures before returning fragment content
+- Invalid or unsigned fragments return 403 when CSRF is enabled
+
+This is automatic — no configuration required.
+
+### Query Override Protection
+
+Query function calls via `x-kuratchi-query-fn` headers are validated against a whitelist:
+
+- Only query functions registered for the current route can be called
+- Prevents attackers from invoking arbitrary RPC functions
+- Returns 403 for unauthorized query function calls
+
+This is automatic — no configuration required.
+
+### Client Bridge Security
+
+Client-side handler invocation is protected against injection attacks:
+
+- Route and handler IDs are validated against safe patterns
+- Prototype pollution attempts are blocked (`__proto__`, `constructor`, `prototype`)
+- Uses `hasOwnProperty` checks to prevent prototype chain traversal
+
+This is automatic — no configuration required.
+
+### Error Information Protection
+
+Error messages are sanitized to prevent information leakage in production:
+
+- Generic errors show full details in dev mode only
+- Production uses safe fallback messages ("Internal Server Error", "Action failed")
+- `ActionError` and `PageError` messages are always shown (developer-controlled)
+
+```ts
+// Safe to show - developer-controlled message
+throw new ActionError('Invalid email format');
+
+// In production: "Internal Server Error" (details hidden)
+// In dev mode: Full error message for debugging
+throw new Error('Database connection failed at line 42');
+```
+
+### Full Security Configuration
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  security: {
+    // CSRF Protection (enabled by default)
+    csrfEnabled: true,
+    csrfCookieName: '__kuratchi_csrf',
+    csrfHeaderName: 'x-kuratchi-csrf',
+
+    // Authentication Enforcement
+    rpcRequireAuth: false,      // Require auth for RPC calls
+    actionRequireAuth: false,   // Require auth for form actions
+
+    // Security Headers
+    contentSecurityPolicy: "default-src 'self'",
+    strictTransportSecurity: "max-age=31536000; includeSubDomains",
+    permissionsPolicy: "camera=(), microphone=()",
+  },
+});
+```
+
+For a comprehensive security analysis and roadmap, see [SECURITY.md](./SECURITY.md).
+
 ## `kuratchi.config.ts`
 
-Optional. Required only when using framework integrations (ORM, auth, UI).
+Optional. Required only when using framework integrations (ORM, auth, UI, security).
 
 **Durable Objects are auto-discovered** — no config needed unless you need `stubId` for auth integration.
 

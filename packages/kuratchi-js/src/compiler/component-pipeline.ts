@@ -3,7 +3,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseFile, stripTopLevelImports } from './parser.js';
 import { compileTemplate } from './template.js';
-import { transpileTypeScript } from './transpile.js';
 import { buildDevAliasDeclarations } from './script-transform.js';
 
 export interface ComponentCompiler {
@@ -89,12 +88,8 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
 
     const propsCode = parsed.script ? stripTopLevelImports(parsed.script) : '';
     const devDecls = buildDevAliasDeclarations(parsed.devAliases, isDev);
+    // TypeScript is preserved — wrangler's esbuild handles transpilation
     const effectivePropsCode = [devDecls, propsCode].filter(Boolean).join('\n');
-    const transpiledPropsCode = propsCode
-      ? transpileTypeScript(effectivePropsCode, `component-script:${fileName}.ts`)
-      : devDecls
-        ? transpileTypeScript(devDecls, `component-script:${fileName}.ts`)
-        : '';
 
     let source = parsed.template;
     let styleBlock = '';
@@ -132,11 +127,11 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     componentActionCache.set(fileName, actionPropNames);
 
     const body = compileTemplate(source, subComponentNames, undefined, undefined);
-    const scopeOpen = `__html += '<div class="${scopeHash}">';`;
-    const scopeClose = `__html += '</div>';`;
+    const scopeOpen = `__parts.push('<div class="${scopeHash}">');`;
+    const scopeClose = `__parts.push('</div>');`;
     const bodyLines = body.split('\n');
     const scopedBody = [bodyLines[0], scopeOpen, ...bodyLines.slice(1), scopeClose].join('\n');
-    const fnBody = transpiledPropsCode ? `${transpiledPropsCode}\n  ${scopedBody}` : scopedBody;
+    const fnBody = effectivePropsCode ? `${effectivePropsCode}\n  ${scopedBody}` : scopedBody;
     const compiled = `function ${funcName}(props, __esc) {\n  ${fnBody}\n  return __html;\n}`;
 
     compiledComponentCache.set(fileName, compiled);

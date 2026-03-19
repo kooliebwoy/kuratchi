@@ -185,15 +185,55 @@ export function __rawHtml(v: any): string {
 /** Best-effort HTML sanitizer for {@html ...} template output. */
 export function __sanitizeHtml(v: any): string {
   let html = __rawHtml(v);
+  // Remove dangerous elements entirely
   html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
   html = html.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
   html = html.replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '');
   html = html.replace(/<embed\b[^>]*>/gi, '');
+  html = html.replace(/<base\b[^>]*>/gi, '');
+  html = html.replace(/<meta\b[^>]*>/gi, '');
+  html = html.replace(/<link\b[^>]*>/gi, '');
+  html = html.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  html = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, '');
+  html = html.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  // Remove all event handlers (on*)
   html = html.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-  html = html.replace(/\s(href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
-  html = html.replace(/\s(href|src|xlink:href)\s*=\s*javascript:[^\s>]+/gi, ' $1="#"');
+  // Remove javascript: URLs in href, src, xlink:href, action, formaction, data
+  html = html.replace(/\s(href|src|xlink:href|action|formaction|data)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, ' $1="#"');
+  html = html.replace(/\s(href|src|xlink:href|action|formaction|data)\s*=\s*javascript:[^\s>]+/gi, ' $1="#"');
+  // Remove vbscript: URLs
+  html = html.replace(/\s(href|src|xlink:href|action|formaction|data)\s*=\s*(["'])\s*vbscript:[\s\S]*?\2/gi, ' $1="#"');
+  html = html.replace(/\s(href|src|xlink:href|action|formaction|data)\s*=\s*vbscript:[^\s>]+/gi, ' $1="#"');
+  // Remove data: URLs in src (can contain scripts)
+  html = html.replace(/\ssrc\s*=\s*(["'])\s*data:[\s\S]*?\1/gi, ' src="#"');
+  html = html.replace(/\ssrc\s*=\s*data:[^\s>]+/gi, ' src="#"');
+  // Remove srcdoc (can contain arbitrary HTML)
   html = html.replace(/\ssrcdoc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  // Remove form-related dangerous attributes
+  html = html.replace(/\sformaction\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  // Remove SVG-specific dangerous elements
+  html = html.replace(/<foreignObject\b[^>]*>[\s\S]*?<\/foreignObject>/gi, '');
+  html = html.replace(/<use\b[^>]*>/gi, '');
   return html;
+}
+
+/** Get CSRF token for form injection (used by template compiler) */
+export function __getCsrfToken(): string {
+  return __locals.__csrfToken || '';
+}
+
+/** Sign a fragment ID for secure polling (used by template compiler) */
+export function __signFragment(fragmentId: string): string {
+  const token = __locals.__csrfToken || '';
+  const routePath = __locals.__currentRoutePath || '/';
+  const payload = `${fragmentId}:${routePath}:${token}`;
+  // FNV-1a hash for fast, consistent signing
+  let hash = 2166136261;
+  for (let i = 0; i < payload.length; i++) {
+    hash ^= payload.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  return `${fragmentId}:${hash.toString(36)}`;
 }
 
 
