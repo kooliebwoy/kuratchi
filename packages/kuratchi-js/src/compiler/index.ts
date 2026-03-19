@@ -526,10 +526,9 @@ export function compile(options: CompileOptions): string {
     if(typeof dialog.showModal === 'function') dialog.showModal();
   }, true);
   (function initPoll(){
-    // Parse human-readable interval: 2s, 500ms, 1m, 30s (default 30s)
     function parseInterval(str){
       if(!str) return 30000;
-      var m = str.match(/^(\d+(?:\.\d+)?)(ms|s|m)?$/i);
+      var m = str.match(/^(\\d+(?:\\.\\d+)?)(ms|s|m)?$/i);
       if(!m) return 30000;
       var n = parseFloat(m[1]);
       var u = (m[2] || 's').toLowerCase();
@@ -544,22 +543,21 @@ export function compile(options: CompileOptions): string {
       if(!fn) return;
       el.setAttribute('data-kuratchi-poll-bound', '1');
       var pollId = el.getAttribute('data-poll-id');
-      if(!pollId) return; // Server must provide stable poll ID
+      if(!pollId) return;
       var baseIv = parseInterval(el.getAttribute('data-interval'));
-      var maxIv = Math.min(baseIv * 10, 300000); // cap at 5 minutes
+      var maxIv = Math.min(baseIv * 10, 300000);
       var backoff = el.getAttribute('data-backoff') !== 'false';
       var prevHtml = el.innerHTML;
       var currentIv = baseIv;
       (function tick(){
         setTimeout(function(){
-          // Request only the fragment, not the full page
           fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
             .then(function(r){ return r.text(); })
             .then(function(html){
               if(prevHtml !== html){
                 el.innerHTML = html;
                 prevHtml = html;
-                currentIv = baseIv; // Reset backoff on change
+                currentIv = baseIv;
               } else if(backoff && currentIv < maxIv){
                 currentIv = Math.min(currentIv * 1.5, maxIv);
               }
