@@ -227,6 +227,29 @@ export interface AuthConfig {
     binding?: string;
     [key: string]: any;
   } | Record<string, any>;
+
+  /** Security configuration â€" CSRF protection, RPC security */
+  security?: SecurityConfig;
+}
+
+/** Security configuration for kuratchi.config.ts */
+export interface SecurityConfig {
+  /** Enable CSRF protection for actions and RPC (default: true) */
+  csrfEnabled?: boolean;
+  /** CSRF cookie name (default: '__kuratchi_csrf') */
+  csrfCookieName?: string;
+  /** CSRF header name for fetch requests (default: 'x-kuratchi-csrf') */
+  csrfHeaderName?: string;
+  /** Require authentication for RPC calls (default: false) */
+  rpcRequireAuth?: boolean;
+  /** Require authentication for form actions (default: false) */
+  actionRequireAuth?: boolean;
+  /** Content Security Policy directive string */
+  contentSecurityPolicy?: string;
+  /** Strict-Transport-Security header value */
+  strictTransportSecurity?: string;
+  /** Permissions-Policy header value */
+  permissionsPolicy?: string;
 }
 
 

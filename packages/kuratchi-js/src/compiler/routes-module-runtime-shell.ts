@@ -82,6 +82,16 @@ export default createGeneratedWorker({
   workflowStatusRpc: typeof __workflowStatusRpc !== 'undefined' ? __workflowStatusRpc : {},
   initializeRequest: __initializeRequest,
   preRouteChecks: __preRouteChecks,
+  security: {
+    csrfEnabled: ${opts.securityConfig.csrfEnabled},
+    csrfCookieName: ${JSON.stringify(opts.securityConfig.csrfCookieName)},
+    csrfHeaderName: ${JSON.stringify(opts.securityConfig.csrfHeaderName)},
+    rpcRequireAuth: ${opts.securityConfig.rpcRequireAuth},
+    actionRequireAuth: ${opts.securityConfig.actionRequireAuth},
+    contentSecurityPolicy: ${JSON.stringify(opts.securityConfig.contentSecurityPolicy)},
+    strictTransportSecurity: ${JSON.stringify(opts.securityConfig.strictTransportSecurity)},
+    permissionsPolicy: ${JSON.stringify(opts.securityConfig.permissionsPolicy)},
+  },
 });
 `;
 }

@@ -4,7 +4,6 @@ import * as path from 'node:path';
 
 import type { CompiledAsset } from './asset-pipeline.js';
 import { collectReferencedIdentifiers, parseImportStatement, type RouteImportEntry } from './import-linking.js';
-import { transpileTypeScript } from './transpile.js';
 
 export interface ClientEventRegistration {
   routeId: string;
@@ -238,15 +237,13 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
       return `${JSON.stringify(record.id)}: (args, event, element) => ${record.calleeExpr}(...args, event, element)`;
     });
 
-    const source = transpileTypeScript(
-      [
-        ...importLines,
-        `window.__kuratchiClient?.register(${JSON.stringify(this.routeId)}, {`,
-        registrationEntries.map((entry) => `  ${entry},`).join('\n'),
-        `});`,
-      ].join('\n'),
-      `client-route:${this.routeId}.ts`,
-    );
+    // TypeScript is preserved — wrangler's esbuild handles transpilation
+    const source = [
+      ...importLines,
+      `window.__kuratchiClient?.register(${JSON.stringify(this.routeId)}, {`,
+      registrationEntries.map((entry) => `  ${entry},`).join('\n'),
+      `});`,
+    ].join('\n');
     const asset = buildAsset(assetName, source);
     this.compiler.registerAsset(asset);
     return { assetName, asset };
@@ -312,9 +309,9 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
       throw new Error(`[kuratchi compiler] Browser module not found: ${resolved}`);
     }
 
+    // TypeScript is preserved — wrangler's esbuild handles transpilation
     const source = fs.readFileSync(resolved, 'utf-8');
-    let rewritten = transpileTypeScript(source, `client-module:${relFromSrc}`);
-    rewritten = rewriteImportSpecifiers(rewritten, (spec) => {
+    let rewritten = rewriteImportSpecifiers(source, (spec) => {
       const targetAbs = resolveClientImportTarget(this.srcDir, resolved, spec);
       const targetAssetName = this.transformClientModule(targetAbs);
       return toRelativeSpecifier(assetName, targetAssetName);

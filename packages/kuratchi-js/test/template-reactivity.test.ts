@@ -10,7 +10,7 @@ $: console.log(\`Users updated: \${users.length}\`);
 
     const compiled = compileTemplate(template);
     expect(compiled).toContain("const __k$ = window.__kuratchiReactive;");
-    expect(compiled).toContain('let users = __k$.state(["Alice"]);');
+    expect(compiled).toContain("let users = __k$.state(['Alice']);");
     expect(compiled).toContain('__k$.effect(() => {');
     expect(compiled).toContain('console.log(\\`Users updated: \\${users.length}\\`);');
     expect(compiled).toContain('Users updated: \\${users.length}');
@@ -26,7 +26,7 @@ function resetUsers() {
 </script>`;
 
     const compiled = compileTemplate(template);
-    expect(compiled).toContain('users = __k$.replace(users, ["Bob"]);');
+    expect(compiled).toContain("users = __k$.replace(users, ['Bob']);");
   });
 
   it('transforms $: block syntax into an effect block', () => {
@@ -39,7 +39,7 @@ $: {
 </script>`;
 
     const compiled = compileTemplate(template);
-    expect(compiled).toContain('let form = __k$.state({ first: "", last: "" });');
+    expect(compiled).toContain("let form = __k$.state({ first: '', last: '' });");
     expect(compiled).toContain("__k$.effect(() => {");
     expect(compiled).toContain('const fullName = \\`\\${form.first} \\${form.last}\\`.trim();');
     expect(compiled).toContain("});");
@@ -53,7 +53,7 @@ $: console.log(users.length);
 </script>`;
 
     const compiled = compileTemplate(template);
-    const importIdx = compiled.indexOf('import { x } from "./x.js";');
+    const importIdx = compiled.indexOf("import { x } from './x.js';");
     const runtimeIdx = compiled.indexOf('const __k$ = window.__kuratchiReactive;');
     expect(importIdx).toBeGreaterThan(-1);
     expect(runtimeIdx).toBeGreaterThan(-1);
@@ -68,7 +68,7 @@ console.log(title);
 
     const compiled = compileTemplate(template);
     expect(compiled).not.toContain("const __k$ = window.__kuratchiReactive;");
-    expect(compiled).toContain('const title = "Hello";');
+    expect(compiled).toContain("const title = 'Hello';");
   });
 
   it('transpiles TypeScript syntax inside client scripts', () => {
@@ -78,9 +78,7 @@ const siteKey = env?.TURNSTILE_SITE_KEY as string | undefined;
 </script>`;
 
     const compiled = compileTemplate(template);
-    expect(compiled).toContain('const title = "Hello";');
-    expect(compiled).toContain('const siteKey = env?.TURNSTILE_SITE_KEY;');
-    expect(compiled).not.toContain(' as string');
-    expect(compiled).not.toContain('const title: string');
+    expect(compiled).toContain("const title: string = 'Hello';");
+    expect(compiled).toContain('const siteKey = env?.TURNSTILE_SITE_KEY as string | undefined;');
   });
 });

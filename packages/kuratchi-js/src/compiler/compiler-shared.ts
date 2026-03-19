@@ -20,6 +20,25 @@ export interface AuthConfigEntry {
   hasOrganization: boolean;
 }
 
+export interface SecurityConfigEntry {
+  /** Enable CSRF protection for actions and RPC (default: true) */
+  csrfEnabled: boolean;
+  /** CSRF cookie name (default: '__kuratchi_csrf') */
+  csrfCookieName: string;
+  /** CSRF header name for fetch requests (default: 'x-kuratchi-csrf') */
+  csrfHeaderName: string;
+  /** Require authentication for RPC calls (default: false) */
+  rpcRequireAuth: boolean;
+  /** Require authentication for form actions (default: false) */
+  actionRequireAuth: boolean;
+  /** Content Security Policy directive string (default: null - no CSP) */
+  contentSecurityPolicy: string | null;
+  /** Strict-Transport-Security header (default: null - no HSTS) */
+  strictTransportSecurity: string | null;
+  /** Permissions-Policy header (default: null) */
+  permissionsPolicy: string | null;
+}
+
 export interface DoConfigEntry {
   binding: string;
   className: string;

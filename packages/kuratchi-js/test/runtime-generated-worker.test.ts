@@ -176,6 +176,8 @@ describe('generated worker runtime', () => {
       assetsPrefix: '/assets/',
       assets: {},
       errorPages: {},
+      // Disable CSRF for this test to allow unsigned fragment IDs
+      security: { csrfEnabled: false },
     });
 
     const response = await worker.fetch(

@@ -63,6 +63,7 @@ if (!user) {
     expect(compiled).toContain('__pushFragment(');
     expect(compiled).toContain('__popFragment();');
     expect(compiled).toContain('__emit(`');
-    expect(compiled).toContain('data-poll-id="${__esc(\'__poll_\' + String(job.id).replace(/[^a-zA-Z0-9]/g, \'_\'))}"');
+    // Fragment IDs are now signed at runtime for security
+    expect(compiled).toContain('data-poll-id="${__signFragment(\'__poll_\' + String(job.id).replace(/[^a-zA-Z0-9]/g, \'_\'))}"');
   });
 });

@@ -35,6 +35,11 @@ export function __getDoSelf(): any {
 
 const _resolvers = new Map<string, () => Promise<any>>();
 const _classBindings = new WeakMap<Function, string>();
+const _rpcProxyCache = new WeakMap<Function, any>();
+
+function __isDevMode(): boolean {
+  return !!(globalThis as Record<string, any>).__kuratchi_DEV__;
+}
 
 /** @internal â€” called by compiler-generated init code */
 export function __registerDoResolver(binding: string, resolver: () => Promise<any>): void {
@@ -107,35 +112,43 @@ export class kuratchiDO {
    */
   static rpc<T extends typeof kuratchiDO>(this: T): RpcOf<InstanceType<T>> {
     const klass = this as unknown as Function;
-    return new Proxy({} as any, {
+    // Cache proxy per class to avoid repeated Proxy creation
+    let cached = _rpcProxyCache.get(klass);
+    if (cached) return cached;
+
+    const proxy = new Proxy({} as any, {
       get(_, method: string) {
         return async (...args: any[]) => {
           const binding = (this as any).binding || _classBindings.get(klass);
           if (!binding) {
             throw new Error(`[KuratchiJS] Missing DO binding for class '${(this as any)?.name || 'UnknownDO'}'. Add static binding or ensure compiler binding registration is active.`);
           }
-          console.log(`[rpc] ${binding}.${method}() — resolving stub...`);
+          if (__isDevMode()) console.log(`[rpc] ${binding}.${method}() — resolving stub...`);
           const stub = await __getDoStub(binding);
           if (!stub) {
             throw new Error(`[KuratchiJS] Not authenticated — cannot call '${method}' on ${binding}`);
           }
-          console.log(`[rpc] ${binding}.${method}() — stub type: ${stub?.constructor?.name ?? typeof stub}`);
-          console.log(`[rpc] ${binding}.${method}() — calling with ${args.length} arg(s)...`);
+          if (__isDevMode()) {
+            console.log(`[rpc] ${binding}.${method}() — stub type: ${stub?.constructor?.name ?? typeof stub}`);
+            console.log(`[rpc] ${binding}.${method}() — calling with ${args.length} arg(s)...`);
+          }
           try {
             // Call method directly on the stub — DO NOT detach with stub[method]
             // then .apply(). Workers RPC stubs are Proxy-based; detaching breaks
             // the runtime's interception and causes DataCloneError trying to
             // serialize the DurableObject as `this`.
             const result = await stub[method](...args);
-            console.log(`[rpc] ${binding}.${method}() — returned, result type: ${typeof result}`);
+            if (__isDevMode()) console.log(`[rpc] ${binding}.${method}() — returned, result type: ${typeof result}`);
             return result;
           } catch (err: any) {
-            console.error(`[rpc] ${binding}.${method}() — THREW: ${err.message}`);
+            if (__isDevMode()) console.error(`[rpc] ${binding}.${method}() — THREW: ${err.message}`);
             throw err;
           }
         };
       },
     });
+    _rpcProxyCache.set(klass, proxy);
+    return proxy;
   }
 }
 

@@ -1,6 +1,5 @@
 import type { ParsedFile } from './parser.js';
 import { stripTopLevelImports } from './parser.js';
-import { transpileTypeScript } from './transpile.js';
 import {
   buildDevAliasDeclarations,
   buildSegmentedScriptBody,
@@ -256,15 +255,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     );
   }
 
-  if (scriptBody) {
-    scriptBody = transpileTypeScript(scriptBody, `route-script:${pattern}.ts`);
-  }
-  if (renderPreludeSource) {
-    renderPreludeSource = transpileTypeScript(renderPreludeSource, `route-render:${pattern}.ts`);
-  }
-  if (explicitLoadFunction) {
-    explicitLoadFunction = transpileTypeScript(explicitLoadFunction, `route-load:${pattern}.ts`);
-  }
+  // TypeScript is preserved — wrangler's esbuild handles transpilation
 
   const scriptReturnVars = parsed.script
     ? parsed.dataVars.filter((name) =>
@@ -369,17 +360,20 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
       .map((rpc) => `'${rpc.rpcId}': ${rpc.expression}`)
       .join(', ');
     parts.push(`    rpc: { ${rpcEntries} }`);
+    // Also emit allowedQueries for query override validation
+    const allowedQueryNames = plan.rpc.map((rpc) => `'${rpc.rpcId}'`).join(', ');
+    parts.push(`    allowedQueries: [${allowedQueryNames}]`);
   }
 
   const destructure = `const { ${plan.render.dataVars.join(', ')} } = data;\n      `;
   let finalHeadRenderBody = plan.render.headBody;
   if (plan.render.componentStyles.length > 0) {
     const lines = plan.render.headBody.split('\n');
-    const styleLines = plan.render.componentStyles.map((css) => `__html += \`${css}\\n\`;`);
+    const styleLines = plan.render.componentStyles.map((css) => `__parts.push(\`${css}\\n\`);`);
     finalHeadRenderBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
   }
   if (plan.render.clientModuleHref) {
-    finalHeadRenderBody += `\n__html += \`<script type="module" src="${plan.render.clientModuleHref}"></script>\\n\`;`;
+    finalHeadRenderBody += `\n__parts.push(\`<script type="module" src="${plan.render.clientModuleHref}"></script>\\n\`);`;
   }
 
   parts.push(`    render(data) {
@@ -390,9 +384,10 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
       const __rendered = (() => {
         const __fragments = Object.create(null);
         const __fragmentStack = [];
+        const __parts = [];
         const __emit = (chunk) => {
           const __value = chunk == null ? '' : String(chunk);
-          __html += __value;
+          __parts.push(__value);
           for (const __fragmentId of __fragmentStack) {
             __fragments[__fragmentId] = (__fragments[__fragmentId] || '') + __value;
           }
@@ -408,7 +403,7 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
           __fragmentStack.pop();
         };
         ${plan.render.body}
-        return { html: __html, fragments: __fragments };
+        return { html: __parts.join(''), fragments: __fragments };
       })();
       return { html: __rendered.html, head: __head, fragments: __rendered.fragments };
     }`);

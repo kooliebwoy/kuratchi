@@ -72,11 +72,23 @@ const BRIDGE_SOURCE = `(function(){
   window.__kuratchiClient = window.__kuratchiClient || {
     register: function(routeId, handlers){
       if(!routeId || !handlers) return;
+      // Validate routeId format (alphanumeric, underscores, hyphens only)
+      if(!/^[a-zA-Z0-9_-]+$/.test(String(routeId))) return;
       __clientHandlers[String(routeId)] = Object.assign(__clientHandlers[String(routeId)] || {}, handlers);
     },
     invoke: function(routeId, handlerId, args, event, element){
-      var routeHandlers = __clientHandlers[String(routeId)] || null;
-      var handler = routeHandlers ? routeHandlers[String(handlerId)] : null;
+      // Validate inputs to prevent prototype pollution and injection
+      if(!routeId || !handlerId) return;
+      var safeRouteId = String(routeId);
+      var safeHandlerId = String(handlerId);
+      // Block prototype pollution attempts
+      if(safeRouteId === '__proto__' || safeRouteId === 'constructor' || safeRouteId === 'prototype') return;
+      if(safeHandlerId === '__proto__' || safeHandlerId === 'constructor' || safeHandlerId === 'prototype') return;
+      // Validate handler ID format (alphanumeric, underscores only - matches JS identifier rules)
+      if(!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(safeHandlerId)) return;
+      var routeHandlers = __clientHandlers[safeRouteId] || null;
+      if(!routeHandlers || !Object.prototype.hasOwnProperty.call(routeHandlers, safeHandlerId)) return;
+      var handler = routeHandlers[safeHandlerId];
       if(typeof handler !== 'function') return;
       return handler(Array.isArray(args) ? args : [], event, element);
     }
@@ -256,7 +268,10 @@ const BRIDGE_SOURCE = `(function(){
     fd.append('_args', b.getAttribute('data-args') || '[]');
     var m = b.getAttribute('data-action-method');
     if(m) fd.append('_method', String(m).toUpperCase());
-    fetch(location.pathname, { method: 'POST', body: fd })
+    var csrfToken = (document.cookie.match(/(?:^|;\\s*)__kuratchi_csrf=([^;]*)/) || [])[1] || '';
+    var fetchHeaders = {};
+    if(csrfToken) fetchHeaders['x-kuratchi-csrf'] = csrfToken;
+    fetch(location.pathname, { method: 'POST', body: fd, headers: fetchHeaders })
       .then(function(r){
         if(!r.ok){
           return r.json().then(function(j){ throw new Error((j && j.error) || ('HTTP ' + r.status)); }).catch(function(){ throw new Error('HTTP ' + r.status); });

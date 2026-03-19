@@ -56,10 +56,10 @@ async function runCreate() {
   await create(positional[0], flags);
 }
 
-function runBuild(isDev = false) {
+async function runBuild(isDev = false) {
   console.log('[kuratchi] Compiling...');
   try {
-    const outFile = compile({ projectDir, isDev });
+    const outFile = await compile({ projectDir, isDev });
     console.log(`[kuratchi] Built â†’ ${path.relative(projectDir, outFile)}`);
   } catch (err: any) {
     console.error(`[kuratchi] Build failed: ${err.message}`);
@@ -68,7 +68,7 @@ function runBuild(isDev = false) {
 }
 
 async function runWatch(withWrangler = false): Promise<void> {
-  runBuild(true);
+  await runBuild(true);
 
   const routesDir = path.join(projectDir, 'src', 'routes');
   const serverDir = path.join(projectDir, 'src', 'server');
@@ -78,10 +78,10 @@ async function runWatch(withWrangler = false): Promise<void> {
 
   const triggerRebuild = () => {
     if (rebuildTimeout) clearTimeout(rebuildTimeout);
-    rebuildTimeout = setTimeout(() => {
+    rebuildTimeout = setTimeout(async () => {
       console.log('[kuratchi] File changed, rebuilding...');
       try {
-        compile({ projectDir, isDev: true });
+        await compile({ projectDir, isDev: true });
         console.log('[kuratchi] Rebuilt.');
       } catch (err: any) {
         console.error(`[kuratchi] Rebuild failed: ${err.message}`);

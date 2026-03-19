@@ -52,7 +52,7 @@ export function createServerModuleCompiler(
     const normalizedNoExt = absPath.replace(/\\/g, '/').replace(/\.[^.\/]+$/, '');
     const proxyNoExt = doHandlerProxyPaths.get(normalizedNoExt);
     if (!proxyNoExt) return null;
-    return resolveExistingModuleFile(proxyNoExt) ?? (fs.existsSync(proxyNoExt + '.js') ? proxyNoExt + '.js' : null);
+    return resolveExistingModuleFile(proxyNoExt) ?? (fs.existsSync(proxyNoExt + '.ts') ? proxyNoExt + '.ts' : null);
   }
 
   function resolveImportTarget(importerAbs: string, spec: string): string | null {

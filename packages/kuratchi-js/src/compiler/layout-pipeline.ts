@@ -97,7 +97,7 @@ export function compileLayoutPlan(opts: {
     let finalLayoutBody = layoutRenderBody;
     if (layoutComponentStyles.length > 0) {
       const lines = layoutRenderBody.split('\n');
-      const styleLines = layoutComponentStyles.map((css) => `__html += \`${css}\\n\`;`);
+      const styleLines = layoutComponentStyles.map((css) => `__parts.push(\`${css}\\n\`);`);
       finalLayoutBody = [lines[0], ...styleLines, ...lines.slice(1)].join('\n');
     }
 

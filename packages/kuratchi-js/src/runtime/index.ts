@@ -22,6 +22,25 @@ export {
 } from './context.js';
 export { kuratchiDO, doRpc } from './do.js';
 export {
+  initCsrf,
+  getCsrfToken,
+  validateCsrf,
+  getCsrfCookieHeader,
+  validateRpcRequest,
+  validateActionRequest,
+  applySecurityHeaders,
+  signFragmentId,
+  validateSignedFragment,
+  validateQueryOverride,
+  parseQueryArgs,
+  CSRF_DEFAULTS,
+} from './security.js';
+export type {
+  RpcSecurityConfig,
+  ActionSecurityConfig,
+  SecurityHeadersConfig,
+} from './security.js';
+export {
   extractSubdomainSlug,
   extractSlugFromPrefix,
   matchContainerViewPath,
@@ -43,6 +62,7 @@ export type {
   AppConfig,
   Env,
   AuthConfig,
+  SecurityConfig,
   RouteContext,
   RouteModule,
   ApiRouteModule,

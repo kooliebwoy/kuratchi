@@ -5,7 +5,7 @@ import type { GenerateRoutesModuleOptions, RoutesModuleFeatureBlocks } from './r
 
 export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions): RoutesModuleFeatureBlocks {
   const workerImport = `import { env as __env } from 'cloudflare:workers';`;
-  const contextImport = `import { __setRequestContext, __esc, __rawHtml, __sanitizeHtml, __setLocal, __getLocals, buildDefaultBreadcrumbs as __buildDefaultBreadcrumbs } from '${opts.runtimeContextImport}';`;
+  const contextImport = `import { __setRequestContext, __esc, __rawHtml, __sanitizeHtml, __setLocal, __getLocals, __getCsrfToken, __signFragment, buildDefaultBreadcrumbs as __buildDefaultBreadcrumbs } from '${opts.runtimeContextImport}';`;
   const runtimeImport = opts.hasRuntime && opts.runtimeImportPath
     ? `import __kuratchiRuntime from '${opts.runtimeImportPath}';`
     : '';

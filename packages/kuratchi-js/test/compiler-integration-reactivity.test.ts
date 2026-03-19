@@ -27,11 +27,11 @@ function writeRoute(projectDir: string, source: string): void {
 }
 
 function readCompiledRoutes(projectDir: string): string {
-  return fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.js'), 'utf-8');
+  return fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 }
 
 describe('compiler integration: reactive client scripts', () => {
-  it('emits reactive transforms for $: route scripts in compiled output', () => {
+  it('emits reactive transforms for $: route scripts in compiled output', async () => {
     const projectDir = createTempProject('reactive-route');
     writeRoute(
       projectDir,
@@ -47,18 +47,18 @@ function reset() {
 <button onClick="reset()">Reset</button>`,
     );
 
-    const workerPath = compile({ projectDir, isDev: true });
-    expect(workerPath).toBe(path.join(projectDir, '.kuratchi', 'worker.js'));
+    const workerPath = await compile({ projectDir, isDev: true });
+    expect(workerPath).toBe(path.join(projectDir, '.kuratchi', 'worker.ts'));
 
     const routesCode = readCompiledRoutes(projectDir);
     expect(routesCode).toContain('window.__kuratchiReactive');
-    expect(routesCode).toContain('let users = __k$.state(["Alice"]);');
+    expect(routesCode).toContain("let users = __k$.state(['Alice']);");
     expect(routesCode).toContain('__k$.effect(() => {');
     expect(routesCode).toContain('console.log(users.length);');
-    expect(routesCode).toContain('users = __k$.replace(users, ["Bob"]);');
+    expect(routesCode).toContain("users = __k$.replace(users, ['Bob']);");
   });
 
-  it('keeps module imports before reactive runtime binding in compiled scripts', () => {
+  it('keeps module imports before reactive runtime binding in compiled scripts', async () => {
     const projectDir = createTempProject('reactive-module-order');
     writeRoute(
       projectDir,
@@ -71,10 +71,10 @@ $: console.log(users.length);
 <div>Hi</div>`,
     );
 
-    compile({ projectDir, isDev: true });
+    await compile({ projectDir, isDev: true });
     const routesCode = readCompiledRoutes(projectDir);
 
-    const importNeedle = 'import { greet } from "./client.js";';
+    const importNeedle = "import { greet } from './client.js';";
     const runtimeNeedle = 'const __k$ = window.__kuratchiReactive;';
     const importIdx = routesCode.indexOf(importNeedle);
     const runtimeIdx = routesCode.indexOf(runtimeNeedle);

@@ -570,10 +570,10 @@ function collectTemplateClientDeclaredNames(template: string): string[] {
     const attrs = match[1] || '';
     const body = match[2] || '';
     if (!isExecutableTemplateScript(attrs)) continue;
-    const transpiled = transpileTypeScript(body, 'template-client-script.ts');
-    for (const name of extractTopLevelImportNames(transpiled)) declared.add(name);
-    for (const name of extractTopLevelDataVars(transpiled)) declared.add(name);
-    for (const name of extractTopLevelFunctionNames(transpiled)) declared.add(name);
+    // TypeScript source works directly for reference collection
+    for (const name of extractTopLevelImportNames(body)) declared.add(name);
+    for (const name of extractTopLevelDataVars(body)) declared.add(name);
+    for (const name of extractTopLevelFunctionNames(body)) declared.add(name);
   }
 
   return Array.from(declared);
@@ -1168,11 +1168,10 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       );
     }
 
-    const transpiledScriptBody = transpileTypeScript(scriptBody, 'route-script.ts');
-    const serverScriptRefs = new Set<string>(collectReferencedIdentifiers(transpiledScriptBody));
+    // TypeScript source works directly for reference collection
+    const serverScriptRefs = new Set<string>(collectReferencedIdentifiers(scriptBody));
     if (loadFunction) {
-      const transpiledLoadFunction = transpileTypeScript(loadFunction, 'route-load.ts');
-      for (const ref of collectReferencedIdentifiers(transpiledLoadFunction)) serverScriptRefs.add(ref);
+      for (const ref of collectReferencedIdentifiers(loadFunction)) serverScriptRefs.add(ref);
     }
     const leakedClientScriptBindings = routeClientImportBindings.filter((name) => serverScriptRefs.has(name));
     if (leakedClientScriptBindings.length > 0) {
@@ -1182,9 +1181,9 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
         `Move this usage to a client event handler or client bridge code, or import from $shared instead.`,
       );
     }
-    const topLevelVars = extractTopLevelDataVars(transpiledScriptBody);
+    const topLevelVars = extractTopLevelDataVars(scriptBody);
     for (const v of topLevelVars) dataVars.push(v);
-    const topLevelFns = extractTopLevelFunctionNames(transpiledScriptBody);
+    const topLevelFns = extractTopLevelFunctionNames(scriptBody);
     for (const fn of topLevelFns) {
       if (!dataVars.includes(fn)) dataVars.push(fn);
     }
@@ -1369,4 +1368,4 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   };
 }
 
-import { transpileTypeScript } from './transpile.js';
+// TypeScript transpilation removed — wrangler's esbuild handles it
