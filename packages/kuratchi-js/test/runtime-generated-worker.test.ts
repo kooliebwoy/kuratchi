@@ -193,4 +193,58 @@ describe('generated worker runtime', () => {
     const html = await response.text();
     expect(html).toBe('<strong>42</strong>');
   });
+
+  test('omits Secure on CSRF cookies for local http requests', async () => {
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/',
+          render: () => '<form method="POST"></form>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+    });
+
+    const response = await worker.fetch(
+      new Request('http://127.0.0.1:8787/'),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    const setCookie = response.headers.get('set-cookie') || '';
+    expect(setCookie).toContain('__kuratchi_csrf=');
+    expect(setCookie).not.toContain('Secure');
+  });
+
+  test('keeps Secure on CSRF cookies for https requests', async () => {
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/',
+          render: () => '<form method="POST"></form>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+    });
+
+    const response = await worker.fetch(
+      new Request('https://example.com/'),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    const setCookie = response.headers.get('set-cookie') || '';
+    expect(setCookie).toContain('__kuratchi_csrf=');
+    expect(setCookie).toContain('Secure');
+  });
 });

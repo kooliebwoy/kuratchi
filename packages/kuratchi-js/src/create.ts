@@ -326,7 +326,7 @@ function genPackageJson(opts: ScaffoldOptions): string {
 function genWrangler(opts: ScaffoldOptions): string {
   const config: any = {
     name: opts.name,
-    main: '.kuratchi/worker.js',
+    main: '.kuratchi/worker.ts',
     compatibility_date: new Date().toISOString().split('T')[0],
     compatibility_flags: ['nodejs_compat'],
   };

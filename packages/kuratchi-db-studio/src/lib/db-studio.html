@@ -371,7 +371,9 @@ if (dbError) {
                   <table>
                     <thead>
                       <tr>
-                        for (const col of resultCols) { <th>{col}</th> }
+                        for (const col of resultCols) {
+                          <th>{col}</th>
+                        }
                       </tr>
                     </thead>
                     <tbody>
@@ -395,8 +397,12 @@ if (dbError) {
               } else if (sqlResult.ok) {
                 <p class="kdb-studio__muted">
                   Query executed successfully.
-                  if (sqlResult.changes !== undefined) { <span> {sqlResult.changes} row(s) affected.</span> }
-                  if (sqlResult.lastInsertId !== undefined) { <span> Last insert ID: {sqlResult.lastInsertId}.</span> }
+                  if (sqlResult.changes !== undefined) {
+                    <span>{sqlResult.changes} row(s) affected.</span>
+                  }
+                  if (sqlResult.lastInsertId !== undefined) {
+                    <span>Last insert ID: {sqlResult.lastInsertId}.</span>
+                  }
                 </p>
               }
             </div>
@@ -496,11 +502,19 @@ if (dbError) {
                       <td class="kdb-studio__cell">{col.name}</td>
                       <td class="kdb-studio__cell">{col.type || '-'}</td>
                       <td>
-                        if (col.notnull) { <Badge data-variant="warning" data-size="sm">NOT NULL</Badge> } else { <span class="kdb-studio__cell--muted">-</span> }
+                        if (col.notnull) {
+                          <Badge data-variant="warning" data-size="sm">NOT NULL</Badge>
+                        } else {
+                          <span class="kdb-studio__cell--muted">-</span>
+                        }
                       </td>
                       <td class="kdb-studio__cell">{col.dflt_value ?? '-'}</td>
                       <td>
-                        if (col.pk) { <Badge data-variant="info" data-size="sm">PK</Badge> } else { <span class="kdb-studio__cell--muted">-</span> }
+                        if (col.pk) {
+                          <Badge data-variant="info" data-size="sm">PK</Badge>
+                        } else {
+                          <span class="kdb-studio__cell--muted">-</span>
+                        }
                       </td>
                     </tr>
                   }

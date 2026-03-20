@@ -39,6 +39,7 @@ export function initCsrf(request: Request, cookieName: string = CSRF_COOKIE_NAME
 
   __setLocal('__csrfToken', token);
   __setLocal('__csrfCookieName', cookieName);
+  __setLocal('__csrfCookieSecure', shouldUseSecureCookie(request));
   return token;
 }
 
@@ -113,9 +114,10 @@ export function getCsrfCookieHeader(): string | null {
   }
   const token = locals.__csrfToken;
   const cookieName = locals.__csrfCookieName || CSRF_COOKIE_NAME;
+  const secure = locals.__csrfCookieSecure ? '; Secure' : '';
   // SameSite=Lax allows the cookie to be sent on top-level navigations
   // HttpOnly=false so client JS can read it for fetch requests
-  return `${cookieName}=${token}; Path=/; SameSite=Lax; Secure`;
+  return `${cookieName}=${token}; Path=/; SameSite=Lax${secure}`;
 }
 
 // ── RPC Security ───────────────────────────────────────────────────
@@ -258,6 +260,19 @@ function parseCookies(header: string | null): Record<string, string> {
     map[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
   }
   return map;
+}
+
+function shouldUseSecureCookie(request: Request): boolean {
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedProto) {
+    return forwardedProto.split(',')[0].trim().toLowerCase() === 'https';
+  }
+
+  try {
+    return new URL(request.url).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function isSameOrigin(request: Request, url: URL): boolean {

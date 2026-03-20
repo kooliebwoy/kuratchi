@@ -127,6 +127,15 @@ export async function signIn(formData: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
 
+  // send test email
+  await env.EMAIL.send({
+    to: email,
+    from: 'welcome@kuratchi.cloud',
+    subject: 'Welcome to Kuratchi!',
+    html: `<p>Hi there,</p><p>Thank you for signing up for Kuratchi. We are excited to have you on board!</p>`,
+    text: 'Thank you for signing up for Kuratchi. We are excited to have you on board!',
+  });
+
   if (!email || !password) {
     throw new Error('Email and password are required');
   }

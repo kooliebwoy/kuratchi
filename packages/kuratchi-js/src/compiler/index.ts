@@ -33,6 +33,7 @@ import { assembleRouteState } from './route-state-pipeline.js';
 import { createServerModuleCompiler } from './server-module-pipeline.js';
 import { compileTemplate } from './template.js';
 import {
+  buildCompatEntrypointSource,
   buildWorkerEntrypointSource,
   resolveRuntimeImportPath as resolveRuntimeImportPathPipeline,
 } from './worker-output-pipeline.js';
@@ -369,6 +370,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     fs.mkdirSync(outDir, { recursive: true });
   }
   writeIfChanged(outFile, output);
+  writeIfChanged(path.join(outDir, 'routes.js'), buildCompatEntrypointSource('./routes.ts'));
 
   // Generate .kuratchi/worker.ts — the stable wrangler entry point.
   // routes.ts already exports the default fetch handler and all named DO classes;
@@ -381,6 +383,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     doClassNames: doConfig.map((entry) => entry.className),
     workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
   }));
+  writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
 
   // Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts
   syncWranglerConfigPipeline({
