@@ -360,8 +360,18 @@ const BRIDGE_SOURCE = `(function(){
       (function tick(){
         setTimeout(function(){
           fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
-            .then(function(r){ return r.text(); })
+            .then(function(r){
+              if(r.status === 404){
+                // Fragment no longer exists (e.g., item completed and removed from list)
+                // Remove the element and stop polling
+                el.remove();
+                return null;
+              }
+              if(!r.ok) return null;
+              return r.text();
+            })
             .then(function(html){
+              if(html === null) return;
               if(prevHtml !== html){
                 el.innerHTML = html;
                 prevHtml = html;
