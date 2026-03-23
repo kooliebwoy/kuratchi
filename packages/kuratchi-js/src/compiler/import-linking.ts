@@ -162,7 +162,7 @@ export function linkRouteServerImports(opts: {
         continue;
       }
       fnToModule[binding.local] = moduleId;
-      if (!routeImportDeclMap.has(binding.local) && !RESERVED_RENDER_VARS.has(binding.local)) {
+      if (!routeImportDeclMap.has(binding.local)) {
         const accessExpr = binding.imported === 'default' ? `${moduleId}.default` : `${moduleId}.${binding.imported}`;
         routeImportDeclMap.set(binding.local, `const ${binding.local} = ${accessExpr};`);
       }

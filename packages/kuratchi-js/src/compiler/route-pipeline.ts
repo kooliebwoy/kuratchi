@@ -195,10 +195,15 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
   const routeImportDecls = routeImportDeclLines.join('\n');
   const importedBindingNames = new Set(Object.keys(fnToModule));
   const renderScopeActionNames = new Set(parsed.actionFunctions);
+  // Filter out params/breadcrumbs from render prelude since they come from data destructuring
+  const reservedRenderVars = new Set(['params', 'breadcrumbs']);
   const renderImportPrelude = routeImportDeclLines
     .filter((statement) => {
       const declaredName = extractDeclaredConstName(statement);
-      return declaredName ? !renderScopeActionNames.has(declaredName) : true;
+      if (!declaredName) return true;
+      if (renderScopeActionNames.has(declaredName)) return false;
+      if (reservedRenderVars.has(declaredName)) return false;
+      return true;
     })
     .join('\n');
 

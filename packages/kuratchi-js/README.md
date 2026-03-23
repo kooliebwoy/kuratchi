@@ -42,9 +42,9 @@ For the framework's internal compiler/runtime orchestration and tracked implemen
 Place `.html` files inside `src/routes/`. The file path becomes the URL pattern.
 
 ```
-src/routes/page.html          → /
-src/routes/items/page.html    → /items
-src/routes/blog/[slug]/page.html → /blog/:slug
+src/routes/index.html          → /
+src/routes/items/index.html    → /items
+src/routes/blog/[slug]/index.html → /blog/:slug
 src/routes/layout.html        → shared layout wrapping all routes
 ```
 
@@ -277,7 +277,7 @@ Throw `PageError` from a route's load scope to return the correct HTTP error pag
 ```ts
 import { PageError } from '@kuratchi/js';
 
-// In src/routes/posts/[id]/page.html <script> block:
+// In src/routes/posts/[id]/index.html <script> block:
 const post = await db.posts.findOne({ id: params.id });
 if (!post) throw new PageError(404);
 if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403);

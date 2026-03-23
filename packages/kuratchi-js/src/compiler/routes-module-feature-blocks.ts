@@ -334,10 +334,12 @@ function buildWorkflowStatusRpc(opts: GenerateRoutesModuleOptions): string {
   const rpcLines: string[] = [];
   rpcLines.push(`\n// Workflow Status RPCs (auto-generated)`);
   rpcLines.push(`const __workflowStatusRpc = {`);
+  const rpcNames: string[] = [];
   for (const workflow of opts.workflowConfig) {
     const baseName = workflow.file.split('/').pop()?.replace(/\.workflow\.ts$/, '') || '';
     const camelName = baseName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     const rpcName = `${camelName}WorkflowStatus`;
+    rpcNames.push(rpcName);
     rpcLines.push(`  '${rpcName}': async (instanceId) => {`);
     rpcLines.push(`    if (!instanceId) return { status: 'unknown', error: { name: 'Error', message: 'Missing instanceId' } };`);
     rpcLines.push(`    try {`);
@@ -349,5 +351,9 @@ function buildWorkflowStatusRpc(opts: GenerateRoutesModuleOptions): string {
     rpcLines.push(`  },`);
   }
   rpcLines.push(`};`);
+  // Export individual functions for use in route templates
+  for (const rpcName of rpcNames) {
+    rpcLines.push(`const ${rpcName} = __workflowStatusRpc['${rpcName}'];`);
+  }
   return rpcLines.join('\n');
 }

@@ -34,9 +34,9 @@ export function discoverRoutes(routesDir: string): RouteFile[] {
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const childPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
-        const pageFile = path.join(dir, entry.name, 'page.html');
+        const pageFile = path.join(dir, entry.name, 'index.html');
         if (fs.existsSync(pageFile)) {
-          const routeFile = `${childPrefix}/page.html`;
+          const routeFile = `${childPrefix}/index.html`;
           if (!registered.has(routeFile)) {
             registered.add(routeFile);
             results.push({ file: routeFile, name: childPrefix, layouts: getLayoutsForPrefix(childPrefix), type: 'page' });
@@ -71,8 +71,8 @@ export function discoverRoutes(routesDir: string): RouteFile[] {
         continue;
       }
 
-      if (entry.name === 'page.html') {
-        const routeFile = prefix ? `${prefix}/page.html` : 'page.html';
+      if (entry.name === 'index.html') {
+        const routeFile = prefix ? `${prefix}/index.html` : 'index.html';
         if (!registered.has(routeFile)) {
           registered.add(routeFile);
           results.push({ file: routeFile, name: prefix || 'index', layouts: getLayoutsForPrefix(prefix), type: 'page' });
@@ -80,7 +80,7 @@ export function discoverRoutes(routesDir: string): RouteFile[] {
         continue;
       }
 
-      if (entry.name.endsWith('.html') && entry.name !== 'page.html') {
+      if (entry.name.endsWith('.html') && entry.name !== 'index.html') {
         const name = prefix
           ? `${prefix}/${entry.name.replace('.html', '')}`
           : entry.name.replace('.html', '');

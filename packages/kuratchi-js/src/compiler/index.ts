@@ -291,7 +291,7 @@ export async function compile(options: CompileOptions): Promise<string> {
       continue;
     }
 
-    // -- Page route (page.html) --
+    // -- Page route (index.html) --
     const source = fileContents.get(fullPath) ?? fs.readFileSync(fullPath, 'utf-8');
     const parsed = parseFile(source, { kind: 'route', filePath: fullPath });
     const routeState = assembleRouteState({
