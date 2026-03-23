@@ -253,28 +253,28 @@ function scaffold(dir: string, opts: ScaffoldOptions) {
   write(dir, 'tsconfig.json', genTsConfig());
   write(dir, '.gitignore', genGitIgnore());
   write(dir, 'src/routes/layout.html', genLayout(opts));
-  write(dir, 'src/routes/page.html', genLandingPage(opts));
+  write(dir, 'src/routes/index.html', genLandingPage(opts));
 
   if (orm) {
     write(dir, 'src/schemas/app.ts', genSchema(opts));
     write(dir, 'src/database/items.ts', genItemsCrud());
-    write(dir, 'src/routes/items/page.html', genItemsPage());
+    write(dir, 'src/routes/items/index.html', genItemsPage());
   }
 
   if (enableDO) {
     write(dir, 'src/schemas/notes.ts', genNotesSchema());
     write(dir, 'src/server/notes.do.ts', genNotesDoHandler());
     write(dir, 'src/database/notes.ts', genNotesDb());
-    write(dir, 'src/routes/notes/page.html', genNotesPage());
+    write(dir, 'src/routes/notes/index.html', genNotesPage());
   }
 
   if (auth) {
     write(dir, '.dev.vars', genDevVars());
     write(dir, 'src/database/auth.ts', genAuthFunctions());
     write(dir, 'src/database/admin.ts', genAdminLoader());
-    write(dir, 'src/routes/auth/login/page.html', genLoginPage());
-    write(dir, 'src/routes/auth/signup/page.html', genSignupPage());
-    write(dir, 'src/routes/admin/page.html', genAdminPage());
+    write(dir, 'src/routes/auth/login/index.html', genLoginPage());
+    write(dir, 'src/routes/auth/signup/index.html', genSignupPage());
+    write(dir, 'src/routes/admin/index.html', genAdminPage());
   }
 }
 
