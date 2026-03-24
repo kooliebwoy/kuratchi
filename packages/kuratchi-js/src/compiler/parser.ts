@@ -31,7 +31,7 @@ export interface ParsedFile {
   /** Poll functions referenced via data-poll={fn(args)} in the template */
   pollFunctions: string[];
   /** Query blocks referenced via data-get={fn(args)} data-as="name" */
-  dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; rpcId?: string }>;
+  dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; rpcId?: string; awaitExpr?: string }>;
   /** Imports found in a top-level client script block */
   clientImports: string[];
   /** Top-level route/layout imports from $client/* */
@@ -518,10 +518,38 @@ function extractCallExpression(value: string | undefined): { fnName: string; arg
   if (!expr) return null;
   const match = expr.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
   if (!match) return null;
-  return {
-    fnName: match[1],
-    argsExpr: (match[2] || '').trim(),
-  };
+  return { fnName: match[1], argsExpr: (match[2] || '').trim() };
+}
+
+function extractAwaitCallExpression(expr: string): { fnName: string; argsExpr: string } | null {
+  const match = expr.trim().match(/^await\s+([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
+  if (!match) return null;
+  return { fnName: match[1], argsExpr: (match[2] || '').trim() };
+}
+
+function collectAwaitTemplateQueries(template: string): Array<{ fnName: string; argsExpr: string; asName: string; awaitExpr: string }> {
+  const source = template.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  const queries: Array<{ fnName: string; argsExpr: string; asName: string; awaitExpr: string }> = [];
+  const seen = new Map<string, string>();
+
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] !== '{') continue;
+    const closeIdx = findMatchingToken(source, i, '{', '}');
+    if (closeIdx === -1) continue;
+    const inner = source.slice(i + 1, closeIdx).trim();
+    const call = extractAwaitCallExpression(inner);
+    if (call) {
+      const awaitExpr = `${call.fnName}(${call.argsExpr})`;
+      if (!seen.has(awaitExpr)) {
+        const asName = `__await_query_${queries.length}`;
+        seen.set(awaitExpr, asName);
+        queries.push({ fnName: call.fnName, argsExpr: call.argsExpr, asName, awaitExpr });
+      }
+    }
+    i = closeIdx;
+  }
+
+  return queries;
 }
 
 function extractTopLevelImportNames(source: string): string[] {
@@ -1209,7 +1237,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   const templateTags = tokenizeTemplateTags(templateWithoutComments);
   const actionFunctions: string[] = [];
   const pollFunctions: string[] = [];
-  const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string }> = [];
+  const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; awaitExpr?: string }> = [];
 
   for (const tag of templateTags) {
     if (tag.closing) continue;
@@ -1246,6 +1274,21 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
 
     const exists = dataGetQueries.some((q) => q.asName === asName);
     if (!exists) dataGetQueries.push({ fnName: getCall.fnName, argsExpr: getCall.argsExpr, asName, key });
+  }
+
+  for (const awaitQuery of collectAwaitTemplateQueries(templateWithoutComments)) {
+    if (!pollFunctions.includes(awaitQuery.fnName)) pollFunctions.push(awaitQuery.fnName);
+    if (!dataVars.includes(awaitQuery.asName)) dataVars.push(awaitQuery.asName);
+    const exists = dataGetQueries.some((query) => query.awaitExpr === awaitQuery.awaitExpr);
+    if (!exists) {
+      dataGetQueries.push({
+        fnName: awaitQuery.fnName,
+        argsExpr: awaitQuery.argsExpr,
+        asName: awaitQuery.asName,
+        key: awaitQuery.asName,
+        awaitExpr: awaitQuery.awaitExpr,
+      });
+    }
   }
 
   for (const clientBinding of routeClientImportBindings) {

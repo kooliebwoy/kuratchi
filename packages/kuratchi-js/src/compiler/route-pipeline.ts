@@ -64,6 +64,7 @@ interface AnalyzeRouteOptions {
   parsed: RoutePipelineParsedFile;
   fnToModule: Record<string, string>;
   rpcNameMap?: Map<string, string>;
+  extraRpcBindings?: RouteRpcBinding[];
   componentStyles: string[];
   clientModuleHref?: string | null;
 }
@@ -96,7 +97,7 @@ function buildLoadQueryStateCode(opts: {
     lines.push(`let ${asName} = { state: 'loading', loading: true, error: null, data: null, empty: false, success: false };`);
     lines.push(`const __qOverride_${asName} = __getLocals().__queryOverride;`);
     lines.push(`const __qArgs_${asName} = ${defaultArgs};`);
-    lines.push(`const __qShouldRun_${asName} = !!(__qOverride_${asName} && __qOverride_${asName}.fn === '${rpcId}' && Array.isArray(__qOverride_${asName}.args) && JSON.stringify(__qOverride_${asName}.args) === JSON.stringify(__qArgs_${asName}));`);
+    lines.push(`const __qShouldRun_${asName} = !__qOverride_${asName} || (__qOverride_${asName}.fn === '${rpcId}' && Array.isArray(__qOverride_${asName}.args) && JSON.stringify(__qOverride_${asName}.args) === JSON.stringify(__qArgs_${asName}));`);
     lines.push(`if (__qShouldRun_${asName}) {`);
     lines.push(`  try {`);
     lines.push(`    const __qData_${asName} = await ${qualifiedFn}(...__qArgs_${asName});`);
@@ -184,7 +185,7 @@ function assertRoutePlanInvariants(opts: {
 }
 
 export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
-  const { pattern, renderBody, renderHeadBody, isDev, parsed, fnToModule, rpcNameMap, componentStyles, clientModuleHref } = opts;
+  const { pattern, renderBody, renderHeadBody, isDev, parsed, fnToModule, rpcNameMap, extraRpcBindings, componentStyles, clientModuleHref } = opts;
   const hasFns = Object.keys(fnToModule).length > 0;
   const queryDefs = parsed.dataGetQueries ?? [];
   const queryVars = queryDefs.map((query) => query.asName);
@@ -310,6 +311,14 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
       return { name, rpcId, expression: moduleId ? `${moduleId}.${name}` : name };
     })
     : [];
+  if (extraRpcBindings?.length) {
+    const seenRpcIds = new Set(rpc.map((binding) => binding.rpcId));
+    for (const binding of extraRpcBindings) {
+      if (seenRpcIds.has(binding.rpcId)) continue;
+      seenRpcIds.add(binding.rpcId);
+      rpc.push(binding);
+    }
+  }
 
   assertRoutePlanInvariants({
     pattern,

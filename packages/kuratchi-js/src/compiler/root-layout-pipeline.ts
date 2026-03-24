@@ -212,6 +212,20 @@ const BRIDGE_SOURCE = `(function(){
     if(!keys.length){ location.reload(); return Promise.resolve(); }
     return Promise.all(keys.map(function(k){ return replaceBlocksWithKey('key:' + k); })).then(function(){});
   }
+  function refreshRemoteReads(){
+    var seen = Object.create(null);
+    var tasks = [];
+    by('[data-remote-read][data-get]').forEach(function(el){
+      var fn = el.getAttribute('data-get');
+      if(!fn) return;
+      var args = String(el.getAttribute('data-get-args') || '[]');
+      var key = String(fn) + '|' + args;
+      if(seen[key]) return;
+      seen[key] = true;
+      tasks.push(replaceBlocksByDescriptor(fn, args));
+    });
+    return Promise.all(tasks).then(function(){});
+  }
   function act(e){
     var clientSel = '[data-client-event="' + e.type + '"]';
     var clientEl = e.target && e.target.closest ? e.target.closest(clientSel) : null;
@@ -307,6 +321,9 @@ const BRIDGE_SOURCE = `(function(){
   } else {
     autoLoadQueries();
   }
+  window.addEventListener('kuratchi:invalidate-reads', function(){
+    refreshRemoteReads().catch(function(err){ console.error('[kuratchi] remote read refresh error:', err); });
+  });
   document.addEventListener('click', function(e){
     var b = e.target && e.target.closest ? e.target.closest('[command="fill-dialog"]') : null;
     if(!b) return;
@@ -362,12 +379,10 @@ const BRIDGE_SOURCE = `(function(){
           fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
             .then(function(r){
               if(r.status === 404){
-                // Fragment no longer exists (e.g., item completed and removed from list)
-                // Remove the element and stop polling
                 el.remove();
                 return null;
               }
-              if(!r.ok) return null;
+              if(!r.ok) throw new Error('Poll fragment request failed: ' + r.status);
               return r.text();
             })
             .then(function(html){
