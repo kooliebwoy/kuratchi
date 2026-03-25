@@ -42,7 +42,6 @@ export interface D1AnalyticsPoint {
   rowsRead: number;
   rowsWritten: number;
   queryBatchResponseBytes: number;
-  queryBatchTimeMs: number;
   avgQueryBatchTimeMs?: number;
   p90QueryBatchTimeMs?: number;
 }
@@ -107,7 +106,6 @@ interface AnalyticsQueryResponse {
           rowsRead?: number;
           rowsWritten?: number;
           queryBatchResponseBytes?: number;
-          queryBatchTimeMs?: number;
         };
         avg?: {
           queryBatchTimeMs?: number;
@@ -181,7 +179,6 @@ const ANALYTICS_QUERY = `query KuratchiD1Analytics($accountTag: string!, $databa
           rowsRead
           rowsWritten
           queryBatchResponseBytes
-          queryBatchTimeMs
         }
         avg {
           queryBatchTimeMs
@@ -290,7 +287,6 @@ export class D1ObservabilityClient {
         rowsRead: group.sum?.rowsRead ?? 0,
         rowsWritten: group.sum?.rowsWritten ?? 0,
         queryBatchResponseBytes: group.sum?.queryBatchResponseBytes ?? 0,
-        queryBatchTimeMs: group.sum?.queryBatchTimeMs ?? 0,
         avgQueryBatchTimeMs: group.avg?.queryBatchTimeMs,
         p90QueryBatchTimeMs: group.quantiles?.queryBatchTimeMsP90,
       })),

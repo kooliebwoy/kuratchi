@@ -1,0 +1,155 @@
+---
+title: "Getting Started"
+description: "Install @kuratchi/sdk and connect to databases, KV, and R2"
+---
+
+## Install
+
+```bash
+npm install @kuratchi/sdk
+```
+
+## Create a client
+
+```ts
+import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: process.env.KURATCHI_API_KEY!,
+  baseUrl: 'https://your-kuratchi-instance.com',
+});
+```
+
+`baseUrl` should point at your Kuratchi deployment or hosted platform base URL.
+
+## Database usage
+
+Use `kuratchi.database(name)` for SQL queries against a specific database.
+
+```ts
+const db = kuratchi.database('my-db');
+
+const users = await db.query('SELECT * FROM users WHERE active = ?', [true]);
+
+await db.batch([
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['Hello'] },
+  { sql: 'INSERT INTO posts (title) VALUES (?)', params: ['World'] },
+]);
+
+await db.exec('CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, title TEXT)');
+
+const raw = await db.raw('SELECT id, name FROM users');
+```
+
+### Drizzle integration
+
+`DatabaseClient` exposes `drizzleProxy()` for `drizzle-orm/sqlite-proxy`.
+
+```ts
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import * as schema from './schema';
+
+const db = kuratchi.database('my-db');
+const drizzleDb = drizzle(db.drizzleProxy(), { schema });
+
+const users = await drizzleDb.select().from(schema.users);
+```
+
+### D1 bookmark support
+
+The database client stores the latest D1 bookmark returned by the server.
+
+```ts
+const result = await db.query('SELECT * FROM users');
+const bookmark = db.getBookmark();
+
+db.setBookmark(bookmark);
+```
+
+## KV usage
+
+Use `kuratchi.kv(name)` for key-value reads and writes.
+
+```ts
+const kv = kuratchi.kv('my-cache');
+
+await kv.put('user:1', JSON.stringify({ name: 'Alice' }));
+
+await kv.put('session:abc', JSON.stringify({ userId: 1 }), {
+  expirationTtl: 3600,
+  metadata: { type: 'session' },
+});
+
+const value = await kv.get('user:1');
+const { value: session, metadata } = await kv.getWithMetadata('session:abc');
+const keys = await kv.list({ prefix: 'user:', limit: 100 });
+
+await kv.delete('user:1');
+```
+
+`kv.get()` supports:
+
+- `'text'`
+- `'json'`
+- `'arrayBuffer'`
+
+Example:
+
+```ts
+const profile = await kv.get('profile:1', 'json');
+```
+
+## R2 usage
+
+Use `kuratchi.r2(name)` for object storage.
+
+```ts
+const r2 = kuratchi.r2('my-bucket');
+
+await r2.put('photos/cat.jpg', imageBuffer, {
+  contentType: 'image/jpeg',
+});
+
+const file = await r2.get('photos/cat.jpg');
+const list = await r2.list({ prefix: 'photos/', limit: 50 });
+const meta = await r2.head('photos/cat.jpg');
+
+await r2.delete('photos/cat.jpg');
+```
+
+You can also attach custom metadata during upload:
+
+```ts
+await r2.put('builds/app.js', bundle, {
+  contentType: 'application/javascript',
+  metadata: { commit: 'abc123' },
+});
+```
+
+## Error handling
+
+The SDK uses two patterns today:
+
+- `database()` methods return an object with `success`, optional `results`, and optional `error`
+- `kv()` and `r2()` methods throw when the request fails
+
+Examples:
+
+```ts
+const result = await db.query('SELECT * FROM users');
+if (!result.success) {
+  throw new Error(result.error || 'Database query failed');
+}
+```
+
+```ts
+try {
+  await kv.put('key', 'value');
+} catch (error) {
+  console.error(error);
+}
+```
+
+## Read next
+
+- [Platform Management](/sdk/platform-management)

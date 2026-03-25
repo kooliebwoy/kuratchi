@@ -5,7 +5,7 @@ description: "Documentation for the Kuratchi framework and packages"
 
 ## Packages that stay close to Cloudflare
 
-Kuratchi docs now cover the framework and package surface directly inside the monorepo. The current sections in place are `@kuratchi/js`, `@kuratchi/orm`, and `@kuratchi/auth`.
+Kuratchi docs now cover the framework and package surface directly inside the monorepo. The current sections in place are `@kuratchi/js`, `@kuratchi/orm`, `@kuratchi/sdk`, and `@kuratchi/auth`.
 
 <CardGroup cols={3}>
   <Card title="@kuratchi/js" icon="rocket" href="/framework/getting-started">
@@ -13,6 +13,9 @@ Kuratchi docs now cover the framework and package surface directly inside the mo
   </Card>
   <Card title="@kuratchi/orm" icon="database" href="/orm/getting-started">
     Build on D1 and Durable Object SQLite with the schema DSL, query builder, migrations, and framework integration.
+  </Card>
+  <Card title="@kuratchi/sdk" icon="plug" href="/sdk/getting-started">
+    Connect to Kuratchi databases, KV, R2, sites, and platform APIs from one client.
   </Card>
   <Card title="@kuratchi/auth" icon="shield" href="/auth/getting-started">
     Add config-driven credentials, sessions, OAuth, RBAC, route guards, Turnstile, and org-aware auth flows.
@@ -86,6 +89,17 @@ Kuratchi docs now cover the framework and package surface directly inside the mo
   </Card>
 </CardGroup>
 
+## SDK highlights
+
+<CardGroup cols={2}>
+  <Card title="Unified client" icon="plug" href="/sdk/getting-started">
+    Start with `createClient()` and access databases, KV, R2, and platform APIs from one package.
+  </Card>
+  <Card title="Platform management" icon="server" href="/sdk/platform-management">
+    Provision resources, create scoped tokens, and upload site files from the same SDK.
+  </Card>
+</CardGroup>
+
 ## Framework build model
 
 `kuratchi build` scans `src/routes/` and generates a stable worker entrypoint at `.kuratchi/worker.js`.
@@ -105,4 +119,5 @@ That lets application code stay focused on routes and server modules while the c
 - [Actions](/framework/actions)
 - [Durable Objects and Agents](/framework/durable-objects-and-agents)
 - [ORM Getting Started](/orm/getting-started)
+- [SDK Getting Started](/sdk/getting-started)
 - [Auth Getting Started](/auth/getting-started)

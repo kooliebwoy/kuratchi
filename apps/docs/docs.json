@@ -64,6 +64,24 @@
         ]
       },
       {
+        "tab": "SDK",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "sdk/index",
+              "sdk/getting-started"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "sdk/platform-management"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Auth",
         "groups": [
           {

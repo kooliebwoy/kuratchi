@@ -1,0 +1,138 @@
+---
+title: "Platform Management"
+description: "Provision databases, KV, R2, sites, and API tokens with @kuratchi/sdk"
+---
+
+## Platform client
+
+Use `kuratchi.platform` when you want to manage resources instead of talking to one specific resource.
+
+```ts
+import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: process.env.KURATCHI_PLATFORM_TOKEN!,
+  baseUrl: 'https://your-kuratchi-instance.com',
+});
+```
+
+This requires a platform-scoped token.
+
+## Databases
+
+```ts
+const databases = await kuratchi.platform.databases.list();
+
+const created = await kuratchi.platform.databases.create({
+  name: 'app-db',
+  locationHint: 'enam',
+});
+
+const detail = await kuratchi.platform.databases.get('database-id');
+await kuratchi.platform.databases.delete('database-id');
+```
+
+## KV namespaces
+
+```ts
+const kvNamespaces = await kuratchi.platform.kv.list();
+
+const created = await kuratchi.platform.kv.create({
+  name: 'app-cache',
+});
+
+await kuratchi.platform.kv.delete('kv-id');
+```
+
+## R2 buckets
+
+```ts
+const buckets = await kuratchi.platform.r2.list();
+
+const created = await kuratchi.platform.r2.create({
+  name: 'app-assets',
+  locationHint: 'weur',
+});
+
+await kuratchi.platform.r2.delete('bucket-id');
+```
+
+## Sites
+
+The platform client also exposes site management, including file uploads for deployment.
+
+```ts
+const sites = await kuratchi.platform.sites.list();
+
+const created = await kuratchi.platform.sites.create({
+  name: 'marketing-site',
+});
+
+const site = await kuratchi.platform.sites.get('site-id');
+```
+
+Upload files with `Blob` or `File` instances:
+
+```ts
+await kuratchi.platform.sites.uploadFiles('site-id', [
+  { file: new File(['<h1>Hello</h1>'], 'index.html', { type: 'text/html' }) },
+  { file: new File(['body { color: red; }'], 'app.css', { type: 'text/css' }), path: 'assets/app.css' },
+]);
+```
+
+Delete a site:
+
+```ts
+await kuratchi.platform.sites.delete('site-id');
+```
+
+## Tokens
+
+Create resource-scoped tokens through `kuratchi.platform.tokens`.
+
+```ts
+const dbToken = await kuratchi.platform.tokens.createForDatabase({
+  name: 'ci',
+  databaseId: 'db-id',
+});
+
+const kvToken = await kuratchi.platform.tokens.createForKv({
+  name: 'worker',
+  kvNamespaceId: 'kv-id',
+});
+
+const r2Token = await kuratchi.platform.tokens.createForR2({
+  name: 'deploy',
+  r2BucketId: 'bucket-id',
+});
+```
+
+Revoke a token by ID:
+
+```ts
+await kuratchi.platform.tokens.revoke('token-id');
+```
+
+## Response shape
+
+Platform methods return an API envelope:
+
+```ts
+type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+```
+
+Example:
+
+```ts
+const result = await kuratchi.platform.databases.create({ name: 'app-db' });
+
+if (!result.success) {
+  throw new Error(result.error || 'Failed to create database');
+}
+
+console.log(result.data);
+```

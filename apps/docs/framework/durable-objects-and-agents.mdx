@@ -52,7 +52,33 @@ export default class UserDO extends DurableObject {
 }
 ```
 
-Schema-backed RPC methods accept one object argument. Invalid payloads return `400`.
+Rules:
+
+- Schema-backed RPC methods accept one object argument.
+- `static schemas` keys must match the public method names exactly.
+- Invalid payloads return `400`.
+- Use `InferSchema<(typeof MyDO.schemas).methodName>` for the typed method parameter.
+
+Example with defaults and arrays:
+
+```ts
+import { DurableObject } from 'cloudflare:workers';
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export default class UserDO extends DurableObject {
+  static schemas = {
+    savePreferences: schema({
+      tags: schema.string().list(),
+      marketingEmails: schema.boolean().optional(false),
+    }),
+  };
+
+  async savePreferences(data: InferSchema<(typeof UserDO.schemas).savePreferences>) {
+    await this.ctx.storage.put('preferences', data);
+    return { ok: true };
+  }
+}
+```
 
 ## Route usage
 

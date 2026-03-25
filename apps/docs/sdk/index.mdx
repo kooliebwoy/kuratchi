@@ -1,0 +1,54 @@
+---
+title: "@kuratchi/sdk"
+description: "Unified client SDK for Kuratchi databases, KV, R2, sites, and platform APIs"
+---
+
+## One client for data plane and control plane
+
+`@kuratchi/sdk` gives you one typed entrypoint for working with Kuratchi-managed resources:
+
+- SQL databases
+- KV namespaces
+- R2 buckets
+- platform resource management
+- token creation
+- site deployment uploads
+
+It is intentionally small. You provide an API key and base URL, then choose the resource client you need.
+
+```ts
+import { createClient } from '@kuratchi/sdk';
+
+const kuratchi = createClient({
+  apiKey: process.env.KURATCHI_API_KEY!,
+  baseUrl: 'https://your-kuratchi-instance.com',
+});
+
+const db = kuratchi.database('app-db');
+const kv = kuratchi.kv('app-cache');
+const r2 = kuratchi.r2('app-assets');
+```
+
+## Token model
+
+The SDK supports two main token shapes:
+
+- Platform tokens can manage resources through `kuratchi.platform.*`
+- Resource-scoped tokens can access a specific database, KV namespace, or R2 bucket
+
+In the current platform, platform tokens use the `kdbp_` prefix.
+
+## Package surface
+
+The main entrypoint exposes:
+
+- `createClient(config)`
+- `kuratchi.database(name)`
+- `kuratchi.kv(name)`
+- `kuratchi.r2(name)`
+- `kuratchi.platform`
+
+## Read next
+
+- [Getting Started](/sdk/getting-started)
+- [Platform Management](/sdk/platform-management)

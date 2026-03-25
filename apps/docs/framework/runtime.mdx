@@ -25,14 +25,16 @@ import {
 Import route-derived values from `@kuratchi/js/request`:
 
 ```ts
-import { url, pathname, searchParams, slug } from '@kuratchi/js/request';
+import { url, pathname, searchParams, params, slug } from '@kuratchi/js/request';
 
 const currentPath = pathname;
 const tab = searchParams.get('tab');
+const postId = params.id;
 const postSlug = slug;
 ```
 
-The request helper module exposes `url`, `pathname`, `searchParams`, `slug`, `headers`, `method`, and `params`.
+The request helper module exposes `url`, `pathname`, `searchParams`, `params`, `slug`, `headers`, and `method`.
+`params` is not ambient in route code; import it from `@kuratchi/js/request` or use `getParams()` / `getParam()` from `@kuratchi/js`.
 
 ## Environment helpers
 

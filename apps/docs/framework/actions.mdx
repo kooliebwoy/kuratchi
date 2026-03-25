@@ -82,7 +82,7 @@ if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403, 'Admin 
 
 ## Validated RPC input
 
-For client-callable RPC functions, declare a companion `schemas` object in the server module. The schema key must match the exported function name.
+For client-callable route RPC functions, declare a companion `schemas` object in the same server module. Each schema key must match the exported function name exactly.
 
 ```ts
 import { schema, type InferSchema } from '@kuratchi/js';
@@ -107,7 +107,31 @@ Use the function normally from the route template:
 </div>
 ```
 
-Schema-backed RPCs accept a single object argument. If validation fails, Kuratchi returns `400` and does not execute the function.
+Rules:
+
+- Schema-backed RPCs accept one object argument.
+- The schema object must be exported as `schemas`.
+- Keys in `schemas` must match the RPC function names.
+- If validation fails, Kuratchi returns `400` and does not execute the function.
+
+Current TypeScript pattern:
+
+```ts
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export const schemas = {
+  updateProfile: schema({
+    displayName: schema.string().min(1),
+    bio: schema.string().optional(''),
+  }),
+};
+
+export async function updateProfile(data: InferSchema<typeof schemas.updateProfile>) {
+  // data is typed from the schema
+}
+```
+
+Kuratchi currently uses the schema as the source of truth for validated RPC input. Automatic type generation for unannotated handler parameters is not documented as part of this API yet, so use `InferSchema<typeof schemas.name>` when you want the handler parameter typed.
 
 ## Progressive enhancement helpers
 

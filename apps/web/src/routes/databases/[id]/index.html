@@ -1,5 +1,5 @@
 <script>
-  import { searchParams } from '@kuratchi/js/request';
+  import { searchParams, params } from '@kuratchi/js/request';
   import { getDatabaseObservability } from '$server/database/observability';
   import { deleteDatabase } from '$server/database/databases';
   import { formatBytes } from '$shared/format';
@@ -32,21 +32,25 @@
     acc.writeQueries += point.writeQueries;
     acc.rowsRead += point.rowsRead;
     acc.rowsWritten += point.rowsWritten;
-    acc.queryBatchTimeMs += point.queryBatchTimeMs;
+    if (point.avgQueryBatchTimeMs !== null && point.avgQueryBatchTimeMs !== undefined) {
+      acc.avgQueryBatchTimeMsTotal += point.avgQueryBatchTimeMs;
+      acc.avgQueryBatchTimeMsCount += 1;
+    }
     return acc;
   }, {
     readQueries: 0,
     writeQueries: 0,
     rowsRead: 0,
     rowsWritten: 0,
-    queryBatchTimeMs: 0,
+    avgQueryBatchTimeMsTotal: 0,
+    avgQueryBatchTimeMsCount: 0,
   });
 
   const totalQueries = totals.readQueries + totals.writeQueries;
   const latestStorage = storagePoints[0]?.databaseSizeBytes ?? null;
   const latestP90 = analyticsPoints[0]?.p90QueryBatchTimeMs ?? null;
-  const averageBatchMs = analyticsPoints.length > 0
-    ? totals.queryBatchTimeMs / analyticsPoints.length
+  const averageBatchMs = totals.avgQueryBatchTimeMsCount > 0
+    ? totals.avgQueryBatchTimeMsTotal / totals.avgQueryBatchTimeMsCount
     : null;
 
   function formatInt(value) {

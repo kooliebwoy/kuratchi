@@ -278,6 +278,8 @@ Throw `PageError` from a route's load scope to return the correct HTTP error pag
 import { PageError } from '@kuratchi/js';
 
 // In src/routes/posts/[id]/index.html <script> block:
+import { params } from '@kuratchi/js/request';
+
 const post = await db.posts.findOne({ id: params.id });
 if (!post) throw new PageError(404);
 if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403);
@@ -431,6 +433,8 @@ export async function createSite(data: InferSchema<typeof schemas.createSite>) {
 }
 ```
 
+This works for normal exported route RPC functions without changing the function declaration style. The schema lives alongside the function instead of wrapping it.
+
 Durable Object classes use the same convention via `static schemas`:
 
 ```ts
@@ -453,6 +457,13 @@ export default class SitesDO extends DurableObject {
 
 If the payload does not match the schema, Kuratchi returns `400` with a validation error instead of executing the RPC. Schema-backed RPCs accept a single object argument.
 
+Rules:
+- Route RPC modules use `export const schemas = { ... }`.
+- Durable Object classes use `static schemas = { ... }`.
+- Schema keys must match public function or method names exactly.
+- Schema-backed RPC entrypoints take one object argument.
+- Today, the typed handler pattern is `InferSchema<typeof schemas.name>` or `InferSchema<(typeof MyDO.schemas).methodName>`.
+
 Available schema builders:
 - `schema({ ... })`
 - `schema.string()`
@@ -462,6 +473,27 @@ Available schema builders:
 - `.optional(defaultValue)`
 - `.list()`
 - `.min(value)`
+
+Example with nested objects, arrays, and defaults:
+
+```ts
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export const schemas = {
+  createProfile: schema({
+    name: schema.string().min(1),
+    info: schema({
+      height: schema.number(),
+      likesDogs: schema.boolean().optional(false),
+    }),
+    attributes: schema.string().list(),
+  }),
+};
+
+export async function createProfile(data: InferSchema<typeof schemas.createProfile>) {
+  return { ok: true, profile: data };
+}
+```
 
 ## Durable Objects
 
@@ -731,18 +763,21 @@ import {
 For a batteries-included request layer, import pre-parsed request state from `@kuratchi/js/request`:
 
 ```ts
-import { url, pathname, searchParams, slug } from '@kuratchi/js/request';
+import { url, pathname, searchParams, params, slug } from '@kuratchi/js/request';
 
 const page = pathname;
 const tab = searchParams.get('tab');
+const postId = params.id;
 const postSlug = slug;
 ```
 
 - `url` is the parsed `URL` for the current request.
 - `pathname` is the full path, like `/blog/hello-world`.
 - `searchParams` is `url.searchParams` for the current request.
+- `params` is the matched route params object, like `{ slug: 'hello-world' }`.
 - `slug` is `params.slug` when the matched route defines a `slug` param.
-- `headers`, `method`, and `params` are also exported from `@kuratchi/js/request`.
+- `headers` and `method` are also exported from `@kuratchi/js/request`.
+- `params` is not ambient; import it from `@kuratchi/js/request` or use `getParams()` / `getParam()` from `@kuratchi/js`.
 - Use `getRequest()` when you want the raw native `Request` object.
 
 ## Runtime Hook

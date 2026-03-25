@@ -20,7 +20,6 @@ describe('createCloudflareObservability', () => {
                       rowsRead: 120,
                       rowsWritten: 8,
                       queryBatchResponseBytes: 4096,
-                      queryBatchTimeMs: 240,
                     },
                     avg: {
                       queryBatchTimeMs: 20,
@@ -69,7 +68,6 @@ describe('createCloudflareObservability', () => {
       rowsRead: 120,
       rowsWritten: 8,
       queryBatchResponseBytes: 4096,
-      queryBatchTimeMs: 240,
       avgQueryBatchTimeMs: 20,
       p90QueryBatchTimeMs: 35,
     });
