@@ -183,6 +183,60 @@ Notes:
 - `$: name = expr` works; when replacing proxy-backed values, the compiler preserves reactivity under the hood.
 - You should not need `if (browser)` style guards in normal Kuratchi route code. If browser checks become necessary outside `$:`, the boundary is likely in the wrong place.
 
+### `$client` server calls
+
+Use `$client/*` for browser orchestration, then import server functions from `$server/*` inside that client module. Kuratchi generates a route-scoped browser RPC proxy automatically.
+
+```ts
+// src/client/migration.ts
+import { testMigrationConnection } from '$server/incus';
+
+export async function testConnection(sourceIp: string) {
+  const result = await testMigrationConnection(sourceIp);
+  console.log(result.success, result.message);
+}
+```
+
+```html
+<script>
+  import { testConnection } from '$client/migration';
+</script>
+
+<button onclick={testConnection(sourceIp)}>Test Connection</button>
+```
+
+Behavior:
+- Kuratchi only ships the `$client` module to the browser.
+- Any `$server` imports used inside that `$client` graph become generated fetch proxies for the current route.
+- Your client handler can `await` them directly from `onclick={fn(args)}` or from browser-side `$:` blocks.
+
+Failure and edge behavior:
+- Named and default `$server` imports are supported inside `$client` / `$shared` browser graphs.
+- Namespace imports like `import * as api from '$server/foo'` are currently rejected in browser code.
+- Remote call failures reject with the server error message when available, otherwise `HTTP <status>`.
+
+### Awaited remote reads
+
+For renderable remote reads, use direct `await fn(args)` markup. Kuratchi lowers it to a route query, renders it on the server, and refreshes it after successful `$client` remote calls.
+
+```html
+<script>
+  import { getMigrationConnectionStatus } from '$server/incus';
+</script>
+
+<p>{await getMigrationConnectionStatus(sourceIp)}</p>
+```
+
+Behavior:
+- The read runs during the initial server render.
+- Kuratchi emits refresh metadata so the same block can be re-fetched without a full page reload.
+- Successful `$client` remote calls automatically invalidate awaited reads on the current page.
+
+Failure and edge behavior:
+- The supported syntax is direct markup form: `{await fn(args)}`.
+- Awaited reads are intended for values that render cleanly to text/HTML output.
+- Complex promise expressions or chained property access should be wrapped in a dedicated server helper that returns the render-ready value.
+
 ## Form actions
 
 Export server functions from a route's `<script>` block and reference them with `action={fn}`. The compiler automatically registers them as dispatchable actions.
@@ -343,13 +397,32 @@ After a `data-action` call succeeds, elements with `data-refresh` re-fetch their
 </section>
 ```
 
-### `data-get` — client-side navigation
+### `data-get` — query blocks and refreshable reads
 
-Navigate to a URL on click (respects `http:`/`https:` only):
+Use `data-get={fn(args)}` with `data-as` to bind a server read into a fragment that Kuratchi can refresh:
 
 ```html
-<div data-get="/items/{item.id}">Click to navigate</div>
+<section data-get={getItems(projectId)} data-as="items">
+  if (items.loading) {
+    <p>Loading…</p>
+  } else if (items.error) {
+    <p>{items.error}</p>
+  } else {
+    for (const item of (items.data ?? [])) {
+      <article>{item.title}</article>
+    }
+  }
+</section>
 ```
+
+Behavior:
+- The server read runs on the initial render.
+- Kuratchi stores fragment metadata so the block can be refreshed by `data-refresh`, polling, or invalidation.
+- Query state follows `{ loading, error, success, empty, data, state }`.
+
+Failure and edge behavior:
+- `data-as` is required for query-state blocks.
+- `data-get="/path"` still works as click-to-navigate when used as a plain string URL on an element without query state metadata.
 
 ### `data-poll` — polling
 

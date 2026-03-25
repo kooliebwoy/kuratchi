@@ -50,6 +50,7 @@ export interface CompileTemplateOptions {
   enableFragmentManifest?: boolean;
   appendNewline?: boolean;
   clientRouteRegistry?: ClientRouteRegistry;
+  awaitQueryBindings?: Map<string, { asName: string; rpcId: string }>;
 }
 
 const FRAGMENT_OPEN_MARKER = '<!--__KURATCHI_FRAGMENT_OPEN:';
@@ -182,18 +183,23 @@ function buildAppendStatement(expression: string, emitCall?: string): string {
   return emitCall ? `${emitCall}(${expression});` : `__parts.push(${expression});`;
 }
 
-function extractPollFragmentExpr(tagText: string, rpcNameMap?: Map<string, string>): string | null {
-  const pollMatch = tagText.match(/\bdata-poll=\{([\s\S]*?)\}/);
-  if (!pollMatch) return null;
-  const inner = pollMatch[1].trim();
+function buildPollFragmentExpr(inner: string, rpcNameMap?: Map<string, string>, pollIndex = 0): string | null {
   const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
   if (!callMatch) return null;
 
   const fnName = callMatch[1];
   const rpcName = rpcNameMap?.get(fnName) || fnName;
   const argsExpr = (callMatch[2] || '').trim();
-  if (!argsExpr) return JSON.stringify(`__poll_${rpcName}`);
-  return `'__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_')`;
+  const fragmentPrefix = `__poll_${pollIndex}`;
+  if (!argsExpr) return JSON.stringify(`${fragmentPrefix}_${rpcName}`);
+  return `${JSON.stringify(fragmentPrefix + '_')} + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_')`;
+}
+
+function extractPollFragmentExpr(tagText: string, rpcNameMap?: Map<string, string>, pollIndex = 0): string | null {
+  const pollMatch = tagText.match(/\bdata-poll=\{([\s\S]*?)\}/);
+  if (!pollMatch) return null;
+  const inner = pollMatch[1].trim();
+  return buildPollFragmentExpr(inner, rpcNameMap, pollIndex);
 }
 
 function findTagEnd(template: string, start: number): number {
@@ -241,6 +247,7 @@ function instrumentPollFragments(template: string, rpcNameMap?: Map<string, stri
   const out: string[] = [];
   const stack: Array<{ tagName: string; fragmentExpr: string | null }> = [];
   let cursor = 0;
+  let pollIndex = 0;
 
   while (cursor < template.length) {
     const lt = template.indexOf('<', cursor);
@@ -283,17 +290,23 @@ function instrumentPollFragments(template: string, rpcNameMap?: Map<string, stri
     }
 
     const openMatch = tagText.match(/^<\s*([A-Za-z][\w:-]*)\b/);
-    out.push(tagText);
     if (!openMatch) {
+      out.push(tagText);
       cursor = tagEnd + 1;
       continue;
     }
 
     const tagName = openMatch[1].toLowerCase();
     const isVoidLike = /\/\s*>$/.test(tagText) || /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(tagName);
-    const fragmentExpr = extractPollFragmentExpr(tagText, rpcNameMap);
+    const fragmentExpr = extractPollFragmentExpr(tagText, rpcNameMap, pollIndex);
+    const instrumentedTagText = fragmentExpr
+      ? tagText.replace(/\bdata-poll=\{([\s\S]*?)\}/, (match) => `${match} data-kuratchi-poll-fragment={${fragmentExpr}}`)
+      : tagText;
+
+    out.push(instrumentedTagText);
 
     if (fragmentExpr) {
+      pollIndex += 1;
       out.push(`${FRAGMENT_OPEN_MARKER}${encodeURIComponent(fragmentExpr)}-->`);
       if (isVoidLike) {
         out.push(FRAGMENT_CLOSE_MARKER);
@@ -462,6 +475,7 @@ export function compileTemplate(
         const childTemplate = childLines.join('\n');
         const childBody = compileTemplate(childTemplate, componentNames, actionNames, rpcNameMap, {
           clientRouteRegistry: options.clientRouteRegistry,
+          awaitQueryBindings: options.awaitQueryBindings,
         });
         // Wrap in an IIFE that returns the children HTML
         const childrenExpr = `(function() { ${childBody}; return __html; })()`;
@@ -683,6 +697,14 @@ function transformClientScriptBlock(block: string): string {
 
   // TypeScript is preserved — wrangler's esbuild handles transpilation
   return `${openTag}${out.join('\n')}${closeTag}`;
+}
+
+function extractAwaitTemplateCall(expr: string): { fnName: string; argsExpr: string; awaitExpr: string } | null {
+  const match = expr.trim().match(/^await\s+([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
+  if (!match) return null;
+  const fnName = match[1];
+  const argsExpr = (match[2] || '').trim();
+  return { fnName, argsExpr, awaitExpr: `${fnName}(${argsExpr})` };
 }
 
 function braceDelta(line: string): number {
@@ -938,6 +960,7 @@ function tryCompileComponentTag(
     // Compile the inline content as a mini-template to handle {expr} interpolation
     const childBody = compileTemplate(innerContent, componentNames, actionNames, rpcNameMap, {
       clientRouteRegistry: options.clientRouteRegistry,
+      awaitQueryBindings: options.awaitQueryBindings,
     });
     const childrenExpr = `(function() { ${childBody}; return __html; })()`;
     return buildAppendStatement(`${funcName}({ ${propsStr}${propsStr ? ', ' : ''}children: ${childrenExpr} }, __esc)`, options.emitCall);
@@ -1144,8 +1167,13 @@ function compileHtmlSegment(
           }
           pos = closeIdx + 1;
           continue;
+        } else if (attrName === 'data-kuratchi-poll-fragment') {
+          result = result.replace(/\s*data-kuratchi-poll-fragment=$/, '');
+          result += ` data-poll-id="\${__signFragment(${inner})}"`;
+          pos = closeIdx + 1;
+          continue;
         } else if (attrName === 'data-poll') {
-          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]" data-poll-id="signed-id"
+          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]"
           const pollCallMatch = inner.match(/^(\w+)\((.*)\)$/);
           if (pollCallMatch) {
             const fnName = pollCallMatch[1];
@@ -1153,15 +1181,11 @@ function compileHtmlSegment(
             const argsExpr = pollCallMatch[2].trim();
             // Remove the trailing "data-poll=" we already appended
             result = result.replace(/\s*data-poll=$/, '');
-            // Emit data-poll, data-poll-args, and signed data-poll-id (signed at runtime for security)
+            // Emit data-poll and data-poll-args. The signed poll fragment ID is emitted
+            // from the synthetic data-kuratchi-poll-fragment attribute injected earlier.
             result += ` data-poll="${rpcName}"`;
             if (argsExpr) {
               result += ` data-poll-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-              // Sign the fragment ID at runtime with __signFragment(fragmentId, routePath)
-              result += ` data-poll-id="\${__signFragment('__poll_' + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_'))}"`;
-            } else {
-              // No args - sign with function name as base ID
-              result += ` data-poll-id="\${__signFragment('__poll_${rpcName}')}"`;
             }
           }
           pos = closeIdx + 1;
@@ -1230,7 +1254,17 @@ function compileHtmlSegment(
           result += `"\${__esc(${inner})}"`;
         }
       } else {
-        result += `\${__esc(${inner})}`;
+        const awaitCall = extractAwaitTemplateCall(inner);
+        const awaitBinding = awaitCall ? options.awaitQueryBindings?.get(awaitCall.awaitExpr) : null;
+        if (awaitCall && awaitBinding) {
+          result += `<span data-remote-read="${awaitBinding.rpcId}" data-get="${awaitBinding.rpcId}"`;
+          if (awaitCall.argsExpr) {
+            result += ` data-get-args="\${__esc(JSON.stringify([${awaitCall.argsExpr}]))}"`;
+          }
+          result += `>\${__esc(((${awaitBinding.asName} && ${awaitBinding.asName}.data) ?? ''))}</span>`;
+        } else {
+          result += `\${__esc(${inner})}`;
+        }
       }
     }
 

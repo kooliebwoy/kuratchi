@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import { compileTemplate, splitTemplateRenderSections } from './template.js';
-import { analyzeRouteBuild, emitRouteObject } from './route-pipeline.js';
+import { analyzeRouteBuild, emitRouteObject, type RouteRpcBinding } from './route-pipeline.js';
 import { linkRouteServerImports } from './import-linking.js';
 import type { ComponentCompiler } from './component-pipeline.js';
 import type { ClientModuleCompiler } from './client-module-pipeline.js';
@@ -72,22 +72,52 @@ export function compilePageRoute(opts: {
     opts.routeIndex,
     opts.routeState.routeBrowserImportEntries,
   );
+  const awaitQueryBindings = new Map(
+    opts.routeState.mergedParsed.dataGetQueries
+      .filter((query) => !!query.awaitExpr)
+      .map((query) => [query.awaitExpr!, { asName: query.asName, rpcId: query.rpcId || rpcNameMap.get(query.fnName) || query.fnName }]),
+  );
   const renderSections = splitTemplateRenderSections(opts.routeState.effectiveTemplate);
   const renderBody = compileTemplate(
     renderSections.bodyTemplate,
     routeComponentNames,
     actionNames,
     rpcNameMap,
-    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry },
+    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry, awaitQueryBindings },
   );
   const renderHeadBody = compileTemplate(
     renderSections.headTemplate,
     routeComponentNames,
     actionNames,
     rpcNameMap,
-    { clientRouteRegistry },
+    { clientRouteRegistry, awaitQueryBindings },
   );
   const clientEntryAsset = clientRouteRegistry.buildEntryAsset();
+  const clientServerProxyBindings = clientRouteRegistry.getServerProxyBindings();
+  const clientServerProxyModules = new Map<string, string>();
+  const extraRpcBindings: RouteRpcBinding[] = [];
+  const seenClientServerRpcIds = new Set<string>();
+
+  for (const binding of clientServerProxyBindings) {
+    const moduleKey = `${binding.importerDir}::${binding.moduleSpecifier}`;
+    let moduleId = clientServerProxyModules.get(moduleKey);
+    if (!moduleId) {
+      moduleId = opts.allocateModuleId();
+      clientServerProxyModules.set(moduleKey, moduleId);
+      const importPath = opts.resolveCompiledImportPath(binding.moduleSpecifier, binding.importerDir, outFileDir);
+      opts.pushImport(`import * as ${moduleId} from '${importPath}';`);
+    }
+
+    if (!seenClientServerRpcIds.has(binding.rpcId)) {
+      seenClientServerRpcIds.add(binding.rpcId);
+      extraRpcBindings.push({
+        name: `${binding.moduleSpecifier}:${binding.importedName}`,
+        rpcId: binding.rpcId,
+        expression: binding.importedName === 'default' ? `${moduleId}.default` : `${moduleId}.${binding.importedName}`,
+      });
+    }
+  }
+
   const clientModuleHref = clientEntryAsset ? `${opts.assetsPrefix}${clientEntryAsset.assetName}` : null;
 
   const routePlan = analyzeRouteBuild({
@@ -98,6 +128,7 @@ export function compilePageRoute(opts: {
     parsed: opts.routeState.mergedParsed,
     fnToModule,
     rpcNameMap,
+    extraRpcBindings,
     componentStyles: opts.componentCompiler.collectStyles(routeComponentNames),
     clientModuleHref,
   });
