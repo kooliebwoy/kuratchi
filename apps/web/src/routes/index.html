@@ -14,26 +14,6 @@
   const r2Buckets = user ? await getR2Buckets() : [];
 
   const baseUrl = user ? `${url.protocol}//${url.host}` : '';
-
-  const sdkInstall = `npm install @kuratchi/sdk`;
-  const sdkQuickStart = `import { createClient } from '@kuratchi/sdk';
-
-const kuratchi = createClient({
-  apiKey: process.env.KURATCHI_API_KEY,
-  baseUrl: '${baseUrl}',
-});
-
-// SQL Database
-const db = kuratchi.database('my-db');
-await db.query('SELECT * FROM users');
-
-// Key-Value
-const kv = kuratchi.kv('my-cache');
-await kv.put('key', 'value');
-
-// Object Storage
-const r2 = kuratchi.r2('my-bucket');
-await r2.put('file.txt', 'hello');`;
 </script>
 
 if (!user) {
@@ -68,7 +48,7 @@ if (!user) {
 
   <Card title="Quick Actions">
     <nav data-cluster>
-      <a href="/drover" data-variant="secondary" data-type="button">View Drover Usage</a>
+      <!-- <a href="/drover" data-variant="secondary" data-type="button">View Drover Usage</a> -->
       <a href="/databases" data-variant="primary" data-type="button">Manage Databases</a>
       <a href="/kv" data-variant="secondary" data-type="button">Manage KV</a>
       <a href="/r2" data-variant="secondary" data-type="button">Manage R2</a>

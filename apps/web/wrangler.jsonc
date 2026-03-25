@@ -7,7 +7,7 @@
 	],
 	"routes": [
 		{
-			"pattern": "kuratchi.cloud",
+			"pattern": "app.kuratchi.cloud",
 			"custom_domain": true
 		},
 		{
