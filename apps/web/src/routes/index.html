@@ -6,7 +6,7 @@
   import StatsCard from '@kuratchi/ui/stats-card.html';
   import CardGrid from '@kuratchi/ui/card-grid.html';
   import Card from '@kuratchi/ui/card.html';
-  import { url } from '@kuratchi/js/request';
+  import { url } from 'kuratchi:request';
 
   const user = await getCurrentUser();
   const databases = user ? await getDatabases() : [];

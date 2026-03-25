@@ -56,6 +56,13 @@ export function createServerModuleCompiler(
   }
 
   function resolveImportTarget(importerAbs: string, spec: string): string | null {
+    // Handle kuratchi:* virtual modules
+    if (spec.startsWith('kuratchi:')) {
+      // These are resolved at bundle time to @kuratchi/js runtime modules
+      // Return null to keep the specifier as-is for later rewriting
+      return null;
+    }
+
     if (spec.startsWith('$')) {
       const slashIdx = spec.indexOf('/');
       const folder = slashIdx === -1 ? spec.slice(1) : spec.slice(1, slashIdx);
@@ -93,6 +100,16 @@ export function createServerModuleCompiler(
 
     const source = fs.readFileSync(resolved, 'utf-8');
     const rewriteSpecifier = (spec: string): string => {
+      // Rewrite kuratchi:* virtual modules to @kuratchi/js runtime paths
+      if (spec.startsWith('kuratchi:')) {
+        const moduleName = spec.slice('kuratchi:'.length);
+        const moduleMap: Record<string, string> = {
+          'request': '@kuratchi/js/request',
+          'navigation': '@kuratchi/js/navigation',
+        };
+        return moduleMap[moduleName] ?? spec;
+      }
+
       const target = resolveImportTarget(resolved, spec);
       if (!target) return spec;
 
@@ -124,6 +141,16 @@ export function createServerModuleCompiler(
   }
 
   function resolveCompiledImportPath(origPath: string, importerDir: string, outFileDir: string): string {
+    // Rewrite kuratchi:* virtual modules to @kuratchi/js runtime paths
+    if (origPath.startsWith('kuratchi:')) {
+      const moduleName = origPath.slice('kuratchi:'.length);
+      const moduleMap: Record<string, string> = {
+        'request': '@kuratchi/js/request',
+        'navigation': '@kuratchi/js/navigation',
+      };
+      return moduleMap[moduleName] ?? origPath;
+    }
+
     const isBareModule = !origPath.startsWith('.') && !origPath.startsWith('/') && !origPath.startsWith('$');
     if (isBareModule) return origPath;
 

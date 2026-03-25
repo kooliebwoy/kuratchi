@@ -1,6 +1,6 @@
 <script>
   import { closeNearestDialog } from '$client/ui/dialog';
-  import { url, params } from '@kuratchi/js/request';
+  import { url, params } from 'kuratchi:request';
   import { getCurrentUser } from '$server/database/auth';
   import { getR2Bucket, getR2ExplorerData, uploadR2Object, saveR2TextObject, deleteR2Object, deleteR2Bucket } from '$server/database/r2';
   import { getR2Tokens } from '$server/database/tokens';
