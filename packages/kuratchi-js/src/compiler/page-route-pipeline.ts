@@ -114,6 +114,9 @@ export function compilePageRoute(opts: {
         name: `${binding.moduleSpecifier}:${binding.importedName}`,
         rpcId: binding.rpcId,
         expression: binding.importedName === 'default' ? `${moduleId}.default` : `${moduleId}.${binding.importedName}`,
+        schemaExpression: binding.importedName === 'default'
+          ? 'undefined'
+          : `${moduleId}.schemas?.[${JSON.stringify(binding.importedName)}]`,
       });
     }
   }
