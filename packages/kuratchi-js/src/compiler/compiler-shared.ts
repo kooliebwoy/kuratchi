@@ -68,13 +68,39 @@ export interface DoClassMethodEntry {
   callsThisMethods: string[];
 }
 
+export interface DoClassContributorEntry {
+  /** Absolute path to the contributor source file */
+  absPath: string;
+  /** Exported class name */
+  className: string;
+  /** Whether the class is exported as named or default */
+  exportKind: 'named' | 'default';
+  /** Own methods declared on this contributor */
+  classMethods: DoClassMethodEntry[];
+  /** Inheritance depth from the base DO class (1 = direct child) */
+  depth: number;
+}
+
+export interface ExportedClassEntry {
+  className: string;
+  exportKind: 'named' | 'default';
+}
+
+export interface RelativeImportClassEntry {
+  source: string;
+  importedName: string | 'default';
+}
+
 export interface DoHandlerEntry {
   fileName: string;
   absPath: string;
   binding: string;
   mode: 'class' | 'function';
   className?: string;
+  exportKind?: 'named' | 'default';
   classMethods: DoClassMethodEntry[];
+  /** Additional exported classes in the same DO folder that extend this base DO class */
+  classContributors: DoClassContributorEntry[];
   exportedFunctions: string[];
 }
 

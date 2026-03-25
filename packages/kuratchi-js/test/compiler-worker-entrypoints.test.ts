@@ -36,4 +36,47 @@ describe('compiler worker entrypoints', () => {
       "export * from './worker.ts';",
     );
   });
+
+  it('does not treat wrangler durable object agent bindings as generated kuratchi DO classes', async () => {
+    const projectDir = createTempProject('agent-do-bindings');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server', 'ai'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'kuratchi.config.ts'),
+      `import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({});
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'wrangler.jsonc'),
+      JSON.stringify({
+        name: 'test-app',
+        main: '.kuratchi/worker.ts',
+        durable_objects: {
+          bindings: [
+            { name: 'KURATCHI_AI_SESSION', class_name: 'KuratchiAiSession' },
+          ],
+        },
+      }, null, 2),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'ai', 'kuratchi-ai-session.agent.ts'),
+      `export class KuratchiAiSession {
+  async onRequest() {
+    return new Response('ok');
+  }
+}
+`,
+      'utf-8',
+    );
+
+    await compile({ projectDir, isDev: true });
+    const workerSource = fs.readFileSync(path.join(projectDir, '.kuratchi', 'worker.ts'), 'utf-8');
+
+    expect(workerSource).toContain("export { KuratchiAiSession } from '../src/server/ai/kuratchi-ai-session.agent';");
+    expect(workerSource).not.toContain("export { KuratchiAiSession } from './routes.ts';");
+  });
+
 });

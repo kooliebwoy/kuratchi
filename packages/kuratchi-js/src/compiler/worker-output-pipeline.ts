@@ -34,7 +34,9 @@ export function buildWorkerEntrypointSource(opts: {
   doClassNames: string[];
   workerClassEntries: WorkerClassExportEntry[];
 }): string {
+  const doClassSet = new Set(opts.doClassNames);
   const workerClassExports = opts.workerClassEntries
+    .filter((entry) => !doClassSet.has(entry.className))
     .map((entry) => {
       const importPath = toWorkerImportPath(opts.projectDir, opts.outDir, entry.file);
       if (entry.exportKind === 'default') {

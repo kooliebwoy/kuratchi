@@ -1,92 +1,89 @@
 {
-  "name": "kuratchi",
-  "main": ".kuratchi/worker.ts",
-  "compatibility_date": "2026-03-07",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "routes": [
-    {
-      "pattern": "kuratchi.cloud",
-      "custom_domain": true
-    },
-    {
-      "pattern": "kuratchi.site",
-      "custom_domain": true
-    }
-  ],
-  "send_email": [
-    {
-      "name": "EMAIL"
-    }
-  ],  
-  "placement": {
-    "mode": "smart"
-  },
-  "observability": {
-    "enabled": true
-  },
-  "ai": {
-    "binding": "AI"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "kuratchi-platform-admin",
-      "database_id": "4f1c4a1b-905a-4fda-83c1-6bf6bb654a10"
-    }
-  ],
-  "dispatch_namespaces": [
-    {
-      "binding": "DISPATCHER",
-      "namespace": "kuratchi-platform",
-      "remote": true
-    }
-  ],
-  // "vpc_services": [
-  //   {
-  //     "binding": "VPC_SERVICE",
-  //     "service_id": "019cf80a-4f90-7ba3-8fd1-7e89ad3f348d",
-  //     "remote": true
-  //   }
-  // ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "KURATCHI_AI_SESSION",
-        "class_name": "KuratchiAiSession"
-      },
-      {
-        "name": "KURATCHI_IDE_SESSION",
-        "class_name": "KuratchiIdeSession"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": [
-        "KuratchiAiSession"
-      ]
-    },
-    {
-      "tag": "v2",
-      "new_sqlite_classes": [
-        "KuratchiIdeSession"
-      ]
-    }
-  ],
-  "vars": {
-    "CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
-    "DISPATCH_NAMESPACE": "kuratchi-platform",
-    "SITE_PREVIEW_DOMAIN": "kuratchi.site",
-    "TURNSTILE_SITE_KEY": "0x4AAAAAACny9P3q0-WsXWGq"
-  },
-  "keep_vars": true,
-  "kv_namespaces": [
-    {
-      "binding": "RATE_LIMIT",
-      "id": "2196710312ed494ead9be62d87697bcb"
-    }
-  ]
+	"name": "kuratchi",
+	"main": ".kuratchi/worker.ts",
+	"compatibility_date": "2026-03-07",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"routes": [
+		{
+			"pattern": "kuratchi.cloud",
+			"custom_domain": true
+		},
+		{
+			"pattern": "kuratchi.site",
+			"custom_domain": true
+		}
+	],
+	"send_email": [
+		{
+			"name": "EMAIL"
+		}
+	],
+	"placement": {
+		"mode": "smart"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"ai": {
+		"binding": "AI"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "kuratchi-platform-admin",
+			"database_id": "4f1c4a1b-905a-4fda-83c1-6bf6bb654a10"
+		}
+	],
+	"dispatch_namespaces": [
+		{
+			"binding": "DISPATCHER",
+			"namespace": "kuratchi-platform",
+			"remote": true
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "KURATCHI_AI_SESSION",
+				"class_name": "KuratchiAiSession"
+			},
+			{
+				"name": "KURATCHI_IDE_SESSION",
+				"class_name": "KuratchiIdeSession"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"KuratchiAiSession"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"KuratchiIdeSession"
+			]
+		}
+	],
+	"vars": {
+		"CLOUDFLARE_ACCOUNT_ID": "290c1a3b978d0f44f83b515983a1c951",
+		"DISPATCH_NAMESPACE": "kuratchi-platform",
+		"SITE_PREVIEW_DOMAIN": "kuratchi.site",
+		"TURNSTILE_SITE_KEY": "0x4AAAAAACny9P3q0-WsXWGq"
+	},
+	"keep_vars": true,
+	"kv_namespaces": [
+		{
+			"binding": "RATE_LIMIT",
+			"id": "2196710312ed494ead9be62d87697bcb"
+		}
+	],
+	"assets": {
+		"directory": ".kuratchi/public",
+		"binding": "ASSETS"
+	}
 }

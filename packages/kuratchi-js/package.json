@@ -1,6 +1,6 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.17",
+    "version": "0.0.19",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
     "license": "MIT",
     "type": "module",
@@ -37,6 +37,10 @@
         "./runtime/do.js": {
             "types": "./dist/runtime/do.d.ts",
             "import": "./dist/runtime/do.js"
+        },
+        "./runtime/schema.js": {
+            "types": "./dist/runtime/schema.d.ts",
+            "import": "./dist/runtime/schema.js"
         },
         "./runtime/generated-worker.js": {
             "types": "./dist/runtime/generated-worker.d.ts",

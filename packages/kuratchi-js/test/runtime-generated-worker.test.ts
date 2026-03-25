@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createGeneratedWorker } from '../src/runtime/generated-worker.ts';
+import { schema } from '../src/runtime/schema.ts';
 
 describe('generated worker runtime', () => {
   test('renders custom 404 pages through the layout wrapper', async () => {
@@ -246,5 +247,120 @@ describe('generated worker runtime', () => {
     const setCookie = response.headers.get('set-cookie') || '';
     expect(setCookie).toContain('__kuratchi_csrf=');
     expect(setCookie).toContain('Secure');
+  });
+
+  test('validates route RPC arguments with companion schemas', async () => {
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/rpc',
+          rpc: {
+            saveDraft: async ({ title, content }) => `${title}:${content}`,
+          },
+          rpcSchemas: {
+            saveDraft: schema({
+              title: schema.string().min(1),
+              content: schema.string().min(1),
+            }),
+          },
+          render: () => '<p>rpc</p>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+      security: { csrfEnabled: false },
+    });
+
+    const ok = await worker.fetch(
+      new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%7B%22title%22%3A%22hello%22%2C%22content%22%3A%22world%22%7D%5D', {
+        headers: { 'x-kuratchi-rpc': '1' },
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, data: 'hello:world' });
+
+    const bad = await worker.fetch(
+      new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%7B%22title%22%3A%22%22%2C%22content%22%3A%22world%22%7D%5D', {
+        headers: { 'x-kuratchi-rpc': '1' },
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ ok: false, error: 'data.title must be at least 1 character(s)' });
+  });
+
+  test('rejects multi-argument payloads for schema-backed RPCs', async () => {
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/rpc',
+          rpc: {
+            saveDraft: async ({ title }) => title,
+          },
+          rpcSchemas: {
+            saveDraft: schema({
+              title: schema.string(),
+            }),
+          },
+          render: () => '<p>rpc</p>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+      security: { csrfEnabled: false },
+    });
+
+    const response = await worker.fetch(
+      new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%22hello%22%2C%22world%22%5D', {
+        headers: { 'x-kuratchi-rpc': '1' },
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: 'validated RPCs must receive exactly one argument object, got 2' });
+  });
+
+  test('rejects malformed RPC argument payloads with 400', async () => {
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/rpc',
+          rpc: {
+            ping: async () => 'pong',
+          },
+          render: () => '<p>rpc</p>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+      security: { csrfEnabled: false },
+    });
+
+    const response = await worker.fetch(
+      new Request('https://example.com/rpc?_rpc=ping&_args=%7B%22not%22%3A%22an-array%22%7D', {
+        headers: { 'x-kuratchi-rpc': '1' },
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: 'args must be a JSON array' });
   });
 });

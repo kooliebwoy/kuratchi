@@ -2,7 +2,7 @@ import type { SchemaDsl } from '@kuratchi/orm';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 7,
+  version: 8,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -223,6 +223,19 @@ export const adminSchema: SchemaDsl = {
       hash: 'text not null',
       contentType: 'text',
       size: 'integer default 0',
+      '...timestamps': true,
+    },
+    siteUploads: {
+      id: 'text primary key not null',
+      siteId: 'text -> sites.id cascade',
+      organizationId: 'text',
+      uploadedBy: 'text -> users.id',
+      uploadMode: 'text',
+      pathPrefix: 'text',
+      fileCount: 'integer default 0',
+      totalSize: 'integer default 0',
+      addedCount: 'integer default 0',
+      overwrittenCount: 'integer default 0',
       '...timestamps': true,
     },
     activity: {

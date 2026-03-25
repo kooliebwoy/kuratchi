@@ -408,6 +408,61 @@ For Durable Objects, RPC is file-driven and automatic.
   <button type="submit">Create</button>
 </form>
 ```
+
+### RPC Validation Without Dependencies
+
+Kuratchi ships a small built-in schema API for route RPCs and Durable Object RPC methods, so you do not need `zod`, `valibot`, or any other runtime dependency just to validate client-callable input.
+
+Declare schemas in a companion `schemas` object. Keys must match the public RPC function or method names:
+
+```ts
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export const schemas = {
+  createSite: schema({
+    name: schema.string().min(1),
+    slug: schema.string().min(1),
+    publish: schema.boolean().optional(false),
+  }),
+};
+
+export async function createSite(data: InferSchema<typeof schemas.createSite>) {
+  return { id: `${data.slug}-1`, publish: data.publish };
+}
+```
+
+Durable Object classes use the same convention via `static schemas`:
+
+```ts
+import { DurableObject } from 'cloudflare:workers';
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export default class SitesDO extends DurableObject {
+  static schemas = {
+    saveDraft: schema({
+      title: schema.string().min(1),
+      content: schema.string().min(1),
+    }),
+  };
+
+  async saveDraft(data: InferSchema<(typeof SitesDO.schemas).saveDraft>) {
+    return { ok: true, slug: data.title.toLowerCase().replace(/ /g, '-') };
+  },
+}
+```
+
+If the payload does not match the schema, Kuratchi returns `400` with a validation error instead of executing the RPC. Schema-backed RPCs accept a single object argument.
+
+Available schema builders:
+- `schema({ ... })`
+- `schema.string()`
+- `schema.number()`
+- `schema.boolean()`
+- `schema.file()`
+- `.optional(defaultValue)`
+- `.list()`
+- `.min(value)`
+
 ## Durable Objects
 
 Durable Object behavior is enabled by filename suffix.

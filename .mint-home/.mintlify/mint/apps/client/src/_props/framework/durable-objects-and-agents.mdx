@@ -30,6 +30,30 @@ RPC rules:
 * Underscore-prefixed methods are not exposed.
 * Lifecycle methods like `fetch()` and `alarm()` are not treated as RPC methods.
 
+### Validating Durable Object RPC input
+
+Attach schemas by method name with `static schemas`. Kuratchi validates input before invoking the public method.
+
+```ts
+import { DurableObject } from 'cloudflare:workers';
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export default class UserDO extends DurableObject {
+  static schemas = {
+    setProfile: schema({
+      name: schema.string().min(1),
+      likesDogs: schema.boolean().optional(false),
+    }),
+  };
+
+  async setProfile(data: InferSchema<(typeof UserDO.schemas).setProfile>) {
+    await this.ctx.storage.put('profile', data);
+  }
+}
+```
+
+Schema-backed RPC methods accept one object argument. Invalid payloads return `400`.
+
 ## Route usage
 
 Import from `$do/<filename>` without the `.do` suffix:

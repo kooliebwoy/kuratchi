@@ -22,6 +22,16 @@ export {
 } from './context.js';
 export { kuratchiDO, doRpc } from './do.js';
 export {
+  SchemaValidationError,
+  schema,
+  validateSchemaInput,
+  parseRpcArgsPayload,
+} from './schema.js';
+export type {
+  SchemaType,
+  InferSchema,
+} from './schema.js';
+export {
   initCsrf,
   getCsrfToken,
   validateCsrf,

@@ -59,6 +59,21 @@ export function discoverFilesWithSuffix(dir: string, suffix: string): string[] {
   return out;
 }
 
+/** Returns all files in a directory (non-recursive) whose extension is one of the given extensions. */
+export function discoverFilesWithExtensions(dir: string, extensions: string[]): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const extSet = new Set(extensions.map((e) => e.toLowerCase()));
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const ext = path.extname(entry.name).toLowerCase();
+    if (extSet.has(ext)) {
+      out.push(path.join(dir, entry.name));
+    }
+  }
+  return out;
+}
+
 export function discoverWorkflowFiles(projectDir: string): WorkerClassConfigEntry[] {
   const serverDir = path.join(projectDir, 'src', 'server');
   const files = discoverFilesWithSuffix(serverDir, '.workflow.ts');

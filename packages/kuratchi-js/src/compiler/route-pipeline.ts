@@ -25,6 +25,7 @@ export interface RouteRpcBinding {
   name: string;
   rpcId: string;
   expression: string;
+  schemaExpression: string;
 }
 
 export interface RouteLoadPlan {
@@ -307,7 +308,10 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     ? parsed.pollFunctions.map((name) => {
       const moduleId = fnToModule[name];
       const rpcId = rpcNameMap?.get(name) || name;
-      return { name, rpcId, expression: moduleId ? `${moduleId}.${name}` : name };
+      const schemaExpression = moduleId
+        ? `${moduleId}.schemas?.[${JSON.stringify(name)}]`
+        : `(typeof schemas !== 'undefined' ? schemas?.[${JSON.stringify(name)}] : undefined)`;
+      return { name, rpcId, expression: moduleId ? `${moduleId}.${name}` : name, schemaExpression };
     })
     : [];
 
@@ -365,6 +369,10 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
       .map((rpc) => `'${rpc.rpcId}': ${rpc.expression}`)
       .join(', ');
     parts.push(`    rpc: { ${rpcEntries} }`);
+    const rpcSchemaEntries = plan.rpc
+      .map((rpc) => `'${rpc.rpcId}': ${rpc.schemaExpression}`)
+      .join(', ');
+    parts.push(`    rpcSchemas: { ${rpcSchemaEntries} }`);
     // Also emit allowedQueries for query override validation
     const allowedQueryNames = plan.rpc.map((rpc) => `'${rpc.rpcId}'`).join(', ');
     parts.push(`    allowedQueries: [${allowedQueryNames}]`);

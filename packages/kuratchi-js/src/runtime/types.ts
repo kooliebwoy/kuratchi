@@ -39,6 +39,8 @@ export interface RouteModule {
   actions?: Record<string, (formData: FormData, env: Env, ctx: RouteContext) => Promise<any>>;
   /** RPC functions â€" callable from client via fetch */
   rpc?: Record<string, (args: any[], env: Env, ctx: RouteContext) => Promise<any>>;
+  /** Optional schemas for RPC inputs, keyed by function name */
+  rpcSchemas?: Record<string, any>;
   /** Render function â€" returns route HTML and optional head content from data */
   render: (data: Record<string, any>) => PageRenderOutput;
   /** Layout name (default: 'default') */

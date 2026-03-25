@@ -1,14 +1,18 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as ts from 'typescript';
 
 import {
+  type DoClassContributorEntry,
   type DoClassMethodEntry,
   type DoConfigEntry,
   type DoHandlerEntry,
+  type ExportedClassEntry,
   type OrmDatabaseEntry,
+  type RelativeImportClassEntry,
   toSafeIdentifier,
 } from './compiler-shared.js';
-import { discoverFilesWithSuffix } from './convention-discovery.js';
+import { discoverFilesWithExtensions, discoverFilesWithSuffix } from './convention-discovery.js';
 
 export function discoverDurableObjects(
   srcDir: string,
@@ -25,79 +29,531 @@ export function discoverDurableObjects(
     return { config: configDoEntries, handlers: [] };
   }
 
-  const configByBinding = new Map<string, DoConfigEntry>();
+  const bindings = new Set(configDoEntries.map((d) => d.binding));
+  const fileToBinding = new Map<string, string>();
   for (const entry of configDoEntries) {
-    configByBinding.set(entry.binding, entry);
+    for (const rawFile of entry.files ?? []) {
+      const normalized = rawFile.trim().replace(/^\.?[\\/]/, '').replace(/\\/g, '/').toLowerCase();
+      if (!normalized) continue;
+      fileToBinding.set(normalized, entry.binding);
+      const base = path.basename(normalized);
+      if (!fileToBinding.has(base)) fileToBinding.set(base, entry.binding);
+    }
   }
 
   const handlers: DoHandlerEntry[] = [];
-  const discoveredConfig: DoConfigEntry[] = [];
-  const fileNameToAbsPath = new Map<string, string>();
-  const seenBindings = new Set<string>();
+  const handlerIdToAbsPath = new Map<string, string>();
 
   for (const absPath of discoveredFiles) {
     const file = path.basename(absPath);
     const source = fs.readFileSync(absPath, 'utf-8');
 
-    if (!/extends\s+DurableObject\b/.test(source)) continue;
-
-    const classMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+DurableObject/);
-    const className = classMatch?.[1] ?? null;
-    if (!className) continue;
-
-    const bindingMatch = source.match(/static\s+binding\s*=\s*['"](\w+)['"]/);
-    const baseName = file.replace(/\.do\.ts$/, '').replace(/\.ts$/, '');
-    const derivedBinding = baseName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() + '_DO';
-    const binding = bindingMatch?.[1] ?? derivedBinding;
-
-    if (seenBindings.has(binding)) {
-      throw new Error(
-        `[KuratchiJS] Duplicate DO binding '${binding}' detected. Use 'static binding = "UNIQUE_NAME"' in one of the classes.`,
-      );
+    const exportedFunctions = extractExportedFunctions(source);
+    const defaultMatch = source.match(/export\s+default\s+class\s+(\w+)\s+extends\s+([A-Za-z_$][\w$]*)/);
+    const namedMatch = source.match(/export\s+class\s+(\w+)\s+extends\s+([A-Za-z_$][\w$]*)/);
+    let className: string | null = null;
+    let exportKind: 'named' | 'default' | undefined;
+    if (defaultMatch && isDurableObjectSubclass(absPath, source, defaultMatch[1])) {
+      className = defaultMatch[1] ?? null;
+      exportKind = 'default';
+    } else if (namedMatch && isDurableObjectSubclass(absPath, source, namedMatch[1])) {
+      className = namedMatch[1] ?? null;
+      exportKind = 'named';
     }
-    seenBindings.add(binding);
+    const hasClass = !!className;
+    if (!hasClass && exportedFunctions.length === 0) continue;
 
-    const classMethods = extractClassMethods(source, className);
+    // Binding resolution:
+    // 1) explicit static binding declared in the class
+    // 2) config-mapped file name
+    // 3) if exactly one binding exists, infer it
+    let binding: string | null = null;
+    const bindingMatch = source.match(/static\s+binding\s*=\s*['"](\w+)['"]/);
+    if (bindingMatch) {
+      binding = bindingMatch[1];
+    } else {
+      const normalizedFile = file.replace(/\\/g, '/').toLowerCase();
+      const normalizedRelFromSrc = path.relative(srcDir, absPath).replace(/\\/g, '/').toLowerCase();
+      binding = className ? (configDoEntries.find((entry) => entry.className === className)?.binding ?? null) : null;
+      if (!binding) {
+        binding = fileToBinding.get(normalizedRelFromSrc) ?? fileToBinding.get(normalizedFile) ?? null;
+      }
+      if (!binding && configDoEntries.length === 1) {
+        binding = configDoEntries[0].binding;
+      }
+    }
+    if (!binding) continue;
+    if (!bindings.has(binding)) continue;
 
-    const fileName = file.replace(/\.ts$/, '');
-    const existing = fileNameToAbsPath.get(fileName);
+    const classMethods = className ? extractClassMethods(absPath, source, className) : [];
+
+    const fileName = path
+      .relative(absPath.startsWith(serverDir) ? serverDir : legacyDir, absPath)
+      .replace(/\\/g, '/')
+      .replace(/\.ts$/, '');
+    const existing = handlerIdToAbsPath.get(fileName);
     if (existing && existing !== absPath) {
       throw new Error(
-        `[KuratchiJS] Duplicate DO handler file name '${fileName}.ts' detected:\n- ${existing}\n- ${absPath}\nRename one file or move it to avoid proxy name collision.`,
+        `[KuratchiJS] Duplicate DO handler id '${fileName}.ts' detected:\n- ${existing}\n- ${absPath}\nRename one file or move it to avoid proxy name collision.`,
       );
     }
-    fileNameToAbsPath.set(fileName, absPath);
-
-    const configEntry = configByBinding.get(binding);
-    void ormDatabases;
-
-    discoveredConfig.push({
-      binding,
-      className,
-      stubId: configEntry?.stubId,
-      files: [file],
-    });
+    handlerIdToAbsPath.set(fileName, absPath);
 
     handlers.push({
       fileName,
       absPath,
       binding,
-      mode: 'class',
-      className,
+      mode: hasClass ? 'class' : 'function',
+      className: className ?? undefined,
+      exportKind,
       classMethods,
-      exportedFunctions: [],
+      classContributors: [],
+      exportedFunctions,
     });
   }
 
-  return { config: discoveredConfig, handlers };
+  // Discover contributor classes and merge their methods into each base handler.
+  for (const handler of handlers) {
+    if (handler.mode !== 'class' || !handler.className) continue;
+    const contributors = discoverDoClassContributors(handler);
+    handler.classContributors = contributors;
+    if (contributors.length > 0) {
+      handler.classMethods = mergeDoClassMethods(handler.classMethods, contributors);
+    }
+  }
+
+  // Build config entries from discovered handlers (de-duped by binding).
+  // Prefer class name from the original config entry (e.g. from wrangler.jsonc).
+  const discoveredConfigByBinding = new Map<string, DoConfigEntry>();
+  for (const handler of handlers) {
+    const configEntry = configDoEntries.find((e) => e.binding === handler.binding);
+    const existing = discoveredConfigByBinding.get(handler.binding);
+    if (!existing) {
+      discoveredConfigByBinding.set(handler.binding, {
+        binding: handler.binding,
+        // Use config class name when available (authoritative, e.g. from wrangler.jsonc).
+        className: configEntry?.className ?? handler.className ?? handler.binding,
+        stubId: configEntry?.stubId,
+        files: [path.basename(handler.absPath)],
+      });
+    } else {
+      existing.files?.push(path.basename(handler.absPath));
+    }
+  }
+
+  void ormDatabases;
+  return { config: [...discoveredConfigByBinding.values()], handlers };
+}
+
+// ---------------------------------------------------------------------------
+// TypeScript AST helpers
+// ---------------------------------------------------------------------------
+
+function extractExportedFunctions(source: string): string[] {
+  const out: string[] = [];
+  const fnRegex = /export\s+(?:async\s+)?function\s+(\w+)/g;
+  let m;
+  while ((m = fnRegex.exec(source)) !== null) out.push(m[1]);
+  return out;
+}
+
+function extractExportedClasses(source: string): ExportedClassEntry[] {
+  const sourceFile = ts.createSourceFile('classes.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const out: ExportedClassEntry[] = [];
+
+  const hasModifier = (
+    node: { modifiers?: ts.NodeArray<ts.ModifierLike> },
+    kind: ts.SyntaxKind,
+  ): boolean => (node.modifiers ?? ts.factory.createNodeArray()).some((m) => m.kind === kind);
+
+  const visit = (node: ts.Node) => {
+    if (ts.isClassDeclaration(node) && node.name?.text && hasModifier(node, ts.SyntaxKind.ExportKeyword)) {
+      out.push({
+        className: node.name.text,
+        exportKind: hasModifier(node, ts.SyntaxKind.DefaultKeyword) ? 'default' : 'named',
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  ts.forEachChild(sourceFile, visit);
+  return out;
+}
+
+function extractOwnClassMethods(source: string, className: string): { methods: DoClassMethodEntry[]; extendsName: string | null } | null {
+  const sourceFile = ts.createSourceFile(`${className}.ts`, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let classDecl: ts.ClassDeclaration | null = null;
+
+  const visit = (node: ts.Node) => {
+    if (classDecl) return;
+    if (ts.isClassDeclaration(node) && node.name?.text === className) {
+      classDecl = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
+  if (!classDecl) return null;
+  const targetClass = classDecl as ts.ClassDeclaration;
+
+  let extendsName: string | null = null;
+  for (const clause of targetClass.heritageClauses ?? []) {
+    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+    const heritage = clause.types[0];
+    if (!heritage) continue;
+    const expr = heritage.expression;
+    if (ts.isIdentifier(expr)) {
+      extendsName = expr.text;
+    } else if (ts.isPropertyAccessExpression(expr)) {
+      extendsName = expr.name.text;
+    } else {
+      extendsName = expr.getText(sourceFile).trim() || null;
+    }
+    break;
+  }
+
+  const methods: DoClassMethodEntry[] = [];
+  for (const member of targetClass.members) {
+    if (!ts.isMethodDeclaration(member)) continue;
+    if (!member.body) continue;
+    if (!member.name || !ts.isIdentifier(member.name)) continue;
+
+    const name = member.name.text;
+    const modifiers = member.modifiers ?? ts.factory.createNodeArray();
+    const visibility = modifiers.some((m) => m.kind === ts.SyntaxKind.PrivateKeyword)
+      ? 'private'
+      : modifiers.some((m) => m.kind === ts.SyntaxKind.ProtectedKeyword)
+        ? 'protected'
+        : 'public';
+    const isStatic = modifiers.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
+    const isAsync = modifiers.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
+    if (isStatic) continue;
+
+    const bodySource = member.body.getText(sourceFile);
+    const hasWorkerContextCalls = /\b(getCurrentUser|redirect|goto|getRequest|getLocals)\s*\(/.test(bodySource);
+    const called = new Set<string>();
+    const visitBody = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
+        called.add(node.expression.name.text);
+      }
+      ts.forEachChild(node, visitBody);
+    };
+    ts.forEachChild(member.body, visitBody);
+
+    methods.push({
+      name,
+      visibility,
+      isStatic,
+      isAsync,
+      hasWorkerContextCalls,
+      callsThisMethods: [...called],
+    });
+  }
+
+  return { methods, extendsName };
+}
+
+function resolveBaseClassReference(
+  absPath: string,
+  source: string,
+  baseName: string,
+): { absPath: string; className: string } | null {
+  if (new RegExp(`class\\s+${baseName}\\b`).test(source)) {
+    return { absPath, className: baseName };
+  }
+
+  const imports = extractRelativeClassImports(source);
+  const ref = imports.get(baseName);
+  if (!ref) return null;
+
+  const targetAbsPath = resolveRelativeModulePath(absPath, ref.source);
+  if (!targetAbsPath || !fs.existsSync(targetAbsPath)) return null;
+
+  if (ref.importedName !== 'default') {
+    return { absPath: targetAbsPath, className: ref.importedName };
+  }
+
+  const targetSource = fs.readFileSync(targetAbsPath, 'utf-8');
+  const namedDefaultClass = targetSource.match(/export\s+default\s+class\s+([A-Za-z_$][\w$]*)\b/);
+  if (namedDefaultClass) {
+    return { absPath: targetAbsPath, className: namedDefaultClass[1] };
+  }
+  const defaultAlias = targetSource.match(/export\s+default\s+([A-Za-z_$][\w$]*)\s*;?/);
+  if (defaultAlias) {
+    return { absPath: targetAbsPath, className: defaultAlias[1] };
+  }
+  return null;
+}
+
+function extractRelativeClassImports(source: string): Map<string, RelativeImportClassEntry> {
+  const imports = new Map<string, RelativeImportClassEntry>();
+  const importRegex = /import\s+([^;]+?)\s+from\s+['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = importRegex.exec(source)) !== null) {
+    const clause = String(match[1] ?? '').trim();
+    const specifier = String(match[2] ?? '').trim();
+    if (!specifier.startsWith('.')) continue;
+    if (!clause || clause.startsWith('*')) continue;
+
+    let defaultPart = '';
+    let namedPart = '';
+    if (clause.startsWith('{')) {
+      namedPart = clause;
+    } else if (clause.includes('{')) {
+      const splitIdx = clause.indexOf('{');
+      defaultPart = clause.slice(0, splitIdx).replace(/,$/, '').trim();
+      namedPart = clause.slice(splitIdx).trim();
+    } else {
+      defaultPart = clause.trim();
+    }
+
+    if (defaultPart) {
+      imports.set(defaultPart, { source: specifier, importedName: 'default' });
+    }
+
+    if (namedPart) {
+      const namedBody = namedPart.replace(/^\{/, '').replace(/\}$/, '');
+      for (const entry of namedBody.split(',')) {
+        const trimmed = entry.trim();
+        if (!trimmed) continue;
+        const namedMatch = trimmed.match(/^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+        if (!namedMatch) continue;
+        const importedName = namedMatch[1];
+        const localName = namedMatch[2] ?? importedName;
+        imports.set(localName, { source: specifier, importedName });
+      }
+    }
+  }
+  return imports;
+}
+
+function resolveRelativeModulePath(importerAbsPath: string, specifier: string): string | null {
+  const basePath = path.resolve(path.dirname(importerAbsPath), specifier);
+  const moduleExt = path.extname(basePath).toLowerCase();
+  const hasSourceExtension = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']).has(moduleExt);
+  const candidates = hasSourceExtension
+    ? [basePath]
+    : [
+        `${basePath}.ts`,
+        `${basePath}.tsx`,
+        `${basePath}.js`,
+        `${basePath}.mjs`,
+        `${basePath}.cjs`,
+        path.join(basePath, 'index.ts'),
+        path.join(basePath, 'index.tsx'),
+        path.join(basePath, 'index.js'),
+        path.join(basePath, 'index.mjs'),
+        path.join(basePath, 'index.cjs'),
+      ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function getClassExtensionDistance(
+  absPath: string,
+  source: string,
+  className: string,
+  targetAbsPath: string,
+  targetClassName: string,
+  cache = new Map<string, number | null>(),
+  stack = new Set<string>(),
+): number | null {
+  const cacheKey = `${absPath}::${className}=>${targetAbsPath}::${targetClassName}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey) ?? null;
+  if (stack.has(cacheKey)) return null;
+  stack.add(cacheKey);
+
+  const own = extractOwnClassMethods(source, className);
+  if (!own?.extendsName) {
+    cache.set(cacheKey, null);
+    stack.delete(cacheKey);
+    return null;
+  }
+
+  const baseRef = resolveBaseClassReference(absPath, source, own.extendsName);
+  if (!baseRef) {
+    cache.set(cacheKey, null);
+    stack.delete(cacheKey);
+    return null;
+  }
+
+  if (baseRef.absPath === targetAbsPath && baseRef.className === targetClassName) {
+    cache.set(cacheKey, 1);
+    stack.delete(cacheKey);
+    return 1;
+  }
+
+  const baseSource = fs.readFileSync(baseRef.absPath, 'utf-8');
+  const parentDistance = getClassExtensionDistance(baseRef.absPath, baseSource, baseRef.className, targetAbsPath, targetClassName, cache, stack);
+  const result = parentDistance == null ? null : parentDistance + 1;
+  cache.set(cacheKey, result);
+  stack.delete(cacheKey);
+  return result;
+}
+
+function isDurableObjectSubclass(
+  absPath: string,
+  source: string,
+  className: string,
+  cache = new Map<string, boolean>(),
+  stack = new Set<string>(),
+): boolean {
+  const cacheKey = `${absPath}::${className}`;
+  const cached = cache.get(cacheKey);
+  if (cached != null) return cached;
+  if (stack.has(cacheKey)) return false;
+  stack.add(cacheKey);
+
+  const own = extractOwnClassMethods(source, className);
+  if (!own?.extendsName) {
+    cache.set(cacheKey, false);
+    stack.delete(cacheKey);
+    return false;
+  }
+
+  if (own.extendsName === 'DurableObject' || own.extendsName === 'kuratchiDO') {
+    cache.set(cacheKey, true);
+    stack.delete(cacheKey);
+    return true;
+  }
+
+  const baseRef = resolveBaseClassReference(absPath, source, own.extendsName);
+  if (!baseRef) {
+    cache.set(cacheKey, false);
+    stack.delete(cacheKey);
+    return false;
+  }
+
+  const baseSource = fs.readFileSync(baseRef.absPath, 'utf-8');
+  const result = isDurableObjectSubclass(baseRef.absPath, baseSource, baseRef.className, cache, stack);
+  cache.set(cacheKey, result);
+  stack.delete(cacheKey);
+  return result;
+}
+
+function extractClassMethods(absPath: string, source: string, className: string): DoClassMethodEntry[] {
+  const cache = new Map<string, DoClassMethodEntry[]>();
+  return resolveClassMethods(absPath, source, className, cache, new Set<string>());
+}
+
+function resolveClassMethods(
+  absPath: string,
+  source: string,
+  className: string,
+  cache: Map<string, DoClassMethodEntry[]>,
+  stack: Set<string>,
+): DoClassMethodEntry[] {
+  const cacheKey = `${absPath}::${className}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached.map((e) => ({ ...e, callsThisMethods: [...e.callsThisMethods] }));
+  if (stack.has(cacheKey)) return [];
+  stack.add(cacheKey);
+
+  const own = extractOwnClassMethods(source, className);
+  if (!own) {
+    stack.delete(cacheKey);
+    cache.set(cacheKey, []);
+    return [];
+  }
+
+  let inherited: DoClassMethodEntry[] = [];
+  const extendsName = own.extendsName;
+  if (extendsName && extendsName !== 'DurableObject' && extendsName !== 'kuratchiDO') {
+    const baseRef = resolveBaseClassReference(absPath, source, extendsName);
+    if (baseRef) {
+      const baseSource = fs.readFileSync(baseRef.absPath, 'utf-8');
+      inherited = resolveClassMethods(baseRef.absPath, baseSource, baseRef.className, cache, stack);
+    }
+  }
+
+  const merged = new Map<string, DoClassMethodEntry>();
+  for (const method of inherited) {
+    merged.set(method.name, { ...method, callsThisMethods: [...method.callsThisMethods] });
+  }
+  for (const method of own.methods) {
+    merged.set(method.name, { ...method, callsThisMethods: [...method.callsThisMethods] });
+  }
+
+  const result = [...merged.values()];
+  cache.set(cacheKey, result.map((e) => ({ ...e, callsThisMethods: [...e.callsThisMethods] })));
+  stack.delete(cacheKey);
+  return result;
+}
+
+function discoverDoClassContributors(handler: DoHandlerEntry): DoClassContributorEntry[] {
+  if (handler.mode !== 'class' || !handler.className) return [];
+
+  const folder = path.dirname(handler.absPath);
+  const files = discoverFilesWithExtensions(folder, ['.ts', '.tsx', '.js', '.mjs', '.cjs']);
+  const contributors: DoClassContributorEntry[] = [];
+  const seen = new Set<string>();
+
+  for (const absPath of files) {
+    const source = fs.readFileSync(absPath, 'utf-8');
+    const exportedClasses = extractExportedClasses(source);
+    for (const exportedClass of exportedClasses) {
+      if (absPath === handler.absPath && exportedClass.className === handler.className) continue;
+
+      const depth = getClassExtensionDistance(absPath, source, exportedClass.className, handler.absPath, handler.className);
+      if (depth == null || depth < 1) continue;
+
+      const own = extractOwnClassMethods(source, exportedClass.className);
+      if (!own) continue;
+
+      const key = `${absPath}::${exportedClass.className}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      contributors.push({
+        absPath,
+        className: exportedClass.className,
+        exportKind: exportedClass.exportKind,
+        classMethods: own.methods.map((m) => ({ ...m, callsThisMethods: [...m.callsThisMethods] })),
+        depth,
+      });
+    }
+  }
+
+  contributors.sort((a, b) => {
+    if (a.depth !== b.depth) return a.depth - b.depth;
+    const fc = a.absPath.localeCompare(b.absPath);
+    if (fc !== 0) return fc;
+    return a.className.localeCompare(b.className);
+  });
+
+  return contributors;
+}
+
+function mergeDoClassMethods(
+  baseMethods: DoClassMethodEntry[],
+  contributors: DoClassContributorEntry[],
+): DoClassMethodEntry[] {
+  const merged = new Map<string, DoClassMethodEntry>();
+  for (const method of baseMethods) {
+    merged.set(method.name, { ...method, callsThisMethods: [...method.callsThisMethods] });
+  }
+  for (const contributor of contributors) {
+    for (const method of contributor.classMethods) {
+      merged.set(method.name, { ...method, callsThisMethods: [...method.callsThisMethods] });
+    }
+  }
+  return [...merged.values()];
 }
 
 export function generateHandlerProxy(
   handler: DoHandlerEntry,
-  opts: { projectDir: string; runtimeDoImport: string },
+  opts: { projectDir: string; runtimeDoImport: string; runtimeSchemaImport: string },
 ): string {
   const doDir = path.join(opts.projectDir, '.kuratchi', 'do');
-  const origRelPath = path.relative(doDir, handler.absPath).replace(/\\/g, '/');
+  const proxyFile = path.join(doDir, handler.fileName + '.ts');
+  const proxyFileDir = path.dirname(proxyFile);
+  const origRelPath = path.relative(proxyFileDir, handler.absPath).replace(/\\/g, '/');
   const handlerLocal = `__handler_${toSafeIdentifier(handler.fileName)}`;
   const lifecycle = new Set(['constructor', 'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError']);
 
@@ -128,10 +584,15 @@ export function generateHandlerProxy(
     .map((method) => method.name);
   const asyncMethods = methods.filter((method) => method.isAsync).map((method) => method.name);
 
+  const handlerImport = handler.exportKind === 'named' && handler.className
+    ? `import { ${handler.className} as ${handlerLocal} } from '${origRelPath}';`
+    : `import ${handlerLocal} from '${origRelPath}';`;
+
   const lines: string[] = [
     `// Auto-generated by KuratchiJS compiler ï¿½" do not edit.`,
     `import { __getDoStub } from '${opts.runtimeDoImport}';`,
-    `import ${handlerLocal} from '${origRelPath}';`,
+    `import { validateSchemaInput as __validateSchemaInput } from '${opts.runtimeSchemaImport}';`,
+    handlerImport,
     ``,
     `const __FD_TAG = '__kuratchi_form_data__';`,
     `function __isPlainObject(__v) {`,
@@ -201,97 +662,15 @@ export function generateHandlerProxy(
   }
 
   for (const method of rpcFunctions) {
+    lines.push(`const __schema_${toSafeIdentifier(method)} = ${handlerLocal}.schemas?.[${JSON.stringify(method)}];`);
     if (workerContextMethods.includes(method)) {
-      lines.push(`export async function ${method}(...a) { return __callWorkerMethod('${method}', a); }`);
+      lines.push(`export async function ${method}(...a) { return __callWorkerMethod('${method}', __validateSchemaInput(__schema_${toSafeIdentifier(method)}, a)); }`);
     } else {
       lines.push(
-        `export async function ${method}(...a) { const s = await __getDoStub('${handler.binding}'); if (!s) throw new Error('Not authenticated'); return s.${method}(...a.map((__x) => __encodeArg(__x))); }`,
+        `export async function ${method}(...a) { const __validated = __validateSchemaInput(__schema_${toSafeIdentifier(method)}, a); const s = await __getDoStub('${handler.binding}'); if (!s) throw new Error('Not authenticated'); return s.${method}(...__validated.map((__x) => __encodeArg(__x))); }`,
       );
     }
   }
 
   return lines.join('\n') + '\n';
-}
-
-function extractClassMethods(source: string, className: string): DoClassMethodEntry[] {
-  const classIdx = source.search(new RegExp(`class\\s+${className}\\s+extends\\s+DurableObject`));
-  if (classIdx === -1) return [];
-
-  const braceStart = source.indexOf('{', classIdx);
-  if (braceStart === -1) return [];
-
-  let depth = 0;
-  let braceEnd = braceStart;
-  for (let i = braceStart; i < source.length; i++) {
-    if (source[i] === '{') depth++;
-    else if (source[i] === '}') {
-      depth--;
-      if (depth === 0) {
-        braceEnd = i;
-        break;
-      }
-    }
-  }
-
-  const classBody = source.slice(braceStart + 1, braceEnd);
-  const methods: DoClassMethodEntry[] = [];
-  const methodRegex = /^\s+(?:(public|private|protected)\s+)?(?:(static)\s+)?(?:(async)\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{]+)?\{/gm;
-  const reserved = new Set([
-    'constructor', 'static', 'get', 'set',
-    'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case',
-    'throw', 'try', 'catch', 'finally', 'new', 'delete', 'typeof',
-    'void', 'instanceof', 'in', 'of', 'await', 'yield', 'const',
-    'let', 'var', 'function', 'class', 'import', 'export', 'default',
-    'break', 'continue', 'with', 'super', 'this',
-  ]);
-
-  let match: RegExpExecArray | null;
-  while ((match = methodRegex.exec(classBody)) !== null) {
-    const visibility = match[1] ?? 'public';
-    const isStatic = !!match[2];
-    const isAsync = !!match[3];
-    const name = match[4];
-    if (!name || isStatic || reserved.has(name)) continue;
-
-    const matchText = match[0] ?? '';
-    const openRel = matchText.lastIndexOf('{');
-    const openAbs = openRel >= 0 ? match.index + openRel : -1;
-    let hasWorkerContextCalls = false;
-    const callsThisMethods: string[] = [];
-    if (openAbs >= 0) {
-      let innerDepth = 0;
-      let endAbs = openAbs;
-      for (let i = openAbs; i < classBody.length; i++) {
-        const ch = classBody[i];
-        if (ch === '{') innerDepth++;
-        else if (ch === '}') {
-          innerDepth--;
-          if (innerDepth === 0) {
-            endAbs = i;
-            break;
-          }
-        }
-      }
-      const bodySource = classBody.slice(openAbs + 1, endAbs);
-      hasWorkerContextCalls = /\b(getCurrentUser|redirect|goto|getRequest|getLocals)\s*\(/.test(bodySource);
-      const called = new Set<string>();
-      const callRegex = /\bthis\.([A-Za-z_$][\w$]*)\s*\(/g;
-      let callMatch: RegExpExecArray | null;
-      while ((callMatch = callRegex.exec(bodySource)) !== null) {
-        called.add(callMatch[1]);
-      }
-      callsThisMethods.push(...called);
-    }
-
-    methods.push({
-      name,
-      visibility: visibility as 'public' | 'private' | 'protected',
-      isStatic,
-      isAsync,
-      hasWorkerContextCalls,
-      callsThisMethods,
-    });
-  }
-
-  return methods;
 }

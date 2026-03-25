@@ -80,6 +80,35 @@ if (!post) throw new PageError(404);
 if (!post.isPublished && !currentUser?.isAdmin) throw new PageError(403, 'Admin only');
 ```
 
+## Validated RPC input
+
+For client-callable RPC functions, declare a companion `schemas` object in the server module. The schema key must match the exported function name.
+
+```ts
+import { schema, type InferSchema } from '@kuratchi/js';
+
+export const schemas = {
+  createPost: schema({
+    title: schema.string().min(1),
+    content: schema.string().min(1),
+  }),
+};
+
+export async function createPost(data: InferSchema<typeof schemas.createPost>) {
+  return { slug: data.title.toLowerCase().replace(/ /g, '-') };
+}
+```
+
+Use the function normally from the route template:
+
+```html
+<div data-poll={createPost({ title: 'Hello', content: 'World' })} data-interval="2s">
+  creating...
+</div>
+```
+
+Schema-backed RPCs accept a single object argument. If validation fails, Kuratchi returns `400` and does not execute the function.
+
 ## Progressive enhancement helpers
 
 KuratchiJS also supports declarative client-side triggers.

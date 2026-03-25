@@ -1,7 +1,8 @@
 <script>
   import { getParam } from '@kuratchi/js';
+  import { handleSiteFileSelectionChange, toggleAllSiteFiles } from '$client/sites/file-selection';
   import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$client/sites/upload-form';
-  import { getSite, getSiteFiles, uploadSiteFiles, deleteSiteFile, deleteSite } from '$server/database/sites';
+  import { getSite, getSiteFiles, getSiteUploads, uploadSiteFiles, deleteSiteFiles, deleteSite } from '$server/database/sites';
   import { getSitePreviewUrl } from '$server/database/sites';
   import { formatBytes } from '$shared/format';
   import Badge from '@kuratchi/ui/badge.html';
@@ -13,7 +14,9 @@
   const id = getParam('id');
   const site = await getSite(id);
   const files = site ? await getSiteFiles(id) : [];
+  const uploads = site ? await getSiteUploads(id) : [];
   const previewUrl = site ? getSitePreviewUrl(site) : null;
+  const lastUpload = uploads[0] || null;
 
   function getFileIcon(contentType) {
     if (!contentType) return 'doc';
@@ -24,6 +27,15 @@
     if (contentType.includes('json')) return 'json';
     if (contentType.includes('font')) return 'font';
     return 'file';
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function formatUploadMode(value) {
+    return value === 'folder' ? 'Folder upload' : 'File upload';
   }
 </script>
 
@@ -77,6 +89,10 @@ if (!site) {
     <div data-flex data-direction="column" data-gap="xs" style="margin-bottom: 1rem;">
       <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500;">Files</h2>
       <p data-muted style="font-size: 0.875rem;">Manage the files that make up your site. Ensure an <code>index.html</code> is present at the root to serve the site over the domain.</p>
+      <p data-muted style="font-size: 0.875rem;">Uploading again replaces files with the same path and keeps everything else until you delete it.</p>
+      if (lastUpload) {
+        <p data-muted style="font-size: 0.875rem;">Last upload: <strong>{formatTimestamp(lastUpload.created_at)}</strong>.</p>
+      }
     </div>
     
     if (files.length === 0) {
@@ -90,33 +106,104 @@ if (!site) {
       </EmptyState>
     } else {
       <Card style="padding: 0; overflow: hidden;">
+        <form action={deleteSiteFiles} method="POST" data-action>
+          <input type="hidden" name="siteId" value={site.id} />
+          <div data-flex data-justify="between" data-align="center" data-gap="sm" style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+            <div data-flex data-align="center" data-gap="sm">
+              <span id="site-files-selection-count" data-muted style="font-size: 0.875rem;">0 files selected</span>
+            </div>
+            <button id="site-files-bulk-delete" type="submit" data-variant="danger-outline" data-size="sm" disabled>
+              Delete selected
+            </button>
+          </div>
+          <div data-scroll>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 44px;">
+                    <input
+                      type="checkbox"
+                      id="site-files-select-all"
+                      aria-label="Select all files"
+                      onchange={toggleAllSiteFiles()}
+                    />
+                  </th>
+                  <th></th>
+                  <th>Path</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Last Modified</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                for (const file of files) {
+                  <tr>
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="fileIds"
+                        value={file.id}
+                        aria-label={`Select ${file.path}`}
+                        onchange={handleSiteFileSelectionChange()}
+                      />
+                    </td>
+                    <td data-muted>{getFileIcon(file.contentType)}</td>
+                    <td><code>{file.path}</code></td>
+                    <td data-muted>{file.contentType || '-'}</td>
+                    <td data-muted>{formatBytes(file.size)}</td>
+                    <td data-muted>{formatTimestamp(file.updated_at || file.created_at)}</td>
+                    <td style="text-align: right;">
+                      <button type="submit" name="targetFileId" value={file.id} data-variant="danger-ghost" data-size="sm">Delete</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          if (deleteSiteFiles.error) {
+            <div style="padding: 1rem; border-top: 1px solid var(--border-color);">
+              <Alert data-variant="danger">{deleteSiteFiles.error}</Alert>
+            </div>
+          }
+        </form>
+      </Card>
+    }
+  </section>
+
+  <section>
+    <div data-flex data-direction="column" data-gap="xs" style="margin-bottom: 1rem;">
+      <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500;">Recent Uploads</h2>
+      <p data-muted style="font-size: 0.875rem;">Each deploy is recorded so you can see when the site changed and whether files were added or overwritten.</p>
+    </div>
+
+    if (uploads.length === 0) {
+      <EmptyState title="No upload history yet" description="Your next deploy will appear here with a timestamp and change summary." />
+    } else {
+      <Card style="padding: 0; overflow: hidden;">
         <div data-scroll>
           <table>
             <thead>
               <tr>
-                <th></th>
-                <th>Path</th>
-                <th>Type</th>
+                <th>Uploaded</th>
+                <th>Mode</th>
+                <th>Files</th>
+                <th>Added</th>
+                <th>Overwritten</th>
                 <th>Size</th>
-                <th>Updated</th>
-                <th></th>
+                <th>Prefix</th>
               </tr>
             </thead>
             <tbody>
-              for (const file of files) {
+              for (const upload of uploads) {
                 <tr>
-                  <td data-muted>{getFileIcon(file.contentType)}</td>
-                  <td><code>{file.path}</code></td>
-                  <td data-muted>{file.contentType || '-'}</td>
-                  <td data-muted>{formatBytes(file.size)}</td>
-                  <td data-muted>{file.updated_at ? new Date(file.updated_at).toLocaleDateString() : '-'}</td>
-                  <td style="text-align: right;">
-                    <form action={deleteSiteFile} method="POST" data-action data-inline>
-                      <input type="hidden" name="siteId" value={site.id} />
-                      <input type="hidden" name="fileId" value={file.id} />
-                      <button type="submit" data-variant="danger-ghost" data-size="sm">Delete</button>
-                    </form>
-                  </td>
+                  <td data-muted>{formatTimestamp(upload.created_at)}</td>
+                  <td>{formatUploadMode(upload.uploadMode)}</td>
+                  <td data-muted>{upload.fileCount}</td>
+                  <td data-muted>{upload.addedCount}</td>
+                  <td data-muted>{upload.overwrittenCount}</td>
+                  <td data-muted>{formatBytes(upload.totalSize)}</td>
+                  <td><code>{upload.pathPrefix || '/'}</code></td>
                 </tr>
               }
             </tbody>

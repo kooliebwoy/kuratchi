@@ -44,12 +44,35 @@ export function __setRequestContext(ctx: any, request: Request, env?: Record<str
   __setRequestState(request);
 
   // Expose context on globalThis for @kuratchi/auth and other packages
-  // Workers are single-threaded per request â€” this is safe
+  // Workers are single-threaded per request — this is safe
   (globalThis as any).__kuratchi_context__ = {
     get request() { return __request; },
     get locals() { return __locals; },
   };
 }
+
+/**
+ * Push a new request context for the duration of a DO RPC call.
+ * Saves current state and returns a restore function.
+ * @internal
+ */
+export function __pushRequestContext(rpcContext: any, ctx: any, env: any): () => void {
+  const prevCtx = __ctx;
+  const prevRequest = __request;
+  const prevEnv = __env;
+  const prevLocals = __locals;
+  __ctx = ctx;
+  __request = rpcContext?.request ?? __request;
+  __env = env ?? __env;
+  __locals = rpcContext?.locals ? { ...rpcContext.locals } : {};
+  return () => {
+    __ctx = prevCtx;
+    __request = prevRequest;
+    __env = prevEnv;
+    __locals = prevLocals;
+  };
+}
+
 
 /** Get the execution context (Worker: ExecutionContext, DO: DurableObjectState) */
 export function getCtx(): any {

@@ -560,4 +560,91 @@ import { closeNearestDialog } from '$client/ui/dialog';
     expect(routesCode).toContain('data-client-event="click"');
     expect(routesCode).not.toContain("import { closeNearestDialog } from '$client/ui/dialog';");
   });
+
+  it('emits companion rpc schemas for imported route rpc functions', async () => {
+    const projectDir = createTempProject('route-rpc-schemas');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'drafts.ts'),
+      `import { schema, type InferSchema } from '@kuratchi/js';
+
+export const schemas = {
+  saveDraft: schema({
+    title: schema.string().min(1),
+    content: schema.string().min(1),
+  }),
+};
+
+export async function saveDraft(data: InferSchema<typeof schemas.saveDraft>) {
+  return data.title + ':' + data.content;
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { saveDraft } from '$server/drafts';
+</script>
+
+<div data-poll={saveDraft({ title: 'Hello', content: 'World' })} data-interval="2s">
+  waiting
+</div>`,
+      'utf-8',
+    );
+
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
+
+    expect(routesCode).toContain("rpcSchemas: { 'rpc_0_0': __m0.schemas?.[\"saveDraft\"] }");
+    expect(routesCode).toContain("rpc: { 'rpc_0_0': __m0.saveDraft }");
+  });
+
+  it('validates durable object rpc methods against static schemas in generated proxies', async () => {
+    const projectDir = createTempProject('do-rpc-schemas');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'kuratchi.config.ts'),
+      `import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  durableObjects: {
+    PROFILE_DO: {
+      className: 'ProfileDO',
+    },
+  },
+});
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'profile.do.ts'),
+      `import { DurableObject } from 'cloudflare:workers';
+import { schema } from '@kuratchi/js';
+
+export default class ProfileDO extends DurableObject {
+  static schemas = {
+    createProfile: schema({
+      name: schema.string().min(1),
+    }),
+  };
+
+  async createProfile(data: { name: string }) {
+    return data.name;
+  }
+}
+`,
+      'utf-8',
+    );
+
+    await compile({ projectDir, isDev: true });
+    const proxyCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'do', 'profile.do.ts'), 'utf-8');
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
+
+    expect(proxyCode).toContain("import { validateSchemaInput as __validateSchemaInput } from '@kuratchi/js/runtime/schema.js';");
+    expect(proxyCode).toContain("const __schema_createProfile = __handler_profile_do.schemas?.[\"createProfile\"];");
+    expect(proxyCode).toContain("const __validated = __validateSchemaInput(__schema_createProfile, a);");
+    expect(routesCode).toContain('static schemas = {};');
+    expect(routesCode).toContain('Object.assign(ProfileDO.schemas, __handler_profile_do.schemas || {});');
+  });
 });

@@ -50,6 +50,7 @@ export { compileTemplate, generateRenderFunction } from './template.js';
 const FRAMEWORK_PACKAGE_NAME = getFrameworkPackageName();
 const RUNTIME_CONTEXT_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/context.js`;
 const RUNTIME_DO_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/do.js`;
+const RUNTIME_SCHEMA_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/schema.js`;
 const RUNTIME_WORKER_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/generated-worker.js`;
 
 function getFrameworkPackageName(): string {
@@ -215,6 +216,7 @@ export async function compile(options: CompileOptions): Promise<string> {
       const proxyCode = generateHandlerProxy(handler, {
         projectDir,
         runtimeDoImport: RUNTIME_DO_IMPORT,
+        runtimeSchemaImport: RUNTIME_SCHEMA_IMPORT,
       });
       const proxyFile = path.join(doProxyDir, handler.fileName + '.ts');
       const proxyFileDir = path.dirname(proxyFile);
@@ -234,7 +236,7 @@ export async function compile(options: CompileOptions): Promise<string> {
       if (handler.fileName.endsWith('.do')) {
         const aliasFileName = handler.fileName.slice(0, -3);
         const aliasProxyFile = path.join(doProxyDir, aliasFileName + '.ts');
-        const aliasCode = `// Auto-generated alias for .do handler\nexport * from './${handler.fileName}.ts';\n`;
+        const aliasCode = `// Auto-generated alias for .do handler\nexport * from './${path.basename(handler.fileName)}.ts';\n`;
         const aliasProxyDir = path.dirname(aliasProxyFile);
         if (!fs.existsSync(aliasProxyDir)) fs.mkdirSync(aliasProxyDir, { recursive: true });
         writeIfChanged(aliasProxyFile, aliasCode);
@@ -359,8 +361,9 @@ export async function compile(options: CompileOptions): Promise<string> {
     runtimeImportPath,
     assetsPrefix,
     runtimeContextImport: RUNTIME_CONTEXT_IMPORT,
-    runtimeDoImport: RUNTIME_DO_IMPORT,
-    runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
+        runtimeDoImport: RUNTIME_DO_IMPORT,
+        runtimeSchemaImport: RUNTIME_SCHEMA_IMPORT,
+        runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
   });
 
   // Write to .kuratchi/routes.ts
@@ -386,12 +389,27 @@ export async function compile(options: CompileOptions): Promise<string> {
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
 
   // Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts
+  // Also sync the static assets directory when src/assets/ exists, so Cloudflare Workers
+  // serves them natively without any manual wrangler.jsonc edits from the user.
+  const srcAssetsDir = path.join(srcDir, 'assets');
+  let syncedAssetsDirectory: string | undefined;
+  if (fs.existsSync(srcAssetsDir)) {
+    // Mirror src/assets/ into .kuratchi/public/<prefix>/ so Cloudflare serves them at the
+    // correct URL (e.g. /assets/app.css) — the directory passed to wrangler is the parent.
+    const prefixSegment = assetsPrefix.replace(/^\/|\/$/g, ''); // '/assets/' -> 'assets'
+    const publicDir = path.join(projectDir, '.kuratchi', 'public');
+    const publicAssetsDir = prefixSegment ? path.join(publicDir, prefixSegment) : publicDir;
+    copyDirIfChanged(srcAssetsDir, publicAssetsDir);
+    syncedAssetsDirectory = path.relative(projectDir, publicDir).replace(/\\/g, '/');
+  }
+
   syncWranglerConfigPipeline({
     projectDir,
     config: {
       workflows: workflowConfig,
       containers: containerConfig,
       durableObjects: doConfig,
+      assetsDirectory: syncedAssetsDirectory,
     },
     writeFile: writeIfChanged,
   });
@@ -411,4 +429,25 @@ function writeIfChanged(filePath: string, content: string): void {
     if (existing === content) return;
   }
   fs.writeFileSync(filePath, content, 'utf-8');
+}
+
+/**
+ * Recursively copy files from src to dest, skipping files whose content is already identical.
+ * Used to mirror src/assets/ into .kuratchi/public/ for Cloudflare Workers Static Assets.
+ */
+function copyDirIfChanged(src: string, dest: string): void {
+  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirIfChanged(srcPath, destPath);
+    } else {
+      const srcBuf = fs.readFileSync(srcPath);
+      const destBuf = fs.existsSync(destPath) ? fs.readFileSync(destPath) : null;
+      if (!destBuf || !srcBuf.equals(destBuf)) {
+        fs.writeFileSync(destPath, srcBuf);
+      }
+    }
+  }
 }

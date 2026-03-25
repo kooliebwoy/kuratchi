@@ -192,7 +192,7 @@ export function readAuthConfig(projectDir: string): AuthConfigEntry | null {
 
 export function readDoConfig(projectDir: string): DoConfigEntry[] {
   const configPath = path.join(projectDir, 'kuratchi.config.ts');
-  if (!fs.existsSync(configPath)) return [];
+  if (!fs.existsSync(configPath)) return readWranglerDoConfig(projectDir);
 
   const source = fs.readFileSync(configPath, 'utf-8');
   const doIdx = source.search(/durableObjects\s*:\s*\{/);
@@ -252,6 +252,32 @@ export function readDoConfig(projectDir: string): DoConfigEntry[] {
     entries.push({ binding: match[1], className: match[2] });
   }
 
+  return entries;
+}
+
+/** Read durable_objects.bindings from wrangler.jsonc / wrangler.json as fallback. */
+function readWranglerDoConfig(projectDir: string): DoConfigEntry[] {
+  const candidates = ['wrangler.jsonc', 'wrangler.json'];
+  const wranglerPath = candidates
+    .map((file) => path.join(projectDir, file))
+    .find((filePath) => fs.existsSync(filePath));
+  if (!wranglerPath) return [];
+
+  const source = fs.readFileSync(wranglerPath, 'utf-8');
+  const bindingsMatch = source.match(/"durable_objects"\s*:\s*\{[\s\S]*?"bindings"\s*:\s*\[([\s\S]*?)\][\s\S]*?\}/);
+  if (!bindingsMatch) return [];
+  const bindingsBody = bindingsMatch[1];
+
+  const entries: DoConfigEntry[] = [];
+  const objectRegex = /\{([\s\S]*?)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = objectRegex.exec(bindingsBody)) !== null) {
+    const body = m[1];
+    const bindingMatch = body.match(/"name"\s*:\s*"([^"]+)"/);
+    const classMatch = body.match(/"class_name"\s*:\s*"([^"]+)"/);
+    if (!bindingMatch || !classMatch) continue;
+    entries.push({ binding: bindingMatch[1], className: classMatch[1] });
+  }
   return entries;
 }
 

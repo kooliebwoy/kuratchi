@@ -26,6 +26,10 @@ export {  getCtx,
   buildDefaultBreadcrumbs,
 } from './runtime/context.js';
 export { kuratchiDO, doRpc, getDb } from './runtime/do.js';
+export {
+  SchemaValidationError,
+  schema,
+} from './runtime/schema.js';
 export { ActionError } from './runtime/action.js';
 export { PageError } from './runtime/page-error.js';
 export {
@@ -60,6 +64,7 @@ export type {
   RuntimeErrorResult,
 } from './runtime/types.js';
 export type { RpcOf } from './runtime/do.js';
+export type { SchemaType, InferSchema } from './runtime/schema.js';
 
 
 export { url, pathname, searchParams, headers, method, params, slug } from './runtime/request.js';

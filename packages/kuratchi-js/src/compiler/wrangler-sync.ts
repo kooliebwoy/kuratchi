@@ -10,6 +10,9 @@ export interface WranglerSyncConfig {
   workflows: WranglerSyncEntry[];
   containers: WranglerSyncEntry[];
   durableObjects: WranglerSyncEntry[];
+  /** Relative path to the public assets directory (e.g. '.kuratchi/public/'). When set, the
+   * `assets.directory` and `assets.binding` keys in wrangler.jsonc are kept in sync automatically. */
+  assetsDirectory?: string;
 }
 
 function stripJsonComments(content: string): string {
@@ -156,25 +159,24 @@ export function syncWranglerConfig(opts: {
 
   if (opts.config.containers.length > 0) {
     const existingContainers: any[] = wranglerConfig.containers || [];
-    const existingByBinding = new Map(existingContainers.map((container) => [container.binding, container]));
+    const existingByClassName = new Map(existingContainers.map((container) => [container.class_name, container]));
 
     for (const container of opts.config.containers) {
       const name = container.binding.toLowerCase().replace(/_/g, '-');
       const entry = {
         name,
-        binding: container.binding,
         class_name: container.className,
       };
 
-      const existing = existingByBinding.get(container.binding);
+      const existing = existingByClassName.get(container.className);
       if (!existing) {
         existingContainers.push(entry);
         changed = true;
-        console.log(`[kuratchi] Added container "${container.binding}" to wrangler config`);
-      } else if (existing.class_name !== container.className) {
-        existing.class_name = container.className;
+        console.log(`[kuratchi] Added container "${container.className}" to wrangler config`);
+      } else if (existing.name !== name) {
+        existing.name = name;
         changed = true;
-        console.log(`[kuratchi] Updated container "${container.binding}" class_name to "${container.className}"`);
+        console.log(`[kuratchi] Updated container "${container.className}" name to "${name}"`);
       }
     }
 
@@ -203,14 +205,30 @@ export function syncWranglerConfig(opts: {
         existingBindings.push(entry);
         changed = true;
         console.log(`[kuratchi] Added durable_object "${durableObject.binding}" to wrangler config`);
-      } else if (existing.class_name !== durableObject.className) {
-        existing.class_name = durableObject.className;
-        changed = true;
-        console.log(`[kuratchi] Updated durable_object "${durableObject.binding}" class_name to "${durableObject.className}"`);
       }
     }
 
     wranglerConfig.durable_objects.bindings = existingBindings;
+  }
+
+  if (opts.config.assetsDirectory !== undefined) {
+    const existing = wranglerConfig.assets as Record<string, string> | undefined;
+    if (!existing) {
+      wranglerConfig.assets = { directory: opts.config.assetsDirectory, binding: 'ASSETS' };
+      changed = true;
+      console.log(`[kuratchi] Added static assets directory "${opts.config.assetsDirectory}" to wrangler config`);
+    } else {
+      if (existing.directory !== opts.config.assetsDirectory) {
+        existing.directory = opts.config.assetsDirectory;
+        changed = true;
+        console.log(`[kuratchi] Updated static assets directory to "${opts.config.assetsDirectory}" in wrangler config`);
+      }
+      if (!existing.binding) {
+        existing.binding = 'ASSETS';
+        changed = true;
+        console.log(`[kuratchi] Added ASSETS binding to static assets config in wrangler config`);
+      }
+    }
   }
 
   if (!changed) return;

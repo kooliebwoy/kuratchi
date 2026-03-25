@@ -13,6 +13,11 @@ import {
   type RpcSecurityConfig,
   type ActionSecurityConfig,
 } from './security.js';
+import {
+  SchemaValidationError,
+  parseRpcArgsPayload,
+  validateSchemaInput,
+} from './schema.js';
 import type { PageRenderOutput, PageRenderResult, RuntimeContext, RuntimeDefinition } from './types.js';
 
 export interface GeneratedAssetEntry {
@@ -32,6 +37,7 @@ export interface GeneratedPageRoute {
   load?: (params: Record<string, string>) => Promise<unknown> | unknown;
   actions?: Record<string, (...args: any[]) => Promise<unknown> | unknown>;
   rpc?: Record<string, (...args: any[]) => Promise<unknown> | unknown>;
+  rpcSchemas?: Record<string, any>;
   /** Allowed query function names for this route (for query override validation) */
   allowedQueries?: string[];
   render: (data: Record<string, any>) => PageRenderOutput;
@@ -334,18 +340,21 @@ async function __handleRpc(
   }
 
   try {
-    const rpcArgsStr = url.searchParams.get('_args');
-    let rpcArgs: any[] = [];
-    if (rpcArgsStr) {
-      const parsed = JSON.parse(rpcArgsStr);
-      rpcArgs = Array.isArray(parsed) ? parsed : [];
-    }
+    const rpcArgs = parseRpcArgsPayload(url.searchParams.get('_args'));
     const rpcFn = hasRouteRpc ? route.rpc![rpcName!] : workflowStatusRpc[rpcName!];
-    const rpcResult = await rpcFn(...rpcArgs);
+    const rpcSchema = hasRouteRpc ? route.rpcSchemas?.[rpcName!] : undefined;
+    const validatedArgs = hasRouteRpc ? validateSchemaInput(rpcSchema, rpcArgs) : rpcArgs;
+    const rpcResult = await rpcFn(...validatedArgs);
     return __attachCookies(new Response(JSON.stringify({ ok: true, data: rpcResult }), {
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
     }));
   } catch (err: any) {
+    if (err instanceof SchemaValidationError || err?.isSchemaValidationError) {
+      return __secHeaders(new Response(JSON.stringify({ ok: false, error: err.message }), {
+        status: 400,
+        headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+      }));
+    }
     console.error('[kuratchi] RPC error:', err);
     const errMsg = __sanitizeErrorMessage(err);
     return __secHeaders(new Response(JSON.stringify({ ok: false, error: errMsg }), {

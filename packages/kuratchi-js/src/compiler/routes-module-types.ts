@@ -36,6 +36,7 @@ export interface GenerateRoutesModuleOptions {
   assetsPrefix: string;
   runtimeContextImport: string;
   runtimeDoImport: string;
+  runtimeSchemaImport: string;
   runtimeWorkerImport: string;
 }
 
