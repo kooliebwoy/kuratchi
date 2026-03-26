@@ -1,5 +1,5 @@
 <script>
-  import { getParam } from '@kuratchi/js';
+  import { params } from 'kuratchi:request';
   import { handleSiteFileSelectionChange, toggleAllSiteFiles } from '$client/sites/file-selection';
   import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$client/sites/upload-form';
   import { getSite, getSiteFiles, getSiteUploads, uploadSiteFiles, deleteSiteFiles, deleteSite } from '$server/database/sites';
@@ -11,7 +11,7 @@
   import Alert from '@kuratchi/ui/alert.html';
   import Card from '@kuratchi/ui/card.html';
 
-  const id = getParam('id');
+  const { id } = params;
   const site = await getSite(id);
   const files = site ? await getSiteFiles(id) : [];
   const uploads = site ? await getSiteUploads(id) : [];

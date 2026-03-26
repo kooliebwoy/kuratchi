@@ -34,6 +34,10 @@
             "types": "./dist/runtime/request.d.ts",
             "import": "./dist/runtime/request.js"
         },
+        "./navigation": {
+            "types": "./dist/runtime/navigation.d.ts",
+            "import": "./dist/runtime/navigation.js"
+        },
         "./runtime/do.js": {
             "types": "./dist/runtime/do.d.ts",
             "import": "./dist/runtime/do.js"

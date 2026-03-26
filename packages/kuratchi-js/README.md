@@ -831,12 +831,21 @@ import {
 } from '@kuratchi/js';
 ```
 
+### Virtual Modules
+
+Kuratchi provides virtual modules for request-scoped state. Use these in route files:
+
+| Virtual Module | Description |
+|----------------|-------------|
+| `kuratchi:request` | Request state: `url`, `params`, `searchParams`, `headers`, `locals`, etc. |
+| `kuratchi:navigation` | Server-side redirect helper |
+
 ### Request helpers
 
-For a batteries-included request layer, import pre-parsed request state from `@kuratchi/js/request`:
+For a batteries-included request layer, import pre-parsed request state from `kuratchi:request`:
 
 ```ts
-import { url, pathname, searchParams, params, slug } from '@kuratchi/js/request';
+import { url, pathname, searchParams, params, slug, locals } from 'kuratchi:request';
 
 const page = pathname;
 const tab = searchParams.get('tab');
@@ -849,9 +858,23 @@ const postSlug = slug;
 - `searchParams` is `url.searchParams` for the current request.
 - `params` is the matched route params object, like `{ slug: 'hello-world' }`.
 - `slug` is `params.slug` when the matched route defines a `slug` param.
-- `headers` and `method` are also exported from `@kuratchi/js/request`.
-- `params` is not ambient; import it from `@kuratchi/js/request` or use `getParams()` / `getParam()` from `@kuratchi/js`.
-- Use `getRequest()` when you want the raw native `Request` object.
+- `headers` and `method` are also exported from `kuratchi:request`.
+- `locals` is the request-scoped locals object (typed via `App.Locals` in `app.d.ts`).
+- Use `getRequest()` from `@kuratchi/js` when you want the raw native `Request` object.
+
+### Server-side redirect
+
+Import `redirect` from `kuratchi:navigation` for server-side redirects:
+
+```ts
+import { redirect } from 'kuratchi:navigation';
+
+// Redirect to another page (throws RedirectError, caught by framework)
+redirect('/dashboard');
+redirect('/login', 302);
+```
+
+`redirect()` works in route scripts, `$server/` modules, and form actions. It throws a `RedirectError` that the framework catches and converts to a proper HTTP redirect response (default 303 for POST-Redirect-GET).
 
 ## Runtime Hook
 

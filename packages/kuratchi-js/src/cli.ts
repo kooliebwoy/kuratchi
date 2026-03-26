@@ -34,6 +34,9 @@ async function main() {
     case 'create':
       await runCreate();
       return;
+    case 'types':
+      await runTypes();
+      return;
     default:
       console.log(`
 KuratchiJS CLI
@@ -43,6 +46,7 @@ Usage:
   kuratchi build          Compile routes once
   kuratchi dev            Compile, watch for changes, and start wrangler dev server
   kuratchi watch          Compile + watch only (no wrangler — for custom setups)
+  kuratchi types          Generate TypeScript types from schema to src/app.d.ts
 `);
       process.exit(1);
   }
@@ -54,6 +58,11 @@ async function runCreate() {
   const flags = remaining.filter(a => a.startsWith('-'));
   const positional = remaining.filter(a => !a.startsWith('-'));
   await create(positional[0], flags);
+}
+
+async function runTypes() {
+  const { writeAppTypes } = await import('./compiler/type-generator.js');
+  writeAppTypes({ projectDir });
 }
 
 async function runBuild(isDev = false) {

@@ -1,6 +1,5 @@
 <script>
-  import { headers } from '@kuratchi/js/request';
-  import { getLocals } from '@kuratchi/js';
+  import { headers, locals } from 'kuratchi:request';
   import { handleScopeChange } from '$client/account/tokens';
   import { getCurrentUser } from '$server/database/auth';
   import { getAllTokens, createScopedToken, revokeAnyToken } from '$server/database/tokens';
@@ -24,7 +23,6 @@
   const flashMatch = cookies.match(/__flash_token=([^;]+)/);
   if (flashMatch) {
     newToken = decodeURIComponent(flashMatch[1]);
-    const locals = getLocals();
     if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
     locals.__setCookieHeaders.push('__flash_token=; Path=/account/tokens; Max-Age=0; HttpOnly; SameSite=Strict');
   }

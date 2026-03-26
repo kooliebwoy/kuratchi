@@ -121,7 +121,9 @@ export function redirect(path: string, status = 303): never {
   throw new RedirectError(path, status);
 }
 
-/** Backward-compatible alias for redirect() */
+/** 
+ * @deprecated Use redirect() instead. This alias will be removed in a future version.
+ */
 export function goto(path: string, status = 303): never {
   redirect(path, status);
 }
