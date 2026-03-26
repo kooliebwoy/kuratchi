@@ -1,0 +1,73 @@
+<script>
+  import { verifyEmail, resendVerification } from '$server/database/auth';
+  import { searchParams } from '@kuratchi/js/request';
+  import AuthCard from '@kuratchi/ui/auth-card.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const token = searchParams.get('token');
+  const email = searchParams.get('email');
+
+  let verified = false;
+  let error: string | null = null;
+
+  if (token) {
+    const result = await verifyEmail(token);
+    verified = result.success;
+    error = result.error || null;
+  }
+</script>
+
+if (verified) {
+  <AuthCard
+    title="Email Verified"
+    subtitle="Your account is ready"
+    footerText="You can now sign in"
+    footerLink="Sign in"
+    footerHref="/auth/signin"
+  >
+    <Alert data-variant="success">
+      Your email has been verified successfully. You can now sign in to your account.
+    </Alert>
+    <a href="/auth/signin" class="kui-button kui-button--primary kui-button--block kui-auth-submit">
+      Sign In
+    </a>
+  </AuthCard>
+} else if (token && error) {
+  <AuthCard
+    title="Verification Failed"
+    subtitle="We couldn't verify your email"
+    footerText="Need help?"
+    footerLink="Sign up again"
+    footerHref="/auth/signup"
+  >
+    <Alert data-variant="danger">{error}</Alert>
+    if (email) {
+      <form action={resendVerification} method="POST" class="kui-auth-form">
+        <input type="hidden" name="email" value={email} />
+        <button type="submit" class="kui-button kui-button--primary kui-button--block kui-auth-submit">
+          Resend Verification Email
+        </button>
+      </form>
+    }
+  </AuthCard>
+} else {
+  <AuthCard
+    title="Check Your Email"
+    subtitle="We sent you a verification link"
+    footerText="Already verified?"
+    footerLink="Sign in"
+    footerHref="/auth/signin"
+    error={resendVerification.error}
+  >
+    <p>We sent a verification email to <strong>{email || 'your address'}</strong>. Click the link in the email to verify your account.</p>
+    <p data-muted>Didn't get the email? Check your spam folder, or request a new one below.</p>
+    if (email) {
+      <form action={resendVerification} method="POST" class="kui-auth-form">
+        <input type="hidden" name="email" value={email} />
+        <button type="submit" class="kui-button kui-button--primary kui-button--block kui-auth-submit">
+          Resend Verification Email
+        </button>
+      </form>
+    }
+  </AuthCard>
+}

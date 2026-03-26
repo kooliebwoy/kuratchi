@@ -1,0 +1,46 @@
+<script>
+  import { acceptInvite } from '$server/database/auth';
+  import { searchParams } from '@kuratchi/js/request';
+  import AuthCard from '@kuratchi/ui/auth-card.html';
+  import Alert from '@kuratchi/ui/alert.html';
+
+  const token = searchParams.get('token');
+</script>
+
+if (!token) {
+  <AuthCard
+    title="Invalid Invite"
+    subtitle="This invite link is not valid"
+    footerText="Already have an account?"
+    footerLink="Sign in"
+    footerHref="/auth/signin"
+  >
+    <Alert data-variant="danger">
+      No invite token provided. Please check the link from your invitation email.
+    </Alert>
+  </AuthCard>
+} else {
+  <AuthCard
+    title="Accept Invitation"
+    subtitle="Set up your account to join the team"
+    footerText="Already have an account?"
+    footerLink="Sign in"
+    footerHref="/auth/signin"
+    error={acceptInvite.error}
+  >
+    <form action={acceptInvite} method="POST" class="kui-auth-form">
+      <input type="hidden" name="token" value={token} />
+      <div class="kui-field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" />
+      </div>
+      <div class="kui-field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="********" required autocomplete="new-password" minlength="8" />
+      </div>
+      <button type="submit" class="kui-button kui-button--primary kui-button--block kui-auth-submit">
+        Accept Invitation
+      </button>
+    </form>
+  </AuthCard>
+}

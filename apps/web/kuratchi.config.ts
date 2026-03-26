@@ -12,7 +12,7 @@ export default defineConfig({
     sessionEnabled: true,
     guards: {
       paths: ["/*"],
-      exclude: ["/auth/signin", "/auth/signup", "/api/v1/*"],
+      exclude: ["/auth/signin", "/auth/signup", "/auth/verify-email", "/auth/accept-invite", "/api/v1/*"],
       redirectTo: "/auth/signin",
     },
     rateLimit: {

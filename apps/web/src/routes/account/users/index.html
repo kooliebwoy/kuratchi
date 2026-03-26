@@ -1,11 +1,11 @@
 <script>
   import { getCurrentUser } from '$server/database/auth';
   import { getUsers, inviteUser, suspendUser, activateUser, deleteUser } from '$server/database/users';
+  import Card from '@kuratchi/ui/card.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import Badge from '@kuratchi/ui/badge.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
   import Alert from '@kuratchi/ui/alert.html';
-  import Callout from '@kuratchi/ui/callout.html';
 
   const user = await getCurrentUser();
   const users = user ? await getUsers() : [];
@@ -22,14 +22,34 @@ if (!user) {
       <h1>Users</h1>
       <p data-muted>{users.length} user{users.length !== 1 ? 's' : ''}</p>
     </div>
-    <button data-variant="primary" data-type="button" disabled title="Email service not yet connected">
+    <button data-variant="primary" data-type="button" onclick="document.getElementById('invite-dialog').showModal()">
       + Invite User
     </button>
   </header>
 
-  <Callout data-variant="info">
-    User invitations are currently disabled. Email service integration is coming soon.
-  </Callout>
+  <Dialog id="invite-dialog" title="Invite User" error={inviteUser.error}>
+    <form action={inviteUser} method="POST">
+      <div class="kui-field">
+        <label for="invite-name">Name</label>
+        <input type="text" id="invite-name" name="name" placeholder="Full name" required />
+      </div>
+      <div class="kui-field">
+        <label for="invite-email">Email</label>
+        <input type="email" id="invite-email" name="email" placeholder="user@example.com" required />
+      </div>
+      <div class="kui-field">
+        <label for="invite-role">Role</label>
+        <select id="invite-role" name="role">
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div data-cluster data-justify="end">
+        <button type="button" data-variant="ghost" onclick="document.getElementById('invite-dialog').close()">Cancel</button>
+        <button type="submit" data-variant="primary">Send Invite</button>
+      </div>
+    </form>
+  </Dialog>
 
   if (users.length === 0) {
     <EmptyState
@@ -37,18 +57,19 @@ if (!user) {
       description="User invitations will be available once email service is connected."
     />
   } else {
-    <div data-scroll>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Joined</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
+    <Card>
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
         <tbody>
           for (const u of users) {
             <tr>
@@ -93,7 +114,8 @@ if (!user) {
             </tr>
           }
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </Card>
   }
 }

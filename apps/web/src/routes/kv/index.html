@@ -1,6 +1,7 @@
 <script>
   import { getCurrentUser } from '$server/database/auth';
   import { getKvNamespaces, createKvNamespace } from '$server/database/kv';
+  import Card from '@kuratchi/ui/card.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import Badge from '@kuratchi/ui/badge.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
@@ -36,15 +37,16 @@ if (!user) {
       </button>
     </EmptyState>
   } else {
-    <div data-scroll>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Created</th>
-          </tr>
-        </thead>
+    <Card>
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
         <tbody>
           for (const ns of namespaces) {
             <tr>
@@ -60,8 +62,9 @@ if (!user) {
             </tr>
           }
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </Card>
   }
 
   <Dialog id="create-kv-dialog" closedby="any">

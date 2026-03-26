@@ -1,6 +1,7 @@
 <script>
   import { getCurrentUser } from '$server/database/auth';
   import { getDatabases, createDatabase } from '$server/database/databases';
+  import Card from '@kuratchi/ui/card.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import Badge from '@kuratchi/ui/badge.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';
@@ -36,16 +37,17 @@ if (!user) {
       </button>
     </EmptyState>
   } else {
-    <div data-scroll>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Location</th>
-            <th>Created</th>
-          </tr>
-        </thead>
+    <Card>
+      <div data-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Location</th>
+              <th>Created</th>
+            </tr>
+          </thead>
         <tbody>
           for (const db of databases) {
             <tr>
@@ -62,8 +64,9 @@ if (!user) {
             </tr>
           }
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </Card>
   }
 
   <Dialog id="create-db-dialog" closedby="any">

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
 import { redirect } from '@kuratchi/js';
 import { getCurrentUser } from './auth';
+import { sendInviteEmail } from './emails';
 
 const db = kuratchiORM(() => (env as any).DB);
 
@@ -29,7 +30,7 @@ export async function getUsers() {
 
   // Get all non-deleted users and filter to org members
   const result = await db.users
-    .where({ deleted_at: null })
+    .where({ deleted_at: { isNull: true } })
     .many();
   const allUsers = (result.data ?? []) as any[];
 
@@ -94,6 +95,9 @@ export async function inviteUser(formData: FormData): Promise<void> {
     created_at: now,
     updated_at: now,
   });
+
+  // Send invite email
+  await sendInviteEmail(email, inviteToken, user.name || user.email);
 
   redirect('/account/users');
 }
