@@ -39,35 +39,95 @@
   }
 </script>
 
+<style>
+  .site-view { max-width: 900px; margin: 0 auto; padding: 1.5rem 0; }
+  .site-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; border-bottom: 1px solid var(--kui-border); padding-bottom: 1.5rem; }
+  .site-title { display: flex; align-items: center; gap: 0.75rem; }
+  .site-title h1 { font-size: 1.75rem; font-weight: 500; letter-spacing: -0.02em; margin: 0; }
+  
+  .banner-card {
+    background: var(--kui-bg-elevated); border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-lg); padding: 1.25rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 2rem;
+  }
+  .banner-domain { font-size: 1.125rem; font-weight: 500; text-decoration: none; color: inherit; }
+  .banner-domain:hover { text-decoration: underline; }
+  
+  .section { margin-top: 2.5rem; }
+  .section-header { margin-bottom: 1rem; }
+  .section-header h2 { font-size: 1.125rem; font-weight: 500; margin: 0 0 0.25rem 0; }
+  .section-header p { font-size: 0.875rem; opacity: 0.5; margin: 0; }
+  
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem; background: var(--kui-bg-elevated);
+    border: 1px solid var(--kui-border); border-bottom: none;
+    border-radius: var(--kui-radius-lg) var(--kui-radius-lg) 0 0;
+  }
+  
+  .resource-list {
+    display: flex; flex-direction: column;
+    border: 1px solid var(--kui-border);
+    background: var(--kui-bg-elevated);
+    border-radius: 0 0 var(--kui-radius-lg) var(--kui-radius-lg);
+    overflow: hidden;
+  }
+  .resource-list.standalone {
+    border-radius: var(--kui-radius-lg);
+  }
+  
+  .row-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem; border-bottom: 1px solid var(--kui-border);
+    color: inherit; transition: all 0.2s;
+  }
+  .row-item:last-child { border-bottom: none; }
+  .row-item:hover { background: var(--kui-bg); }
+  
+  .row-main { display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0; }
+  .row-meta { display: flex; align-items: center; gap: 1rem; white-space: nowrap; font-size: 0.8125rem; opacity: 0.7; }
+  
+  .code-path { font-family: ui-monospace, monospace; font-size: 0.8125rem; background: var(--kui-bg); padding: 0.125rem 0.375rem; border-radius: 0.25rem; border: 1px solid var(--kui-border-muted); }
+  .checkbox-wrapper { display: flex; align-items: center; justify-content: center; width: 24px; margin-right: 0.25rem; }
+  
+  .empty-state-card {
+    background: var(--kui-bg-elevated);
+    border: 1px dashed var(--kui-border-muted, var(--kui-border));
+    border-radius: var(--kui-radius-xl, 1rem);
+    margin-top: 1rem;
+  }
+</style>
+
 if (!site) {
   <EmptyState title="Site not found" description="This site doesn't exist or you don't have access." />
 } else {
-  <header>
-    <div data-flex data-align="center" data-gap="sm">
-      <h1>{site.name}</h1>
-      if (site.isActive) {
-        <Badge data-variant="success">Active</Badge>
-      } else {
-        <Badge data-variant="muted">Inactive</Badge>
-      }
-    </div>
-    <div data-flex data-gap="sm">
-      <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
-        Upload Files
-      </button>
-      <button data-variant="danger-outline" data-type="button" commandfor="delete-site-dialog" command="show-modal">
-        Delete Site
-      </button>
-    </div>
-  </header>
+  <div class="site-view">
+    <header class="site-header">
+      <div class="site-title">
+        <h1>{site.name}</h1>
+        if (site.isActive) {
+          <Badge data-variant="success">Active</Badge>
+        } else {
+          <Badge data-variant="muted">Inactive</Badge>
+        }
+      </div>
+      <div data-flex data-gap="sm">
+        <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
+          Upload Files
+        </button>
+        <button data-variant="danger-outline" data-type="button" commandfor="delete-site-dialog" command="show-modal">
+          Delete Site
+        </button>
+      </div>
+    </header>
 
-  if (previewUrl) {
-    <Card>
-      <div data-flex data-justify="between" data-align="center" data-gap="md">
+    if (previewUrl) {
+      <div class="banner-card">
         <div data-flex data-direction="column" data-gap="xs">
-          <p data-muted>Site Domain</p>
+          <span data-muted style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Site Domain</span>
           <div data-flex data-align="center" data-gap="sm">
-            <a href={previewUrl} target="_blank" rel="noopener noreferrer" style="font-size: 1.125rem; font-weight: 500;">
+            <a href={previewUrl} target="_blank" rel="noopener noreferrer" class="banner-domain">
               {previewUrl.replace(/^https?:\/\//, '')}
             </a>
             <button data-variant="ghost" data-size="sm" title="Copy to clipboard" onclick={copyText(previewUrl)}>
@@ -77,141 +137,120 @@ if (!site) {
               </svg>
             </button>
           </div>
-          <p data-muted style="font-size: 0.875rem; margin-top: 0.25rem;">
-            This is your live site address. Visitors can access your content at this URL once you deploy.
-          </p>
         </div>
+        <p data-muted style="font-size: 0.875rem; max-width: 320px; text-align: right; margin: 0; line-height: 1.4;">
+          This is your live site address. Visitors can access your content at this URL once you deploy.
+        </p>
       </div>
-    </Card>
-  }
+    }
 
-  <section>
-    <div data-flex data-direction="column" data-gap="xs" style="margin-bottom: 1rem;">
-      <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500;">Files</h2>
-      <p data-muted style="font-size: 0.875rem;">Manage the files that make up your site. Ensure an <code>index.html</code> is present at the root to serve the site over the domain.</p>
-      <p data-muted style="font-size: 0.875rem;">Uploading again replaces files with the same path and keeps everything else until you delete it.</p>
-      if (lastUpload) {
-        <p data-muted style="font-size: 0.875rem;">Last upload: <strong>{formatTimestamp(lastUpload.created_at)}</strong>.</p>
-      }
-    </div>
-    
-    if (files.length === 0) {
-      <EmptyState
-        title="No files published"
-        description="Ready to go live? Upload an HTML build, static assets or manual code."
-      >
-        <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
-          Upload Files
-        </button>
-      </EmptyState>
-    } else {
-      <Card style="padding: 0; overflow: hidden;">
+    <div class="section">
+      <div class="section-header">
+        <h2>Files</h2>
+        <p>Manage the files that make up your site. Ensure an <code class="code-path">index.html</code> is present at the root.</p>
+        <p style="margin-top: 0.25rem;">Uploading replacements will overwrite existing files.</p>
+        if (lastUpload) {
+          <p style="margin-top: 0.25rem;">Last deploy: <strong>{formatTimestamp(lastUpload.created_at)}</strong>.</p>
+        }
+      </div>
+      
+      if (files.length === 0) {
+        <EmptyState
+          class="empty-state-card"
+          title="No files published"
+          description="Ready to go live? Upload an HTML build, static assets or manual code."
+        >
+          <button data-variant="primary" data-type="button" commandfor="upload-dialog" command="show-modal">
+            Upload Files
+          </button>
+        </EmptyState>
+      } else {
         <form action={deleteSiteFiles} method="POST" data-action>
           <input type="hidden" name="siteId" value={site.id} />
-          <div data-flex data-justify="between" data-align="center" data-gap="sm" style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
-            <div data-flex data-align="center" data-gap="sm">
-              <span id="site-files-selection-count" data-muted style="font-size: 0.875rem;">0 files selected</span>
+          
+          <div class="toolbar">
+            <div data-flex data-align="center">
+              <div class="checkbox-wrapper">
+                <input type="checkbox" id="site-files-select-all" aria-label="Select all files" onchange={toggleAllSiteFiles()} />
+              </div>
+              <span id="site-files-selection-count" data-muted style="font-size: 0.8125rem; font-weight: 500; margin-left: 0.5rem;">0 selected</span>
             </div>
             <button id="site-files-bulk-delete" type="submit" data-variant="danger-outline" data-size="sm" disabled>
               Delete selected
             </button>
           </div>
-          <div data-scroll>
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 44px;">
-                    <input
-                      type="checkbox"
-                      id="site-files-select-all"
-                      aria-label="Select all files"
-                      onchange={toggleAllSiteFiles()}
-                    />
-                  </th>
-                  <th></th>
-                  <th>Path</th>
-                  <th>Type</th>
-                  <th>Size</th>
-                  <th>Last Modified</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                for (const file of files) {
-                  <tr>
-                    <td>
-                      <input
-                        type="checkbox"
-                        name="fileIds"
-                        value={file.id}
-                        aria-label={`Select ${file.path}`}
-                        onchange={handleSiteFileSelectionChange()}
-                      />
-                    </td>
-                    <td data-muted>{getFileIcon(file.contentType)}</td>
-                    <td><code>{file.path}</code></td>
-                    <td data-muted>{file.contentType || '-'}</td>
-                    <td data-muted>{formatBytes(file.size)}</td>
-                    <td data-muted>{formatTimestamp(file.updated_at || file.created_at)}</td>
-                    <td style="text-align: right;">
-                      <button type="submit" name="targetFileId" value={file.id} data-variant="danger-ghost" data-size="sm">Delete</button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
+          
+          <div class="resource-list">
+            for (const file of files) {
+              <div class="row-item">
+                <div class="row-main">
+                  <div class="checkbox-wrapper">
+                    <input type="checkbox" name="fileIds" value={file.id} aria-label={`Select ${file.path}`} onchange={handleSiteFileSelectionChange()} />
+                  </div>
+                  <span data-muted style="width: 32px; text-align: center; text-transform: uppercase; font-size: 0.65rem; font-weight: 600;">{getFileIcon(file.contentType)}</span>
+                  <span class="code-path" style="font-size: 0.875rem;">{file.path}</span>
+                </div>
+                <div class="row-meta">
+                  <span style="width: 100px; overflow: hidden; text-overflow: ellipsis; text-align: right;" title={file.contentType}>{file.contentType || '-'}</span>
+                  <span style="width: 70px; text-align: right;">{formatBytes(file.size)}</span>
+                  <span style="width: 120px; text-align: right;">{formatTimestamp(file.updated_at || file.created_at)}</span>
+                  <div style="width: 60px; text-align: right;">
+                    <button type="submit" name="targetFileId" value={file.id} data-variant="danger-ghost" data-size="sm">Delete</button>
+                  </div>
+                </div>
+              </div>
+            }
           </div>
+          
           if (deleteSiteFiles.error) {
-            <div style="padding: 1rem; border-top: 1px solid var(--border-color);">
+            <div style="margin-top: 1rem;">
               <Alert data-variant="danger">{deleteSiteFiles.error}</Alert>
             </div>
           }
         </form>
-      </Card>
-    }
-  </section>
-
-  <section>
-    <div data-flex data-direction="column" data-gap="xs" style="margin-bottom: 1rem;">
-      <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500;">Recent Uploads</h2>
-      <p data-muted style="font-size: 0.875rem;">Each deploy is recorded so you can see when the site changed and whether files were added or overwritten.</p>
+      }
     </div>
 
-    if (uploads.length === 0) {
-      <EmptyState title="No upload history yet" description="Your next deploy will appear here with a timestamp and change summary." />
-    } else {
-      <Card style="padding: 0; overflow: hidden;">
-        <div data-scroll>
-          <table>
-            <thead>
-              <tr>
-                <th>Uploaded</th>
-                <th>Mode</th>
-                <th>Files</th>
-                <th>Added</th>
-                <th>Overwritten</th>
-                <th>Size</th>
-                <th>Prefix</th>
-              </tr>
-            </thead>
-            <tbody>
-              for (const upload of uploads) {
-                <tr>
-                  <td data-muted>{formatTimestamp(upload.created_at)}</td>
-                  <td>{formatUploadMode(upload.uploadMode)}</td>
-                  <td data-muted>{upload.fileCount}</td>
-                  <td data-muted>{upload.addedCount}</td>
-                  <td data-muted>{upload.overwrittenCount}</td>
-                  <td data-muted>{formatBytes(upload.totalSize)}</td>
-                  <td><code>{upload.pathPrefix || '/'}</code></td>
-                </tr>
-              }
-            </tbody>
-          </table>
+    <div class="section">
+      <div class="section-header">
+        <h2>Recent Uploads</h2>
+        <p>Your deployment history and payload details.</p>
+      </div>
+
+      if (uploads.length === 0) {
+        <EmptyState class="empty-state-card" title="No upload history yet" description="Your next deploy will appear here with a timestamp and change summary." />
+      } else {
+        <div class="resource-list standalone">
+          <div class="row-item" style="background: var(--kui-bg); border-bottom: 1px solid var(--kui-border); text-transform: uppercase; font-size: 0.7rem; font-weight: 600; opacity: 0.6; letter-spacing: 0.05em; padding-top: 0.5rem; padding-bottom: 0.5rem;">
+            <div class="row-main">Deployed</div>
+            <div class="row-meta">
+              <span style="width: 80px; text-align: left;">Mode</span>
+              <span style="width: 50px; text-align: right;">Files</span>
+              <span style="width: 70px; text-align: right;">Added / Over</span>
+              <span style="width: 60px; text-align: right;">Size</span>
+              <span style="width: 80px; text-align: right;">Prefix</span>
+            </div>
+          </div>
+          for (const upload of uploads) {
+            <div class="row-item">
+              <div class="row-main">
+                <span style="font-weight: 500; font-size: 0.875rem;">{formatTimestamp(upload.created_at)}</span>
+              </div>
+              <div class="row-meta">
+                <span style="width: 80px; text-align: left;">{formatUploadMode(upload.uploadMode)}</span>
+                <span style="width: 50px; text-align: right;">{upload.fileCount}</span>
+                <span style="width: 70px; text-align: right;">{upload.addedCount} / {upload.overwrittenCount}</span>
+                <span style="width: 60px; text-align: right;">{formatBytes(upload.totalSize)}</span>
+                <div style="width: 80px; text-align: right;">
+                  <span class="code-path">{upload.pathPrefix || '/'}</span>
+                </div>
+              </div>
+            </div>
+          }
         </div>
-      </Card>
-    }
-  </section>
+      }
+    </div>
+  </div>
 
   <Dialog id="upload-dialog" closedby="any">
     <div data-dialog="header">
