@@ -4,43 +4,50 @@
   import { getKvNamespaces } from '$server/database/kv';
   import { getR2Buckets } from '$server/database/r2';
   import { getSites } from '$server/database/sites';
-  import { getUsers } from '$server/database/users';
   import Badge from '@kuratchi/ui/badge.html';
-  import StatsCard from '@kuratchi/ui/stats-card.html';
   import CardGrid from '@kuratchi/ui/card-grid.html';
   import Card from '@kuratchi/ui/card.html';
-  import { url } from 'kuratchi:request';
 
   const user = await getCurrentUser();
   const databases = user ? await getDatabases() : [];
   const kvNamespaces = user ? await getKvNamespaces() : [];
   const r2Buckets = user ? await getR2Buckets() : [];
   const sites = user ? await getSites() : [];
-  const users = user ? await getUsers() : [];
+  
+  const hasResources = databases.length > 0 || kvNamespaces.length > 0 || r2Buckets.length > 0 || sites.length > 0;
 </script>
 
 <style>
-  .ds-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
-  .ds-stat {
-    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
-    padding: 1rem 0.5rem;
-    background: var(--kui-bg-elevated); border: 1px solid var(--kui-border);
-    border-radius: var(--kui-radius-lg);
-    text-decoration: none; color: inherit;
+  .dashboard { max-width: 900px; margin: 0 auto; padding: 1.5rem 0; }
+  .welcome { margin-bottom: 1.5rem; text-align: left; }
+  .welcome h1 { font-size: 1.75rem; font-weight: 500; letter-spacing: -0.02em; margin: 0 0 0.25rem 0; }
+  .welcome p { font-size: 1rem; opacity: 0.5; margin: 0; }
+  
+  .empty-state {
+    text-align: center; padding: 3rem 1rem;
+    background: var(--kui-bg-elevated);
+    border: 1px dashed var(--kui-border-muted, var(--kui-border));
+    border-radius: var(--kui-radius-xl, 1rem);
+    margin-top: 1.5rem;
   }
-  .ds-stat:hover { border-color: var(--kui-primary, #7c6ef0); }
-  .ds-stat b { font-size: 1.75rem; font-weight: 700; line-height: 1; }
-  .ds-stat small { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.5; }
-  .ds-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem; }
-  .ds-card {
-    background: var(--kui-bg-elevated); border: 1px solid var(--kui-border);
-    border-radius: var(--kui-radius-lg); padding: 1rem; min-width: 0;
+  .empty-state h2 { font-weight: 500; font-size: 1.25rem; margin-bottom: 0.5rem; }
+  .empty-state p { opacity: 0.5; margin-bottom: 1.5rem; }
+  .action-row { display: flex; gap: 1rem; justify-content: center; }
+  
+  .section { margin-top: 2rem; }
+  .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; opacity: 0.5; margin-bottom: 0.75rem; }
+  
+  .resource-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .row-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem; background: var(--kui-bg-elevated);
+    border: 1px solid var(--kui-border); border-radius: var(--kui-radius-lg);
+    text-decoration: none; color: inherit; transition: all 0.2s;
   }
-  .ds-card h3 { font-size: 0.875rem; font-weight: 600; margin: 0 0 0.75rem 0; }
-  .ds-row { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 0; text-decoration: none; color: inherit; }
-  .ds-row-info { min-width: 0; }
-  .ds-row-info strong { font-size: 0.8125rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ds-row-info span { font-size: 0.6875rem; opacity: 0.5; display: block; }
+  .row-item:hover { border-color: var(--kui-border-muted, #7c6ef0); background: var(--kui-bg); }
+  .row-info { display: flex; flex-direction: column; gap: 0.125rem; }
+  .row-title { font-weight: 500; font-size: 0.9375rem; }
+  .row-meta { font-size: 0.75rem; opacity: 0.5; }
 </style>
 
 if (!user) {
@@ -49,134 +56,75 @@ if (!user) {
   </head>
   <p>Redirecting to sign in...</p>
 } else {
-  <header>
-    <div>
-      <h1>Dashboard</h1>
-      <p data-muted>Welcome back, {user.name || user.email}</p>
-    </div>
-  </header>
+  <div class="dashboard">
+    <header class="welcome">
+      <h1>Welcome back, {user.name || user.email.split('@')[0]}</h1>
+      <p>Here's what's happening in your workspace.</p>
+    </header>
 
-  <div class="ds-stats">
-    <a href="/databases" class="ds-stat">
-      <b>{databases.length}</b>
-      <small>Databases</small>
-    </a>
-    <a href="/kv" class="ds-stat">
-      <b>{kvNamespaces.length}</b>
-      <small>KV Namespaces</small>
-    </a>
-    <a href="/r2" class="ds-stat">
-      <b>{r2Buckets.length}</b>
-      <small>R2 Buckets</small>
-    </a>
-    <a href="/sites" class="ds-stat">
-      <b>{sites.length}</b>
-      <small>Sites</small>
-    </a>
-  </div>
+    if (!hasResources) {
+      <div class="empty-state">
+        <h2>Your workspace is empty</h2>
+        <p>Start building by creating a database or deploying a new site.</p>
+        <div class="action-row">
+          <a href="/databases" data-type="button" data-variant="primary">Create Database</a>
+          <a href="/sites" data-type="button" data-variant="secondary">Deploy Site</a>
+        </div>
+      </div>
+    } else {
+      <CardGrid>
+        <Card title="Databases" description="Total managed databases">
+          <h2 style="font-size: 2rem; font-weight: 600; margin: 0;">{databases.length}</h2>
+        </Card>
+        <Card title="Storage" description="KV & R2 Namespaces">
+          <h2 style="font-size: 2rem; font-weight: 600; margin: 0;">{kvNamespaces.length + r2Buckets.length}</h2>
+        </Card>
+        <Card title="Sites" description="Deployed static sites">
+          <h2 style="font-size: 2rem; font-weight: 600; margin: 0;">{sites.length}</h2>
+        </Card>
+      </CardGrid>
 
-  <div class="ds-grid">
-    <div class="ds-card">
-      <h3>Recent Databases</h3>
-      if (databases.length === 0) {
-        <p data-muted>No databases yet.</p>
-        <a href="/databases" data-variant="primary" data-type="button" data-size="sm">Create Database</a>
-      } else {
-        for (const db of databases.slice(0, 5)) {
-          <a href={`/databases/${db.id}`} class="ds-row">
-            <div class="ds-row-info">
-              <strong>{db.name}</strong>
-              <span>{db.locationHint || 'auto'}</span>
-            </div>
-            if (db.isActive) {
-              <Badge data-variant="success">Active</Badge>
-            } else {
-              <Badge data-variant="muted">Inactive</Badge>
-            }
-          </a>
-        }
-        if (databases.length > 5) {
-          <a href="/databases" data-muted>View all {databases.length} →</a>
-        }
-      }
-    </div>
-
-    <div class="ds-card">
-      <h3>Team Members</h3>
-      if (users.length === 0) {
-        <p data-muted>No team members yet.</p>
-        <a href="/account/users" data-variant="primary" data-type="button" data-size="sm">Invite User</a>
-      } else {
-        for (const u of users.slice(0, 5)) {
-          <div class="ds-row">
-            <div class="ds-row-info">
-              <strong>{u.name || u.email}</strong>
-              <span>{u.name ? u.email : (u.role || 'member')}</span>
-            </div>
-            if (u.invite_token && !u.status) {
-              <Badge data-variant="warning">Invited</Badge>
-            } else if (u.status === true) {
-              <Badge data-variant="success">Active</Badge>
-            } else if (u.status === false) {
-              <Badge data-variant="danger">Suspended</Badge>
-            } else {
-              <Badge data-variant="muted">Pending</Badge>
+      if (databases.length > 0) {
+        <div class="section">
+          <h3 class="section-title">Recent Databases</h3>
+          <div class="resource-list">
+            for (const db of databases.slice(0, 5)) {
+              <a href={`/databases/${db.id}`} class="row-item">
+                <div class="row-info">
+                  <span class="row-title">{db.name}</span>
+                  <span class="row-meta">Region: {db.locationHint || 'auto'}</span>
+                </div>
+                if (db.isActive) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Inactive</Badge>
+                }
+              </a>
             }
           </div>
-        }
-        if (users.length > 5) {
-          <a href="/account/users" data-muted>View all {users.length} →</a>
-        }
+        </div>
       }
-    </div>
 
-    <div class="ds-card">
-      <h3>Sites</h3>
-      if (sites.length === 0) {
-        <p data-muted>No sites deployed yet.</p>
-        <a href="/sites" data-variant="primary" data-type="button" data-size="sm">Create Site</a>
-      } else {
-        for (const site of sites.slice(0, 5)) {
-          <a href={`/sites/${site.id}`} class="ds-row">
-            <div class="ds-row-info">
-              <strong>{site.name}</strong>
-              <span>{site.fileCount || 0} files</span>
-            </div>
-            if (site.isActive) {
-              <Badge data-variant="success">Active</Badge>
-            } else {
-              <Badge data-variant="muted">Inactive</Badge>
+      if (sites.length > 0) {
+        <div class="section">
+          <h3 class="section-title">Active Sites</h3>
+          <div class="resource-list">
+            for (const site of sites.slice(0, 5)) {
+              <a href={`/sites/${site.id}`} class="row-item">
+                <div class="row-info">
+                  <span class="row-title">{site.name}</span>
+                  <span class="row-meta">{site.fileCount || 0} files served</span>
+                </div>
+                if (site.isActive) {
+                  <Badge data-variant="success">Active</Badge>
+                } else {
+                  <Badge data-variant="muted">Inactive</Badge>
+                }
+              </a>
             }
-          </a>
-        }
-        if (sites.length > 5) {
-          <a href="/sites" data-muted>View all {sites.length} →</a>
-        }
+          </div>
+        </div>
       }
-    </div>
-
-    <div class="ds-card">
-      <h3>Storage</h3>
-      <a href="/kv" class="ds-row">
-        <div class="ds-row-info">
-          <strong>KV Namespaces</strong>
-          <span>Key-value stores</span>
-        </div>
-        <Badge>{kvNamespaces.length}</Badge>
-      </a>
-      <a href="/r2" class="ds-row">
-        <div class="ds-row-info">
-          <strong>R2 Buckets</strong>
-          <span>Object storage</span>
-        </div>
-        <Badge>{r2Buckets.length}</Badge>
-      </a>
-      <a href="/account/tokens" class="ds-row">
-        <div class="ds-row-info">
-          <strong>API Tokens</strong>
-          <span>Access credentials</span>
-        </div>
-      </a>
-    </div>
+    }
   </div>
 }

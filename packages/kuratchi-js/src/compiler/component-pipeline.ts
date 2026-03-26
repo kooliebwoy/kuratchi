@@ -130,7 +130,15 @@ export function createComponentCompiler(options: CreateComponentCompilerOptions)
     const scopeOpen = `__parts.push('<div class="${scopeHash}">');`;
     const scopeClose = `__parts.push('</div>');`;
     const bodyLines = body.split('\n');
-    const scopedBody = [bodyLines[0], scopeOpen, ...bodyLines.slice(1), scopeClose].join('\n');
+    const insertIndex = bodyLines.findIndex(l => l.startsWith('let __html'));
+    const safeInsertIndex = insertIndex === -1 ? bodyLines.length : insertIndex;
+    const scopedBody = [
+      bodyLines[0],
+      scopeOpen,
+      ...bodyLines.slice(1, safeInsertIndex),
+      scopeClose,
+      ...bodyLines.slice(safeInsertIndex)
+    ].join('\n');
     const fnBody = effectivePropsCode ? `${effectivePropsCode}\n  ${scopedBody}` : scopedBody;
     const compiled = `function ${funcName}(props, __esc) {\n  ${fnBody}\n  return __html;\n}`;
 
