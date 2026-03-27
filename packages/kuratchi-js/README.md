@@ -132,6 +132,40 @@ for (const item of items) {
 }
 ```
 
+### Attribute expressions
+
+Use `{expression}` in attribute values for dynamic content:
+
+```html
+<!-- Ternary expressions -->
+<div class={isActive ? 'active' : 'inactive'}>...</div>
+<button class={count > 0 ? 'has-items' : ''}>View ({count})</button>
+
+<!-- Any JS expression -->
+<a href={`/items/${item.id}`}>{item.name}</a>
+<img src={user.avatar} alt={user.name} />
+```
+
+### Boolean attributes
+
+Boolean attributes like `disabled`, `checked`, `selected`, etc. are conditionally rendered based on the expression value:
+
+```html
+<!-- Renders: <button disabled> or <button> -->
+<button disabled={isLoading}>Submit</button>
+
+<!-- Form elements -->
+<input type="checkbox" checked={todo.completed} />
+<option selected={item.id === selectedId}>{item.name}</option>
+
+<!-- Other boolean attributes -->
+<details open={showDetails}>...</details>
+<input readonly={!canEdit} />
+<input required={isRequired} />
+```
+
+Supported boolean attributes: `disabled`, `checked`, `selected`, `readonly`, `required`, `hidden`, `open`, `autofocus`, `autoplay`, `controls`, `default`, `defer`, `formnovalidate`, `inert`, `loop`, `multiple`, `muted`, `novalidate`, `reversed`, `async`.
+
 ### Components
 
 Import `.html` components from your `src/lib/` directory or from packages:

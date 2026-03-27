@@ -40,6 +40,38 @@ function isJsControlLine(line: string): boolean {
   return JS_CONTROL_PATTERNS.some(p => p.test(line));
 }
 
+/** HTML boolean attributes that should be present or absent, never have a value */
+const BOOLEAN_ATTRIBUTES = new Set([
+  'disabled',
+  'checked',
+  'selected',
+  'readonly',
+  'required',
+  'hidden',
+  'open',
+  'autofocus',
+  'autoplay',
+  'controls',
+  'default',
+  'defer',
+  'formnovalidate',
+  'inert',
+  'ismap',
+  'itemscope',
+  'loop',
+  'multiple',
+  'muted',
+  'nomodule',
+  'novalidate',
+  'playsinline',
+  'reversed',
+  'async',
+]);
+
+function isBooleanAttribute(name: string): boolean {
+  return BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+}
+
 export interface TemplateRenderSections {
   bodyTemplate: string;
   headTemplate: string;
@@ -1246,9 +1278,13 @@ function compileHtmlSegment(
           }
           pos = closeIdx + 1;
           continue;
-        } else if (attrName === 'disabled' || attrName === 'checked' || attrName === 'hidden' || attrName === 'readonly') {
-          // Boolean attributes: disabled={expr} â†’ conditionally include
-          result += `"\${${inner} ? '' : undefined}"`;
+        } else if (isBooleanAttribute(attrName)) {
+          // Boolean attributes: disabled={expr} → conditionally include the attribute or omit entirely
+          // Remove the trailing "attrName=" we already appended, we'll handle it with a ternary
+          result = result.replace(new RegExp(`\\s*${attrName}=$`), '');
+          result += `\${${inner} ? ' ${attrName}' : ''}`;
+          pos = closeIdx + 1;
+          continue;
         } else {
           // Regular attribute: value={expr} â†’ value="escaped"
           result += `"\${__esc(${inner})}"`;
