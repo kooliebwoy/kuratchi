@@ -4,6 +4,7 @@ export interface OrmDatabaseEntry {
   schemaExportName: string;
   skipMigrations: boolean;
   type: 'd1' | 'do';
+  remote: boolean;
 }
 
 export interface AuthConfigEntry {

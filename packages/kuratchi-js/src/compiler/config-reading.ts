@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import {
   type AuthConfigEntry,
@@ -14,6 +15,13 @@ type ConfigBlockKind = 'call-object' | 'call-empty';
 interface ConfigBlockMatch {
   kind: ConfigBlockKind;
   body: string;
+}
+
+export interface UiConfigEntry {
+  theme: string;
+  radius: string;
+  library?: 'tailwindcss';
+  plugins: string[];
 }
 
 function skipWhitespace(source: string, start: number): number {
@@ -65,7 +73,14 @@ function readConfigBlock(source: string, key: string): ConfigBlockMatch | null {
   return { kind: 'call-empty', body: '' };
 }
 
-export function readUiTheme(projectDir: string): string | null {
+function normalizeUiPluginName(plugin: string): string {
+  const normalized = plugin.trim();
+  if (!normalized) return normalized;
+  if (normalized === 'forms') return '@tailwindcss/forms';
+  return normalized;
+}
+
+function readUiConfig(projectDir: string): UiConfigEntry | null {
   const configPath = path.join(projectDir, 'kuratchi.config.ts');
   if (!fs.existsSync(configPath)) return null;
 
@@ -74,7 +89,84 @@ export function readUiTheme(projectDir: string): string | null {
   if (!uiBlock) return null;
 
   const themeMatch = uiBlock.body.match(/theme\s*:\s*['"]([^'"]+)['"]/);
-  const themeValue = themeMatch?.[1] ?? 'default';
+  const radiusMatch = uiBlock.body.match(/radius\s*:\s*['"]([^'"]+)['"]/);
+  const libraryMatch = uiBlock.body.match(/library\s*:\s*['"]([^'"]+)['"]/);
+  const pluginsMatch = uiBlock.body.match(/plugins\s*:\s*\[([\s\S]*?)\]/);
+  const plugins: string[] = [];
+  if (pluginsMatch) {
+    const itemRegex = /['"]([^'"]+)['"]/g;
+    let pluginMatch: RegExpExecArray | null;
+    while ((pluginMatch = itemRegex.exec(pluginsMatch[1])) !== null) {
+      const plugin = normalizeUiPluginName(pluginMatch[1]);
+      if (plugin) plugins.push(plugin);
+    }
+  }
+
+  return {
+    theme: themeMatch?.[1] ?? 'dark',
+    radius: radiusMatch?.[1] ?? 'default',
+    library: libraryMatch?.[1] === 'tailwindcss' ? 'tailwindcss' : undefined,
+    plugins,
+  };
+}
+
+function findTailwindCliPath(projectDir: string): string | null {
+  const candidates = [
+    path.join(projectDir, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
+    path.join(projectDir, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
+    path.join(projectDir, '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
+    path.join(projectDir, '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
+    path.join(projectDir, '..', '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
+    path.join(projectDir, '..', '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
+    path.join(path.resolve(projectDir, '../..'), 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
+    path.join(path.resolve(projectDir, '../..'), 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function buildTailwindCss(projectDir: string, uiConfig: UiConfigEntry): string | null {
+  const cliPath = findTailwindCliPath(projectDir);
+  if (!cliPath) {
+    console.warn('[kuratchi] ui.library: "tailwindcss" configured but @tailwindcss/cli could not be resolved');
+    return null;
+  }
+
+  const uiDir = path.join(projectDir, '.kuratchi', 'ui');
+  if (!fs.existsSync(uiDir)) fs.mkdirSync(uiDir, { recursive: true });
+
+  const inputPath = path.join(uiDir, 'tailwind.input.css');
+  const outputPath = path.join(uiDir, 'tailwind.output.css');
+  const sourcePath = path.relative(uiDir, path.join(projectDir, 'src')).replace(/\\/g, '/');
+  const configSource = path.relative(uiDir, path.join(projectDir, 'kuratchi.config.ts')).replace(/\\/g, '/');
+  const lines = [
+    '@import "tailwindcss";',
+    `@source "${sourcePath}";`,
+    `@source "${configSource}";`,
+    ...uiConfig.plugins.map((plugin) => `@plugin "${plugin}";`),
+    '',
+  ];
+  fs.writeFileSync(inputPath, lines.join('\n'), 'utf-8');
+
+  execFileSync(process.execPath, [cliPath, '-i', inputPath, '-o', outputPath], {
+    cwd: projectDir,
+    stdio: 'pipe',
+  });
+
+  return fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : null;
+}
+
+export function readUiTheme(projectDir: string): string | null {
+  const uiConfig = readUiConfig(projectDir);
+  if (!uiConfig) return null;
+
+  if (uiConfig.library === 'tailwindcss') {
+    return buildTailwindCss(projectDir, uiConfig);
+  }
+
+  const themeValue = uiConfig.theme ?? 'default';
 
   if (themeValue === 'default' || themeValue === 'dark' || themeValue === 'light' || themeValue === 'system') {
     const candidates = [
@@ -101,16 +193,11 @@ export function readUiTheme(projectDir: string): string | null {
 }
 
 export function readUiConfigValues(projectDir: string): { theme: string; radius: string } | null {
-  const configPath = path.join(projectDir, 'kuratchi.config.ts');
-  if (!fs.existsSync(configPath)) return null;
-  const source = fs.readFileSync(configPath, 'utf-8');
-  const uiBlock = readConfigBlock(source, 'ui');
-  if (!uiBlock) return null;
-  const themeMatch = uiBlock.body.match(/theme\s*:\s*['"]([^'"]+)['"]/);
-  const radiusMatch = uiBlock.body.match(/radius\s*:\s*['"]([^'"]+)['"]/);
+  const uiConfig = readUiConfig(projectDir);
+  if (!uiConfig) return null;
   return {
-    theme: themeMatch?.[1] ?? 'dark',
-    radius: radiusMatch?.[1] ?? 'default',
+    theme: uiConfig.theme,
+    radius: uiConfig.radius,
   };
 }
 
@@ -152,11 +239,13 @@ export function readOrmConfig(projectDir: string): OrmDatabaseEntry[] {
 
     const typeMatch = rest.match(/type\s*:\s*['"]?(d1|do)['"]?/);
     const type = (typeMatch?.[1] as 'd1' | 'do') ?? 'd1';
+    const remoteMatch = rest.match(/remote\s*:\s*(true|false)/);
+    const remote = remoteMatch?.[1] === 'true';
 
     const schemaImportPath = importMap.get(schemaExportName);
     if (!schemaImportPath) continue;
 
-    entries.push({ binding, schemaImportPath, schemaExportName, skipMigrations, type });
+    entries.push({ binding, schemaImportPath, schemaExportName, skipMigrations, type, remote });
   }
 
   return entries;
@@ -196,10 +285,10 @@ export function readDoConfig(projectDir: string): DoConfigEntry[] {
 
   const source = fs.readFileSync(configPath, 'utf-8');
   const doIdx = source.search(/durableObjects\s*:\s*\{/);
-  if (doIdx === -1) return [];
+  if (doIdx === -1) return readWranglerDoConfig(projectDir);
 
   const braceStart = source.indexOf('{', doIdx);
-  if (braceStart === -1) return [];
+  if (braceStart === -1) return readWranglerDoConfig(projectDir);
 
   let depth = 0;
   let braceEnd = braceStart;
@@ -252,7 +341,7 @@ export function readDoConfig(projectDir: string): DoConfigEntry[] {
     entries.push({ binding: match[1], className: match[2] });
   }
 
-  return entries;
+  return entries.length > 0 ? entries : readWranglerDoConfig(projectDir);
 }
 
 /** Read durable_objects.bindings from wrangler.jsonc / wrangler.json as fallback. */

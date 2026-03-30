@@ -1,6 +1,6 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /**
- * CLI entry point â€” kuratchi build | watch | create
+ * CLI entry point � kuratchi build | watch | create
  */
 
 import { compile } from './compiler/index.js';
@@ -14,6 +14,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 const projectDir = process.cwd();
+let cachedScriptRuntimeExecutable: string | null = null;
 
 void main().catch((err: any) => {
   console.error(`[kuratchi] ${err?.message ?? err}`);
@@ -45,7 +46,7 @@ Usage:
   kuratchi create [name]  Scaffold a new KuratchiJS project
   kuratchi build          Compile routes once
   kuratchi dev            Compile, watch for changes, and start wrangler dev server
-  kuratchi watch          Compile + watch only (no wrangler — for custom setups)
+  kuratchi watch          Compile + watch only (no wrangler � for custom setups)
   kuratchi types          Generate TypeScript types from schema to src/app.d.ts
 `);
       process.exit(1);
@@ -69,7 +70,7 @@ async function runBuild(isDev = false) {
   console.log('[kuratchi] Compiling...');
   try {
     const outFile = await compile({ projectDir, isDev });
-    console.log(`[kuratchi] Built â†’ ${path.relative(projectDir, outFile)}`);
+    console.log(`[kuratchi] Built -> ${path.relative(projectDir, outFile)}`);
   } catch (err: any) {
     console.error(`[kuratchi] Build failed: ${err.message}`);
     process.exit(1);
@@ -78,34 +79,9 @@ async function runBuild(isDev = false) {
 
 async function runWatch(withWrangler = false): Promise<void> {
   await runBuild(true);
-
-  const routesDir = path.join(projectDir, 'src', 'routes');
-  const serverDir = path.join(projectDir, 'src', 'server');
-  const watchDirs = [routesDir, serverDir].filter(d => fs.existsSync(d));
-
-  let rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  const triggerRebuild = () => {
-    if (rebuildTimeout) clearTimeout(rebuildTimeout);
-    rebuildTimeout = setTimeout(async () => {
-      console.log('[kuratchi] File changed, rebuilding...');
-      try {
-        await compile({ projectDir, isDev: true });
-        console.log('[kuratchi] Rebuilt.');
-      } catch (err: any) {
-        console.error(`[kuratchi] Rebuild failed: ${err.message}`);
-      }
-    }, 100);
-  };
-
-  for (const dir of watchDirs) {
-    fs.watch(dir, { recursive: true }, triggerRebuild);
-  }
-
+  startCompilerWatch();
   console.log('[kuratchi] Watching for changes...');
 
-  // `kuratchi dev` also starts the wrangler dev server.
-  // `kuratchi watch` is the compiler-only mode for custom setups.
   if (withWrangler) {
     await startWranglerDev();
     return;
@@ -189,9 +165,48 @@ function resolveWranglerBin(): string | null {
   }
 }
 
-function getNodeExecutable(): string {
-  if (!process.versions.bun) return process.execPath;
-  return 'node';
+function getScriptRuntimeExecutable(): string {
+  if (cachedScriptRuntimeExecutable) return cachedScriptRuntimeExecutable;
+
+  if (!process.versions.bun) {
+    cachedScriptRuntimeExecutable = process.execPath;
+    return cachedScriptRuntimeExecutable;
+  }
+
+  const nodeExecutable = findExecutableOnPath('node');
+  cachedScriptRuntimeExecutable = nodeExecutable ?? process.execPath;
+  return cachedScriptRuntimeExecutable;
+}
+
+function startCompilerWatch(): () => void {
+  const routesDir = path.join(projectDir, 'src', 'routes');
+  const serverDir = path.join(projectDir, 'src', 'server');
+  const watchDirs = [routesDir, serverDir].filter(d => fs.existsSync(d));
+  const watchers: fs.FSWatcher[] = [];
+
+  let rebuildTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const triggerRebuild = () => {
+    if (rebuildTimeout) clearTimeout(rebuildTimeout);
+    rebuildTimeout = setTimeout(async () => {
+      console.log('[kuratchi] File changed, rebuilding...');
+      try {
+        await compile({ projectDir, isDev: true });
+        console.log('[kuratchi] Rebuilt.');
+      } catch (err: any) {
+        console.error(`[kuratchi] Rebuild failed: ${err.message}`);
+      }
+    }, 100);
+  };
+
+  for (const dir of watchDirs) {
+    watchers.push(fs.watch(dir, { recursive: true }, triggerRebuild));
+  }
+
+  return () => {
+    if (rebuildTimeout) clearTimeout(rebuildTimeout);
+    for (const watcher of watchers) watcher.close();
+  };
 }
 
 function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
@@ -199,7 +214,7 @@ function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
   const stdio: ['pipe', 'inherit', 'inherit'] = ['pipe', 'inherit', 'inherit'];
 
   if (localWranglerBin) {
-    return spawn(getNodeExecutable(), [localWranglerBin, ...wranglerArgs], {
+    return spawn(getScriptRuntimeExecutable(), [localWranglerBin, ...wranglerArgs], {
       cwd: projectDir,
       stdio,
     });
@@ -212,4 +227,39 @@ function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
   });
 }
 
+function findExecutableOnPath(command: string): string | null {
+  const pathEnv = process.env.PATH;
+  if (!pathEnv) return null;
 
+  const pathEntries = pathEnv.split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? (process.env.PATHEXT?.split(';').filter(Boolean) ?? ['.EXE', '.CMD', '.BAT', '.COM'])
+    : [''];
+  const hasExtension = !!path.extname(command);
+
+  for (const entry of pathEntries) {
+    if (hasExtension) {
+      const candidate = path.join(entry, command);
+      if (isExecutableFile(candidate)) return candidate;
+      continue;
+    }
+
+    for (const ext of extensions) {
+      const candidate = path.join(entry, `${command}${process.platform === 'win32' ? ext.toLowerCase() : ext}`);
+      if (isExecutableFile(candidate)) return candidate;
+      const exactCaseCandidate = path.join(entry, `${command}${ext}`);
+      if (exactCaseCandidate !== candidate && isExecutableFile(exactCaseCandidate)) return exactCaseCandidate;
+    }
+  }
+
+  return null;
+}
+
+function isExecutableFile(filePath: string): boolean {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}

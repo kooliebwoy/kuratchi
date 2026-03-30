@@ -65,7 +65,7 @@ Route files are not client files. They are server-rendered routes that can opt i
 
 ```html
 <script>
-  import { getItems, addItem, deleteItem } from '$database/items';
+  import { getItems, addItem, deleteItem } from '$server/items';
 
   const items = await getItems();
 </script>
@@ -78,7 +78,7 @@ Route files are not client files. They are server-rendered routes that can opt i
 </ul>
 ```
 
-The `$database/` alias resolves to `src/database/`. You can use any path alias configured in your tsconfig.
+The `$server/` alias resolves to `src/server/`. Use that as the canonical home for reusable server-only modules.
 Private server logic should live in `src/server/` and be imported into routes explicitly.
 
 ### Layout file
@@ -277,7 +277,7 @@ Export server functions from a route's `<script>` block and reference them with 
 
 ```html
 <script>
-  import { addItem, deleteItem } from '$database/items';
+  import { addItem, deleteItem } from '$server/items';
 </script>
 
 <!-- Standard form — POST-Redirect-GET -->
@@ -290,7 +290,7 @@ Export server functions from a route's `<script>` block and reference them with 
 The action function receives the raw `FormData`. Throw `ActionError` to surface a message back to the form — see [Error handling](#error-handling).
 
 ```ts
-// src/database/items.ts
+// src/server/items.ts
 import { ActionError } from '@kuratchi/js';
 
 export async function addItem(formData: FormData): Promise<void> {
@@ -339,7 +339,7 @@ In the template, the action's state object is available under its function name:
 
 ```html
 <script>
-  import { signIn } from '$database/auth';
+  import { signIn } from '$server/auth';
 </script>
 
 <form action={signIn}>
@@ -398,16 +398,18 @@ for (const rec of (recommendations ?? [])) {
 
 These `data-*` attributes wire up client-side interactivity without writing JavaScript.
 
-### `data-action` — fetch action (no page reload)
+### `data-post` — client-triggered server action
 
-Calls a server action via `fetch` and refreshes `data-refresh` targets when done:
+Use `data-post={fn(args)}` for button-style server actions without exposing compiler transport details in templates:
 
 ```html
-<button data-action="deleteItem" data-args={JSON.stringify([item.id])}>Delete</button>
-<button data-action="toggleItem" data-args={JSON.stringify([item.id, true])}>Done</button>
+<button data-post={deleteItem(item.id)} data-refresh="" type="button">Delete</button>
+<button data-post={toggleItem(item.id, true)} data-refresh="" type="button">Done</button>
 ```
 
-The action function receives the args array as individual arguments:
+Kuratchi lowers `data-post` into its internal action transport automatically. Authored `data-action` / `data-args` attributes are deprecated and should be treated as compiler output only.
+
+The action function receives the direct arguments you passed in the template:
 
 ```ts
 export async function deleteItem(id: number): Promise<void> {
@@ -421,7 +423,7 @@ export async function toggleItem(id: number, done: boolean): Promise<void> {
 
 ### `data-refresh` — partial refresh
 
-After a `data-action` call succeeds, elements with `data-refresh` re-fetch their content:
+After a `data-post` call succeeds, elements with `data-refresh` re-fetch their content:
 
 ```html
 <section data-refresh="/items">

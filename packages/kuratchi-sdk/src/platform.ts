@@ -96,6 +96,25 @@ export interface SiteInfo {
   created_at: string;
 }
 
+export interface SiteDomainInfo {
+  id: string;
+  siteId: string;
+  hostname: string;
+  cloudflareHostnameId?: string;
+  cnameTarget?: string;
+  verificationMethod?: string;
+  hostnameStatus?: string;
+  sslStatus?: string;
+  connectionStatus?: string;
+  verificationErrors?: string[];
+  ownershipVerification?: Array<Record<string, any>>;
+  sslVerificationRecords?: Array<Record<string, any>>;
+  sslValidationErrors?: string[];
+  lastCheckedAt?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface SiteFileInfo {
   id: string;
   siteId: string;
@@ -108,6 +127,10 @@ export interface SiteFileInfo {
 
 export interface CreateSiteRequest {
   name: string;
+}
+
+export interface CreateSiteDomainRequest {
+  hostname: string;
 }
 
 export interface CreateTokenRequest {
@@ -210,7 +233,7 @@ export class PlatformClient {
     return {
       list: () => this.request<SiteInfo[]>('/api/v1/platform/sites'),
 
-      get: (id: string) => this.request<SiteInfo & { files: SiteFileInfo[] }>(`/api/v1/platform/sites/${id}`),
+      get: (id: string) => this.request<SiteInfo & { files: SiteFileInfo[]; domains: SiteDomainInfo[] }>(`/api/v1/platform/sites/${id}`),
 
       create: (req: CreateSiteRequest) =>
         this.request<SiteInfo>('/api/v1/platform/sites', {
@@ -220,6 +243,23 @@ export class PlatformClient {
 
       delete: (id: string) =>
         this.request<void>(`/api/v1/platform/sites/${id}`, { method: 'DELETE' }),
+
+      listDomains: (siteId: string) =>
+        this.request<SiteDomainInfo[]>(`/api/v1/platform/sites/${siteId}/domains`),
+
+      addDomain: (siteId: string, req: CreateSiteDomainRequest) =>
+        this.request<SiteDomainInfo>(`/api/v1/platform/sites/${siteId}/domains`, {
+          method: 'POST',
+          body: req,
+        }),
+
+      refreshDomain: (siteId: string, domainId: string) =>
+        this.request<SiteDomainInfo>(`/api/v1/platform/sites/${siteId}/domains/${domainId}/refresh`, {
+          method: 'POST',
+        }),
+
+      deleteDomain: (siteId: string, domainId: string) =>
+        this.request<void>(`/api/v1/platform/sites/${siteId}/domains/${domainId}`, { method: 'DELETE' }),
 
       /** Upload files to a site and deploy. Each entry is { file, path? }. Paths should be relative to the site root, e.g. "assets/app.js". */
       uploadFiles: async (siteId: string, files: { file: Blob | File; path?: string }[]): Promise<ApiResponse> => {

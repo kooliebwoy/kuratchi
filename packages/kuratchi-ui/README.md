@@ -19,6 +19,22 @@ export default defineConfig({
 });
 ```
 
+Tailwind CSS can be enabled through the same adapter:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({
+    library: 'tailwindcss',
+    plugins: ['daisyui', 'forms'],
+  }),
+});
+```
+
+Kuratchi owns the Tailwind CLI build step internally. No Vite or PostCSS setup is required.
+
 ## Component usage
 
 ```html

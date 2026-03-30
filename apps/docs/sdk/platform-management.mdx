@@ -69,6 +69,12 @@ const created = await kuratchi.platform.sites.create({
 });
 
 const site = await kuratchi.platform.sites.get('site-id');
+
+const domain = await kuratchi.platform.sites.addDomain('site-id', {
+  hostname: 'app.customer.com',
+});
+
+await kuratchi.platform.sites.refreshDomain('site-id', domain.data!.id);
 ```
 
 Upload files with `Blob` or `File` instances:
@@ -84,6 +90,12 @@ Delete a site:
 
 ```ts
 await kuratchi.platform.sites.delete('site-id');
+```
+
+Remove a custom domain:
+
+```ts
+await kuratchi.platform.sites.deleteDomain('site-id', 'domain-id');
 ```
 
 ## Tokens

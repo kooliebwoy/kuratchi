@@ -19,9 +19,9 @@ export async function POST(ctx: RouteContext): Promise<Response> {
   const formData = await ctx.request.formData();
   formData.set('siteId', siteId);
 
-  const { uploadSiteFiles } = await import('$server/database/sites');
+  const { uploadSiteFilesForOrganization } = await import('$server/database/sites');
   try {
-    await uploadSiteFiles(formData);
+    await uploadSiteFilesForOrganization(formData, auth.organizationId);
     return jsonResponse({ success: true });
   } catch (e: any) {
     return jsonResponse({ success: false, error: e.message }, 400);

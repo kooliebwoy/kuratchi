@@ -1238,6 +1238,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   const actionFunctions: string[] = [];
   const pollFunctions: string[] = [];
   const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; awaitExpr?: string }> = [];
+  let warnedLegacyActionAttrs = false;
 
   for (const tag of templateTags) {
     if (tag.closing) continue;
@@ -1248,6 +1249,13 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     }
 
     for (const [attrName, attrValue] of tag.attrs.entries()) {
+      if (!warnedLegacyActionAttrs && (attrName === 'data-action' || attrName === 'data-args')) {
+        warnedLegacyActionAttrs = true;
+        console.warn(
+          `[kuratchi] ${options.filePath || kind}: authored data-action/data-args are deprecated. ` +
+          `Use data-post={fn(...)} or action={fn} instead.`,
+        );
+      }
       if (/^on[A-Za-z]+$/i.test(attrName)) {
         const actionCall = extractCallExpression(attrValue);
         if (actionCall && !actionFunctions.includes(actionCall.fnName)) actionFunctions.push(actionCall.fnName);

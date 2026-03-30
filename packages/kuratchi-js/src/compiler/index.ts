@@ -11,7 +11,6 @@ import { createComponentCompiler } from './component-pipeline.js';
 import {
   readAssetsPrefix,
   readAuthConfig,
-  readDoConfig,
   readOrmConfig,
   readSecurityConfig,
   readUiConfigValues,
@@ -187,7 +186,6 @@ export async function compile(options: CompileOptions): Promise<string> {
 
   // Read kuratchi.config.ts at build time to discover ORM database configs
   const ormDatabases = readOrmConfig(projectDir);
-
   // Read auth config from kuratchi.config.ts
   const authConfig = readAuthConfig(projectDir);
 
@@ -195,8 +193,7 @@ export async function compile(options: CompileOptions): Promise<string> {
   const securityConfig = readSecurityConfig(projectDir);
 
   // Auto-discover Durable Objects from .do.ts files (config optional, only needed for stubId)
-  const configDoEntries = readDoConfig(projectDir);
-  const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir, configDoEntries, ormDatabases);
+  const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir);
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);

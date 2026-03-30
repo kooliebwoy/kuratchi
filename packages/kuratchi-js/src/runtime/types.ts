@@ -84,6 +84,38 @@ export interface DatabaseConfig {
   type?: 'd1' | 'do';
   /** Skip migrations for this database (e.g., in production). Default: false */
   skipMigrations?: boolean;
+  /** Use the deployed Cloudflare resource during local development. */
+  remote?: boolean;
+}
+
+export interface DesktopWindowConfig {
+  title?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface DesktopRemoteBindingConfig {
+  type: 'd1' | 'r2';
+  remote?: boolean;
+}
+
+export interface DesktopConfig {
+  /** Human-readable app name shown by the desktop host. */
+  appName?: string;
+  /** Stable app identifier used by the host/runtime. */
+  appId?: string;
+  /** Initial route loaded by the host. Defaults to '/'. */
+  initialPath?: string;
+  /** Single-window host settings. */
+  window?: DesktopWindowConfig;
+  /** Desktop-native bindings exposed by the host. */
+  bindings?: {
+    notifications?: boolean;
+    files?: boolean;
+    [key: string]: any;
+  };
+  /** Remote Cloudflare bindings the desktop runtime should proxy. */
+  remoteBindings?: Record<string, DesktopRemoteBindingConfig>;
 }
 
 /**
@@ -115,6 +147,12 @@ export interface kuratchiConfig<E extends Env = Env> {
   ui?: {
     /** Theme to inject: 'default' uses @kuratchi/ui's built-in theme, or a path to a custom CSS file */
     theme?: 'default' | string;
+    /** Corner radius preference used by the built-in UI helpers. */
+    radius?: 'default' | 'none' | 'full';
+    /** Optional first-party styling library integration. */
+    library?: 'tailwindcss';
+    /** Optional plugin list for the selected UI library. */
+    plugins?: string[];
   };
   /** Auth configuration â€" @kuratchi/auth plugin setup */
   auth?: AuthConfig | Record<string, any>;
@@ -148,6 +186,8 @@ export interface kuratchiConfig<E extends Env = Env> {
   // .container.ts → FILENAME_CONTAINER binding
   // .workflow.ts  → FILENAME_WORKFLOW binding
   // No config needed — just create the file and it's automatically registered.
+  /** Desktop target configuration consumed by `kuratchi run`. */
+  desktop?: DesktopConfig;
 }
 
 /** Auth configuration for kuratchi.config.ts */

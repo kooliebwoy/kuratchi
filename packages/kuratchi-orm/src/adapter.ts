@@ -1,7 +1,8 @@
-﻿export interface kuratchiOrmDatabaseConfig {
+export interface kuratchiOrmDatabaseConfig {
   schema: any;
   type?: 'd1' | 'do';
   skipMigrations?: boolean;
+  remote?: boolean;
 }
 
 export interface kuratchiOrmAdapterConfig {
@@ -14,5 +15,6 @@ export function kuratchiOrmConfig(config: kuratchiOrmAdapterConfig = {}): kuratc
     ...config,
   };
 }
+
 
 

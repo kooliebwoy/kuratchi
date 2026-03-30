@@ -232,11 +232,11 @@ function scaffold(dir: string, opts: ScaffoldOptions) {
   if (orm || enableDO) {
     dirs.push('src/schemas');
   }
-  if (orm) {
-    dirs.push('src/database');
+  if (orm || enableDO || auth) {
+    dirs.push('src/server');
   }
   if (enableDO) {
-    dirs.push('src/server', 'src/routes/notes');
+    dirs.push('src/routes/notes');
   }
   if (auth) {
     dirs.push('src/routes/auth', 'src/routes/auth/login', 'src/routes/auth/signup', 'src/routes/admin');
@@ -257,21 +257,21 @@ function scaffold(dir: string, opts: ScaffoldOptions) {
 
   if (orm) {
     write(dir, 'src/schemas/app.ts', genSchema(opts));
-    write(dir, 'src/database/items.ts', genItemsCrud());
+    write(dir, 'src/server/items.ts', genItemsCrud());
     write(dir, 'src/routes/items/index.html', genItemsPage());
   }
 
   if (enableDO) {
     write(dir, 'src/schemas/notes.ts', genNotesSchema());
     write(dir, 'src/server/notes.do.ts', genNotesDoHandler());
-    write(dir, 'src/database/notes.ts', genNotesDb());
+    write(dir, 'src/server/notes.ts', genNotesDb());
     write(dir, 'src/routes/notes/index.html', genNotesPage());
   }
 
   if (auth) {
     write(dir, '.dev.vars', genDevVars());
-    write(dir, 'src/database/auth.ts', genAuthFunctions());
-    write(dir, 'src/database/admin.ts', genAdminLoader());
+    write(dir, 'src/server/auth.ts', genAuthFunctions());
+    write(dir, 'src/server/admin.ts', genAdminLoader());
     write(dir, 'src/routes/auth/login/index.html', genLoginPage());
     write(dir, 'src/routes/auth/signup/index.html', genSignupPage());
     write(dir, 'src/routes/admin/index.html', genAdminPage());
@@ -513,7 +513,7 @@ export async function deleteNote(id: number): Promise<void> {
 
 function genNotesPage(): string {
   return `<script>
-  import { getNotes, addNote, deleteNote } from '$database/notes';
+  import { getNotes, addNote, deleteNote } from '$server/notes';
 
   const notes = await getNotes();
 </script>
@@ -537,7 +537,7 @@ if (notes.length === 0) {
     for (const note of notes) {
       <article>
         <span>{note.title}</span>
-        <button data-action="deleteNote" data-args={JSON.stringify([note.id])}>Remove</button>
+        <button data-post={deleteNote(note.id)} data-refresh="" type="button">Remove</button>
       </article>
     }
   </section>
@@ -709,7 +709,7 @@ function genItemsCrud(): string {
   return `import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
 import { redirect } from '${FRAMEWORK_PACKAGE_NAME}';
-import type { Item } from './schemas/app';
+import type { Item } from '../schemas/app';
 
 const db = kuratchiORM(() => (env as any).DB);
 
@@ -740,7 +740,7 @@ export async function toggleItem(id: number): Promise<void> {
 
 function genItemsPage(): string {
   return `<script>
-  import { getItems, addItem, deleteItem, toggleItem } from '$database/items';
+  import { getItems, addItem, deleteItem, toggleItem } from '$server/items';
   import EmptyState from '@kuratchi/ui/empty-state.html';
 
   const items = await getItems();
@@ -766,10 +766,10 @@ if (items.length === 0) {
       <article>
         <span style={item.done ? 'text-decoration: line-through; opacity: 0.5' : ''}>{item.title}</span>
         <div>
-          <button data-action="toggleItem" data-args={JSON.stringify([item.id])}>
+          <button data-post={toggleItem(item.id)} data-refresh="" type="button">
             {item.done ? 'â†©' : 'âœ“'}
           </button>
-          <button data-action="deleteItem" data-args={JSON.stringify([item.id])}>âœ•</button>
+          <button data-post={deleteItem(item.id)} data-refresh="" type="button">âœ•</button>
         </div>
       </article>
     }
@@ -986,7 +986,7 @@ export async function getAdminData() {
 
 function genLoginPage(): string {
   return `<script>
-  import { signIn } from '$database/auth';
+  import { signIn } from '$server/auth';
   import AuthCard from '@kuratchi/ui/auth-card.html';
 </script>
 
@@ -1015,7 +1015,7 @@ function genLoginPage(): string {
 
 function genSignupPage(): string {
   return `<script>
-  import { signUp } from '$database/auth';
+  import { signUp } from '$server/auth';
   import AuthCard from '@kuratchi/ui/auth-card.html';
 </script>
 
@@ -1048,7 +1048,7 @@ function genSignupPage(): string {
 
 function genAdminPage(): string {
   return `<script>
-  import { getAdminData, signOut } from '$database/admin';
+  import { getAdminData, signOut } from '$server/admin';
   import Badge from '@kuratchi/ui/badge.html';
   import Card from '@kuratchi/ui/card.html';
   import DataList from '@kuratchi/ui/data-list.html';

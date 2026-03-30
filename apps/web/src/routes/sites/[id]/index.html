@@ -2,7 +2,18 @@
   import { params } from 'kuratchi:request';
   import { handleSiteFileSelectionChange, toggleAllSiteFiles } from '$client/sites/file-selection';
   import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$client/sites/upload-form';
-  import { getSite, getSiteFiles, getSiteUploads, uploadSiteFiles, deleteSiteFiles, deleteSite } from '$server/database/sites';
+  import {
+    getSite,
+    getSiteFiles,
+    getSiteUploads,
+    getSiteCustomDomains,
+    uploadSiteFiles,
+    deleteSiteFiles,
+    deleteSite,
+    addSiteCustomDomain,
+    refreshSiteCustomDomain,
+    deleteSiteCustomDomain
+  } from '$server/database/sites';
   import { getSitePreviewUrl } from '$server/database/sites';
   import { formatBytes } from '$shared/format';
   import Badge from '@kuratchi/ui/badge.html';
@@ -15,7 +26,9 @@
   const site = await getSite(id);
   const files = site ? await getSiteFiles(id) : [];
   const uploads = site ? await getSiteUploads(id) : [];
+  const domains = site ? await getSiteCustomDomains(id) : [];
   const previewUrl = site ? getSitePreviewUrl(site) : null;
+  const previewHostname = previewUrl ? previewUrl.replace(/^https?:\/\//, '') : '';
   const lastUpload = uploads[0] || null;
 
   function getFileIcon(contentType) {
@@ -36,6 +49,21 @@
 
   function formatUploadMode(value) {
     return value === 'folder' ? 'Folder upload' : 'File upload';
+  }
+
+  function formatDomainStatus(domain) {
+    if (!domain) return 'Pending';
+    if (domain.connectionStatus === 'connected') return 'Connected';
+    if (domain.connectionStatus === 'error') return 'Needs attention';
+    if (domain.connectionStatus === 'attention') return 'Verify DNS';
+    return 'Pending';
+  }
+
+  function getDomainVariant(domain) {
+    if (!domain) return 'muted';
+    if (domain.connectionStatus === 'connected') return 'success';
+    if (domain.connectionStatus === 'error' || domain.connectionStatus === 'attention') return 'warning';
+    return 'muted';
   }
 </script>
 
@@ -97,6 +125,21 @@
     border-radius: var(--kui-radius-xl, 1rem);
     margin-top: 1rem;
   }
+  .domain-card {
+    border: 1px solid var(--kui-border);
+    border-radius: var(--kui-radius-lg);
+    background: var(--kui-bg-elevated);
+    padding: 1rem;
+  }
+  .domain-grid {
+    display: grid;
+    gap: 1rem;
+  }
+  .domain-records {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
 </style>
 
 if (!site) {
@@ -125,7 +168,7 @@ if (!site) {
     if (previewUrl) {
       <div class="banner-card">
         <div data-flex data-direction="column" data-gap="xs">
-          <span data-muted style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Site Domain</span>
+          <span data-muted style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Primary Site URL</span>
           <div data-flex data-align="center" data-gap="sm">
             <a href={previewUrl} target="_blank" rel="noopener noreferrer" class="banner-domain">
               {previewUrl.replace(/^https?:\/\//, '')}
@@ -139,10 +182,132 @@ if (!site) {
           </div>
         </div>
         <p data-muted style="font-size: 0.875rem; max-width: 320px; text-align: right; margin: 0; line-height: 1.4;">
-          This is your live site address. Visitors can access your content at this URL once you deploy.
+          This is the current live URL. Add a custom hostname below when you want to serve the site on a customer domain.
         </p>
       </div>
     }
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Custom Domains</h2>
+        <p>Create a Cloudflare custom hostname, give the customer the DNS records, then refresh until the domain is connected.</p>
+      </div>
+
+      <div class="domain-grid">
+        <Card>
+          <form action={addSiteCustomDomain} method="POST">
+            <input type="hidden" name="siteId" value={site.id} />
+            <div data-field>
+              <label for="custom-domain-hostname">Customer hostname</label>
+              <input id="custom-domain-hostname" name="hostname" type="text" placeholder="app.customer.com" autocomplete="off" />
+              <small>Use the exact hostname the customer wants connected.</small>
+            </div>
+            if (addSiteCustomDomain.error) {
+              <Alert data-variant="danger" style="margin-top: 0.75rem;">{addSiteCustomDomain.error}</Alert>
+            }
+            <div data-dialog="actions" style="margin-top: 1rem;">
+              <button type="submit" data-variant="primary">Add Custom Domain</button>
+            </div>
+          </form>
+        </Card>
+
+        if (domains.length === 0) {
+          <EmptyState class="empty-state-card" title="No custom domains yet" description="Add a hostname to generate the verification details your customer needs." />
+        } else {
+          for (const domain of domains) {
+            <div class="domain-card">
+              <div data-flex data-justify="space-between" data-align="center" data-gap="sm" style="flex-wrap: wrap;">
+                <div data-flex data-direction="column" data-gap="xs">
+                  <strong style="font-size: 1rem;">{domain.hostname}</strong>
+                  <span data-muted style="font-size: 0.8125rem;">Cloudflare hostname: {domain.hostnameStatus || 'pending'} / SSL: {domain.sslStatus || 'pending'}</span>
+                </div>
+                <div data-flex data-align="center" data-gap="sm">
+                  <Badge data-variant={getDomainVariant(domain)}>{formatDomainStatus(domain)}</Badge>
+                  <form action={refreshSiteCustomDomain} method="POST">
+                    <input type="hidden" name="siteId" value={site.id} />
+                    <input type="hidden" name="domainId" value={domain.id} />
+                    <button type="submit" data-variant="secondary" data-size="sm">Refresh</button>
+                  </form>
+                  <form action={deleteSiteCustomDomain} method="POST">
+                    <input type="hidden" name="siteId" value={site.id} />
+                    <input type="hidden" name="domainId" value={domain.id} />
+                    <button type="submit" data-variant="danger-outline" data-size="sm">Remove</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="domain-records">
+                <Card>
+                  <div data-flex data-direction="column" data-gap="xs">
+                    <strong>Customer DNS target</strong>
+                    <div data-flex data-align="center" data-gap="sm">
+                      <span class="code-path">CNAME {domain.hostname} -> {domain.cnameTarget || previewHostname}</span>
+                      <button data-variant="ghost" data-size="sm" type="button" onclick={copyText(`CNAME ${domain.hostname} -> ${domain.cnameTarget || previewHostname}`)}>Copy</button>
+                    </div>
+                    <small>Use a flattened CNAME or ALIAS record if the customer wants an apex/root domain.</small>
+                  </div>
+                </Card>
+
+                if ((domain.ownershipVerification || []).length > 0) {
+                  for (const record of domain.ownershipVerification) {
+                    <Card>
+                      <div data-flex data-direction="column" data-gap="xs">
+                        <strong>Ownership verification</strong>
+                        if (record.txt_name && record.txt_value) {
+                          <div data-flex data-align="center" data-gap="sm" style="flex-wrap: wrap;">
+                            <span class="code-path">TXT {record.txt_name} = {record.txt_value}</span>
+                            <button data-variant="ghost" data-size="sm" type="button" onclick={copyText(`TXT ${record.txt_name} = ${record.txt_value}`)}>Copy</button>
+                          </div>
+                        }
+                        if (record.status) {
+                          <small>Status: {record.status}</small>
+                        }
+                      </div>
+                    </Card>
+                  }
+                }
+
+                if ((domain.sslVerificationRecords || []).length > 0) {
+                  for (const record of domain.sslVerificationRecords) {
+                    <Card>
+                      <div data-flex data-direction="column" data-gap="xs">
+                        <strong>SSL validation</strong>
+                        if (record.txt_name && record.txt_value) {
+                          <div data-flex data-align="center" data-gap="sm" style="flex-wrap: wrap;">
+                            <span class="code-path">TXT {record.txt_name} = {record.txt_value}</span>
+                            <button data-variant="ghost" data-size="sm" type="button" onclick={copyText(`TXT ${record.txt_name} = ${record.txt_value}`)}>Copy</button>
+                          </div>
+                        } else if (record.http_url && record.http_body) {
+                          <div data-flex data-direction="column" data-gap="xs">
+                            <span class="code-path">{record.http_url}</span>
+                            <span class="code-path">{record.http_body}</span>
+                          </div>
+                        }
+                        if (record.status) {
+                          <small>Status: {record.status}</small>
+                        }
+                      </div>
+                    </Card>
+                  }
+                }
+
+                if ((domain.verificationErrors || []).length > 0 || (domain.sslValidationErrors || []).length > 0) {
+                  <Alert data-variant="warning">
+                    {[...(domain.verificationErrors || []), ...(domain.sslValidationErrors || [])].join(' ')}
+                  </Alert>
+                }
+              </div>
+            </div>
+          }
+          if (refreshSiteCustomDomain.error) {
+            <Alert data-variant="danger">{refreshSiteCustomDomain.error}</Alert>
+          }
+          if (deleteSiteCustomDomain.error) {
+            <Alert data-variant="danger">{deleteSiteCustomDomain.error}</Alert>
+          }
+        }
+      </div>
+    </div>
 
     <div class="section">
       <div class="section-header">

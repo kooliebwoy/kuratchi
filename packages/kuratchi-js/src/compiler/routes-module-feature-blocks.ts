@@ -399,7 +399,11 @@ function buildDurableObjectBlock(opts: GenerateRoutesModuleOptions): Pick<Routes
       doResolverLines.push(`    return __getOSBN(${fieldPath});`);
       doResolverLines.push(`  });`);
     } else {
-      doResolverLines.push(`  // No 'stubId' config for ${doEntry.binding} - stub must be obtained manually`);
+      doResolverLines.push(`  __registerDoResolver('${doEntry.binding}', async () => {`);
+      doResolverLines.push(`    const __ns = __env['${doEntry.binding}'];`);
+      doResolverLines.push(`    if (!__ns?.idFromName || !__ns?.get) return null;`);
+      doResolverLines.push(`    return __ns.get(__ns.idFromName('global'));`);
+      doResolverLines.push(`  });`);
     }
   }
 

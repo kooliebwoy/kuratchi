@@ -2,7 +2,7 @@ import type { SchemaDsl } from '@kuratchi/orm';
 
 export const adminSchema: SchemaDsl = {
   name: 'admin',
-  version: 8,
+  version: 9,
   mixins: {
     timestamps: {
       updated_at: 'text default now',
@@ -236,6 +236,26 @@ export const adminSchema: SchemaDsl = {
       totalSize: 'integer default 0',
       addedCount: 'integer default 0',
       overwrittenCount: 'integer default 0',
+      '...timestamps': true,
+    },
+    siteDomains: {
+      id: 'text primary key not null',
+      siteId: 'text -> sites.id cascade',
+      organizationId: 'text',
+      hostname: 'text not null unique',
+      cloudflareHostnameId: 'text unique',
+      cnameTarget: 'text',
+      verificationMethod: 'text',
+      hostnameStatus: 'text',
+      sslStatus: 'text',
+      connectionStatus: 'text',
+      verificationErrors: 'json',
+      ownershipVerification: 'json',
+      ownershipVerificationHttp: 'json',
+      sslVerificationRecords: 'json',
+      sslValidationErrors: 'json',
+      lastCheckedAt: 'timestamp_ms',
+      createdBy: 'text -> users.id',
       '...timestamps': true,
     },
     activity: {

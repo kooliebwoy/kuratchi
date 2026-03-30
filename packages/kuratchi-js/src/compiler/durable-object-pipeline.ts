@@ -5,10 +5,8 @@ import * as ts from 'typescript';
 import {
   type DoClassContributorEntry,
   type DoClassMethodEntry,
-  type DoConfigEntry,
   type DoHandlerEntry,
   type ExportedClassEntry,
-  type OrmDatabaseEntry,
   type RelativeImportClassEntry,
   toSafeIdentifier,
 } from './compiler-shared.js';
@@ -16,9 +14,7 @@ import { discoverFilesWithExtensions, discoverFilesWithSuffix } from './conventi
 
 export function discoverDurableObjects(
   srcDir: string,
-  configDoEntries: DoConfigEntry[],
-  ormDatabases: OrmDatabaseEntry[],
-): { config: DoConfigEntry[]; handlers: DoHandlerEntry[] } {
+): { config: { binding: string; className: string; files?: string[] }[]; handlers: DoHandlerEntry[] } {
   const serverDir = path.join(srcDir, 'server');
   const legacyDir = path.join(srcDir, 'durable-objects');
   const serverDoFiles = discoverFilesWithSuffix(serverDir, '.do.ts');
@@ -26,19 +22,7 @@ export function discoverDurableObjects(
   const discoveredFiles = Array.from(new Set([...serverDoFiles, ...legacyDoFiles]));
 
   if (discoveredFiles.length === 0) {
-    return { config: configDoEntries, handlers: [] };
-  }
-
-  const bindings = new Set(configDoEntries.map((d) => d.binding));
-  const fileToBinding = new Map<string, string>();
-  for (const entry of configDoEntries) {
-    for (const rawFile of entry.files ?? []) {
-      const normalized = rawFile.trim().replace(/^\.?[\\/]/, '').replace(/\\/g, '/').toLowerCase();
-      if (!normalized) continue;
-      fileToBinding.set(normalized, entry.binding);
-      const base = path.basename(normalized);
-      if (!fileToBinding.has(base)) fileToBinding.set(base, entry.binding);
-    }
+    return { config: [], handlers: [] };
   }
 
   const handlers: DoHandlerEntry[] = [];
@@ -65,25 +49,15 @@ export function discoverDurableObjects(
 
     // Binding resolution:
     // 1) explicit static binding declared in the class
-    // 2) config-mapped file name
-    // 3) if exactly one binding exists, infer it
+    // 2) derive from the handler file name
     let binding: string | null = null;
     const bindingMatch = source.match(/static\s+binding\s*=\s*['"](\w+)['"]/);
     if (bindingMatch) {
       binding = bindingMatch[1];
     } else {
-      const normalizedFile = file.replace(/\\/g, '/').toLowerCase();
-      const normalizedRelFromSrc = path.relative(srcDir, absPath).replace(/\\/g, '/').toLowerCase();
-      binding = className ? (configDoEntries.find((entry) => entry.className === className)?.binding ?? null) : null;
-      if (!binding) {
-        binding = fileToBinding.get(normalizedRelFromSrc) ?? fileToBinding.get(normalizedFile) ?? null;
-      }
-      if (!binding && configDoEntries.length === 1) {
-        binding = configDoEntries[0].binding;
-      }
+      binding = deriveBindingFromFile(file);
     }
     if (!binding) continue;
-    if (!bindings.has(binding)) continue;
 
     const classMethods = className ? extractClassMethods(absPath, source, className) : [];
 
@@ -123,17 +97,14 @@ export function discoverDurableObjects(
   }
 
   // Build config entries from discovered handlers (de-duped by binding).
-  // Prefer class name from the original config entry (e.g. from wrangler.jsonc).
-  const discoveredConfigByBinding = new Map<string, DoConfigEntry>();
+  // The handler source is authoritative; wrangler.jsonc is then synced from this.
+  const discoveredConfigByBinding = new Map<string, { binding: string; className: string; files?: string[] }>();
   for (const handler of handlers) {
-    const configEntry = configDoEntries.find((e) => e.binding === handler.binding);
     const existing = discoveredConfigByBinding.get(handler.binding);
     if (!existing) {
       discoveredConfigByBinding.set(handler.binding, {
         binding: handler.binding,
-        // Use config class name when available (authoritative, e.g. from wrangler.jsonc).
-        className: configEntry?.className ?? handler.className ?? handler.binding,
-        stubId: configEntry?.stubId,
+        className: handler.className ?? deriveClassNameFromFile(path.basename(handler.absPath)),
         files: [path.basename(handler.absPath)],
       });
     } else {
@@ -141,8 +112,31 @@ export function discoverDurableObjects(
     }
   }
 
-  void ormDatabases;
   return { config: [...discoveredConfigByBinding.values()], handlers };
+}
+
+function deriveBindingFromFile(fileName: string): string {
+  const normalized = fileName
+    .replace(/\.(ts|tsx|js|mjs|cjs)$/i, '')
+    .replace(/\.do$/i, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
+  if (!normalized) return 'DURABLE_OBJECT';
+  return normalized.endsWith('_DO') ? normalized : `${normalized}_DO`;
+}
+
+function deriveClassNameFromFile(fileName: string): string {
+  const normalized = fileName
+    .replace(/\.(ts|tsx|js|mjs|cjs)$/i, '')
+    .replace(/\.do$/i, '');
+  const base = normalized
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join('');
+  if (!base) return 'DurableObjectHandler';
+  return base.endsWith('DO') ? base : `${base}DO`;
 }
 
 // ---------------------------------------------------------------------------

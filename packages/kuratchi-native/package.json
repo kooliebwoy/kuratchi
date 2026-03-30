@@ -1,0 +1,44 @@
+{
+  "name": "@kuratchi/native",
+  "version": "0.0.1",
+  "description": "Native desktop adapter for Kuratchi Workers apps",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kuratchi-native": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "host",
+    "tools",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.build.json --noEmit",
+    "build:host:windows": "cmd /c tools\\build-windows-host.cmd"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@kuratchi/js": "file:C:/Users/kryst/Documents/kuratchi/packages/kuratchi-js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260223.0",
+    "@types/node": "^24.4.0"
+  }
+}

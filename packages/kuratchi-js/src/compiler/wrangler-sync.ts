@@ -15,6 +15,32 @@ export interface WranglerSyncConfig {
   assetsDirectory?: string;
 }
 
+function nextMigrationTag(existing: any[]): string {
+  const used = new Set(
+    existing
+      .map((entry) => (entry && typeof entry.tag === 'string' ? entry.tag : null))
+      .filter(Boolean),
+  );
+
+  let maxNumeric = 0;
+  for (const tag of used) {
+    const match = /^v(\d+)$/i.exec(String(tag));
+    if (match) {
+      maxNumeric = Math.max(maxNumeric, Number(match[1]));
+    }
+  }
+
+  let candidate = `v${maxNumeric > 0 ? maxNumeric + 1 : 1}`;
+  if (!used.has(candidate)) return candidate;
+
+  let index = maxNumeric + 1;
+  while (used.has(candidate)) {
+    index += 1;
+    candidate = `v${index}`;
+  }
+  return candidate;
+}
+
 function stripJsonComments(content: string): string {
   let result = '';
   let i = 0;
@@ -205,10 +231,37 @@ export function syncWranglerConfig(opts: {
         existingBindings.push(entry);
         changed = true;
         console.log(`[kuratchi] Added durable_object "${durableObject.binding}" to wrangler config`);
+      } else if (existing.class_name !== durableObject.className) {
+        existing.class_name = durableObject.className;
+        changed = true;
+        console.log(`[kuratchi] Updated durable_object "${durableObject.binding}" class_name to "${durableObject.className}"`);
       }
     }
 
     wranglerConfig.durable_objects.bindings = existingBindings;
+
+    const existingMigrations: any[] = Array.isArray(wranglerConfig.migrations) ? wranglerConfig.migrations : [];
+    const knownClasses = new Set<string>();
+    for (const migration of existingMigrations) {
+      const newClasses = Array.isArray(migration?.new_sqlite_classes) ? migration.new_sqlite_classes : [];
+      for (const className of newClasses) {
+        if (typeof className === 'string' && className) knownClasses.add(className);
+      }
+    }
+
+    const missingClasses = opts.config.durableObjects
+      .map((entry) => entry.className)
+      .filter((className) => !knownClasses.has(className));
+
+    if (missingClasses.length > 0) {
+      existingMigrations.push({
+        tag: nextMigrationTag(existingMigrations),
+        new_sqlite_classes: missingClasses,
+      });
+      wranglerConfig.migrations = existingMigrations;
+      changed = true;
+      console.log(`[kuratchi] Added durable object migration for ${missingClasses.join(', ')}`);
+    }
   }
 
   if (opts.config.assetsDirectory !== undefined) {
