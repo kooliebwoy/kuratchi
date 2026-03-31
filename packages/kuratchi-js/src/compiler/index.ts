@@ -197,7 +197,7 @@ export async function compile(options: CompileOptions): Promise<string> {
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);
-  const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agent.ts', '.agent');
+  const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agents.ts', '.agents');
 
   // Generate handler proxy modules in .kuratchi/do/ (must happen BEFORE route processing
   // so that $durable-objects/X imports can be redirected to the generated proxies)
@@ -376,12 +376,18 @@ export async function compile(options: CompileOptions): Promise<string> {
   // routes.ts already exports the default fetch handler and all named DO classes;
   // worker.ts explicitly re-exports them so wrangler.jsonc can reference a
   // stable filename while routes.ts is freely regenerated.
+  // If user has src/index.ts with a default export, merge it with the generated worker
+  // to support scheduled, queue, and other Cloudflare Worker handlers.
+  const userIndexFile = path.join(srcDir, 'index.ts');
+  const hasUserIndex = fs.existsSync(userIndexFile) && 
+    fs.readFileSync(userIndexFile, 'utf-8').includes('export default');
   const workerFile = path.join(outDir, 'worker.ts');
   writeIfChanged(workerFile, buildWorkerEntrypointSource({
     projectDir,
     outDir,
     doClassNames: doConfig.map((entry) => entry.className),
     workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
+    hasUserIndex,
   }));
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
 
@@ -400,12 +406,18 @@ export async function compile(options: CompileOptions): Promise<string> {
     syncedAssetsDirectory = path.relative(projectDir, publicDir).replace(/\\/g, '/');
   }
 
+  // Convert agent config to DO config format (agents are Durable Objects)
+  const agentDoConfig = agentConfig.map((entry) => {
+    const binding = entry.className.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+    return { binding, className: entry.className };
+  });
+
   syncWranglerConfigPipeline({
     projectDir,
     config: {
       workflows: workflowConfig,
       containers: containerConfig,
-      durableObjects: doConfig,
+      durableObjects: [...doConfig, ...agentDoConfig],
       assetsDirectory: syncedAssetsDirectory,
     },
     writeFile: writeIfChanged,

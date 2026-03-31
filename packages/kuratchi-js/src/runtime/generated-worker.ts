@@ -525,13 +525,21 @@ function __attachCookies(response: Response): Response {
   
   const hasCookies = (cookies && cookies.length > 0) || csrfCookie;
   if (hasCookies) {
-    const newResponse = new Response(response.body, response);
+    // Clone the response properly to avoid body stream issues with WARP/proxy layers.
+    // Using response.clone() ensures the body stream is properly duplicated.
+    const cloned = response.clone();
+    const newHeaders = new Headers(cloned.headers);
     if (cookies) {
-      for (const header of cookies) newResponse.headers.append('Set-Cookie', header);
+      for (const header of cookies) newHeaders.append('Set-Cookie', header);
     }
     if (csrfCookie) {
-      newResponse.headers.append('Set-Cookie', csrfCookie);
+      newHeaders.append('Set-Cookie', csrfCookie);
     }
+    const newResponse = new Response(cloned.body, {
+      status: cloned.status,
+      statusText: cloned.statusText,
+      headers: newHeaders,
+    });
     return __secHeaders(newResponse);
   }
   return __secHeaders(response);
