@@ -1,0 +1,192 @@
+---
+title: "Async Values"
+description: "Handle async data with loading, error, and success states"
+---
+
+## Async Values
+
+Kuratchi provides a native JS pattern for handling async data with loading, error, and success states.
+
+## Two Patterns
+
+| Pattern | Returns | Use case |
+|---------|---------|----------|
+| `const x = fn()` | `AsyncValue<T>` | Need loading/error states |
+| `const x = await fn()` | `T` | Just need the value (blocks) |
+
+## AsyncValue API
+
+When you call an async function without `await`, it returns an `AsyncValue<T>` with metadata:
+
+```ts
+interface AsyncValue<T> extends T {
+  pending: boolean;   // true while loading
+  error: string | null; // error message if failed
+  success: boolean;   // true when resolved
+}
+```
+
+The `AsyncValue` **is** the value — you access properties and iterate directly. No `.data` wrapper needed.
+
+## Basic Usage
+
+```html
+<div>
+const todos = getTodos();
+
+if (todos.pending) {
+  <div class="skeleton">Loading...</div>
+}
+
+if (todos.error) {
+  <p class="error">Failed: {todos.error}</p>
+}
+
+for (const todo of todos) {
+  <TodoItem todo={todo} />
+}
+</div>
+```
+
+## With if/else
+
+```html
+<div>
+const todos = getTodos();
+
+if (todos.pending) {
+  <Skeleton />
+} else if (todos.error) {
+  <p>Failed: {todos.error}</p>
+} else if (todos.length > 0) {
+  for (const todo of todos) {
+    <TodoItem todo={todo} />
+  }
+} else {
+  <p>No todos yet.</p>
+}
+</div>
+```
+
+## With switch
+
+```html
+<div>
+const todos = getTodos();
+
+switch (true) {
+  case todos.pending:
+    <Skeleton />
+    break;
+  case !!todos.error:
+    <p>Failed: {todos.error}</p>
+    break;
+  case todos.length === 0:
+    <p>No todos yet.</p>
+    break;
+  default:
+    for (const todo of todos) {
+      <TodoItem todo={todo} />
+    }
+}
+</div>
+```
+
+## Multiple Async Values
+
+```html
+<div>
+const user = getUser();
+const notifications = getNotifications();
+
+if (user.pending || notifications.pending) {
+  <DashboardSkeleton />
+}
+
+<Dashboard user={user} notifications={notifications} />
+</div>
+```
+
+## Blocking (await)
+
+When you don't need loading states, use `await`:
+
+```html
+<script>
+const todos = await getTodos(); // blocks until resolved
+</script>
+
+for (const todo of todos) {
+  <TodoItem todo={todo} />
+}
+```
+
+## Success Guard
+
+Use `.success` when you want to ensure the value is fully resolved:
+
+```html
+<div>
+const todos = getTodos();
+
+if (todos.pending) {
+  <Skeleton />
+}
+
+if (todos.error) {
+  <p>Failed: {todos.error}</p>
+}
+
+if (todos.success) {
+  for (const todo of todos) {
+    <TodoItem todo={todo} />
+  }
+}
+</div>
+```
+
+## Type Safety
+
+The `AsyncValue<T>` type extends `T`, so you get full type inference:
+
+```ts
+interface Todo {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+// getTodos returns AsyncValue<Todo[]>
+const todos = getTodos();
+
+// Type-safe access
+if (todos.success) {
+  for (const todo of todos) {
+    console.log(todo.title); // string
+    console.log(todo.done);  // boolean
+  }
+}
+```
+
+## Runtime Helpers
+
+Import helpers from `@kuratchi/js` for advanced use cases:
+
+```ts
+import {
+  createPendingValue,
+  createSuccessValue,
+  createErrorValue,
+  isAsyncValue,
+} from '@kuratchi/js';
+
+// Create values manually
+const pending = createPendingValue<Todo[]>();
+const success = createSuccessValue(todos);
+const error = createErrorValue<Todo[]>('Failed to fetch');
+
+// Type guard
+if (isAsyncValue(value)) {
+  console.log(value.pending, value.error, value.success);
+}
+```

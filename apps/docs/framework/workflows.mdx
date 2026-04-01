@@ -1,0 +1,198 @@
+---
+title: "Workflows"
+description: "Build durable workflows with auto-generated status functions"
+---
+
+## Workflows
+
+KuratchiJS auto-discovers `.workflow.ts` files in `src/server/`. Each file becomes a Cloudflare Workflow.
+
+```ts
+// src/server/migration.workflow.ts
+import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
+
+export class MigrationWorkflow extends WorkflowEntrypoint {
+  async run(event: WorkflowEvent, step: WorkflowStep) {
+    const data = await step.do('fetch-data', async () => {
+      return await fetchLegacyData();
+    });
+
+    await step.do('transform-data', async () => {
+      return await transformData(data);
+    });
+
+    await step.do('import-data', async () => {
+      return await importToNewSystem(data);
+    });
+
+    return { migrated: data.length };
+  }
+}
+```
+
+## Naming Convention
+
+Workflow binding names are derived from the filename:
+
+| File | Binding | Status Function |
+|------|---------|-----------------|
+| `migration.workflow.ts` | `MIGRATION_WORKFLOW` | `migrationWorkflowStatus()` |
+| `data-sync.workflow.ts` | `DATA_SYNC_WORKFLOW` | `dataSyncWorkflowStatus()` |
+| `email-campaign.workflow.ts` | `EMAIL_CAMPAIGN_WORKFLOW` | `emailCampaignWorkflowStatus()` |
+
+## Starting Workflows
+
+Start a workflow from server code:
+
+```ts
+// In a server action
+export async function startMigration(formData: FormData) {
+  const instance = await env.MIGRATION_WORKFLOW.create({
+    params: { sourceId: formData.get('sourceId') },
+  });
+  
+  redirect(`/migrations/${instance.id}`);
+}
+```
+
+## Workflow Status (Polling)
+
+The framework auto-generates `*WorkflowStatus` functions for each workflow. Use them with polling options:
+
+```html
+<script>
+  import { params } from '@kuratchi/js/request';
+</script>
+
+<div>
+const status = migrationWorkflowStatus(params.id, { poll: '2s' });
+
+if (status.pending) {
+  <p>Checking status...</p>
+}
+
+if (status.status === 'running') {
+  <ProgressBar progress={status.output?.progress} />
+}
+
+if (status.status === 'complete') {
+  <CompletedBanner result={status.output} />
+}
+
+if (status.status === 'errored') {
+  <ErrorBanner error={status.error} />
+}
+</div>
+```
+
+### Polling Options
+
+```ts
+interface PollOptions {
+  poll: string;           // interval: '2s', '500ms', '1m'
+  backoff?: boolean;      // exponential backoff (default: true)
+  maxInterval?: string;   // cap for backoff (default: '5m')
+  until?: (value: T) => boolean; // stop polling when true
+}
+```
+
+**Stop polling on completion:**
+```html
+const status = migrationWorkflowStatus(params.id, { 
+  poll: '2s',
+  until: (s) => s.status === 'complete' || s.status === 'errored'
+});
+```
+
+## Workflow Steps
+
+Use `step.do()` for durable steps that survive restarts:
+
+```ts
+async run(event: WorkflowEvent, step: WorkflowStep) {
+  // Each step is durable - if the workflow restarts,
+  // completed steps are skipped
+  const users = await step.do('fetch-users', async () => {
+    return await db.users.findMany();
+  });
+
+  // Steps can depend on previous results
+  const processed = await step.do('process-users', async () => {
+    return await processUsers(users);
+  });
+
+  return { processed: processed.length };
+}
+```
+
+## Workflow Events
+
+Access the triggering event in your workflow:
+
+```ts
+async run(event: WorkflowEvent<{ sourceId: string }>, step: WorkflowStep) {
+  const { sourceId } = event.payload.params;
+  
+  const data = await step.do('fetch', async () => {
+    return await fetchFromSource(sourceId);
+  });
+  
+  return { fetched: data.length };
+}
+```
+
+## Sleep and Delays
+
+Use `step.sleep()` for durable delays:
+
+```ts
+async run(event: WorkflowEvent, step: WorkflowStep) {
+  await step.do('send-welcome', async () => {
+    await sendWelcomeEmail(event.payload.userId);
+  });
+
+  // Wait 24 hours (survives restarts)
+  await step.sleep('wait-for-followup', '24 hours');
+
+  await step.do('send-followup', async () => {
+    await sendFollowupEmail(event.payload.userId);
+  });
+}
+```
+
+## Error Handling
+
+Workflows automatically retry failed steps. Handle errors explicitly when needed:
+
+```ts
+async run(event: WorkflowEvent, step: WorkflowStep) {
+  try {
+    await step.do('risky-operation', async () => {
+      return await riskyOperation();
+    });
+  } catch (err) {
+    await step.do('handle-failure', async () => {
+      await notifyAdmin(err);
+      await cleanupPartialWork();
+    });
+    throw err; // Re-throw to mark workflow as errored
+  }
+}
+```
+
+## Wrangler Configuration
+
+The framework auto-syncs workflow bindings to `wrangler.jsonc`:
+
+```jsonc
+{
+  "workflows": [
+    {
+      "name": "migration-workflow",
+      "binding": "MIGRATION_WORKFLOW",
+      "class_name": "MigrationWorkflow",
+      "script_name": ".kuratchi/worker.ts"
+    }
+  ]
+}
+```

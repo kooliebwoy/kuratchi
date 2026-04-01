@@ -29,9 +29,18 @@
             ]
           },
           {
+            "group": "Async patterns",
+            "pages": [
+              "framework/async-values"
+            ]
+          },
+          {
             "group": "Cloudflare primitives",
             "pages": [
-              "framework/durable-objects-and-agents",
+              "framework/durable-objects",
+              "framework/workflows",
+              "framework/queues",
+              "framework/agents",
               "framework/configuration"
             ]
           }

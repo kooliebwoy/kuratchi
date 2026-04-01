@@ -5,7 +5,7 @@ description: "Use kuratchi.config.ts for framework integrations and runtime cust
 
 ## `kuratchi.config.ts`
 
-The config file is optional. You only need it when wiring framework integrations such as UI, ORM, auth, or custom Durable Object stub behavior.
+The config file is optional. You only need it when wiring framework integrations such as UI, ORM, or auth.
 
 ```ts
 import { defineConfig } from '@kuratchi/js';
@@ -25,22 +25,92 @@ export default defineConfig({
     cookieName: 'kuratchi_session',
     sessionEnabled: true,
   }),
-  durableObjects: {
-    NOTES_DO: { stubId: 'user.orgId' },
-  },
 });
 ```
 
 Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
 
+## UI Configuration
+
+The `ui` config supports Tailwind CSS and plugins like DaisyUI.
+
+### Basic Theme
+
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',    // 'light' | 'dark' | 'system'
+  radius: 'default' // 'none' | 'default' | 'full'
+})
+```
+
+### Tailwind CSS
+
+Enable Tailwind CSS with the `library` option:
+
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',
+  library: 'tailwindcss'
+})
+```
+
+The framework automatically:
+- Detects `@tailwindcss/cli` in your project
+- Generates the input CSS with `@import "tailwindcss"`
+- Builds and injects the output CSS into your layout
+
+### Tailwind Plugins (DaisyUI, Forms, etc.)
+
+Add plugins with the `plugins` array:
+
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',
+  library: 'tailwindcss',
+  plugins: ['daisyui', 'forms']
+})
+```
+
+**Supported plugins:**
+- `daisyui` — Component library with themes
+- `forms` — Better form styling (expands to `@tailwindcss/forms`)
+- Any npm package name that's a valid Tailwind plugin
+
+**Example with DaisyUI:**
+
+```ts
+// kuratchi.config.ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ 
+    theme: 'dark',
+    library: 'tailwindcss',
+    plugins: ['daisyui']
+  }),
+});
+```
+
+Then use DaisyUI classes in your templates:
+
+```html
+<button class="btn btn-primary">Click me</button>
+<div class="card bg-base-100 shadow-xl">
+  <div class="card-body">
+    <h2 class="card-title">Card Title</h2>
+    <p>Card content</p>
+  </div>
+</div>
+```
+
 ## What belongs here
 
 Use the config file for:
 
-- UI adapter setup
+- UI adapter setup (themes, Tailwind, plugins)
 - ORM schema bindings
 - Auth configuration
-- Optional Durable Object stub resolution
 
 Routing, Durable Object discovery, and generated worker output are handled by the compiler.
 

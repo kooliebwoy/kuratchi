@@ -1206,7 +1206,7 @@ For a comprehensive security analysis and roadmap, see [SECURITY.md](./SECURITY.
 
 Optional. Required only when using framework integrations (ORM, auth, UI, security).
 
-**Durable Objects are auto-discovered** — no config needed unless you need `stubId` for auth integration.
+**Durable Objects are auto-discovered** — no config needed.
 
 ```ts
 import { defineConfig } from '@kuratchi/js';
@@ -1226,14 +1226,75 @@ export default defineConfig({
     cookieName: 'kuratchi_session',
     sessionEnabled: true,
   }),
-  // Optional: only needed for auth-based stub resolution
-  durableObjects: {
-    NOTES_DO: { stubId: 'user.orgId' },
-  },
 });
 ```
 
 Without `kuratchi.config.ts` the compiler falls back to defaults — just drop your route files in `src/routes/` and run `kuratchi build`.
+
+### UI Configuration
+
+The `ui` config supports Tailwind CSS and plugins like DaisyUI.
+
+**Basic theme:**
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',    // 'light' | 'dark' | 'system'
+  radius: 'default' // 'none' | 'default' | 'full'
+})
+```
+
+**Tailwind CSS:**
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',
+  library: 'tailwindcss'
+})
+```
+
+The framework automatically:
+- Detects `@tailwindcss/cli` in your project
+- Generates the input CSS with `@import "tailwindcss"`
+- Builds and injects the output CSS into your layout
+
+**Tailwind plugins (DaisyUI, Forms, etc.):**
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',
+  library: 'tailwindcss',
+  plugins: ['daisyui', 'forms']
+})
+```
+
+Supported plugins:
+- `daisyui` — Component library with themes
+- `forms` — Better form styling (expands to `@tailwindcss/forms`)
+- Any npm package name that's a valid Tailwind plugin
+
+**Example with DaisyUI:**
+```ts
+// kuratchi.config.ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ 
+    theme: 'dark',
+    library: 'tailwindcss',
+    plugins: ['daisyui']
+  }),
+});
+```
+
+Then use DaisyUI classes in your templates:
+```html
+<button class="btn btn-primary">Click me</button>
+<div class="card bg-base-100 shadow-xl">
+  <div class="card-body">
+    <h2 class="card-title">Card Title</h2>
+    <p>Card content</p>
+  </div>
+</div>
+```
 
 ## CLI
 
