@@ -3,40 +3,81 @@ title: "Runtime APIs"
 description: "Request context, redirects, environment helpers, and runtime hooks"
 ---
 
-## Core server APIs
+## Virtual Modules
 
-These helpers are available in server-side route code:
+In route `<script>` blocks, use the `kuratchi:` virtual modules for request data and navigation:
+
+### `kuratchi:request`
+
+Access request-derived values:
+
+```html
+<script>
+  import { url, pathname, searchParams, params, slug, headers, method, locals } from 'kuratchi:request';
+
+  const currentPath = pathname;
+  const tab = searchParams.get('tab');
+  const postId = params.id;
+  const postSlug = slug;
+</script>
+```
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `url` | `URL` | Full request URL |
+| `pathname` | `string` | URL pathname |
+| `searchParams` | `URLSearchParams` | Query parameters |
+| `params` | `Record<string, string>` | Route params (e.g. `{ id: '123' }`) |
+| `slug` | `string \| undefined` | First param value or `params.slug` |
+| `headers` | `Headers` | Request headers |
+| `method` | `string` | HTTP method |
+| `locals` | `App.Locals` | Request-scoped data |
+
+### `kuratchi:navigation`
+
+Server-side redirect:
+
+```html
+<script>
+  import { redirect } from 'kuratchi:navigation';
+
+  // In a load function or action
+  if (!user) {
+    redirect('/auth/signin');
+  }
+</script>
+```
+
+`redirect()` throws a `RedirectError` that the framework catches and converts to a 303 redirect response. It only works server-side.
+
+## Server Module Helpers
+
+For server modules (`src/server/*.ts`), import from `@kuratchi/js`:
 
 ```ts
 import {
   getCtx,
+  getEnv,
   getRequest,
   getLocals,
   getParams,
   getParam,
   redirect,
-  goto,
   RedirectError,
 } from '@kuratchi/js';
 ```
 
-## Request helpers
+| Helper | Description |
+|--------|-------------|
+| `getCtx()` | Execution context (Worker or DO) |
+| `getEnv()` | Worker bindings (D1, KV, DO, etc.) |
+| `getRequest()` | Current request |
+| `getLocals()` | Request-scoped locals |
+| `getParams()` | Route params object |
+| `getParam(name)` | Single route param |
+| `redirect(path, status?)` | Server-side redirect (throws) |
 
-Import route-derived values from `@kuratchi/js/request`:
-
-```ts
-import { url, pathname, searchParams, params, slug } from '@kuratchi/js/request';
-
-const currentPath = pathname;
-const tab = searchParams.get('tab');
-const postId = params.id;
-const postSlug = slug;
-```
-
-The request helper module exposes `url`, `pathname`, `searchParams`, `params`, `slug`, `headers`, and `method`.
-`params` is not ambient in route code; import it from `@kuratchi/js/request` or use `getParams()` / `getParam()` from `@kuratchi/js`.
-
-## Environment helpers
+## Environment Helpers
 
 The framework exposes a compile-time environment flag:
 
@@ -54,13 +95,130 @@ const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '';
 
 Keep binding access in server code. Templates and client scripts should receive precomputed values instead.
 
-## Runtime hook
+## Runtime Hooks
 
-If you need to intercept requests before the router, add `src/server/runtime.hook.ts`:
+Runtime hooks let you intercept requests at different stages of the request lifecycle. Use `src/server/runtime.hook.ts` for request-time interception like agent routing, middleware-style gates, or pre-route auth checks.
+
+### File Structure
 
 ```ts
+// src/server/runtime.hook.ts
 import type { RuntimeDefinition } from '@kuratchi/js';
 
+const runtime: RuntimeDefinition = {
+  // Named runtime steps
+  myStep: {
+    request: async (ctx, next) => { /* ... */ },
+    route: async (ctx, next) => { /* ... */ },
+    response: async (ctx, response) => { /* ... */ },
+    error: async (ctx, error) => { /* ... */ },
+  },
+};
+
+export default runtime;
+```
+
+### RuntimeContext
+
+Every hook receives a `RuntimeContext` with:
+
+```ts
+interface RuntimeContext {
+  request: Request;      // The incoming request
+  env: Env;              // Worker bindings (D1, KV, DO, etc.)
+  ctx: ExecutionContext; // Cloudflare execution context
+  url: URL;              // Parsed URL
+  params: Record<string, string>; // Route params
+  locals: Record<string, any>;    // Shared data between hooks
+}
+```
+
+### Hook Lifecycle
+
+| Hook | When it runs | Use case |
+|------|--------------|----------|
+| `request` | Before routing | Auth gates, agent routing, request logging |
+| `route` | After routing, before render | Route-specific middleware |
+| `response` | After render | Response headers, logging |
+| `error` | On error | Custom error handling |
+
+### Request Hook
+
+Intercept requests before routing. Call `next()` to continue or return a `Response` to short-circuit:
+
+```ts
+const runtime: RuntimeDefinition = {
+  auth: {
+    async request(ctx, next) {
+      // Check auth for protected routes
+      if (ctx.url.pathname.startsWith('/admin/')) {
+        const session = await getSession(ctx.request);
+        if (!session) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        ctx.locals.user = session.user;
+      }
+      return next();
+    },
+  },
+};
+```
+
+### Route Hook
+
+Run after routing but before rendering:
+
+```ts
+const runtime: RuntimeDefinition = {
+  logging: {
+    async route(ctx, next) {
+      const start = Date.now();
+      const response = await next();
+      console.log(`${ctx.url.pathname} - ${Date.now() - start}ms`);
+      return response;
+    },
+  },
+};
+```
+
+### Response Hook
+
+Modify the response after rendering:
+
+```ts
+const runtime: RuntimeDefinition = {
+  headers: {
+    async response(ctx, response) {
+      // Add custom headers
+      const newResponse = new Response(response.body, response);
+      newResponse.headers.set('X-Custom-Header', 'value');
+      return newResponse;
+    },
+  },
+};
+```
+
+### Error Hook
+
+Handle errors globally:
+
+```ts
+const runtime: RuntimeDefinition = {
+  errors: {
+    async error(ctx, error) {
+      console.error('Request failed:', error);
+      // Return a custom error response or null to use default
+      return new Response('Something went wrong', { status: 500 });
+    },
+  },
+};
+```
+
+### Agent Routing Example
+
+Route requests to Cloudflare Agents:
+
+```ts
 const runtime: RuntimeDefinition = {
   agents: {
     async request(ctx, next) {
@@ -68,10 +226,47 @@ const runtime: RuntimeDefinition = {
         return next();
       }
 
-      return new Response('Agent response');
+      const agentName = ctx.url.pathname.split('/')[2];
+      const stub = ctx.env[`${agentName.toUpperCase()}_AGENT`];
+      
+      if (!stub) {
+        return new Response('Agent not found', { status: 404 });
+      }
+
+      return stub.fetch(ctx.request);
     },
   },
 };
 
 export default runtime;
 ```
+
+### Multiple Steps
+
+Define multiple named steps — they run in definition order:
+
+```ts
+const runtime: RuntimeDefinition = {
+  logging: {
+    async request(ctx, next) {
+      console.log(`→ ${ctx.request.method} ${ctx.url.pathname}`);
+      return next();
+    },
+  },
+  auth: {
+    async request(ctx, next) {
+      // Auth check runs after logging
+      return next();
+    },
+  },
+};
+```
+
+### Config vs Runtime Hook
+
+| Use case | Where |
+|----------|-------|
+| Static integrations (ORM, auth, UI) | `kuratchi.config.ts` |
+| Request-time interception | `src/server/runtime.hook.ts` |
+| Route guards, middleware | `src/server/runtime.hook.ts` |
+| Agent routing | `src/server/runtime.hook.ts` |

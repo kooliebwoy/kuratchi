@@ -1,6 +1,6 @@
 ---
 title: "Configuration"
-description: "Use kuratchi.config.ts for framework integrations and runtime customization"
+description: "Use kuratchi.config.ts for framework integrations"
 ---
 
 ## `kuratchi.config.ts`
@@ -14,7 +14,7 @@ import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
 import { kuratchiAuthConfig } from '@kuratchi/auth/adapter';
 
 export default defineConfig({
-  ui: kuratchiUiConfig({ theme: 'default' }),
+  ui: kuratchiUiConfig({ library: 'tailwindcss' }),
   orm: kuratchiOrmConfig({
     databases: {
       DB: { schema: appSchema },
@@ -34,22 +34,12 @@ Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
 
 The `ui` config supports Tailwind CSS and plugins like DaisyUI.
 
-### Basic Theme
-
-```ts
-ui: kuratchiUiConfig({ 
-  theme: 'dark',    // 'light' | 'dark' | 'system'
-  radius: 'default' // 'none' | 'default' | 'full'
-})
-```
-
 ### Tailwind CSS
 
 Enable Tailwind CSS with the `library` option:
 
 ```ts
 ui: kuratchiUiConfig({ 
-  theme: 'dark',
   library: 'tailwindcss'
 })
 ```
@@ -65,7 +55,6 @@ Add plugins with the `plugins` array:
 
 ```ts
 ui: kuratchiUiConfig({ 
-  theme: 'dark',
   library: 'tailwindcss',
   plugins: ['daisyui', 'forms']
 })
@@ -85,7 +74,6 @@ import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
 
 export default defineConfig({
   ui: kuratchiUiConfig({ 
-    theme: 'dark',
     library: 'tailwindcss',
     plugins: ['daisyui']
   }),
@@ -104,18 +92,23 @@ Then use DaisyUI classes in your templates:
 </div>
 ```
 
+### @kuratchi/ui Theme Options
+
+If you're using the `@kuratchi/ui` component library, you can also configure theme options:
+
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',    // 'light' | 'dark' | 'system'
+  radius: 'default' // 'none' | 'default' | 'full'
+})
+```
+
 ## What belongs here
 
 Use the config file for:
 
-- UI adapter setup (themes, Tailwind, plugins)
+- UI adapter setup (Tailwind, plugins, themes)
 - ORM schema bindings
 - Auth configuration
 
 Routing, Durable Object discovery, and generated worker output are handled by the compiler.
-
-## Runtime hook vs config
-
-Use `kuratchi.config.ts` for static framework integration.
-
-Use `src/server/runtime.hook.ts` when you need request-time interception such as agent routing, middleware-style gates, or pre-route auth checks.

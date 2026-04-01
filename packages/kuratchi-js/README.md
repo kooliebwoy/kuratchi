@@ -910,23 +910,9 @@ Requirements:
 
 ## Runtime APIs
 
-These are available anywhere in server-side route code:
-
-```ts
-import {
-  getCtx,      // ExecutionContext
-  getRequest,  // Request
-  getLocals,   // mutable locals bag for the current request
-  getParams,   // URL params ({ slug: 'foo' })
-  getParam,    // getParam('slug')
-  RedirectError, // redirect signal thrown by redirect()\r\n  redirect,      // redirect('/path', 302)\r\n  goto,          // same as redirect()
-  goto,        // same as redirect — alias
-} from '@kuratchi/js';
-```
-
 ### Virtual Modules
 
-Kuratchi provides virtual modules for request-scoped state. Use these in route files:
+In route `<script>` blocks, use the `kuratchi:` virtual modules:
 
 | Virtual Module | Description |
 |----------------|-------------|
@@ -935,7 +921,7 @@ Kuratchi provides virtual modules for request-scoped state. Use these in route f
 
 ### Request helpers
 
-For a batteries-included request layer, import pre-parsed request state from `kuratchi:request`:
+Import pre-parsed request state from `kuratchi:request`:
 
 ```ts
 import { url, pathname, searchParams, params, slug, locals } from 'kuratchi:request';
@@ -953,7 +939,23 @@ const postSlug = slug;
 - `slug` is `params.slug` when the matched route defines a `slug` param.
 - `headers` and `method` are also exported from `kuratchi:request`.
 - `locals` is the request-scoped locals object (typed via `App.Locals` in `app.d.ts`).
-- Use `getRequest()` from `@kuratchi/js` when you want the raw native `Request` object.
+
+### Server Module Helpers
+
+For server modules (`src/server/*.ts`), import from `@kuratchi/js`:
+
+```ts
+import {
+  getCtx,
+  getEnv,
+  getRequest,
+  getLocals,
+  getParams,
+  getParam,
+  redirect,
+  RedirectError,
+} from '@kuratchi/js';
+```
 
 ### Server-side redirect
 
@@ -1235,18 +1237,9 @@ Without `kuratchi.config.ts` the compiler falls back to defaults — just drop y
 
 The `ui` config supports Tailwind CSS and plugins like DaisyUI.
 
-**Basic theme:**
-```ts
-ui: kuratchiUiConfig({ 
-  theme: 'dark',    // 'light' | 'dark' | 'system'
-  radius: 'default' // 'none' | 'default' | 'full'
-})
-```
-
 **Tailwind CSS:**
 ```ts
 ui: kuratchiUiConfig({ 
-  theme: 'dark',
   library: 'tailwindcss'
 })
 ```
@@ -1259,7 +1252,6 @@ The framework automatically:
 **Tailwind plugins (DaisyUI, Forms, etc.):**
 ```ts
 ui: kuratchiUiConfig({ 
-  theme: 'dark',
   library: 'tailwindcss',
   plugins: ['daisyui', 'forms']
 })
@@ -1278,7 +1270,6 @@ import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
 
 export default defineConfig({
   ui: kuratchiUiConfig({ 
-    theme: 'dark',
     library: 'tailwindcss',
     plugins: ['daisyui']
   }),
@@ -1294,6 +1285,14 @@ Then use DaisyUI classes in your templates:
     <p>Card content</p>
   </div>
 </div>
+```
+
+**@kuratchi/ui theme options** (only when using the component library):
+```ts
+ui: kuratchiUiConfig({ 
+  theme: 'dark',    // 'light' | 'dark' | 'system'
+  radius: 'default' // 'none' | 'default' | 'full'
+})
 ```
 
 ## CLI
