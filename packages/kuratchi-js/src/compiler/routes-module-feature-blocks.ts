@@ -458,6 +458,17 @@ function buildWorkflowStatusRpc(opts: GenerateRoutesModuleOptions): string {
   if (opts.workflowConfig.length === 0) return '';
   const rpcLines: string[] = [];
   rpcLines.push(`\n// Workflow Status RPCs (auto-generated)`);
+  rpcLines.push(`// AsyncValue helper for workflow status with polling support`);
+  rpcLines.push(`function __createAsyncValue(value, state) {`);
+  rpcLines.push(`  if (value && typeof value === 'object') {`);
+  rpcLines.push(`    value.pending = state.pending;`);
+  rpcLines.push(`    value.error = state.error;`);
+  rpcLines.push(`    value.success = state.success;`);
+  rpcLines.push(`    return value;`);
+  rpcLines.push(`  }`);
+  rpcLines.push(`  return { ...state, value };`);
+  rpcLines.push(`}`);
+  rpcLines.push(``);
   rpcLines.push(`const __workflowStatusRpc = {`);
   const rpcNames: string[] = [];
   for (const workflow of opts.workflowConfig) {
@@ -466,19 +477,30 @@ function buildWorkflowStatusRpc(opts: GenerateRoutesModuleOptions): string {
     const rpcName = `${camelName}WorkflowStatus`;
     rpcNames.push(rpcName);
     rpcLines.push(`  '${rpcName}': async (instanceId) => {`);
-    rpcLines.push(`    if (!instanceId) return { status: 'unknown', error: { name: 'Error', message: 'Missing instanceId' } };`);
+    rpcLines.push(`    if (!instanceId) return __createAsyncValue({ status: 'unknown' }, { pending: false, error: 'Missing instanceId', success: false });`);
     rpcLines.push(`    try {`);
     rpcLines.push(`      const instance = await __env.${workflow.binding}.get(instanceId);`);
-    rpcLines.push(`      return await instance.status();`);
+    rpcLines.push(`      const result = await instance.status();`);
+    rpcLines.push(`      return __createAsyncValue(result, { pending: false, error: null, success: true });`);
     rpcLines.push(`    } catch (err) {`);
-    rpcLines.push(`      return { status: 'errored', error: { name: err?.name || 'Error', message: err?.message || 'Unknown error' } };`);
+    rpcLines.push(`      return __createAsyncValue({ status: 'errored' }, { pending: false, error: err?.message || 'Unknown error', success: false });`);
     rpcLines.push(`    }`);
     rpcLines.push(`  },`);
   }
   rpcLines.push(`};`);
-  // Export individual functions for use in route templates
+  rpcLines.push(``);
+  // Export individual functions that support polling options
   for (const rpcName of rpcNames) {
-    rpcLines.push(`const ${rpcName} = __workflowStatusRpc['${rpcName}'];`);
+    rpcLines.push(`function ${rpcName}(instanceId, options) {`);
+    rpcLines.push(`  const fetchStatus = () => __workflowStatusRpc['${rpcName}'](instanceId);`);
+    rpcLines.push(`  if (options && options.poll) {`);
+    rpcLines.push(`    // Return a polling AsyncValue - the template compiler handles the polling`);
+    rpcLines.push(`    const result = { pending: true, error: null, success: false, __polling: true, __pollInterval: options.poll, __pollUntil: options.until, __fetchFn: fetchStatus };`);
+    rpcLines.push(`    return result;`);
+    rpcLines.push(`  }`);
+    rpcLines.push(`  // Non-polling: return a promise that resolves to AsyncValue`);
+    rpcLines.push(`  return fetchStatus();`);
+    rpcLines.push(`}`);
   }
   return rpcLines.join('\n');
 }

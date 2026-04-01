@@ -22,9 +22,9 @@ bun run dev
 
 | File | Purpose |
 |---|---|
-| `.kuratchi/routes.js` | Compiled routes, actions, RPC handlers, and render functions |
-| `.kuratchi/worker.js` | Stable wrangler entry - re-exports the fetch handler plus all Durable Object and Agent classes |
-| `.kuratchi/do/*.js` | Generated Durable Object RPC proxy modules for `$durable-objects/*` imports |
+| `.kuratchi/routes.ts` | Compiled routes, actions, RPC handlers, and render functions |
+| `.kuratchi/worker.ts` | Stable wrangler entry - re-exports the fetch handler plus all Durable Object and Agent classes |
+| `.kuratchi/do/*.ts` | Generated Durable Object RPC proxy modules for `.do.ts` file imports |
 
 Point wrangler at the entry and you're done. **No `src/index.ts` needed.**
 
@@ -33,7 +33,7 @@ For the framework's internal compiler/runtime orchestration and tracked implemen
 ```jsonc
 // wrangler.jsonc
 {
-  "main": ".kuratchi/worker.js"
+  "main": ".kuratchi/worker.ts"
 }
 ```
 
@@ -394,98 +394,122 @@ for (const rec of (recommendations ?? [])) {
 }
 ```
 
-## Progressive enhancement
+## Async Values
 
-These `data-*` attributes wire up client-side interactivity without writing JavaScript.
+Kuratchi provides a native JS pattern for handling async data with loading, error, and success states.
 
-### `data-post` — client-triggered server action
+### Two Patterns
 
-Use `data-post={fn(args)}` for button-style server actions without exposing compiler transport details in templates:
+| Pattern | Returns | Use case |
+|---------|---------|----------|
+| `const x = fn()` | `AsyncValue<T>` | Need loading/error states |
+| `const x = await fn()` | `T` | Just need the value (blocks) |
 
-```html
-<button data-post={deleteItem(item.id)} data-refresh="" type="button">Delete</button>
-<button data-post={toggleItem(item.id, true)} data-refresh="" type="button">Done</button>
-```
+### AsyncValue API
 
-Kuratchi lowers `data-post` into its internal action transport automatically. Authored `data-action` / `data-args` attributes are deprecated and should be treated as compiler output only.
-
-The action function receives the direct arguments you passed in the template:
+When you call an async function without `await`, it returns an `AsyncValue<T>` with metadata:
 
 ```ts
-export async function deleteItem(id: number): Promise<void> {
-  await db.items.delete({ id });
-}
-
-export async function toggleItem(id: number, done: boolean): Promise<void> {
-  await db.items.update({ id }, { done });
+interface AsyncValue<T> extends T {
+  pending: boolean;   // true while loading
+  error: string | null; // error message if failed
+  success: boolean;   // true when resolved
 }
 ```
 
-### `data-refresh` — partial refresh
-
-After a `data-post` call succeeds, elements with `data-refresh` re-fetch their content:
+### Usage
 
 ```html
-<section data-refresh="/items">
-  for (const item of items) {
-    <article>{item.title}</article>
-  }
-</section>
-```
+<div>
+const todos = getTodos();
 
-### `data-get` — query blocks and refreshable reads
+if (todos.pending) {
+  <div class="skeleton">Loading...</div>
+}
 
-Use `data-get={fn(args)}` with `data-as` to bind a server read into a fragment that Kuratchi can refresh:
+if (todos.error) {
+  <p class="error">Failed: {todos.error}</p>
+}
 
-```html
-<section data-get={getItems(projectId)} data-as="items">
-  if (items.loading) {
-    <p>Loading…</p>
-  } else if (items.error) {
-    <p>{items.error}</p>
-  } else {
-    for (const item of (items.data ?? [])) {
-      <article>{item.title}</article>
-    }
-  }
-</section>
-```
-
-Behavior:
-- The server read runs on the initial render.
-- Kuratchi stores fragment metadata so the block can be refreshed by `data-refresh`, polling, or invalidation.
-- Query state follows `{ loading, error, success, empty, data, state }`.
-
-Failure and edge behavior:
-- `data-as` is required for query-state blocks.
-- `data-get="/path"` still works as click-to-navigate when used as a plain string URL on an element without query state metadata.
-
-### `data-poll` — polling
-
-Poll and update an element's content at a human-readable interval with automatic exponential backoff:
-
-```html
-<div data-poll={getStatus(itemId)} data-interval="2s">
-  {status}
+for (const todo of todos) {
+  <TodoItem todo={todo} />
+}
 </div>
 ```
 
-**How it works:**
-1. Client sends a fragment request with `x-kuratchi-fragment` header
-2. Server re-renders the route but returns **only the fragment's innerHTML** — not the full page
-3. Client swaps the element's content — minimal payload, no full page reload
+With `if/else`:
 
-This fragment-based architecture is the foundation for partial rendering and scales to Astro-style islands.
+```html
+<div>
+const todos = getTodos();
 
-**Interval formats:**
-- `2s` — 2 seconds
-- `500ms` — 500 milliseconds
-- `1m` — 1 minute
-- Default: `30s` with exponential backoff (30s → 45s → 67s → ... capped at 5 minutes)
+if (todos.pending) {
+  <Skeleton />
+} else if (todos.error) {
+  <p>Failed: {todos.error}</p>
+} else if (todos.length > 0) {
+  for (const todo of todos) {
+    <TodoItem todo={todo} />
+  }
+} else {
+  <p>No todos yet.</p>
+}
+</div>
+```
 
-**Options:**
-- `data-interval` — polling interval (human-readable, default `30s`)
-- `data-backoff="false"` — disable exponential backoff
+### Polling (Workflow Status)
+
+For workflow status that updates over time, use the auto-generated `*WorkflowStatus` functions. These are generated for each `.workflow.ts` file:
+
+- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId, options)`
+- `data-sync.workflow.ts` → `dataSyncWorkflowStatus(instanceId, options)`
+
+```html
+<div>
+const status = migrationWorkflowStatus(instanceId, { poll: '2s' });
+
+if (status.pending) {
+  <p>Checking status...</p>
+}
+
+if (status.status === 'running') {
+  <ProgressBar progress={status.output?.progress} />
+}
+
+if (status.status === 'complete') {
+  <CompletedBanner />
+}
+</div>
+```
+
+**Polling options:**
+- `poll` — interval: `'2s'`, `'500ms'`, `'1m'`
+- `until` — stop polling when function returns true: `until: (s) => s.status === 'complete'`
+
+### Blocking (await)
+
+When you don't need loading states, use `await`:
+
+```html
+<script>
+const todos = await getTodos(); // blocks until resolved
+</script>
+
+for (const todo of todos) {
+  <TodoItem todo={todo} />
+}
+```
+
+## Progressive Enhancement
+
+### Button Actions
+
+Use `onclick={fn(args)}` for button-style server actions:
+
+```html
+<button onclick={deleteItem(item.id)} type="button">Delete</button>
+<button onclick={toggleItem(item.id, true)} type="button">Done</button>
+```
 
 ### `data-select-all` / `data-select-item` — checkbox groups
 
@@ -503,14 +527,14 @@ for (const todo of todos) {
 
 For Durable Objects, RPC is file-driven and automatic.
 
-- Put handler logic in a `.do.ts` file.
+- Put handler logic in a `.do.ts` file in `src/server/`.
 - Exported functions in that file become RPC methods.
-- Import RPC methods from `$durable-objects/<file-name-without-.do>`.
+- Import the `.do.ts` file directly — the framework auto-generates RPC proxies.
 - RPC methods are still server-side code. They are exposed intentionally by the framework runtime, not because route files are client-side.
 
 ```html
 <script>
-  import { getOrgUsers, createOrgUser } from '$durable-objects/auth';
+  import { getOrgUsers, createOrgUser } from '$server/auth.do';
   const users = await getOrgUsers();
 </script>
 
@@ -650,11 +674,11 @@ export default class UserDO extends DurableObject {
 
 ### Using from routes
 
-Import from `$do/<filename>` (without the `.do` suffix):
+Import from the `.do.ts` file directly using `$server/`:
 
 ```html
-<script server>
-import { getName, setName } from '$do/user';
+<script>
+import { getName, setName } from '$server/user.do';
 
 const name = await getName();
 </script>
@@ -697,15 +721,15 @@ export default defineConfig({
 
 ## Agents
 
-Kuratchi treats `src/server/**/*.agent.ts` as a first-class Worker export convention.
+Kuratchi treats `src/server/**/*.agents.ts` as a first-class Worker export convention.
 
-- Any `.agent.ts` file under `src/server/` is scanned during build.
+- Any `.agents.ts` file under `src/server/` is scanned during build.
 - The file must export a class with either `export class MyAgent` or `export default class MyAgent`.
 - The compiler re-exports that class from `.kuratchi/worker.js`, so Wrangler can bind it directly.
-- `.agent.ts` files are not route modules and are not converted into `$durable-objects/*` RPC proxies.
+- `.agents.ts` files are not route modules and are not converted into Durable Object RPC proxies.
 
 ```ts
-// src/server/ai/session.agent.ts
+// src/server/ai/session.agents.ts
 import { Agent } from 'agents';
 
 export class SessionAgent extends Agent {
@@ -729,8 +753,8 @@ export class SessionAgent extends Agent {
 
 Failure and edge behavior:
 
-- If a `.agent.ts` file does not export a class, the build fails.
-- Kuratchi only auto-discovers `.agent.ts` files under `src/server/`.
+- If a `.agents.ts` file does not export a class, the build fails.
+- Kuratchi only auto-discovers `.agents.ts` files under `src/server/`.
 - You still need Wrangler Durable Object bindings and migrations because Agents run as Durable Objects.
 
 ## Workflows
@@ -805,6 +829,38 @@ The status RPC returns the Cloudflare `InstanceStatus` object:
 }
 ```
 
+## Queue Consumers
+
+Kuratchi auto-discovers `.queue.ts` files in `src/server/` for consuming Cloudflare Queue messages. **No config needed.**
+
+```ts
+// src/server/notifications.queue.ts
+export default async function(batch: MessageBatch<NotificationPayload>, env: Env, ctx: ExecutionContext) {
+  for (const message of batch.messages) {
+    console.log('Processing notification:', message.body);
+    // Handle the message...
+    message.ack();
+  }
+}
+```
+
+On build, Kuratchi:
+1. Scans `src/server/` for `.queue.ts` files
+2. Derives the expected queue binding from filename: `notifications.queue.ts` → `NOTIFICATIONS`
+3. Auto-wires a unified `queue()` handler that dispatches to the correct file based on `batch.queue`
+
+**Filename → Binding mapping:**
+- `notifications.queue.ts` → expects `NOTIFICATIONS` queue binding
+- `email-jobs.queue.ts` → expects `EMAIL_JOBS` queue binding
+
+**Producer vs Consumer:**
+- **Producer** (sending): Just call `env.QUEUE.send()` anywhere — no `.queue.ts` file needed
+- **Consumer** (receiving): Create a `.queue.ts` file to handle incoming messages
+
+**Requirements:**
+- Define the queue in `wrangler.jsonc` with matching binding name
+- Run `wrangler types` to get typed `env.QUEUE` bindings
+
 ## Containers
 
 Kuratchi auto-discovers `.container.ts` files in `src/server/`. **No config needed.**
@@ -830,7 +886,8 @@ Kuratchi uses file suffixes to auto-discover and register worker classes. **No c
 |--------|----------|-----------------|---------|
 | `.workflow.ts` | `src/server/**/*.workflow.ts` | `FILENAME_WORKFLOW` | `migration.workflow.ts` → `MIGRATION_WORKFLOW` |
 | `.container.ts` | `src/server/**/*.container.ts` | `FILENAME_CONTAINER` | `wordpress.container.ts` → `WORDPRESS_CONTAINER` |
-| `.agent.ts` | `src/server/**/*.agent.ts` | (manual wrangler config) | `session.agent.ts` |
+| `.queue.ts` | `src/server/**/*.queue.ts` | `FILENAME` | `notifications.queue.ts` → `NOTIFICATIONS` |
+| `.agents.ts` | `src/server/**/*.agents.ts` | (manual wrangler config) | `session.agents.ts` |
 | `.do.ts` | `src/server/**/*.do.ts` | (via `durableObjects` config) | `auth.do.ts` |
 
 ## Automatic Wrangler Config Sync

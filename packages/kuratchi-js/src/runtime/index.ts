@@ -91,3 +91,19 @@ export type { RpcOf } from './do.js';
 
 
 export { url, pathname, searchParams, headers, method, params, slug } from './request.js';
+
+export {
+  createPendingValue,
+  createSuccessValue,
+  createErrorValue,
+  wrapAsyncValue,
+  createPollingValue,
+  isAsyncValue,
+  isPollingValue,
+  parseInterval,
+} from './async-value.js';
+export type {
+  AsyncValue,
+  AsyncValueState,
+  PollOptions,
+} from './async-value.js';

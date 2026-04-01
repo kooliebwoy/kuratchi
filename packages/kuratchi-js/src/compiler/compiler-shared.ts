@@ -60,6 +60,15 @@ export interface ConventionClassEntry {
   exportKind: 'named' | 'default';
 }
 
+export interface QueueConsumerEntry {
+  /** Queue binding name derived from filename (e.g., NOTIFICATIONS from notifications.queue.ts) */
+  binding: string;
+  /** Relative file path from project root */
+  file: string;
+  /** Whether the handler is exported as default or named */
+  exportKind: 'named' | 'default';
+}
+
 export interface DoClassMethodEntry {
   name: string;
   visibility: 'public' | 'private' | 'protected';

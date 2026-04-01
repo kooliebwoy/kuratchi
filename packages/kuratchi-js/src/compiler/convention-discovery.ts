@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { type ConventionClassEntry, type WorkerClassConfigEntry } from './compiler-shared.js';
+import { type ConventionClassEntry, type QueueConsumerEntry, type WorkerClassConfigEntry } from './compiler-shared.js';
 
 export function resolveClassExportFromFile(
   absPath: string,
@@ -108,4 +108,45 @@ export function discoverContainerFiles(projectDir: string): WorkerClassConfigEnt
       exportKind: resolved.exportKind,
     };
   });
+}
+
+/**
+ * Discover queue consumer files in src/server/*.queue.ts
+ * 
+ * Convention: notifications.queue.ts → expects NOTIFICATIONS queue binding
+ * The file must export a default async function that handles MessageBatch.
+ */
+export function discoverQueueConsumerFiles(projectDir: string): QueueConsumerEntry[] {
+  const serverDir = path.join(projectDir, 'src', 'server');
+  const files = discoverFilesWithSuffix(serverDir, '.queue.ts');
+  if (files.length === 0) return [];
+
+  return files.map((absPath) => {
+    const fileName = path.basename(absPath, '.queue.ts');
+    const binding = fileName.toUpperCase().replace(/-/g, '_');
+    const exportKind = resolveQueueHandlerExport(absPath);
+    return {
+      binding,
+      file: path.relative(projectDir, absPath).replace(/\\/g, '/'),
+      exportKind,
+    };
+  });
+}
+
+function resolveQueueHandlerExport(absPath: string): 'named' | 'default' {
+  if (!fs.existsSync(absPath)) {
+    throw new Error(`[kuratchi] .queue file not found: ${absPath}`);
+  }
+  const fileSource = fs.readFileSync(absPath, 'utf-8');
+  // Check for default export (function or async function)
+  if (/export\s+default\s+(async\s+)?function/.test(fileSource)) {
+    return 'default';
+  }
+  // Check for named export called 'queue' or 'handler'
+  if (/export\s+(async\s+)?function\s+(queue|handler)\s*\(/.test(fileSource)) {
+    return 'named';
+  }
+  throw new Error(
+    `[kuratchi] .queue file must export a default function or a named "queue"/"handler" function. File: ${absPath}`
+  );
 }

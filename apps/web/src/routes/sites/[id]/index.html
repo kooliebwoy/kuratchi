@@ -330,7 +330,7 @@ if (!site) {
           </button>
         </EmptyState>
       } else {
-        <form action={deleteSiteFiles} method="POST" data-action>
+        <form action={deleteSiteFiles} method="POST">
           <input type="hidden" name="siteId" value={site.id} />
           
           <div class="toolbar">

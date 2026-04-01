@@ -82,11 +82,11 @@ export default class UserDO extends DurableObject {
 
 ## Route usage
 
-Import from `$do/<filename>` without the `.do` suffix:
+Import directly from the `.do.ts` file using the `$server/` alias:
 
 ```html
 <script>
-  import { getName, setName } from '$do/user';
+  import { getName, setName } from '$server/user.do';
   const name = await getName();
 </script>
 
@@ -128,7 +128,7 @@ export class MigrationWorkflow extends WorkflowEntrypoint {
 
 ## Agents
 
-Files under `src/server/**/*.agent.ts` are treated as first-class Worker exports.
+Files under `src/server/**/*.agents.ts` are treated as first-class Worker exports.
 
 ```ts
 import { Agent } from 'agents';
@@ -140,4 +140,4 @@ export class SessionAgent extends Agent {
 }
 ```
 
-Agent files are re-exported from `.kuratchi/worker.js`, but Wrangler still needs matching bindings and migrations.
+Agent files are re-exported from `.kuratchi/worker.ts`, but Wrangler still needs matching bindings and migrations.

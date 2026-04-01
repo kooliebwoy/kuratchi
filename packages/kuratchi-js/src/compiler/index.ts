@@ -19,6 +19,7 @@ import {
 import {
   discoverContainerFiles,
   discoverConventionClassFiles,
+  discoverQueueConsumerFiles,
   discoverWorkflowFiles,
 } from './convention-discovery.js';
 import { discoverDurableObjects, generateHandlerProxy } from './durable-object-pipeline.js';
@@ -197,10 +198,10 @@ export async function compile(options: CompileOptions): Promise<string> {
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);
+  const queueConsumerConfig = discoverQueueConsumerFiles(projectDir);
   const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agents.ts', '.agents');
 
-  // Generate handler proxy modules in .kuratchi/do/ (must happen BEFORE route processing
-  // so that $durable-objects/X imports can be redirected to the generated proxies)
+  // Generate handler proxy modules in .kuratchi/do/ for auto-discovered .do.ts files
   const doProxyDir = path.join(projectDir, '.kuratchi', 'do');
   const doHandlerProxyPaths = new Map<string, string>();
   const registerDoProxyPath = (sourceAbsNoExt: string, proxyAbsNoExt: string) => {
@@ -222,23 +223,6 @@ export async function compile(options: CompileOptions): Promise<string> {
       const handlerAbsNoExt = handler.absPath.replace(/\\/g, '/').replace(/\.ts$/, '');
       const proxyAbsNoExt = proxyFile.replace(/\\/g, '/').replace(/\.ts$/, '');
       registerDoProxyPath(handlerAbsNoExt, proxyAbsNoExt);
-      // Backward-compatible alias for '.do' suffix.
-      registerDoProxyPath(handlerAbsNoExt.replace(/\.do$/, ''), proxyAbsNoExt.replace(/\.do$/, ''));
-      // Backward-compatible alias for `$durable-objects/<name>` imports.
-      registerDoProxyPath(path.join(srcDir, 'durable-objects', handler.fileName).replace(/\\/g, '/'), proxyAbsNoExt);
-      registerDoProxyPath(
-        path.join(srcDir, 'durable-objects', handler.fileName.replace(/\.do$/, '')).replace(/\\/g, '/'),
-        proxyAbsNoExt.replace(/\.do$/, ''),
-      );
-      if (handler.fileName.endsWith('.do')) {
-        const aliasFileName = handler.fileName.slice(0, -3);
-        const aliasProxyFile = path.join(doProxyDir, aliasFileName + '.ts');
-        const aliasCode = `// Auto-generated alias for .do handler\nexport * from './${path.basename(handler.fileName)}.ts';\n`;
-        const aliasProxyDir = path.dirname(aliasProxyFile);
-        if (!fs.existsSync(aliasProxyDir)) fs.mkdirSync(aliasProxyDir, { recursive: true });
-        writeIfChanged(aliasProxyFile, aliasCode);
-        registerDoProxyPath(handlerAbsNoExt.replace(/\.do$/, ''), aliasProxyFile.replace(/\\/g, '/').replace(/\.ts$/, ''));
-      }
     }
   }
   const serverModuleCompiler = createServerModuleCompiler({
@@ -387,6 +371,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     outDir,
     doClassNames: doConfig.map((entry) => entry.className),
     workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
+    queueConsumers: queueConsumerConfig,
     hasUserIndex,
   }));
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));

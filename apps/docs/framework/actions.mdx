@@ -102,9 +102,11 @@ export async function createPost(data: InferSchema<typeof schemas.createPost>) {
 Use the function normally from the route template:
 
 ```html
-<div data-poll={createPost({ title: 'Hello', content: 'World' })} data-interval="2s">
-  creating...
-</div>
+<script>
+  const result = await createPost({ title: 'Hello', content: 'World' });
+</script>
+
+<p>Created: {result.slug}</p>
 ```
 
 Rules:
@@ -133,34 +135,95 @@ export async function updateProfile(data: InferSchema<typeof schemas.updateProfi
 
 Kuratchi currently uses the schema as the source of truth for validated RPC input. Automatic type generation for unannotated handler parameters is not documented as part of this API yet, so use `InferSchema<typeof schemas.name>` when you want the handler parameter typed.
 
-## Progressive enhancement helpers
+## Async Values
 
-KuratchiJS also supports declarative client-side triggers.
+Kuratchi provides a native JS pattern for handling async data with loading, error, and success states.
 
-### `data-action`
+### Two Patterns
 
-```html
-<button data-action="deleteItem" data-args={JSON.stringify([item.id])}>Delete</button>
+| Pattern | Returns | Use case |
+|---------|---------|----------|
+| `const x = fn()` | `AsyncValue<T>` | Need loading/error states |
+| `const x = await fn()` | `T` | Just need the value (blocks) |
+
+### AsyncValue API
+
+When you call an async function without `await`, it returns an `AsyncValue<T>` with metadata:
+
+```ts
+interface AsyncValue<T> extends T {
+  pending: boolean;   // true while loading
+  error: string | null; // error message if failed
+  success: boolean;   // true when resolved
+}
 ```
 
-### `data-refresh`
+### Usage
 
 ```html
-<section data-refresh="/items">
-  <article>{item.title}</article>
-</section>
-```
+<div>
+const todos = getTodos();
 
-### `data-get`
+if (todos.pending) {
+  <div class="skeleton">Loading...</div>
+}
 
-```html
-<div data-get="/items/{item.id}">Click to navigate</div>
-```
+if (todos.error) {
+  <p class="error">Failed: {todos.error}</p>
+}
 
-### `data-poll`
-
-```html
-<div data-poll={getStatus(itemId)} data-interval="2s">
-  {status}
+for (const todo of todos) {
+  <TodoItem todo={todo} />
+}
 </div>
+```
+
+### Polling (Workflow Status)
+
+For workflow status that updates over time, use the auto-generated `*WorkflowStatus` functions. These are generated for each `.workflow.ts` file:
+
+- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId, options)`
+- `data-sync.workflow.ts` → `dataSyncWorkflowStatus(instanceId, options)`
+
+```html
+<div>
+const status = migrationWorkflowStatus(instanceId, { poll: '2s' });
+
+if (status.pending) {
+  <p>Checking status...</p>
+}
+
+if (status.status === 'running') {
+  <ProgressBar progress={status.output?.progress} />
+}
+
+if (status.status === 'complete') {
+  <CompletedBanner />
+}
+</div>
+```
+
+**Polling options:**
+- `poll` — interval: `'2s'`, `'500ms'`, `'1m'`
+- `until` — stop polling when function returns true: `until: (s) => s.status === 'complete'`
+
+## Button Actions
+
+Use `onclick={fn(args)}` for button-style server actions:
+
+```html
+<button onclick={deleteItem(item.id)} type="button">Delete</button>
+<button onclick={toggleItem(item.id, true)} type="button">Done</button>
+```
+
+## Checkbox Groups
+
+Sync a "select all" checkbox with a group of item checkboxes:
+
+```html
+<input type="checkbox" data-select-all="todos" />
+
+for (const todo of todos) {
+  <input type="checkbox" data-select-item="todos" value={todo.id} />
+}
 ```
