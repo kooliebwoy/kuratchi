@@ -181,6 +181,37 @@ Import `.html` components from your `src/lib/` directory or from packages:
 </Card>
 ```
 
+### Component Props
+
+Components receive props via a `props` object. Destructure in the component's `<script>` block:
+
+```html
+<!-- src/lib/card.html -->
+<script>
+  const { title, class: className = '', variant = 'default' } = props;
+</script>
+
+<div class="card {className}" data-variant={variant}>
+  if (title) {
+    <h2>{title}</h2>
+  }
+  <slot></slot>
+</div>
+```
+
+**Usage:**
+```html
+<Card title="Hello" variant="primary" class="my-card">
+  <p>Card content</p>
+</Card>
+```
+
+**Props patterns:**
+- Destructure from `props` with defaults: `const { title, size = 'md' } = props;`
+- Access directly: `{props.title}` or `data-variant={props.variant}`
+- Use `class:` for className (reserved word): `const { class: className = '' } = props;`
+- Children go in `<slot></slot>` (renders as `props.children`)
+
 ### Client Reactivity (`$:`)
 
 Inside client/browser `<script>` tags in the template markup, Kuratchi supports Svelte-style reactive labels:
