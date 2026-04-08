@@ -63,7 +63,7 @@ export function buildWorkerEntrypointSource(opts: {
     } else {
       queueImports.push(`import { queue as ${handlerName} } from '${importPath}';`);
     }
-    queueDispatchCases.push(`    case '${consumer.binding}': return ${handlerName}(batch, env, ctx);`);
+    queueDispatchCases.push(`    case '${consumer.queueName}': return ${handlerName}(batch, env, ctx);`);
   }
 
   const lines = [

@@ -6,10 +6,19 @@ export interface WranglerSyncEntry {
   className: string;
 }
 
+export interface QueueSyncEntry {
+  /** Binding name for env access (e.g., HOST_OPERATIONS) */
+  binding: string;
+  /** Queue name for Cloudflare (lowercase with hyphens, e.g., host-operations) */
+  queueName: string;
+}
+
 export interface WranglerSyncConfig {
   workflows: WranglerSyncEntry[];
   containers: WranglerSyncEntry[];
   durableObjects: WranglerSyncEntry[];
+  /** Queue consumers discovered from .queue.ts files */
+  queues: QueueSyncEntry[];
   /** Relative path to the public assets directory (e.g. '.kuratchi/public/'). When set, the
    * `assets.directory` and `assets.binding` keys in wrangler.jsonc are kept in sync automatically. */
   assetsDirectory?: string;
@@ -304,6 +313,48 @@ export function syncWranglerConfig(opts: {
         changed = true;
         console.log(`[kuratchi] Added ASSETS binding to static assets config in wrangler config`);
       }
+    }
+  }
+
+  // Auto-sync queue consumers from .queue.ts files
+  if (opts.config.queues.length > 0) {
+    if (!wranglerConfig.queues) {
+      wranglerConfig.queues = { producers: [], consumers: [] };
+    }
+    const existingProducers: any[] = wranglerConfig.queues.producers || [];
+    const existingConsumers: any[] = wranglerConfig.queues.consumers || [];
+    const existingProducersByBinding = new Map(existingProducers.map((p) => [p.binding, p]));
+    const existingConsumersByQueue = new Map(existingConsumers.map((c) => [c.queue, c]));
+
+    for (const queue of opts.config.queues) {
+      // Add producer if missing
+      if (!existingProducersByBinding.has(queue.binding)) {
+        existingProducers.push({
+          binding: queue.binding,
+          queue: queue.queueName,
+        });
+        changed = true;
+        console.log(`[kuratchi] Added queue producer "${queue.binding}" -> "${queue.queueName}" to wrangler config`);
+      }
+
+      // Add consumer if missing
+      if (!existingConsumersByQueue.has(queue.queueName)) {
+        existingConsumers.push({
+          queue: queue.queueName,
+          max_batch_size: 10,
+          max_batch_timeout: 30,
+        });
+        changed = true;
+        console.log(`[kuratchi] Added queue consumer "${queue.queueName}" to wrangler config`);
+      }
+    }
+
+    wranglerConfig.queues.producers = existingProducers;
+    wranglerConfig.queues.consumers = existingConsumers;
+
+    // Clean up empty queues config
+    if (wranglerConfig.queues.producers.length === 0 && wranglerConfig.queues.consumers.length === 0) {
+      delete wranglerConfig.queues;
     }
   }
 

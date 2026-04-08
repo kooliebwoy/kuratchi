@@ -124,9 +124,12 @@ export function discoverQueueConsumerFiles(projectDir: string): QueueConsumerEnt
   return files.map((absPath) => {
     const fileName = path.basename(absPath, '.queue.ts');
     const binding = fileName.toUpperCase().replace(/-/g, '_');
+    // Queue name is the filename as-is (lowercase with hyphens) - this is what Cloudflare sends in batch.queue
+    const queueName = fileName;
     const exportKind = resolveQueueHandlerExport(absPath);
     return {
       binding,
+      queueName,
       file: path.relative(projectDir, absPath).replace(/\\/g, '/'),
       exportKind,
     };

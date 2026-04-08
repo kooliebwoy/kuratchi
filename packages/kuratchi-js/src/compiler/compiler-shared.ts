@@ -63,6 +63,8 @@ export interface ConventionClassEntry {
 export interface QueueConsumerEntry {
   /** Queue binding name derived from filename (e.g., NOTIFICATIONS from notifications.queue.ts) */
   binding: string;
+  /** Queue name for Cloudflare (lowercase with hyphens, e.g., notifications from notifications.queue.ts) */
+  queueName: string;
   /** Relative file path from project root */
   file: string;
   /** Whether the handler is exported as default or named */

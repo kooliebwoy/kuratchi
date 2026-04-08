@@ -407,6 +407,7 @@ export async function compile(options: CompileOptions): Promise<string> {
       workflows: workflowConfig,
       containers: containerConfig,
       durableObjects: [...doConfig, ...agentDoConfig],
+      queues: queueConsumerConfig.map((q) => ({ binding: q.binding, queueName: q.queueName })),
       assetsDirectory: syncedAssetsDirectory,
     },
     writeFile: writeIfChanged,
