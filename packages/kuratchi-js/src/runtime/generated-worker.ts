@@ -151,6 +151,24 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
           return __secHeaders(new Response('Not Found', { status: 404 }));
         }
 
+        // Serve client module assets at /__kuratchi/ path
+        if (url.pathname.startsWith('/__kuratchi/')) {
+          const name = url.pathname.slice(1); // Remove leading slash, keep __kuratchi/
+          const asset = opts.assets[name];
+          if (asset) {
+            if (request.headers.get('if-none-match') === asset.etag) {
+              return new Response(null, { status: 304 });
+            }
+            return new Response(asset.content, {
+              headers: {
+                'content-type': asset.mime,
+                'cache-control': 'public, max-age=31536000, immutable',
+                'etag': asset.etag,
+              },
+            });
+          }
+        }
+
         const match = router.match(url.pathname);
         if (!match) {
           return __secHeaders(new Response(await opts.layout(__renderError(opts.errorPages, 404)), {

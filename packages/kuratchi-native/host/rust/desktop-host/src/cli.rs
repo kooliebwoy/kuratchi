@@ -5,6 +5,9 @@ pub struct HostOptions {
     pub manifest_path: PathBuf,
     pub app_url: String,
     pub desktop_api_origin: String,
+    pub embedded: bool,
+    pub worker_bundle: Option<PathBuf>,
+    pub port: u16,
 }
 
 #[derive(Debug)]
@@ -18,6 +21,9 @@ pub fn parse_host_args(args: &[String]) -> Result<HostOptions, String> {
     let mut manifest_path: Option<PathBuf> = None;
     let mut app_url = String::from("http://127.0.0.1:8787/");
     let mut desktop_api_origin = String::new();
+    let mut embedded = false;
+    let mut worker_bundle: Option<PathBuf> = None;
+    let mut port = 19787u16;
 
     let mut index = 1usize;
     while index < args.len() {
@@ -40,6 +46,21 @@ pub fn parse_host_args(args: &[String]) -> Result<HostOptions, String> {
                     .cloned()
                     .ok_or_else(|| "Missing value for --desktop-api-origin".to_string())?;
             }
+            "--embedded" => {
+                embedded = true;
+            }
+            "--worker-bundle" => {
+                index += 1;
+                worker_bundle = args.get(index).map(PathBuf::from);
+            }
+            "--port" => {
+                index += 1;
+                port = args
+                    .get(index)
+                    .ok_or_else(|| "Missing value for --port".to_string())?
+                    .parse::<u16>()
+                    .map_err(|_| "Invalid port number".to_string())?;
+            }
             "--run-command" | "--cwd" | "--timeout-ms" => {
                 index += 1;
             }
@@ -49,13 +70,16 @@ pub fn parse_host_args(args: &[String]) -> Result<HostOptions, String> {
     }
 
     let manifest_path = manifest_path.ok_or_else(|| {
-        "Usage: workerd-desktop-host --manifest <path> [--app-url <url>] [--desktop-api-origin <url>]".to_string()
+        "Usage: workerd-desktop-host --manifest <path> [--app-url <url>] [--desktop-api-origin <url>] [--embedded --worker-bundle <path> --port <port>]".to_string()
     })?;
 
     Ok(HostOptions {
         manifest_path,
         app_url,
         desktop_api_origin,
+        embedded,
+        worker_bundle,
+        port,
     })
 }
 

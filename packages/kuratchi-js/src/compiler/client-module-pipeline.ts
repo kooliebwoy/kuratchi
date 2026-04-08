@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import ts from 'typescript';
+import * as esbuild from 'esbuild';
 
 import type { CompiledAsset } from './asset-pipeline.js';
 import { collectReferencedIdentifiers, parseImportStatement, type RouteImportEntry } from './import-linking.js';
@@ -37,6 +38,16 @@ export interface ClientModuleCompiler {
   createRegistry(scopeId: string, importEntries: RouteImportEntry[]): ClientRouteRegistry;
   createRouteRegistry(routeIndex: number, importEntries: RouteImportEntry[]): ClientRouteRegistry;
   getCompiledAssets(): CompiledAsset[];
+  
+  // RFC 0002: Bundle client script with RPC stubs for $server/ imports
+  bundleClientScript(opts: {
+    routeIndex: number;
+    clientScriptRaw: string;
+    serverRpcImports: string[];
+    serverRpcFunctions: string[];
+    ssrAwaitVars: string[];
+    routeFilePath: string;
+  }): { assetName: string; asset: CompiledAsset } | null;
 }
 
 export interface ClientRouteRegistry {
@@ -45,6 +56,8 @@ export interface ClientRouteRegistry {
   registerEventHandler(eventName: string, expression: string): ClientEventRegistration | null;
   getServerProxyBindings(): ClientServerProxyBinding[];
   buildEntryAsset(): { assetName: string; asset: CompiledAsset } | null;
+  /** Rewrite a $lib/ import specifier to the bundled asset path */
+  rewriteClientImport(importLine: string, importerDir: string): string | null;
 }
 
 interface ResolvedClientImportTarget {
@@ -80,6 +93,15 @@ function normalizePath(value: string): string {
 function isWithinDir(target: string, dir: string): boolean {
   const relative = path.relative(dir, target);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function isExternalNpmPackage(spec: string): boolean {
+  // External npm packages are bare specifiers that don't start with . or / and aren't absolute paths
+  if (spec.startsWith('.') || spec.startsWith('/') || path.isAbsolute(spec)) {
+    return false;
+  }
+  // Check if it looks like a package name (e.g., 'agents/client', '@scope/pkg', 'lodash')
+  return /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(\/.*)?$/i.test(spec);
 }
 
 function getTopLevelImportLines(source: string): string[] {
@@ -126,13 +148,14 @@ function resolveClientImportTarget(srcDir: string, importerAbs: string, spec: st
     const slashIdx = spec.indexOf('/');
     const folder = slashIdx === -1 ? spec.slice(1) : spec.slice(1, slashIdx);
     const rest = slashIdx === -1 ? '' : spec.slice(slashIdx + 1);
-    if (folder !== 'client' && folder !== 'shared' && folder !== 'server') {
-      throw new Error(`[kuratchi compiler] Unsupported browser import realm "${spec}". Only $client/*, $shared/*, and $server/* may be referenced from browser code.`);
+    // Only $server/ and $lib/ are supported
+    if (folder !== 'server' && folder !== 'lib') {
+      throw new Error(`[kuratchi compiler] Unsupported import prefix "${spec}". Only $server/* and $lib/* are supported.`);
     }
     const abs = path.join(srcDir, folder, rest);
     const resolved = resolveExistingModuleFile(abs);
     if (!resolved) {
-      throw new Error(`[kuratchi compiler] Browser import not found: ${spec}`);
+      throw new Error(`[kuratchi compiler] Import not found: ${spec}`);
     }
     return {
       kind: folder === 'server' ? 'server' : 'browser',
@@ -154,9 +177,12 @@ function resolveClientImportTarget(srcDir: string, importerAbs: string, spec: st
     };
   }
 
-  throw new Error(
-    `[kuratchi compiler] Browser modules currently only support project-local imports ($client, $shared, $server, or relative). Unsupported import: ${spec}`,
-  );
+  // External npm package - mark as external for bundling
+  return {
+    kind: 'browser',
+    resolved: spec, // Keep the bare specifier for esbuild to resolve
+    moduleSpecifier: spec,
+  };
 }
 
 function buildServerProxyRpcId(sourceKey: string, importedName: string): string {
@@ -166,7 +192,6 @@ function buildServerProxyRpcId(sourceKey: string, importedName: string): string 
 
 class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
   private readonly bindingMap = new Map<string, BrowserBindingEntry>();
-  private readonly clientOnlyBindings = new Set<string>();
   private readonly handlerByKey = new Map<string, ClientHandlerRecord>();
   private readonly routeModuleAssets = new Map<string, string>();
   private readonly serverProxyBindings = new Map<string, ClientServerProxyBinding>();
@@ -185,9 +210,8 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
     for (const entry of importEntries) {
       const parsed = parseImportStatement(entry.line);
       if (!parsed.moduleSpecifier) continue;
-      const isClient = parsed.moduleSpecifier.startsWith('$client/');
-      const isShared = parsed.moduleSpecifier.startsWith('$shared/');
-      if (!isClient && !isShared) continue;
+      const isLib = parsed.moduleSpecifier.startsWith('$lib/');
+      if (!isLib) continue;
 
       for (const binding of parsed.bindings) {
         this.bindingMap.set(binding.local, {
@@ -196,7 +220,6 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
           localName: binding.local,
           moduleSpecifier: parsed.moduleSpecifier,
         });
-        if (isClient) this.clientOnlyBindings.add(binding.local);
       }
       if (parsed.namespaceImport) {
         this.bindingMap.set(parsed.namespaceImport, {
@@ -205,7 +228,6 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
           localName: parsed.namespaceImport,
           moduleSpecifier: parsed.moduleSpecifier,
         });
-        if (isClient) this.clientOnlyBindings.add(parsed.namespaceImport);
       }
     }
   }
@@ -229,16 +251,7 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
     const binding = this.bindingMap.get(parsed.rootBinding);
     if (!binding) return null;
 
-    if (parsed.argsExpr) {
-      const argRefs = collectReferencedIdentifiers(parsed.argsExpr);
-      const leakedClientRefs = Array.from(argRefs).filter((ref) => this.clientOnlyBindings.has(ref));
-      if (leakedClientRefs.length > 0) {
-        throw new Error(
-          `[kuratchi compiler] Client event arguments cannot depend on $client bindings: ${leakedClientRefs.join(', ')}.\n` +
-          `Only server/shared values can be serialized into event handler arguments.`,
-        );
-      }
-    }
+    // Args validation - no longer needed since we removed $client/ vs $shared/ distinction
 
     const key = `${parsed.calleeExpr}::${parsed.argsExpr || ''}`;
     let existing = this.handlerByKey.get(key);
@@ -341,6 +354,11 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
   }
 
   private scanBrowserModule(entryAbsPath: string): void {
+    // Skip external npm packages (bare specifiers without path separators)
+    if (isExternalNpmPackage(entryAbsPath)) {
+      return;
+    }
+
     const resolved = resolveExistingModuleFile(entryAbsPath) ?? entryAbsPath;
     const normalized = normalizePath(resolved);
     if (this.scannedBrowserModules.has(normalized)) return;
@@ -429,6 +447,11 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
   }
 
   private transformRouteClientModule(entryAbsPath: string): string {
+    // External npm packages are kept as-is - they'll be bundled by esbuild
+    if (isExternalNpmPackage(entryAbsPath)) {
+      return entryAbsPath;
+    }
+
     const resolved = resolveExistingModuleFile(entryAbsPath) ?? entryAbsPath;
     const normalized = normalizePath(resolved);
     const cached = this.routeModuleAssets.get(normalized);
@@ -443,9 +466,15 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
     }
 
     const source = fs.readFileSync(resolved, 'utf-8');
+    let hasExternalNpmImport = false;
     const rewritten = rewriteImportSpecifiers(source, (spec) => {
       const target = resolveClientImportTarget(this.compiler.srcDir, resolved, spec);
       if (target.kind === 'browser') {
+        // External npm packages stay as bare specifiers for esbuild to bundle
+        if (isExternalNpmPackage(target.resolved)) {
+          hasExternalNpmImport = true;
+          return target.resolved;
+        }
         const targetAssetName = this.transformRouteClientModule(target.resolved);
         return toRelativeSpecifier(assetName, targetAssetName);
       }
@@ -454,6 +483,14 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
     });
 
     this.compiler.registerAsset(buildAsset(assetName, rewritten));
+    
+    // Mark this asset for bundling/transpilation
+    // TypeScript files always need transpilation, and files with npm imports need bundling
+    const isTypeScript = resolved.endsWith('.ts') || resolved.endsWith('.mts');
+    if (hasExternalNpmImport || isTypeScript) {
+      this.compiler.markAssetNeedsBundle(assetName);
+    }
+    
     return assetName;
   }
 
@@ -476,10 +513,34 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
     const rootBinding = calleeExpr.split('.')[0];
     return { calleeExpr, rootBinding, argsExpr: null };
   }
+
+  rewriteClientImport(importLine: string, importerDir: string): string | null {
+    const parsed = parseImportStatement(importLine);
+    if (!parsed.moduleSpecifier) return null;
+    if (!parsed.moduleSpecifier.startsWith('$lib/')) return null;
+
+    try {
+      const target = resolveClientImportTarget(this.compiler.srcDir, path.join(importerDir, '__route__.ts'), parsed.moduleSpecifier);
+      if (target.kind !== 'browser') return null;
+
+      // Ensure the module is scanned and transformed
+      this.scanBrowserModule(target.resolved);
+      const targetAssetName = this.transformRouteClientModule(target.resolved);
+      
+      // Return the rewritten import with the asset path
+      // targetAssetName already includes __kuratchi/ prefix
+      return importLine.replace(parsed.moduleSpecifier, `/${targetAssetName}`);
+    } catch (err) {
+      // Log error but don't throw - allows graceful fallback
+      console.error(`[kuratchi compiler] Failed to rewrite $lib/ import: ${importLine}`, err);
+      return null;
+    }
+  }
 }
 
 class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
   private readonly compiledAssets = new Map<string, CompiledAsset>();
+  private readonly assetsNeedingBundle = new Set<string>();
 
   constructor(
     public readonly projectDir: string,
@@ -495,11 +556,286 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
   }
 
   getCompiledAssets(): CompiledAsset[] {
-    return Array.from(this.compiledAssets.values());
+    // Bundle assets that have external npm imports
+    const assets = Array.from(this.compiledAssets.values());
+    const bundledAssets: CompiledAsset[] = [];
+
+    for (const asset of assets) {
+      if (this.assetsNeedingBundle.has(asset.name)) {
+        const bundled = this.bundleAssetSync(asset);
+        bundledAssets.push(bundled);
+      } else {
+        bundledAssets.push(asset);
+      }
+    }
+
+    return bundledAssets;
   }
 
   registerAsset(asset: CompiledAsset): void {
     this.compiledAssets.set(asset.name, asset);
+  }
+
+  markAssetNeedsBundle(assetName: string): void {
+    this.assetsNeedingBundle.add(assetName);
+  }
+
+  private bundleAssetSync(asset: CompiledAsset): CompiledAsset {
+    // Find the original source file path from the asset name
+    // Asset name format: __kuratchi/client/routes/route_X/modules/client/filename.js
+    // Original path: src/client/filename.ts
+    const assetPathMatch = asset.name.match(/modules\/(.+)\.js$/);
+    if (!assetPathMatch) {
+      // Can't determine original path, just transpile in place
+      return this.transpileAssetInPlace(asset);
+    }
+    
+    const relPath = assetPathMatch[1]; // e.g., "client/chat-ui"
+    const originalFile = path.join(this.srcDir, relPath + '.ts');
+    
+    if (!fs.existsSync(originalFile)) {
+      // Try .js extension
+      const jsFile = path.join(this.srcDir, relPath + '.js');
+      if (!fs.existsSync(jsFile)) {
+        return this.transpileAssetInPlace(asset);
+      }
+    }
+
+    try {
+      const result = esbuild.buildSync({
+        entryPoints: [originalFile],
+        bundle: true,
+        write: false,
+        format: 'esm',
+        platform: 'browser',
+        target: ['es2020'],
+        minify: false,
+        sourcemap: false,
+        nodePaths: [path.join(this.projectDir, 'node_modules')],
+        loader: { '.ts': 'ts' },
+        resolveExtensions: ['.ts', '.js', '.mjs'],
+      });
+
+      const bundledContent = result.outputFiles?.[0]?.text || asset.content;
+      const etag = '"' + crypto.createHash('md5').update(bundledContent).digest('hex').slice(0, 12) + '"';
+
+      return {
+        name: asset.name,
+        content: bundledContent,
+        mime: asset.mime,
+        etag,
+      };
+    } catch (err) {
+      console.error(`[kuratchi compiler] Failed to bundle client module ${asset.name}:`, err);
+      // Fall back to transpiling in place
+      return this.transpileAssetInPlace(asset);
+    }
+  }
+
+  private transpileAssetInPlace(asset: CompiledAsset): CompiledAsset {
+    // Simple TypeScript transpilation without bundling dependencies
+    const tempDir = path.join(this.projectDir, '.kuratchi', '.tmp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFile = path.join(tempDir, `${asset.name.replace(/\//g, '_').replace(/\.js$/, '.ts')}`);
+    fs.writeFileSync(tempFile, asset.content, 'utf-8');
+
+    try {
+      const result = esbuild.buildSync({
+        entryPoints: [tempFile],
+        bundle: false, // Don't bundle, just transpile
+        write: false,
+        format: 'esm',
+        platform: 'browser',
+        target: ['es2020'],
+        loader: { '.ts': 'ts' },
+      });
+
+      const transpiledContent = result.outputFiles?.[0]?.text || asset.content;
+      const etag = '"' + crypto.createHash('md5').update(transpiledContent).digest('hex').slice(0, 12) + '"';
+
+      return {
+        name: asset.name,
+        content: transpiledContent,
+        mime: asset.mime,
+        etag,
+      };
+    } catch (err) {
+      console.error(`[kuratchi compiler] Failed to transpile client module ${asset.name}:`, err);
+      return asset;
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  /**
+   * RFC 0002: Bundle client script with RPC stubs for $server/ imports.
+   * 
+   * This transforms the client <script> block by:
+   * 1. Replacing $server/ imports with RPC stub functions
+   * 2. Removing top-level await calls (they run at SSR, results come from data)
+   * 3. Bundling npm dependencies with esbuild
+   */
+  bundleClientScript(opts: {
+    routeIndex: number;
+    clientScriptRaw: string;
+    serverRpcImports: string[];
+    serverRpcFunctions: string[];
+    ssrAwaitVars: string[];
+    routeFilePath: string;
+  }): { assetName: string; asset: CompiledAsset } | null {
+    if (!opts.clientScriptRaw || opts.clientScriptRaw.trim().length === 0) {
+      return null;
+    }
+
+    const assetName = `__kuratchi/client/routes/route_${opts.routeIndex}/script.js`;
+    const importerDir = path.dirname(opts.routeFilePath);
+    
+    // Build RPC stub code for $server/ functions
+    const rpcStubLines: string[] = [];
+    rpcStubLines.push(`// RFC 0002: RPC stubs for $server/ imports`);
+    rpcStubLines.push(`function __kuratchiGetCsrf() {`);
+    rpcStubLines.push(`  return (document.cookie.match(/(?:^|;\\s*)__kuratchi_csrf=([^;]*)/) || [])[1] || '';`);
+    rpcStubLines.push(`}`);
+    rpcStubLines.push(`async function __kuratchiCallRpc(rpcId, args) {`);
+    rpcStubLines.push(`  const url = new URL(window.location.pathname, window.location.origin);`);
+    rpcStubLines.push(`  url.searchParams.set('_rpc', rpcId);`);
+    rpcStubLines.push(`  if (args.length > 0) url.searchParams.set('_args', JSON.stringify(args));`);
+    rpcStubLines.push(`  const headers = { 'x-kuratchi-rpc': '1' };`);
+    rpcStubLines.push(`  const csrfToken = __kuratchiGetCsrf();`);
+    rpcStubLines.push(`  if (csrfToken) headers['x-kuratchi-csrf'] = csrfToken;`);
+    rpcStubLines.push(`  const response = await fetch(url.toString(), { method: 'GET', headers });`);
+    rpcStubLines.push(`  const payload = await response.json().catch(() => ({ ok: false, error: 'Invalid RPC response' }));`);
+    rpcStubLines.push(`  if (!response.ok || !payload || payload.ok !== true) {`);
+    rpcStubLines.push(`    throw new Error((payload && payload.error) || ('HTTP ' + response.status));`);
+    rpcStubLines.push(`  }`);
+    rpcStubLines.push(`  return payload.data;`);
+    rpcStubLines.push(`}`);
+    
+    // Generate stub functions for each $server/ function
+    for (const fnName of opts.serverRpcFunctions) {
+      const rpcId = `rpc_${opts.routeIndex}_server_${fnName}`;
+      rpcStubLines.push(`async function ${fnName}(...args) { return __kuratchiCallRpc('${rpcId}', args); }`);
+    }
+    
+    // Transform the client script:
+    // 1. Remove $server/ imports (replaced by stubs above)
+    // 2. Remove top-level await variable declarations (data comes from SSR)
+    let transformedScript = opts.clientScriptRaw;
+    
+    // Remove $server/ import lines
+    for (const importLine of opts.serverRpcImports) {
+      transformedScript = transformedScript.replace(importLine, '// [RFC 0002] $server/ import removed - using RPC stub');
+    }
+    
+    // Remove top-level await declarations for SSR vars (they get data from window.__kuratchiData)
+    for (const varName of opts.ssrAwaitVars) {
+      // Match: const varName = await fnName(...);
+      const awaitPattern = new RegExp(`const\\s+${varName}\\s*=\\s*await\\s+[^;]+;`, 'g');
+      transformedScript = transformedScript.replace(awaitPattern, `// [RFC 0002] SSR data: ${varName} comes from server`);
+    }
+    
+    // Combine RPC stubs with transformed script
+    const finalScript = [
+      ...rpcStubLines,
+      '',
+      '// Client script',
+      transformedScript,
+    ].join('\n');
+    
+    // Write to temp file and bundle with esbuild
+    const tempDir = path.join(this.projectDir, '.kuratchi', '.tmp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempFile = path.join(tempDir, `route_${opts.routeIndex}_client.ts`);
+    fs.writeFileSync(tempFile, finalScript, 'utf-8');
+    
+    try {
+      // Resolve $lib/ imports before bundling by rewriting them in the script
+      const srcDir = this.srcDir;
+      let scriptWithResolvedImports = finalScript;
+      
+      // Find and resolve $lib/ imports
+      const libImportRegex = /from\s+['"](\$lib\/[^'"]+)['"]/g;
+      let match;
+      while ((match = libImportRegex.exec(finalScript)) !== null) {
+        const importPath = match[1];
+        const relativePath = importPath.replace(/^\$lib\//, '');
+        const candidates = [
+          path.join(srcDir, 'lib', relativePath + '.ts'),
+          path.join(srcDir, 'lib', relativePath + '.js'),
+          path.join(srcDir, 'lib', relativePath, 'index.ts'),
+          path.join(srcDir, 'lib', relativePath, 'index.js'),
+        ];
+        for (const candidate of candidates) {
+          if (fs.existsSync(candidate)) {
+            scriptWithResolvedImports = scriptWithResolvedImports.replace(
+              new RegExp(`['"]${importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'g'),
+              `'${candidate}'`
+            );
+            break;
+          }
+        }
+      }
+      
+      // Update temp file with resolved imports
+      fs.writeFileSync(tempFile, scriptWithResolvedImports, 'utf-8');
+
+      const result = esbuild.buildSync({
+        entryPoints: [tempFile],
+        bundle: true,
+        write: false,
+        format: 'esm',
+        platform: 'browser',
+        target: ['es2022'], // Support top-level await
+        minify: false,
+        sourcemap: false,
+        nodePaths: [path.join(this.projectDir, 'node_modules')],
+        loader: { '.ts': 'ts' },
+        resolveExtensions: ['.ts', '.js', '.mjs'],
+        // Mark framework virtual modules and $server/ as external
+        external: ['$server/*', 'kuratchi:*', 'cloudflare:*', '@kuratchi/js/*'],
+      });
+      
+      const bundledContent = result.outputFiles?.[0]?.text || finalScript;
+      const etag = '"' + crypto.createHash('md5').update(bundledContent).digest('hex').slice(0, 12) + '"';
+      
+      const asset: CompiledAsset = {
+        name: assetName,
+        content: bundledContent,
+        mime: 'text/javascript; charset=utf-8',
+        etag,
+      };
+      
+      this.compiledAssets.set(assetName, asset);
+      return { assetName, asset };
+    } catch (err) {
+      console.error(`[kuratchi compiler] Failed to bundle client script for route ${opts.routeIndex}:`, err);
+      
+      // Fall back to non-bundled version
+      const etag = '"' + crypto.createHash('md5').update(finalScript).digest('hex').slice(0, 12) + '"';
+      const asset: CompiledAsset = {
+        name: assetName,
+        content: finalScript,
+        mime: 'text/javascript; charset=utf-8',
+        etag,
+      };
+      
+      this.compiledAssets.set(assetName, asset);
+      return { assetName, asset };
+    } finally {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 }
 

@@ -60,15 +60,6 @@ export async function load() {
     );
   });
 
-  it('rejects top-level $client imports used in server-rendered template output', () => {
-    const source = `<script>
-  import { copyText } from '$client/clipboard';
-</script>
-
-<button>{copyText}</button>`;
-
-    expect(() => parseFile(source, { filePath: 'src/routes/sites/page.html' })).toThrow(
-      'Top-level $client imports cannot be used in server-rendered template output: copyText.',
-    );
-  });
+  // Note: $lib/ imports are now isomorphic and allowed in server templates
+  // The old $client/ convention that blocked server template usage has been removed
 });

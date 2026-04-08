@@ -38,7 +38,7 @@ function buildLayoutBrowserImportEntries(importParsed: ParsedFile, layoutFile: s
 
   for (const line of importParsed.serverImports) {
     const parsed = parseImportStatement(line);
-    if (parsed.moduleSpecifier?.startsWith('$shared/')) {
+    if (parsed.moduleSpecifier?.startsWith('$lib/')) {
       addEntry(line);
     }
   }

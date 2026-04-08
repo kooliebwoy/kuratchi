@@ -1,6 +1,7 @@
 mod cli;
 mod command;
 mod desktop_api;
+mod embedded_server;
 mod manifest;
 mod webview;
 
@@ -12,6 +13,7 @@ use std::sync::{
 use cli::{parse_host_args, parse_run_command_args};
 use command::run_command;
 use desktop_api::{start_desktop_api_server, DesktopApiState};
+use embedded_server::EmbeddedServer;
 use manifest::load_manifest;
 use webview::run_webview;
 
@@ -62,10 +64,52 @@ fn run_main() -> Result<(), String> {
         println!("[workerd-desktop-host] window title: {title}");
     }
 
+    let shutdown = Arc::new(AtomicBool::new(false));
+
+    // Start embedded server if in embedded mode (production build)
+    let _embedded_handle = if options.embedded {
+        let worker_bundle = options.worker_bundle
+            .as_ref()
+            .ok_or_else(|| "--embedded requires --worker-bundle".to_string())?
+            .to_string_lossy()
+            .to_string();
+
+        // Get assets root from manifest
+        let assets_root = if let Some(ref root) = manifest.runtime.assets_root {
+            if !root.is_empty() {
+                // Resolve relative to manifest directory
+                let manifest_dir = options.manifest_path.parent().unwrap_or(std::path::Path::new("."));
+                Some(manifest_dir.join(root).to_string_lossy().to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        println!("[workerd-desktop-host] Starting embedded server on port {}", options.port);
+        let server = EmbeddedServer::new(
+            options.port,
+            worker_bundle,
+            assets_root,
+            shutdown.clone(),
+        );
+        Some(server.start()?)
+    } else {
+        None
+    };
+
+    // Determine app URL
+    let app_url = if options.embedded {
+        format!("http://127.0.0.1:{}{}", options.port, manifest.app.initial_path)
+    } else {
+        options.app_url.clone()
+    };
+
+    // Start desktop API server if origin provided
     let state = Arc::new(DesktopApiState {
         manifest: manifest.clone(),
     });
-    let shutdown = Arc::new(AtomicBool::new(false));
     let _server_handle = if options.desktop_api_origin.is_empty() {
         None
     } else {
@@ -78,7 +122,7 @@ fn run_main() -> Result<(), String> {
 
     run_webview(
         &manifest,
-        &options.app_url,
+        &app_url,
         &options.desktop_api_origin,
         shutdown.clone(),
     )?;

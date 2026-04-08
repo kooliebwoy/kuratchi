@@ -157,18 +157,32 @@ Server-only code lives in `src/server/`. Import with `$server/` alias:
 </script>
 ```
 
-## Client Modules
+## Isomorphic Modules
 
-Browser-side code lives in `src/client/`. Import with `$client/` alias:
+Isomorphic code lives in `src/lib/`. Import with `$lib/` alias — works in both server templates and client scripts:
 
 ```html
 <script>
-  import { handleUploadSubmit } from '$client/sites/upload-form';
+  import { formatBytes } from '$lib/format';
+  import { getFiles } from '$server/files';
+  
+  const files = await getFiles();
 </script>
 
-<form onsubmit={handleUploadSubmit()}>
-  <!-- ... -->
-</form>
+for (const file of files) {
+  <div>{file.name} - {formatBytes(file.size)}</div>
+}
+```
+
+For browser-only DOM manipulation, use inline `<script type="module">` blocks:
+
+```html
+<!-- Client-side script - runs in browser -->
+<script type="module">
+import { handleUploadSubmit } from '$lib/sites/upload-form';
+
+document.querySelector('form').addEventListener('submit', handleUploadSubmit);
+</script>
 ```
 
 ## Form Actions

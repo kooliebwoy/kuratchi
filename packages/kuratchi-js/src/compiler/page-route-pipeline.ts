@@ -12,6 +12,7 @@ export function compilePageRoute(opts: {
   projectDir: string;
   isDev: boolean;
   routeState: RouteStatePlan;
+  routeFilePath: string;
   componentCompiler: ComponentCompiler;
   clientModuleCompiler: ClientModuleCompiler;
   assetsPrefix: string;
@@ -78,19 +79,20 @@ export function compilePageRoute(opts: {
       .map((query) => [query.awaitExpr!, { asName: query.asName, rpcId: query.rpcId || rpcNameMap.get(query.fnName) || query.fnName }]),
   );
   const renderSections = splitTemplateRenderSections(opts.routeState.effectiveTemplate);
+  const importerDir = path.dirname(opts.routeFilePath);
   const renderBody = compileTemplate(
     renderSections.bodyTemplate,
     routeComponentNames,
     actionNames,
     rpcNameMap,
-    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry, awaitQueryBindings },
+    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry, awaitQueryBindings, importerDir },
   );
   const renderHeadBody = compileTemplate(
     renderSections.headTemplate,
     routeComponentNames,
     actionNames,
     rpcNameMap,
-    { clientRouteRegistry, awaitQueryBindings },
+    { clientRouteRegistry, awaitQueryBindings, importerDir },
   );
   const clientEntryAsset = clientRouteRegistry.buildEntryAsset();
   const clientServerProxyBindings = clientRouteRegistry.getServerProxyBindings();
@@ -121,7 +123,46 @@ export function compilePageRoute(opts: {
     }
   }
 
-  const clientModuleHref = clientEntryAsset ? `${opts.assetsPrefix}${clientEntryAsset.assetName}` : null;
+  // RFC 0002: Bundle client script with RPC stubs for $server/ imports
+  // Only trigger RFC 0002 bundling when there are actual $server/ imports
+  // (serverRpcImports contains import lines from $server/, not regular server imports)
+  const mergedParsed = opts.routeState.mergedParsed;
+  let rfc0002ClientScriptAsset: { assetName: string } | null = null;
+  
+  if (mergedParsed.clientScriptRaw && mergedParsed.serverRpcImports.length > 0) {
+    const ssrAwaitVars = mergedParsed.ssrAwaitCalls.map((call) => call.varName);
+    rfc0002ClientScriptAsset = opts.clientModuleCompiler.bundleClientScript({
+      routeIndex: opts.routeIndex,
+      clientScriptRaw: mergedParsed.clientScriptRaw,
+      serverRpcImports: mergedParsed.serverRpcImports,
+      serverRpcFunctions: mergedParsed.serverRpcFunctions,
+      ssrAwaitVars,
+      routeFilePath: opts.routeFilePath,
+    });
+    
+    // Register RPC bindings for $server/ functions so they can be called from client
+    for (const fnName of mergedParsed.serverRpcFunctions) {
+      const rpcId = `rpc_${opts.routeIndex}_server_${fnName}`;
+      if (!seenClientServerRpcIds.has(rpcId)) {
+        seenClientServerRpcIds.add(rpcId);
+        // Find the module that exports this function
+        const moduleId = fnToModule[fnName];
+        if (moduleId) {
+          extraRpcBindings.push({
+            name: `$server/:${fnName}`,
+            rpcId,
+            expression: `${moduleId}.${fnName}`,
+            schemaExpression: `${moduleId}.schemas?.[${JSON.stringify(fnName)}]`,
+          });
+        }
+      }
+    }
+  }
+
+  // Use RFC 0002 client script if available, otherwise fall back to existing client module
+  const clientModuleHref = rfc0002ClientScriptAsset 
+    ? `${opts.assetsPrefix}${rfc0002ClientScriptAsset.assetName}`
+    : (clientEntryAsset ? `${opts.assetsPrefix}${clientEntryAsset.assetName}` : null);
 
   const routePlan = analyzeRouteBuild({
     pattern: opts.pattern,

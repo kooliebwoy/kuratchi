@@ -236,17 +236,15 @@ The compiler emits route and feature registrations consumed by the stable runtim
 
 ### Top-level realm contract
 
-Top-level route, nested layout, and root layout `<script>` blocks now support explicit import realms:
+Top-level route, nested layout, and root layout `<script>` blocks support explicit import realms:
 
-- `$server/*`
-- `$shared/*`
-- `$client/*`
+- `$server/*` — Server-only code (RPC functions, DB access)
+- `$lib/*` — Isomorphic code (works in server templates AND client scripts)
 
 Current rules:
 
 - `$server` imports are server-only and may participate in load, actions, RPC, and SSR.
-- `$shared` imports are portable and may be used in SSR and in generated browser handler modules.
-- `$client` imports are browser-only and may not be referenced from server route code or server-rendered template output.
+- `$lib` imports are isomorphic and may be used in SSR templates and in client `<script type="module">` blocks.
 
 Current supported browser usage from the top-level route script:
 
@@ -256,18 +254,16 @@ Current supported browser usage from the top-level route script:
 
 Current unsupported browser usage:
 
-- arbitrary `$client` expressions in SSR interpolation
-- `$client` references in top-level server script logic
-- arbitrary non-call event expressions using `$client` bindings
+- namespace imports like `import * as api from '$server/foo'` in browser code
 
-When top-level `$client` or `$shared` handlers are used in template events, the compiler:
+When top-level `$lib` handlers are used in template events, the compiler:
 
 - emits route-scoped browser module assets under `.kuratchi`
 - injects a `<script type="module">` tag for the route asset through the render contract
 - registers handlers into the root browser bridge
 - rewrites matching event attributes into `data-client-*` metadata instead of inline JS strings
 
-This is now the production path for top-level browser behavior across routes and layouts. Inline template `<script>` blocks still work, but they are now a legacy path rather than the preferred architecture.
+Inline template `<script type="module">` blocks are the preferred path for client-side DOM manipulation.
 
 ## Output Model
 
@@ -278,7 +274,7 @@ Kuratchi generates these primary outputs:
 | `.kuratchi/routes.js` | compiled route definitions, handlers, render functions, registrations |
 | `.kuratchi/worker.js` | stable Worker entry used by Wrangler |
 | `.kuratchi/modules/*` | transformed server-side modules |
-| `.kuratchi` generated client assets | browser modules for top-level `$client` and `$shared` handlers |
+| `.kuratchi/client/*` | browser modules for `$lib` handlers and inline client scripts |
 | `.kuratchi/do/*` | generated Durable Object proxies |
 
 The generated code should primarily describe the application, not re-implement the framework runtime.

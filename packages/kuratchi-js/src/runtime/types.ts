@@ -76,7 +76,19 @@ export interface AppConfig<E extends Env = Env> {
   publicDir?: string;
 }
 
-/** Database schema config â€" maps a binding name to its schema */
+/** Sandbox configuration — Cloudflare Sandbox container for code execution */
+export interface SandboxConfig {
+  /** Env binding name for the Sandbox DO (default: 'SANDBOX') */
+  binding?: string;
+  /** Path to Dockerfile (default: './Dockerfile') */
+  dockerfile?: string;
+  /** Container instance type (default: 'lite') */
+  instanceType?: 'lite' | 'standard';
+  /** Max concurrent container instances (default: 3) */
+  maxInstances?: number;
+}
+
+/** Database schema config — maps a binding name to its schema */
 export interface DatabaseConfig {
   /** Schema definition (SchemaDsl or DatabaseSchema from @kuratchi/orm) */
   schema: any;

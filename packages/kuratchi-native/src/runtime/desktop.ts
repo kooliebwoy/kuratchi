@@ -1,4 +1,10 @@
-import { getRequest } from '@kuratchi/js/runtime/context.js';
+// Use globalThis.__kuratchi_context__ instead of importing getRequest directly
+// to avoid module duplication issues where the request context is set in a
+// different instance of the context module than the one we import.
+function getRequestFromGlobal(): Request | null {
+  const ctx = (globalThis as any).__kuratchi_context__;
+  return ctx?.request ?? null;
+}
 
 export interface DesktopNotificationPayload {
   title: string;
@@ -31,12 +37,9 @@ function parseCookie(header: string | null, name: string): string | null {
 }
 
 function getDesktopApiOrigin(): string | null {
-  let request: Request;
-  try {
-    request = getRequest();
-  } catch {
-    return null;
-  }
+  const request = getRequestFromGlobal();
+  if (!request) return null;
+
   const headerOrigin = request.headers.get('x-kuratchi-desktop-api-origin')
     || request.headers.get('x-kuratchi-desktop-origin');
   if (headerOrigin) return headerOrigin;

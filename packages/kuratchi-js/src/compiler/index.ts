@@ -37,7 +37,7 @@ import {
   buildWorkerEntrypointSource,
   resolveRuntimeImportPath as resolveRuntimeImportPathPipeline,
 } from './worker-output-pipeline.js';
-import { syncWranglerConfig as syncWranglerConfigPipeline } from './wrangler-sync.js';
+import { syncWranglerConfig as syncWranglerConfigPipeline, hasSandboxContainer } from './wrangler-sync.js';
 import { filePathToPattern } from '../runtime/router.js';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -291,6 +291,7 @@ export async function compile(options: CompileOptions): Promise<string> {
       projectDir,
       isDev: !!options.isDev,
       routeState,
+      routeFilePath: fullPath,
       componentCompiler,
       clientModuleCompiler,
       assetsPrefix,
@@ -321,6 +322,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     runtimeImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedRuntimePath);
   }
   const hasRuntime = !!runtimeImportPath;
+  const hasSandbox = hasSandboxContainer(projectDir);
   const output = generateRoutesModulePipeline({
     projectDir,
     serverImports: allImports,
@@ -342,9 +344,10 @@ export async function compile(options: CompileOptions): Promise<string> {
     runtimeImportPath,
     assetsPrefix,
     runtimeContextImport: RUNTIME_CONTEXT_IMPORT,
-        runtimeDoImport: RUNTIME_DO_IMPORT,
-        runtimeSchemaImport: RUNTIME_SCHEMA_IMPORT,
-        runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
+    runtimeDoImport: RUNTIME_DO_IMPORT,
+    runtimeSchemaImport: RUNTIME_SCHEMA_IMPORT,
+    runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
+    hasSandbox,
   });
 
   // Write to .kuratchi/routes.ts
@@ -373,6 +376,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
     queueConsumers: queueConsumerConfig,
     hasUserIndex,
+    hasSandbox: hasSandboxContainer(projectDir),
   }));
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
 

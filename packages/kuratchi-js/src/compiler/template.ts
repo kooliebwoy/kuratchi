@@ -83,6 +83,8 @@ export interface CompileTemplateOptions {
   appendNewline?: boolean;
   clientRouteRegistry?: ClientRouteRegistry;
   awaitQueryBindings?: Map<string, { asName: string; rpcId: string }>;
+  /** Directory of the importing file, used for rewriting $lib/ imports */
+  importerDir?: string;
 }
 
 const FRAGMENT_OPEN_MARKER = '<!--__KURATCHI_FRAGMENT_OPEN:';
@@ -399,7 +401,7 @@ export function compileTemplate(
       inScript = true;
       scriptBuffer = [line];
       if (trimmed.match(/<\/script>/i)) {
-        const transformed = transformClientScriptBlock(scriptBuffer.join('\n'));
+        const transformed = transformClientScriptBlock(scriptBuffer.join('\n'), options.clientRouteRegistry, options.importerDir);
         for (const scriptLine of transformed.split('\n')) {
           out.push(buildAppendStatement(`\`${escapeLiteral(scriptLine)}\\n\``, emitCall));
         }
@@ -411,7 +413,7 @@ export function compileTemplate(
     if (inScript) {
       scriptBuffer.push(line);
       if (trimmed.match(/<\/script>/i)) {
-        const transformed = transformClientScriptBlock(scriptBuffer.join('\n'));
+        const transformed = transformClientScriptBlock(scriptBuffer.join('\n'), options.clientRouteRegistry, options.importerDir);
         for (const scriptLine of transformed.split('\n')) {
           out.push(buildAppendStatement(`\`${escapeLiteral(scriptLine)}\\n\``, emitCall));
         }
@@ -615,13 +617,42 @@ function advanceHtmlTagState(
   return { inTag, quote };
 }
 
-function transformClientScriptBlock(block: string): string {
+function transformClientScriptBlock(
+  block: string,
+  clientRouteRegistry?: ClientRouteRegistry,
+  importerDir?: string,
+): string {
   const match = block.match(/^([\s\S]*?<script\b[^>]*>)([\s\S]*?)(<\/script>\s*)$/i);
   if (!match) return block;
 
-  const openTag = match[1];
-  const body = match[2];
+  let openTag = match[1];
+  let body = match[2];
   const closeTag = match[3];
+
+  // Check if the script has ES module imports (import ... from '...')
+  const hasEsModuleImports = /^\s*import\s+.+\s+from\s+['"][^'"]+['"]/m.test(body);
+
+  // Rewrite $lib/ imports to bundled asset paths
+  let hasRewrittenClientImports = false;
+  if (clientRouteRegistry && importerDir) {
+    body = body.replace(
+      /^(\s*import\s+.+\s+from\s+['"]\$lib\/[^'"]+['"];?\s*)$/gm,
+      (importLine) => {
+        const rewritten = clientRouteRegistry.rewriteClientImport(importLine.trim(), importerDir);
+        if (rewritten) {
+          hasRewrittenClientImports = true;
+          return importLine.replace(importLine.trim(), rewritten);
+        }
+        return importLine;
+      }
+    );
+  }
+
+  // Add type="module" if the script has ES module imports and doesn't already have it
+  if ((hasEsModuleImports || hasRewrittenClientImports) && !/type\s*=\s*["']module["']/i.test(openTag)) {
+    openTag = openTag.replace(/<script\b/i, '<script type="module"');
+  }
+
   // TypeScript is preserved — wrangler's esbuild handles transpilation
   if (!/\$\s*:/.test(body)) {
     return `${openTag}${body}${closeTag}`;
@@ -1267,7 +1298,7 @@ function compileHtmlSegment(
             } else if (options.clientRouteRegistry?.hasBindingReference(inner)) {
               throw new Error(
                 `Unsupported client handler expression: "${inner}". ` +
-                `Top-level $client/$shared event handlers must be a direct function reference or call, like onClick={openDialog()} or onClick={helpers.openDialog()}.`,
+                `Top-level $lib event handlers must be a direct function reference or call, like onClick={openDialog()} or onClick={helpers.openDialog()}.`,
               );
             } else {
               // Plain client-side event handler: onClick={myFn()}

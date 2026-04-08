@@ -248,41 +248,80 @@ Notes:
 - `$: name = expr` works; when replacing proxy-backed values, the compiler preserves reactivity under the hood.
 - You should not need `if (browser)` style guards in normal Kuratchi route code. If browser checks become necessary outside `$:`, the boundary is likely in the wrong place.
 
-### `$client` server calls
+### `$lib/` Isomorphic Imports
 
-Use `$client/*` for browser orchestration, then import server functions from `$server/*` inside that client module. Kuratchi generates a route-scoped browser RPC proxy automatically.
+Use `$lib/*` for isomorphic code that works in both server templates and client scripts. The `$lib/` alias resolves to `src/lib/`.
 
 ```ts
-// src/client/migration.ts
-import { testMigrationConnection } from '$server/incus';
-
-export async function testConnection(sourceIp: string) {
-  const result = await testMigrationConnection(sourceIp);
-  console.log(result.success, result.message);
+// src/lib/format.ts
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 }
 ```
 
 ```html
 <script>
-  import { testConnection } from '$client/migration';
+  import { formatBytes } from '$lib/format';
+  import { getFiles } from '$server/files';
+  
+  const files = await getFiles();
 </script>
 
-<button onclick={testConnection(sourceIp)}>Test Connection</button>
+for (const file of files) {
+  <div>{file.name} - {formatBytes(file.size)}</div>
+}
+```
+
+**Key behavior:**
+- `$lib/` imports work in server templates (SSR) AND client scripts
+- Use for utilities, formatters, validators, and DOM helpers
+- Client scripts in template body (`<script type="module">`) are bundled with esbuild
+
+### Client-Side DOM Manipulation
+
+For browser-only code, use inline `<script type="module">` blocks in the template body:
+
+```html
+<script>
+  import { getMessages } from '$server/chat';
+  const messages = await getMessages(chatId);
+</script>
+
+<div id="messages">
+  for (const msg of messages) {
+    <div>{msg.content}</div>
+  }
+</div>
+
+<!-- Client-side script - runs in browser -->
+<script type="module">
+import { initChatUI } from '$lib/chat-ui';
+
+const chatId = window.location.pathname.split('/').pop();
+initChatUI(chatId);
+</script>
 ```
 
 Behavior:
-- Kuratchi only ships the `$client` module to the browser.
-- Any `$server` imports used inside that `$client` graph become generated fetch proxies for the current route.
-- Your client handler can `await` them directly from `onclick={fn(args)}` or from browser-side `$:` blocks.
+- Inline `<script type="module">` blocks are bundled with esbuild
+- `$lib/` imports are resolved and bundled for the browser
+- `$server/` imports in client scripts become RPC stubs (future feature)
 
 Failure and edge behavior:
-- Named and default `$server` imports are supported inside `$client` / `$shared` browser graphs.
 - Namespace imports like `import * as api from '$server/foo'` are currently rejected in browser code.
 - Remote call failures reject with the server error message when available, otherwise `HTTP <status>`.
 
 ### Awaited remote reads
 
-For renderable remote reads, use direct `await fn(args)` markup. Kuratchi lowers it to a route query, renders it on the server, and refreshes it after successful `$client` remote calls.
+For renderable remote reads, use direct `await fn(args)` markup. Kuratchi lowers it to a route query, renders it on the server, and refreshes it after successful remote calls.
 
 ```html
 <script>
@@ -295,7 +334,7 @@ For renderable remote reads, use direct `await fn(args)` markup. Kuratchi lowers
 Behavior:
 - The read runs during the initial server render.
 - Kuratchi emits refresh metadata so the same block can be re-fetched without a full page reload.
-- Successful `$client` remote calls automatically invalidate awaited reads on the current page.
+- Successful remote calls automatically invalidate awaited reads on the current page.
 
 Failure and edge behavior:
 - The supported syntax is direct markup form: `{await fn(args)}`.

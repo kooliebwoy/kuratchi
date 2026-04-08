@@ -37,6 +37,8 @@ export function buildWorkerEntrypointSource(opts: {
   workerClassEntries: WorkerClassExportEntry[];
   queueConsumers: QueueConsumerEntry[];
   hasUserIndex?: boolean;
+  /** Auto-export Sandbox class from @cloudflare/sandbox when wrangler.jsonc has Sandbox container */
+  hasSandbox?: boolean;
 }): string {
   const doClassSet = new Set(opts.doClassNames);
   const workerClassExports = opts.workerClassEntries
@@ -131,8 +133,14 @@ export function buildWorkerEntrypointSource(opts: {
   lines.push(
     ...opts.doClassNames.map((className) => `export { ${className} } from './routes.ts';`),
     ...workerClassExports,
-    '',
   );
+
+  // Re-export Sandbox class from routes.ts when wrangler.jsonc has Sandbox container configured
+  if (opts.hasSandbox) {
+    lines.push("export { Sandbox } from './routes.ts';");
+  }
+
+  lines.push('');
 
   return lines.join('\n');
 }

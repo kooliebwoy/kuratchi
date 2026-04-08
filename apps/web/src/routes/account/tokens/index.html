@@ -1,6 +1,6 @@
 <script>
   import { headers, locals } from 'kuratchi:request';
-  import { handleScopeChange } from '$client/account/tokens';
+  import { handleScopeChange } from '$lib/account/tokens';
   import { getCurrentUser } from '$server/database/auth';
   import { getAllTokens, createScopedToken, revokeAnyToken } from '$server/database/tokens';
   import { getDatabases } from '$server/database/databases';

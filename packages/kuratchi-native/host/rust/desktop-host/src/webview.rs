@@ -13,6 +13,32 @@ use wry::WebViewBuilder;
 use crate::desktop_api::{build_initialization_script, parse_port_from_origin};
 use crate::manifest::DesktopManifest;
 
+#[cfg(target_os = "macos")]
+fn setup_macos_menu() {
+    use muda::{Menu, PredefinedMenuItem, Submenu};
+    
+    let menu = Menu::new();
+    
+    // App menu (required on macOS)
+    let app_menu = Submenu::new("App", true);
+    let _ = app_menu.append(&PredefinedMenuItem::quit(None));
+    let _ = menu.append(&app_menu);
+    
+    // Edit menu with clipboard operations - REQUIRED for WKWebView clipboard to work
+    let edit_menu = Submenu::new("Edit", true);
+    let _ = edit_menu.append(&PredefinedMenuItem::undo(None));
+    let _ = edit_menu.append(&PredefinedMenuItem::redo(None));
+    let _ = edit_menu.append(&PredefinedMenuItem::separator());
+    let _ = edit_menu.append(&PredefinedMenuItem::cut(None));
+    let _ = edit_menu.append(&PredefinedMenuItem::copy(None));
+    let _ = edit_menu.append(&PredefinedMenuItem::paste(None));
+    let _ = edit_menu.append(&PredefinedMenuItem::select_all(None));
+    let _ = menu.append(&edit_menu);
+    
+    // Initialize the menu bar for the application
+    let _ = menu.init_for_nsapp();
+}
+
 pub fn run_webview(
     manifest: &DesktopManifest,
     app_url: &str,
@@ -24,6 +50,10 @@ pub fn run_webview(
     } else {
         manifest.app.window.title.clone()
     };
+
+    // Set up macOS menu bar with Edit menu (required for clipboard in WKWebView)
+    #[cfg(target_os = "macos")]
+    setup_macos_menu();
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -39,6 +69,7 @@ pub fn run_webview(
     let _webview = WebViewBuilder::new()
         .with_initialization_script(&initialization_script)
         .with_url(app_url)
+        .with_clipboard(true)
         .build(&window)
         .map_err(|error| format!("Failed to build embedded webview: {error}"))?;
 

@@ -92,6 +92,29 @@ function stripJsonComments(content: string): string {
   return result;
 }
 
+/**
+ * Check if wrangler.jsonc has a Sandbox container configured.
+ * Returns true if containers array has a class_name === 'Sandbox'.
+ */
+export function hasSandboxContainer(projectDir: string): boolean {
+  const candidates = ['wrangler.jsonc', 'wrangler.json'];
+  const configPath = candidates
+    .map((file) => path.join(projectDir, file))
+    .find((filePath) => fs.existsSync(filePath));
+  if (!configPath) return false;
+
+  try {
+    const rawContent = fs.readFileSync(configPath, 'utf-8');
+    const jsonContent = stripJsonComments(rawContent);
+    const config = JSON.parse(jsonContent);
+    const containers = config.containers;
+    if (!Array.isArray(containers)) return false;
+    return containers.some((c: any) => c.class_name === 'Sandbox');
+  } catch {
+    return false;
+  }
+}
+
 export function syncWranglerConfig(opts: {
   projectDir: string;
   config: WranglerSyncConfig;

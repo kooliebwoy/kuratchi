@@ -11,6 +11,8 @@ use std::time::Duration;
 use base64::Engine;
 use rfd::FileDialog;
 use serde_json::{json, Value};
+
+#[cfg(target_os = "windows")]
 use winrt_notification::{Duration as ToastDuration, Sound, Toast};
 
 use crate::cli::RunCommandOptions;
@@ -272,6 +274,7 @@ fn write_http_response(
     stream.flush()
 }
 
+#[cfg(target_os = "windows")]
 fn show_notification(state: &DesktopApiState, title: &str, body: &str) -> bool {
     if !state.manifest.bindings.desktop.notifications {
         return false;
@@ -294,6 +297,15 @@ fn show_notification(state: &DesktopApiState, title: &str, body: &str) -> bool {
             .sound(Some(Sound::Default))
     };
     toast.show().is_ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_notification(state: &DesktopApiState, _title: &str, _body: &str) -> bool {
+    if !state.manifest.bindings.desktop.notifications {
+        return false;
+    }
+    // macOS notifications not yet implemented
+    false
 }
 
 fn open_file(state: &DesktopApiState, title: Option<String>) -> Value {

@@ -54,7 +54,7 @@ ${customErrorFunctions ? '// Custom error page overrides (user-created NNN.html)
 ${customErrorEntries}
 };
 
-${componentBlock}${blocks.migrationInit}${blocks.authInit}${blocks.authPluginInit}${blocks.doResolverInit}${blocks.doClassCode}
+${componentBlock}${blocks.migrationInit}${blocks.authInit}${blocks.authPluginInit}${blocks.doResolverInit}${blocks.doClassCode}${blocks.sandboxExport ? '\n' + blocks.sandboxExport + '\n' : ''}
 // Route definitions
 
 const routes = [

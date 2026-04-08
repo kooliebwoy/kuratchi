@@ -4,6 +4,10 @@ node_modules/
 # Build output
 .kuratchi/
 dist/
+out/
+
+# Rust
+target/
 
 # Environment / secrets
 .dev.vars

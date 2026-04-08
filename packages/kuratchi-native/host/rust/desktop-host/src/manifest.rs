@@ -12,7 +12,22 @@ pub struct DesktopManifest {
     #[serde(default)]
     pub app: ManifestApp,
     #[serde(default)]
+    pub runtime: ManifestRuntime,
+    #[serde(default)]
     pub bindings: ManifestBindings,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManifestRuntime {
+    #[serde(default)]
+    pub worker_entrypoint: String,
+    #[serde(default)]
+    pub assets_root: Option<String>,
+    #[serde(default)]
+    pub compatibility_date: String,
+    #[serde(default)]
+    pub compatibility_flags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

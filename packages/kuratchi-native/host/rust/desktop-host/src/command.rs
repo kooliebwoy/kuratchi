@@ -27,14 +27,21 @@ pub fn run_command(options: RunCommandOptions) -> CommandResult {
         };
     }
 
-    let mut command = Command::new("cmd.exe");
-    command
-        .arg("/d")
-        .arg("/s")
-        .arg("/c")
-        .arg(&options.command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    let mut command = {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/d").arg("/s").arg("/c").arg(&options.command);
+        cmd
+    };
+
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(&options.command);
+        cmd
+    };
+
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     if let Some(working_directory) = options.working_directory.as_deref() {
         command.current_dir(working_directory);

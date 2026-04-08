@@ -34,9 +34,9 @@ export interface ParsedFile {
   dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; rpcId?: string; awaitExpr?: string }>;
   /** Imports found in a top-level client script block */
   clientImports: string[];
-  /** Top-level route/layout imports from $client/* */
+  /** Top-level route/layout imports from $lib/* */
   routeClientImports: string[];
-  /** Local binding names introduced by top-level $client/* imports */
+  /** Local binding names introduced by top-level $lib/* imports */
   routeClientImportBindings: string[];
   /** Top-level names returned from explicit load() */
   loadReturnVars: string[];
@@ -44,6 +44,18 @@ export interface ParsedFile {
   workerEnvAliases: string[];
   /** Local aliases for dev imported from @kuratchi/js/environment */
   devAliases: string[];
+  
+  // === New fields for RFC 0002: Client-First Script Model ===
+  /** Raw client script content (the entire <script> block body) */
+  clientScriptRaw: string | null;
+  /** Imports from $server/ - these become RPC calls */
+  serverRpcImports: string[];
+  /** Function names imported from $server/ */
+  serverRpcFunctions: string[];
+  /** Top-level await calls to $server/ functions - executed at SSR time */
+  ssrAwaitCalls: Array<{ varName: string; fnName: string; argsExpr: string }>;
+  /** npm package imports in client script - bundled with esbuild */
+  clientNpmImports: string[];
 }
 
 interface ParseFileOptions {
@@ -1067,6 +1079,115 @@ function extractTopLevelFunctionNames(scriptBody: string): string[] {
   return names;
 }
 
+// === RFC 0002: Client-First Script Model Helpers ===
+
+/**
+ * Check if an import is from $server/
+ */
+function isServerRpcImport(moduleSpecifier: string | null): boolean {
+  return moduleSpecifier?.startsWith('$server/') ?? false;
+}
+
+/**
+ * Extract function names from a $server/ import statement
+ */
+function extractServerRpcFunctionNames(importLine: string): string[] {
+  const names: string[] = [];
+  const sourceFile = ts.createSourceFile('kuratchi-rpc-import.ts', importLine, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    const clause = statement.importClause;
+    if (!clause) continue;
+    
+    // Default import
+    if (clause.name) {
+      names.push(clause.name.text);
+    }
+    
+    // Named imports: import { fn1, fn2 } from '$server/...'
+    if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const element of clause.namedBindings.elements) {
+        names.push(element.name.text);
+      }
+    }
+    
+    // Namespace import: import * as server from '$server/...'
+    if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
+      names.push(clause.namedBindings.name.text);
+    }
+  }
+  
+  return names;
+}
+
+/**
+ * Extract top-level await calls to specific function names.
+ * Returns: { varName: 'messages', fnName: 'getMessages', argsExpr: 'params.id' }
+ */
+function extractTopLevelAwaitCalls(scriptBody: string, targetFunctions: Set<string>): Array<{ varName: string; fnName: string; argsExpr: string }> {
+  const calls: Array<{ varName: string; fnName: string; argsExpr: string }> = [];
+  const sourceFile = ts.createSourceFile('kuratchi-await-calls.ts', scriptBody, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  
+  for (const statement of sourceFile.statements) {
+    // Look for: const varName = await fnName(args);
+    if (!ts.isVariableStatement(statement)) continue;
+    
+    for (const decl of statement.declarationList.declarations) {
+      if (!decl.initializer) continue;
+      if (!ts.isIdentifier(decl.name)) continue;
+      
+      const varName = decl.name.text;
+      let awaitExpr = decl.initializer;
+      
+      // Unwrap await expression
+      if (ts.isAwaitExpression(awaitExpr)) {
+        awaitExpr = awaitExpr.expression;
+      } else {
+        continue; // Not an await call
+      }
+      
+      // Check if it's a call expression
+      if (!ts.isCallExpression(awaitExpr)) continue;
+      
+      // Get the function name
+      let fnName: string | null = null;
+      if (ts.isIdentifier(awaitExpr.expression)) {
+        fnName = awaitExpr.expression.text;
+      } else if (ts.isPropertyAccessExpression(awaitExpr.expression)) {
+        // Handle namespace.fn() calls
+        fnName = awaitExpr.expression.getText(sourceFile);
+      }
+      
+      if (!fnName || !targetFunctions.has(fnName.split('.')[0])) continue;
+      
+      // Extract arguments as string
+      const argsExpr = awaitExpr.arguments
+        .map(arg => arg.getText(sourceFile))
+        .join(', ');
+      
+      calls.push({ varName, fnName, argsExpr });
+    }
+  }
+  
+  return calls;
+}
+
+/**
+ * Check if a module specifier is an npm package (not a relative/alias import)
+ */
+function isNpmPackageImport(moduleSpecifier: string | null): boolean {
+  if (!moduleSpecifier) return false;
+  // Not npm if starts with . / $ or is a kuratchi: virtual module
+  if (moduleSpecifier.startsWith('.')) return false;
+  if (moduleSpecifier.startsWith('/')) return false;
+  if (moduleSpecifier.startsWith('$')) return false;
+  if (moduleSpecifier.startsWith('kuratchi:')) return false;
+  if (moduleSpecifier.startsWith('cloudflare:')) return false;
+  // Looks like an npm package
+  return true;
+}
+
 /**
  * Parse a .html route file.
  *
@@ -1126,12 +1247,11 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
           }
           continue;
         }
-        if (moduleSpecifier?.startsWith('$client/')) {
+        // $lib/ imports are isomorphic - they work in both server and client contexts
+        // Add to serverImports so they're available in templates, and also track for client bundling
+        if (moduleSpecifier?.startsWith('$lib/')) {
           routeClientImports.push(line);
-          for (const binding of extractTopLevelImportNames(line)) {
-            if (!routeClientImportBindings.includes(binding)) routeClientImportBindings.push(binding);
-          }
-          continue;
+          // Don't add to routeClientImportBindings - $lib/ bindings ARE allowed in server templates
         }
         serverImports.push(line);
       }
@@ -1205,8 +1325,8 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     if (leakedClientScriptBindings.length > 0) {
       throw new Error(
         `[kuratchi compiler] ${options.filePath || kind}\n` +
-        `Top-level $client imports cannot be used in server route code: ${leakedClientScriptBindings.join(', ')}.\n` +
-        `Move this usage to a client event handler or client bridge code, or import from $shared instead.`,
+        `Top-level $lib imports cannot be used in server route code: ${leakedClientScriptBindings.join(', ')}.\n` +
+        `Move this usage to a client event handler or inline client script.`,
       );
     }
     const topLevelVars = extractTopLevelDataVars(scriptBody);
@@ -1311,8 +1431,8 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   if (leakedRouteClientTemplateBindings.length > 0) {
     throw new Error(
       `[kuratchi compiler] ${options.filePath || kind}\n` +
-      `Top-level $client imports cannot be used in server-rendered template output: ${leakedRouteClientTemplateBindings.join(', ')}.\n` +
-      `Use $shared for portable helpers or move this usage into a client event handler.`,
+      `Top-level $lib imports cannot be used in server-rendered template output: ${leakedRouteClientTemplateBindings.join(', ')}.\n` +
+      `Move this usage into a client event handler or inline client script.`,
     );
   }
   if (templateClientDeclaredNames.length > 0) {
@@ -1321,7 +1441,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       throw new Error(
         `[kuratchi compiler] ${options.filePath || kind}\n` +
         `Client template <script> bindings cannot be used in server-rendered template output: ${leakedNames.join(', ')}.\n` +
-        `Move shared/pure helpers into the top route <script> or a $shared module.`,
+        `Move shared/pure helpers into the top route <script> or a $lib module.`,
       );
     }
   }
@@ -1399,6 +1519,62 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   }
   */
 
+  // === RFC 0002: Parse client-first script model ===
+  // RFC 0002 only applies to CLIENT scripts (those with reactive $: labels).
+  // In the current model:
+  // - Script without $: = server-side code, $server/ imports are regular imports
+  // - Script with $: = client-side code, $server/ imports become RPC calls
+  //
+  // We only populate RFC 0002 fields for client scripts that have $server/ imports.
+  
+  let clientScriptRaw: string | null = null;
+  const serverRpcImports: string[] = [];
+  const serverRpcFunctions: string[] = [];
+  let ssrAwaitCalls: Array<{ varName: string; fnName: string; argsExpr: string }> = [];
+  const clientNpmImports: string[] = [];
+  
+  // Only process RFC 0002 for client scripts (those with reactive $: labels)
+  // clientScript is set earlier in parseFile when the script has reactive labels
+  if (clientScript) {
+    clientScriptRaw = clientScript;
+    
+    // Parse imports from the client script
+    for (const statement of getTopLevelImportStatements(clientScript)) {
+      const line = statement.text.trim();
+      const moduleSpecifier = extractImportModuleSpecifier(line);
+      
+      // Detect $server/ imports - these become RPC in client scripts
+      if (isServerRpcImport(moduleSpecifier)) {
+        serverRpcImports.push(line);
+        const fnNames = extractServerRpcFunctionNames(line);
+        for (const fn of fnNames) {
+          if (!serverRpcFunctions.includes(fn)) {
+            serverRpcFunctions.push(fn);
+          }
+        }
+      }
+      // Detect npm package imports - these get bundled
+      else if (isNpmPackageImport(moduleSpecifier)) {
+        clientNpmImports.push(line);
+      }
+    }
+    
+    // Find top-level await calls to $server/ functions
+    // These execute at SSR time and their results are available to the template
+    if (serverRpcFunctions.length > 0) {
+      const rpcFunctionSet = new Set(serverRpcFunctions);
+      const scriptBodyWithoutImports = stripTopLevelImports(clientScript);
+      ssrAwaitCalls = extractTopLevelAwaitCalls(scriptBodyWithoutImports, rpcFunctionSet);
+      
+      // Add SSR await result variables to dataVars so they're available in template
+      for (const call of ssrAwaitCalls) {
+        if (!dataVars.includes(call.varName)) {
+          dataVars.push(call.varName);
+        }
+      }
+    }
+  }
+
   return {
     script,
     loadFunction,
@@ -1416,6 +1592,12 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     loadReturnVars,
     workerEnvAliases,
     devAliases,
+    // RFC 0002 fields
+    clientScriptRaw,
+    serverRpcImports,
+    serverRpcFunctions,
+    ssrAwaitCalls,
+    clientNpmImports,
   };
 }
 

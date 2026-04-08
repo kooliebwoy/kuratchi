@@ -27,8 +27,8 @@ function pushUnique(target: string[], value: string): void {
   if (!target.includes(value)) target.push(value);
 }
 
-function isSharedImport(line: string): boolean {
-  return /\bfrom\s+['"]\$shared\//.test(line);
+function isLibImport(line: string): boolean {
+  return /\bfrom\s+['"]\$lib\//.test(line);
 }
 
 export function assembleRouteState(opts: {
@@ -56,7 +56,12 @@ export function assembleRouteState(opts: {
       line,
       importerDir: path.dirname(fullPath),
     })),
-    ...parsed.serverImports.filter(isSharedImport).map((line) => ({
+    // Include $lib/ imports for browser bundling
+    ...parsed.serverImports.filter(isLibImport).map((line) => ({
+      line,
+      importerDir: path.dirname(fullPath),
+    })),
+    ...parsed.clientImports.filter(isLibImport).map((line) => ({
       line,
       importerDir: path.dirname(fullPath),
     })),
@@ -70,6 +75,12 @@ export function assembleRouteState(opts: {
   const mergedDevAliases = [...parsed.devAliases];
   const mergedRouteClientImports = [...parsed.routeClientImports];
   const mergedRouteClientImportBindings = [...parsed.routeClientImportBindings];
+  
+  // RFC 0002: Track client-first script model fields
+  const mergedServerRpcImports = [...parsed.serverRpcImports];
+  const mergedServerRpcFunctions = [...parsed.serverRpcFunctions];
+  const mergedSsrAwaitCalls = [...parsed.ssrAwaitCalls];
+  const mergedClientNpmImports = [...parsed.clientNpmImports];
 
   for (const layoutRelPath of layoutRelativePaths) {
     if (layoutRelPath === 'layout.html') continue;
@@ -102,7 +113,11 @@ export function assembleRouteState(opts: {
       routeBrowserImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
       pushUnique(mergedRouteClientImports, line);
     }
-    for (const line of layoutParsed.serverImports.filter(isSharedImport)) {
+    // Include $lib/ imports from layout for browser bundling
+    for (const line of layoutParsed.serverImports.filter(isLibImport)) {
+      routeBrowserImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
+    }
+    for (const line of layoutParsed.clientImports.filter(isLibImport)) {
       routeBrowserImportEntries.push({ line, importerDir: path.dirname(layoutPath) });
     }
     for (const binding of layoutParsed.routeClientImportBindings) {
@@ -130,6 +145,22 @@ export function assembleRouteState(opts: {
     }
     for (const alias of layoutParsed.devAliases) {
       pushUnique(mergedDevAliases, alias);
+    }
+    
+    // RFC 0002: Merge client-first script model fields from layouts
+    for (const line of layoutParsed.serverRpcImports) {
+      pushUnique(mergedServerRpcImports, line);
+    }
+    for (const fn of layoutParsed.serverRpcFunctions) {
+      pushUnique(mergedServerRpcFunctions, fn);
+    }
+    for (const call of layoutParsed.ssrAwaitCalls) {
+      if (!mergedSsrAwaitCalls.some((c) => c.varName === call.varName)) {
+        mergedSsrAwaitCalls.push({ ...call });
+      }
+    }
+    for (const line of layoutParsed.clientNpmImports) {
+      pushUnique(mergedClientNpmImports, line);
     }
 
     effectiveTemplate = layoutParsed.template.replace(layoutSlot[0], effectiveTemplate);
@@ -163,6 +194,11 @@ export function assembleRouteState(opts: {
     devAliases: mergedDevAliases,
     scriptImportDecls: routeImportDecls,
     scriptSegments: routeScriptSegments,
+    // RFC 0002: Client-first script model fields
+    serverRpcImports: mergedServerRpcImports,
+    serverRpcFunctions: mergedServerRpcFunctions,
+    ssrAwaitCalls: mergedSsrAwaitCalls,
+    clientNpmImports: mergedClientNpmImports,
   };
 
   return {

@@ -57,6 +57,13 @@ export interface RoutePipelineParsedFile extends ParsedFile {
   scriptSegments?: RouteScriptSegment[];
 }
 
+// RFC 0002: SSR await call info
+export interface SsrAwaitCall {
+  varName: string;
+  fnName: string;
+  argsExpr: string;
+}
+
 interface AnalyzeRouteOptions {
   pattern: string;
   renderBody: string;
@@ -77,6 +84,27 @@ function dedupe(items: string[]): string[] {
 function extractDeclaredConstName(statement: string): string | null {
   const match = statement.trim().match(/^const\s+([A-Za-z_$][\w$]*)\s*=/);
   return match ? match[1] : null;
+}
+
+/**
+ * RFC 0002: Build code for SSR await calls to $server/ functions.
+ * These are top-level await calls in the client script that execute at SSR time.
+ */
+function buildSsrAwaitCallsCode(opts: {
+  ssrAwaitCalls: SsrAwaitCall[];
+  fnToModule: Record<string, string>;
+}): string {
+  const lines: string[] = [];
+  
+  for (const call of opts.ssrAwaitCalls) {
+    const moduleId = opts.fnToModule[call.fnName];
+    const qualifiedFn = moduleId ? `${moduleId}.${call.fnName}` : call.fnName;
+    const argsExpr = call.argsExpr ? call.argsExpr : '';
+    
+    lines.push(`const ${call.varName} = await ${qualifiedFn}(${argsExpr});`);
+  }
+  
+  return lines.join('\n');
 }
 
 function buildLoadQueryStateCode(opts: {
@@ -123,8 +151,18 @@ function buildGeneratedLoadPlan(opts: {
   hasSegmentedScripts: boolean;
   fnToModule: Record<string, string>;
   rpcNameMap?: Map<string, string>;
+  ssrAwaitCalls?: SsrAwaitCall[];
 }): RouteLoadPlan {
   const loadSections: string[] = [];
+  
+  // RFC 0002: Add SSR await calls first (they execute server-side)
+  if (opts.ssrAwaitCalls && opts.ssrAwaitCalls.length > 0) {
+    loadSections.push(buildSsrAwaitCallsCode({
+      ssrAwaitCalls: opts.ssrAwaitCalls,
+      fnToModule: opts.fnToModule,
+    }));
+  }
+  
   if (opts.scriptBody && opts.scriptUsesAwait) {
     loadSections.push(opts.scriptBody);
   }
@@ -137,7 +175,8 @@ function buildGeneratedLoadPlan(opts: {
   }
 
   const queryVars = opts.queries.map((query) => query.asName);
-  const returnVars = dedupe([...opts.scriptReturnVars, ...queryVars]);
+  const ssrAwaitVars = (opts.ssrAwaitCalls || []).map((call) => call.varName);
+  const returnVars = dedupe([...opts.scriptReturnVars, ...queryVars, ...ssrAwaitVars]);
   const loadLines: string[] = [];
   if (loadSections.length > 0) {
     loadLines.push(loadSections.join('\n'));
@@ -149,7 +188,10 @@ function buildGeneratedLoadPlan(opts: {
       const queryReturnEntries = queryVars
         .filter((name) => !opts.scriptReturnVars.includes(name))
         .map((name) => name);
-      loadLines.push(`return { ${[...segmentReturnEntries, ...queryReturnEntries].join(', ')} };`);
+      const ssrAwaitReturnEntries = ssrAwaitVars
+        .filter((name) => !opts.scriptReturnVars.includes(name) && !queryVars.includes(name))
+        .map((name) => name);
+      loadLines.push(`return { ${[...segmentReturnEntries, ...queryReturnEntries, ...ssrAwaitReturnEntries].join(', ')} };`);
     } else {
       loadLines.push(`return { ${returnVars.join(', ')} };`);
     }
@@ -159,7 +201,7 @@ function buildGeneratedLoadPlan(opts: {
     mode: 'generated',
     code: `async load(__routeParams = {}) {\n      ${loadLines.join('\n      ')}\n    }`,
     returnVars,
-    scriptUsesAwait: opts.scriptUsesAwait,
+    scriptUsesAwait: opts.scriptUsesAwait || ((opts.ssrAwaitCalls?.length ?? 0) > 0),
   };
 }
 
@@ -273,6 +315,10 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
     )
     : [];
 
+  // RFC 0002: Get SSR await calls from parsed data
+  const ssrAwaitCalls = parsed.ssrAwaitCalls ?? [];
+  const hasSsrAwaitCalls = ssrAwaitCalls.length > 0;
+
   const loadPlan = explicitLoadFunction
     ? {
       mode: 'explicit' as const,
@@ -280,7 +326,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
       returnVars: [...parsed.loadReturnVars],
       scriptUsesAwait: false,
     }
-    : ((scriptBody && scriptUsesAwait) || queryDefs.length > 0)
+    : ((scriptBody && scriptUsesAwait) || queryDefs.length > 0 || hasSsrAwaitCalls)
       ? buildGeneratedLoadPlan({
         pattern,
         scriptBody,
@@ -290,6 +336,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
         hasSegmentedScripts,
         fnToModule,
         rpcNameMap,
+        ssrAwaitCalls,
       })
       : {
         mode: 'none' as const,

@@ -1,7 +1,7 @@
 <script>
   import { params } from 'kuratchi:request';
-  import { handleSiteFileSelectionChange, toggleAllSiteFiles } from '$client/sites/file-selection';
-  import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$client/sites/upload-form';
+  import { handleSiteFileSelectionChange, toggleAllSiteFiles } from '$lib/sites/file-selection';
+  import { copyText, handleDirectoryChange, handleFilesChange, handleUploadSubmit } from '$lib/sites/upload-form';
   import {
     getSite,
     getSiteFiles,
@@ -15,7 +15,7 @@
     deleteSiteCustomDomain
   } from '$server/database/sites';
   import { getSitePreviewUrl } from '$server/database/sites';
-  import { formatBytes } from '$shared/format';
+  import { formatBytes } from '$lib/format';
   import Badge from '@kuratchi/ui/badge.html';
   import Dialog from '@kuratchi/ui/dialog.html';
   import EmptyState from '@kuratchi/ui/empty-state.html';

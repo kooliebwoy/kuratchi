@@ -15,6 +15,7 @@ export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions
   const { authPluginImports, authPluginInit } = buildAuthPluginBlock(opts);
   const { doImports, doClassCode, doResolverInit } = buildDurableObjectBlock(opts);
   const workflowStatusRpc = buildWorkflowStatusRpc(opts);
+  const sandboxExport = opts.hasSandbox ? `export { Sandbox } from '@cloudflare/sandbox';` : '';
 
   return {
     workerImport,
@@ -24,6 +25,7 @@ export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions
     migrationInit,
     authInit,
     authPluginImports,
+    sandboxExport,
     authPluginInit,
     doImports,
     doClassCode,

@@ -349,12 +349,12 @@ $: if (dev) console.log(count);
     );
   });
 
-  it('emits route client assets for top-level $client event handlers', async () => {
+  it('emits route client assets for top-level $lib event handlers', async () => {
     const projectDir = createTempProject('route-client-handlers');
-    fs.mkdirSync(path.join(projectDir, 'src', 'client'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
     fs.writeFileSync(
-      path.join(projectDir, 'src', 'client', 'form.ts'),
+      path.join(projectDir, 'src', 'lib', 'form.ts'),
       `export function copyText(value: string) {
   return navigator.clipboard.writeText(value);
 }
@@ -376,7 +376,7 @@ export function validateForm(event?: Event) {
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
       `<script>
-import { copyText, validateForm } from '$client/form';
+import { copyText, validateForm } from '$lib/form';
 import { submitForm } from '$server/actions';
 </script>
 
@@ -395,14 +395,14 @@ import { submitForm } from '$server/actions';
     expect(routesCode).toContain('data-client-handler="h1"');
     expect(routesCode).toContain('data-client-event="click"');
     expect(routesCode).toContain('data-client-event="submit"');
-    expect(routesCode).toContain('__kuratchi/client/modules/client/form.js');
+    expect(routesCode).toContain('__kuratchi/client/modules/lib/form.js');
     expect(routesCode).toContain('window.__kuratchiClient?.register(');
   });
 
-  it('keeps $shared helpers in render scope without returning them from async load output', async () => {
-    const projectDir = createTempProject('async-shared-render-helper');
+  it('keeps $lib helpers in render scope without returning them from async load output', async () => {
+    const projectDir = createTempProject('async-lib-render-helper');
     fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src', 'shared'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });
     fs.writeFileSync(
       path.join(projectDir, 'src', 'server', 'sites.ts'),
       `export async function getSites() {
@@ -412,7 +412,7 @@ import { submitForm } from '$server/actions';
       'utf-8',
     );
     fs.writeFileSync(
-      path.join(projectDir, 'src', 'shared', 'format.ts'),
+      path.join(projectDir, 'src', 'lib', 'format.ts'),
       `export function formatBytes(bytes: number) {
   return bytes + ' B';
 }
@@ -423,7 +423,7 @@ import { submitForm } from '$server/actions';
       path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
       `<script>
 import { getSites } from '$server/sites';
-import { formatBytes } from '$shared/format';
+import { formatBytes } from '$lib/format';
 const sites = await getSites();
 </script>
 
@@ -471,12 +471,12 @@ import { signIn } from '$server/auth';
     expect(routesCode).toContain('const { signIn, params, breadcrumbs } = data;');
   });
 
-  it('emits route client assets for nested layout-level $client event handlers', async () => {
+  it('emits route client assets for nested layout-level $lib event handlers', async () => {
     const projectDir = createTempProject('layout-client-handlers');
-    fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib', 'ui'), { recursive: true });
     fs.mkdirSync(path.join(projectDir, 'src', 'routes', 'dashboard'), { recursive: true });
     fs.writeFileSync(
-      path.join(projectDir, 'src', 'client', 'ui', 'dialog.ts'),
+      path.join(projectDir, 'src', 'lib', 'ui', 'dialog.ts'),
       `export function closeNearestDialog(_value?: unknown, _event?: Event, element?: Element | null) {
   const dialog = element?.closest ? element.closest('dialog') : null;
   if (dialog && typeof (dialog as HTMLDialogElement).close === 'function') {
@@ -489,7 +489,7 @@ import { signIn } from '$server/auth';
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'dashboard', 'layout.html'),
       `<script>
-import { closeNearestDialog } from '$client/ui/dialog';
+import { closeNearestDialog } from '$lib/ui/dialog';
 </script>
 
 <dialog open>
@@ -507,17 +507,17 @@ import { closeNearestDialog } from '$client/ui/dialog';
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
+    expect(routesCode).toContain('__kuratchi/client/modules/lib/ui/dialog.js');
     expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
     expect(routesCode).toContain('data-client-route="route_0"');
     expect(routesCode).toContain('data-client-event="click"');
   });
 
-  it('emits root layout client assets for top-level $client event handlers', async () => {
+  it('emits root layout client assets for top-level $lib event handlers', async () => {
     const projectDir = createTempProject('root-layout-client-handlers');
-    fs.mkdirSync(path.join(projectDir, 'src', 'client', 'ui'), { recursive: true });
+    fs.mkdirSync(path.join(projectDir, 'src', 'lib', 'ui'), { recursive: true });
     fs.writeFileSync(
-      path.join(projectDir, 'src', 'client', 'ui', 'dialog.ts'),
+      path.join(projectDir, 'src', 'lib', 'ui', 'dialog.ts'),
       `export function closeNearestDialog(_value?: unknown, _event?: Event, element?: Element | null) {
   const dialog = element?.closest ? element.closest('dialog') : null;
   if (dialog && typeof (dialog as HTMLDialogElement).close === 'function') {
@@ -530,7 +530,7 @@ import { closeNearestDialog } from '$client/ui/dialog';
     fs.writeFileSync(
       path.join(projectDir, 'src', 'routes', 'layout.html'),
       `<script>
-import { closeNearestDialog } from '$client/ui/dialog';
+import { closeNearestDialog } from '$lib/ui/dialog';
 </script>
 
 <!doctype html>
@@ -554,11 +554,11 @@ import { closeNearestDialog } from '$client/ui/dialog';
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('__kuratchi/client/modules/client/ui/dialog.js');
+    expect(routesCode).toContain('__kuratchi/client/modules/lib/ui/dialog.js');
     expect(routesCode).toContain('__kuratchi/client/routes/layout_root.js');
     expect(routesCode).toContain('data-client-route="layout_root"');
     expect(routesCode).toContain('data-client-event="click"');
-    expect(routesCode).not.toContain("import { closeNearestDialog } from '$client/ui/dialog';");
+    expect(routesCode).not.toContain("import { closeNearestDialog } from '$lib/ui/dialog';");
   });
 
   it('emits companion rpc schemas for imported route rpc functions', async () => {
