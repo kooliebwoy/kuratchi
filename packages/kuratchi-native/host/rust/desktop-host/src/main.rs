@@ -2,6 +2,7 @@ mod cli;
 mod command;
 mod desktop_api;
 mod embedded_server;
+mod interactive;
 mod manifest;
 mod webview;
 

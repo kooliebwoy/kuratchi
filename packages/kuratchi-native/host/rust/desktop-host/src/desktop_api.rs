@@ -17,6 +17,11 @@ use winrt_notification::{Duration as ToastDuration, Sound, Toast};
 
 use crate::cli::RunCommandOptions;
 use crate::command::run_command;
+use crate::interactive::{
+    close_interactive, start_interactive, status_interactive, write_interactive,
+    InteractiveCloseRequest, InteractiveStartRequest, InteractiveStatusRequest,
+    InteractiveWriteRequest,
+};
 use crate::manifest::DesktopManifest;
 
 #[derive(Clone)]
@@ -243,6 +248,106 @@ fn route_request(request: &HttpRequest, state: &DesktopApiState) -> (u16, &'stat
         let title = body.get("title").and_then(Value::as_str).map(ToOwned::to_owned);
         let result = open_file(state, title);
         return (200, "application/json", result.to_string());
+    }
+
+    // Interactive command endpoints
+    if request.method.eq_ignore_ascii_case("POST") && request.target == "/interactive/start" {
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or_else(|_| json!({}));
+        let req = InteractiveStartRequest {
+            command: body
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            working_directory: body
+                .get("workingDirectory")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+                .filter(|v| !v.is_empty()),
+            timeout_ms: body.get("timeoutMs").and_then(Value::as_u64),
+        };
+        let result = start_interactive(req);
+        return (
+            200,
+            "application/json",
+            json!({
+                "ok": result.ok,
+                "sessionId": result.session_id,
+                "error": result.error,
+            })
+            .to_string(),
+        );
+    }
+
+    if request.method.eq_ignore_ascii_case("POST") && request.target == "/interactive/write" {
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or_else(|_| json!({}));
+        let req = InteractiveWriteRequest {
+            session_id: body
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            input: body
+                .get("input")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        };
+        let result = write_interactive(req);
+        return (
+            200,
+            "application/json",
+            json!({
+                "ok": result.ok,
+                "error": result.error,
+            })
+            .to_string(),
+        );
+    }
+
+    if request.method.eq_ignore_ascii_case("POST") && request.target == "/interactive/status" {
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or_else(|_| json!({}));
+        let req = InteractiveStatusRequest {
+            session_id: body
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        };
+        let result = status_interactive(req);
+        return (
+            200,
+            "application/json",
+            json!({
+                "ok": result.ok,
+                "output": result.output,
+                "isComplete": result.is_complete,
+                "exitCode": result.exit_code,
+                "error": result.error,
+            })
+            .to_string(),
+        );
+    }
+
+    if request.method.eq_ignore_ascii_case("POST") && request.target == "/interactive/close" {
+        let body: Value = serde_json::from_slice(&request.body).unwrap_or_else(|_| json!({}));
+        let req = InteractiveCloseRequest {
+            session_id: body
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        };
+        let result = close_interactive(req);
+        return (
+            200,
+            "application/json",
+            json!({
+                "ok": result.ok,
+                "error": result.error,
+            })
+            .to_string(),
+        );
     }
 
     (

@@ -66,12 +66,24 @@ pub fn run_webview(
         .map_err(|error| format!("Failed to create native window: {error}"))?;
 
     let initialization_script = build_initialization_script(desktop_api_origin);
-    let _webview = WebViewBuilder::new()
+    
+    // Add cache-busting timestamp to URL to force fresh load
+    let cache_bust_url = format!("{}?_cb={}", app_url, std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0));
+    
+    let webview = WebViewBuilder::new()
         .with_initialization_script(&initialization_script)
-        .with_url(app_url)
+        .with_url(&cache_bust_url)
         .with_clipboard(true)
+        .with_devtools(true)
         .build(&window)
         .map_err(|error| format!("Failed to build embedded webview: {error}"))?;
+
+    // Open devtools automatically for development
+    // TODO: Make this configurable via manifest or env var
+    webview.open_devtools();
 
     let desktop_api_origin = desktop_api_origin.to_string();
     event_loop.run(move |event, _, control_flow| {
