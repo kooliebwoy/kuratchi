@@ -25,6 +25,7 @@ describe('server-module-pipeline virtual imports', () => {
       projectDir: tempDir,
       srcDir,
       doHandlerProxyPaths: new Map(),
+      isDev: true,
       writeFile: (filePath, content) => {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -33,7 +34,7 @@ describe('server-module-pipeline virtual imports', () => {
     });
   }
 
-  test('rewrites kuratchi:environment to @kuratchi/js/runtime/environment.js', () => {
+  test('injects compile-time dev aliases for kuratchi:environment imports', () => {
     const moduleFile = path.join(serverDir, 'test.ts');
     fs.writeFileSync(moduleFile, `
 import { dev } from 'kuratchi:environment';
@@ -47,7 +48,7 @@ export function checkDev() {
     const outputPath = compiler.transformModule(moduleFile);
     const output = fs.readFileSync(outputPath, 'utf-8');
 
-    expect(output).toContain("from '@kuratchi/js/runtime/environment.js'");
+    expect(output).toContain('const dev = true;');
     expect(output).not.toContain("from 'kuratchi:environment'");
   });
 
@@ -105,7 +106,7 @@ export function handler() {
     const outputPath = compiler.transformModule(moduleFile);
     const output = fs.readFileSync(outputPath, 'utf-8');
 
-    expect(output).toContain("from '@kuratchi/js/runtime/environment.js'");
+    expect(output).toContain('const dev = true;');
     expect(output).toContain("from '@kuratchi/js/runtime/request.js'");
     expect(output).toContain("from '@kuratchi/js/runtime/navigation.js'");
     expect(output).not.toContain("from 'kuratchi:");
@@ -127,7 +128,7 @@ export function test() {
     const outputPath = compiler.transformModule(moduleFile);
     const output = fs.readFileSync(outputPath, 'utf-8');
 
-    expect(output).toContain("from '@kuratchi/js/runtime/environment.js'");
+    expect(output).toContain('const dev = true;');
     expect(output).toContain("from 'cloudflare:workers'");
     expect(output).toContain("from 'lodash'");
   });

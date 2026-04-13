@@ -26,6 +26,7 @@ During development, keep these rules in mind:
 - Route files are server-rendered, not client entry files.
 - `src/server` is private server-only code.
 - Browser reactivity uses `$:` inside client-side template scripts.
+- `kuratchi:environment` is compiled for the current mode, so `dev` branches differ between `kuratchi dev` and `kuratchi build`.
 - Wrangler should continue pointing to `.kuratchi/worker.ts`.
 
 ## Execution model
@@ -38,6 +39,17 @@ KuratchiJS is server-first:
 - Browser behavior is opt-in through progressive enhancement and `$:` labels.
 
 That keeps the default mental model closer to Worker request handling than SPA hydration.
+
+## Mode-specific compilation
+
+Kuratchi bakes the current mode into generated output.
+
+- In `kuratchi dev`, `import { dev } from 'kuratchi:environment'` compiles to `true` in generated server/runtime code.
+- In `kuratchi build`, the same import compiles to `false`.
+
+That applies to route scripts, `src/server/*.ts`, and `src/server/runtime.hook.ts`.
+
+Use this when you need explicit development-only behavior such as local auth bypasses, extra logging, or test fixtures.
 
 ## Production check
 

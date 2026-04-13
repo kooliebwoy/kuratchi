@@ -82,8 +82,23 @@ import {
 The framework exposes a compile-time environment flag:
 
 ```ts
-import { dev } from '@kuratchi/js/environment';
+import { dev } from 'kuratchi:environment';
 ```
+
+Use `kuratchi:environment` anywhere Kuratchi compiles code for you:
+
+- Route `<script>` blocks
+- `src/server/*.ts` modules
+- `src/server/runtime.hook.ts`
+
+In route scripts, `dev` is resolved as part of the generated route/runtime output.
+
+In server modules and runtime hooks, `dev` is compiled to a literal boolean during build:
+
+- `kuratchi dev` -> `const dev = true`
+- `kuratchi build` -> `const dev = false`
+
+That makes `dev` safe to use in request gates and hook branches without relying on request-time globals or import ordering.
 
 For Worker bindings, read directly from Cloudflare:
 
@@ -147,9 +162,15 @@ interface RuntimeContext {
 Intercept requests before routing. Call `next()` to continue or return a `Response` to short-circuit:
 
 ```ts
+import { dev } from 'kuratchi:environment';
+
 const runtime: RuntimeDefinition = {
   auth: {
     async request(ctx, next) {
+      if (dev) {
+        return next();
+      }
+
       // Check auth for protected routes
       if (ctx.url.pathname.startsWith('/admin/')) {
         const session = await getSession(ctx.request);
@@ -163,6 +184,8 @@ const runtime: RuntimeDefinition = {
   },
 };
 ```
+
+Use this pattern for local-only bypasses like development auth gates. For secrets, bindings, and request data, continue to read from `ctx.env`, `ctx.request`, or the `@kuratchi/js` server helpers.
 
 ### Route Hook
 

@@ -174,6 +174,41 @@ export async function createUser(formData: FormData) {
     expect(routesCode).not.toContain('return { user, getUser, createUser');
   });
 
+  it('does not duplicate extracted top-level SSR await declarations in generated load code', async () => {
+    const projectDir = createTempProject('ssr-await-dedup');
+    fs.mkdirSync(path.join(projectDir, 'src', 'server'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'routes', 'auth', 'signin', 'page.html'),
+      `<script>
+import { getQuarterBreakdown } from '$server/breakdown';
+const selectedQuarter = 'q126';
+const selectedGroup = 'devplat';
+const breakdown = await getQuarterBreakdown(selectedQuarter, selectedGroup);
+</script>
+
+<div>{breakdown?.ok ? 'ready' : 'missing'}</div>`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(projectDir, 'src', 'server', 'breakdown.ts'),
+      `export async function getQuarterBreakdown(quarter: string, group: string) {
+  return { ok: Boolean(quarter && group) };
+}
+`,
+      'utf-8',
+    );
+
+    await compile({ projectDir, isDev: true });
+    const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
+    const breakdownDecls = routesCode.match(/const breakdown = await /g) ?? [];
+    const selectedQuarterIndex = routesCode.indexOf("const selectedQuarter = 'q126';");
+    const breakdownIndex = routesCode.search(/const breakdown = await [^;]+;/);
+
+    expect(breakdownDecls.length).toBe(1);
+    expect(selectedQuarterIndex).toBeGreaterThanOrEqual(0);
+    expect(breakdownIndex).toBeGreaterThan(selectedQuarterIndex);
+  });
+
   it('promotes component action props into the route actions map', async () => {
     const projectDir = createTempProject('component-action-prop');
     fs.mkdirSync(path.join(projectDir, 'src', 'lib'), { recursive: true });

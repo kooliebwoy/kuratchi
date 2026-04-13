@@ -32,6 +32,20 @@ Top-level route scripts run on the server:
 </ul>
 ```
 
+Authored top-level statements keep their original execution order. If an awaited expression depends on values declared above it, keep those initializers above the `await`:
+
+```html
+<script>
+  import { getQuarterBreakdown } from '$server/breakdown';
+
+  const selectedQuarter = 'q126';
+  const selectedGroup = 'devplat';
+  const breakdown = await getQuarterBreakdown(selectedQuarter, selectedGroup);
+</script>
+```
+
+This is especially important for `$server/` imports. Kuratchi executes those awaited calls during SSR, but it preserves the authored statement order inside the generated route load function.
+
 Use `src/server` for private modules. Route files are rendered output, not browser modules.
 
 ## Layouts

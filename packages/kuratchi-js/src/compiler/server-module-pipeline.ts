@@ -13,6 +13,7 @@ interface CreateServerModuleCompilerOptions {
   projectDir: string;
   srcDir: string;
   doHandlerProxyPaths: Map<string, string>;
+  isDev: boolean;
   writeFile: (filePath: string, content: string) => void;
 }
 
@@ -36,10 +37,35 @@ function resolveExistingModuleFile(absBase: string): string | null {
   return null;
 }
 
+function extractKuratchiEnvironmentAliases(source: string): string[] {
+  const aliases: string[] = [];
+  const importRegex = /^\s*import\s*\{([\s\S]*?)\}\s*from\s*['"](?:kuratchi:environment|@kuratchi\/js\/environment)['"];?\s*$/gm;
+  let match: RegExpExecArray | null;
+
+  while ((match = importRegex.exec(source)) !== null) {
+    for (const rawPart of match[1].split(',')) {
+      const part = rawPart.trim();
+      if (!part) continue;
+      const devMatch = part.match(/^dev(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+      if (!devMatch) {
+        throw new Error('[kuratchi compiler] kuratchi:environment currently only exports `dev`.');
+      }
+      const alias = devMatch[1] || 'dev';
+      if (!aliases.includes(alias)) aliases.push(alias);
+    }
+  }
+
+  return aliases;
+}
+
+function stripKuratchiEnvironmentImports(source: string): string {
+  return source.replace(/^\s*import\s*\{[\s\S]*?\}\s*from\s*['"](?:kuratchi:environment|@kuratchi\/js\/environment)['"];?\s*$/gm, '');
+}
+
 export function createServerModuleCompiler(
   options: CreateServerModuleCompilerOptions,
 ): ServerModuleCompiler {
-  const { projectDir, srcDir, doHandlerProxyPaths, writeFile } = options;
+  const { projectDir, srcDir, doHandlerProxyPaths, isDev, writeFile } = options;
   const transformedServerModules = new Map<string, string>();
   const modulesOutDir = path.join(projectDir, '.kuratchi', 'modules');
   const normalizedProjectDir = projectDir.replace(/\\/g, '/');
@@ -99,6 +125,7 @@ export function createServerModuleCompiler(
     }
 
     const source = fs.readFileSync(resolved, 'utf-8');
+    const devAliases = extractKuratchiEnvironmentAliases(source);
     const rewriteSpecifier = (spec: string): string => {
       // Rewrite kuratchi:* virtual modules to @kuratchi/js runtime paths
       if (isKuratchiVirtualModule(spec)) {
@@ -121,7 +148,8 @@ export function createServerModuleCompiler(
       return toModuleSpecifier(outPath, rewrittenTarget);
     };
 
-    let rewritten = source.replace(/(from\s+)(['"])([^'"]+)\2/g, (_match, prefix: string, quote: string, spec: string) => {
+    let rewritten = stripKuratchiEnvironmentImports(source);
+    rewritten = rewritten.replace(/(from\s+)(['"])([^'"]+)\2/g, (_match, prefix: string, quote: string, spec: string) => {
       return `${prefix}${quote}${rewriteSpecifier(spec)}${quote}`;
     });
     rewritten = rewritten.replace(
@@ -130,6 +158,9 @@ export function createServerModuleCompiler(
         return `${prefix}${quote}${rewriteSpecifier(spec)}${quote}${suffix}`;
       },
     );
+    if (devAliases.length > 0) {
+      rewritten = `${devAliases.map((alias) => `const ${alias} = ${isDev ? 'true' : 'false'};`).join('\n')}\n${rewritten}`;
+    }
 
     writeFile(outPath, rewritten);
     return outPath;

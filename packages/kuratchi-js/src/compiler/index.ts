@@ -229,6 +229,7 @@ export async function compile(options: CompileOptions): Promise<string> {
     projectDir,
     srcDir,
     doHandlerProxyPaths,
+    isDev: options.isDev ?? false,
     writeFile: writeIfChanged,
   });
 

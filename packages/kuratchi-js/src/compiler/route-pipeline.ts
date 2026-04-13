@@ -81,9 +81,28 @@ function dedupe(items: string[]): string[] {
   return Array.from(new Set(items));
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function extractDeclaredConstName(statement: string): string | null {
   const match = statement.trim().match(/^const\s+([A-Za-z_$][\w$]*)\s*=/);
   return match ? match[1] : null;
+}
+
+function stripExtractedSsrAwaitDeclarations(scriptBody: string, ssrAwaitCalls: SsrAwaitCall[]): string {
+  if (!scriptBody || ssrAwaitCalls.length === 0) return scriptBody;
+
+  let output = scriptBody;
+  for (const call of ssrAwaitCalls) {
+    const pattern = new RegExp(
+      `(^|\\n)\\s*(?:const|let|var)\\s+${escapeRegExp(call.varName)}\\s*=\\s*await\\b[\\s\\S]*?;(?=\\n|$)`,
+      'g',
+    );
+    output = output.replace(pattern, (_, prefix: string) => prefix || '');
+  }
+
+  return output;
 }
 
 /**
@@ -95,15 +114,15 @@ function buildSsrAwaitCallsCode(opts: {
   fnToModule: Record<string, string>;
 }): string {
   const lines: string[] = [];
-  
+
   for (const call of opts.ssrAwaitCalls) {
     const moduleId = opts.fnToModule[call.fnName];
     const qualifiedFn = moduleId ? `${moduleId}.${call.fnName}` : call.fnName;
     const argsExpr = call.argsExpr ? call.argsExpr : '';
-    
+
     lines.push(`const ${call.varName} = await ${qualifiedFn}(${argsExpr});`);
   }
-  
+
   return lines.join('\n');
 }
 
@@ -153,16 +172,9 @@ function buildGeneratedLoadPlan(opts: {
   rpcNameMap?: Map<string, string>;
   ssrAwaitCalls?: SsrAwaitCall[];
 }): RouteLoadPlan {
+  const ssrAwaitCalls = opts.ssrAwaitCalls ?? [];
   const loadSections: string[] = [];
-  
-  // RFC 0002: Add SSR await calls first (they execute server-side)
-  if (opts.ssrAwaitCalls && opts.ssrAwaitCalls.length > 0) {
-    loadSections.push(buildSsrAwaitCallsCode({
-      ssrAwaitCalls: opts.ssrAwaitCalls,
-      fnToModule: opts.fnToModule,
-    }));
-  }
-  
+
   if (opts.scriptBody && opts.scriptUsesAwait) {
     loadSections.push(opts.scriptBody);
   }
@@ -175,7 +187,7 @@ function buildGeneratedLoadPlan(opts: {
   }
 
   const queryVars = opts.queries.map((query) => query.asName);
-  const ssrAwaitVars = (opts.ssrAwaitCalls || []).map((call) => call.varName);
+  const ssrAwaitVars = ssrAwaitCalls.map((call) => call.varName);
   const returnVars = dedupe([...opts.scriptReturnVars, ...queryVars, ...ssrAwaitVars]);
   const loadLines: string[] = [];
   if (loadSections.length > 0) {
@@ -201,7 +213,7 @@ function buildGeneratedLoadPlan(opts: {
     mode: 'generated',
     code: `async load(__routeParams = {}) {\n      ${loadLines.join('\n      ')}\n    }`,
     returnVars,
-    scriptUsesAwait: opts.scriptUsesAwait || ((opts.ssrAwaitCalls?.length ?? 0) > 0),
+    scriptUsesAwait: opts.scriptUsesAwait || (ssrAwaitCalls.length > 0),
   };
 }
 
