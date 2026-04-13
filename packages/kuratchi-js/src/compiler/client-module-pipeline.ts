@@ -47,6 +47,9 @@ export interface ClientModuleCompiler {
     serverRpcFunctions: string[];
     ssrAwaitVars: string[];
     routeFilePath: string;
+    devAliases: string[];
+    requestImports: Array<{ exportName: string; alias: string }>;
+    isDev: boolean;
   }): { assetName: string; asset: CompiledAsset } | null;
 }
 
@@ -688,6 +691,9 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
     serverRpcFunctions: string[];
     ssrAwaitVars: string[];
     routeFilePath: string;
+    devAliases: string[];
+    requestImports: Array<{ exportName: string; alias: string }>;
+    isDev: boolean;
   }): { assetName: string; asset: CompiledAsset } | null {
     if (!opts.clientScriptRaw || opts.clientScriptRaw.trim().length === 0) {
       return null;
@@ -695,6 +701,46 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
 
     const assetName = `__kuratchi/client/routes/route_${opts.routeIndex}/script.js`;
     const importerDir = path.dirname(opts.routeFilePath);
+    
+    // Build serialized kuratchi:environment values
+    const envLines: string[] = [];
+    if (opts.devAliases && opts.devAliases.length > 0) {
+      envLines.push(`// kuratchi:environment - serialized for client`);
+      for (const alias of opts.devAliases) {
+        envLines.push(`const ${alias} = ${opts.isDev ? 'true' : 'false'};`);
+      }
+    }
+    
+    // Build serialized kuratchi:request values
+    // These are read from the current URL at runtime on the client
+    if (opts.requestImports && opts.requestImports.length > 0) {
+      envLines.push(`// kuratchi:request - serialized for client`);
+      envLines.push(`const __kuratchiUrl = new URL(window.location.href);`);
+      envLines.push(`const __kuratchiParams = Object.fromEntries(new URLSearchParams(window.location.search));`);
+      for (const imp of opts.requestImports) {
+        switch (imp.exportName) {
+          case 'url':
+            envLines.push(`const ${imp.alias} = __kuratchiUrl;`);
+            break;
+          case 'pathname':
+            envLines.push(`const ${imp.alias} = __kuratchiUrl.pathname;`);
+            break;
+          case 'searchParams':
+            envLines.push(`const ${imp.alias} = __kuratchiUrl.searchParams;`);
+            break;
+          case 'params':
+            // Route params are injected by the server into a data attribute
+            envLines.push(`const ${imp.alias} = JSON.parse(document.body.dataset.kuratchiParams || '{}');`);
+            break;
+          case 'slug':
+            envLines.push(`const ${imp.alias} = JSON.parse(document.body.dataset.kuratchiParams || '{}').slug || Object.values(JSON.parse(document.body.dataset.kuratchiParams || '{}'))[0];`);
+            break;
+          case 'method':
+            envLines.push(`const ${imp.alias} = 'GET';`); // Client-side is always GET (initial page load)
+            break;
+        }
+      }
+    }
     
     // Build RPC stub code for $server/ functions
     const rpcStubLines: string[] = [];
@@ -725,13 +771,31 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
     
     // Transform the client script:
     // 1. Remove $server/ imports (replaced by stubs above)
-    // 2. Remove top-level await variable declarations (data comes from SSR)
+    // 2. Remove kuratchi:environment imports (replaced by serialized values)
+    // 3. Remove top-level await variable declarations (data comes from SSR)
     let transformedScript = opts.clientScriptRaw;
     
     // Remove $server/ import lines
     for (const importLine of opts.serverRpcImports) {
       transformedScript = transformedScript.replace(importLine, '// [RFC 0002] $server/ import removed - using RPC stub');
     }
+    
+    // Remove kuratchi:environment and @kuratchi/js/environment import lines
+    // (replaced by serialized const declarations above)
+    transformedScript = transformedScript.replace(
+      /import\s*\{[^}]*\}\s*from\s*['"]kuratchi:environment['"];?\s*/g,
+      '// kuratchi:environment import removed - using serialized value\n'
+    );
+    transformedScript = transformedScript.replace(
+      /import\s*\{[^}]*\}\s*from\s*['"]@kuratchi\/js\/environment['"];?\s*/g,
+      '// @kuratchi/js/environment import removed - using serialized value\n'
+    );
+    
+    // Remove kuratchi:request import lines (replaced by serialized const declarations above)
+    transformedScript = transformedScript.replace(
+      /import\s*\{[^}]*\}\s*from\s*['"]kuratchi:request['"];?\s*/g,
+      '// kuratchi:request import removed - using serialized value\n'
+    );
     
     // Remove top-level await declarations for SSR vars (they get data from window.__kuratchiData)
     for (const varName of opts.ssrAwaitVars) {
@@ -740,8 +804,9 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
       transformedScript = transformedScript.replace(awaitPattern, `// [RFC 0002] SSR data: ${varName} comes from server`);
     }
     
-    // Combine RPC stubs with transformed script
+    // Combine env declarations, RPC stubs, and transformed script
     const finalScript = [
+      ...envLines,
       ...rpcStubLines,
       '',
       '// Client script',

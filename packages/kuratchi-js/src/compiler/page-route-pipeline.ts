@@ -138,6 +138,9 @@ export function compilePageRoute(opts: {
       serverRpcFunctions: mergedParsed.serverRpcFunctions,
       ssrAwaitVars,
       routeFilePath: opts.routeFilePath,
+      devAliases: mergedParsed.devAliases,
+      requestImports: mergedParsed.requestImports,
+      isDev: opts.isDev,
     });
     
     // Register RPC bindings for $server/ functions so they can be called from client

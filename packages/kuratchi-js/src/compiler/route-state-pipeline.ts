@@ -73,6 +73,7 @@ export function assembleRouteState(opts: {
   const mergedComponentImports: Record<string, string> = { ...parsed.componentImports };
   const mergedWorkerEnvAliases = [...parsed.workerEnvAliases];
   const mergedDevAliases = [...parsed.devAliases];
+  const mergedRequestImports = [...parsed.requestImports];
   const mergedRouteClientImports = [...parsed.routeClientImports];
   const mergedRouteClientImportBindings = [...parsed.routeClientImportBindings];
   
@@ -146,6 +147,11 @@ export function assembleRouteState(opts: {
     for (const alias of layoutParsed.devAliases) {
       pushUnique(mergedDevAliases, alias);
     }
+    for (const imp of layoutParsed.requestImports) {
+      if (!mergedRequestImports.some(r => r.alias === imp.alias)) {
+        mergedRequestImports.push({ ...imp });
+      }
+    }
     
     // RFC 0002: Merge client-first script model fields from layouts
     for (const line of layoutParsed.serverRpcImports) {
@@ -192,6 +198,7 @@ export function assembleRouteState(opts: {
     dataGetQueries: mergedDataGetQueries,
     workerEnvAliases: mergedWorkerEnvAliases,
     devAliases: mergedDevAliases,
+    requestImports: mergedRequestImports,
     scriptImportDecls: routeImportDecls,
     scriptSegments: routeScriptSegments,
     // RFC 0002: Client-first script model fields

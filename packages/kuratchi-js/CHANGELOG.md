@@ -1,5 +1,17 @@
 # @kuratchi/js
 
+## 0.0.14
+
+### Patch Changes
+
+- Consolidate all framework virtual modules under `kuratchi:*` prefix:
+  - `kuratchi:environment` — `{ dev }` for build mode detection
+  - `kuratchi:request` — `{ url, pathname, params, locals, headers, method, slug }`
+  - `kuratchi:navigation` — `{ redirect }`
+- All `kuratchi:*` modules work in page routes, runtime hooks, DOs, and server modules
+- Type declarations auto-generated in `app.d.ts`
+- Legacy `@kuratchi/js/environment` still supported for backwards compatibility
+
 ## 0.0.13
 
 ### Patch Changes

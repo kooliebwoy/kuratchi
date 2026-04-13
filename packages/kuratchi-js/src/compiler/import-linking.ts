@@ -151,7 +151,7 @@ export function linkRouteServerImports(opts: {
     const parsed = parseImportStatement(entry.line);
     if (!parsed.moduleSpecifier) continue;
     const isWorkerEnvModule = parsed.moduleSpecifier === 'cloudflare:workers';
-    const isKuratchiEnvModule = parsed.moduleSpecifier === '@kuratchi/js/environment';
+    const isKuratchiEnvModule = parsed.moduleSpecifier === 'kuratchi:environment' || parsed.moduleSpecifier === '@kuratchi/js/environment';
 
     const importPath = opts.resolveCompiledImportPath(parsed.moduleSpecifier, entry.importerDir, opts.outFileDir);
     const moduleId = opts.allocateModuleId();

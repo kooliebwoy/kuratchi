@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { VIRTUAL_MODULE_TYPE_DECLARATIONS } from './virtual-modules.js';
+
 /**
  * Generate TypeScript types from kuratchi schema and runtime definitions.
  * Outputs to src/app.d.ts or a specified path.
@@ -152,6 +154,9 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
  * DB types are auto-generated from schema.ts - regenerate with: kuratchi types
  * Edit the Locals interface below to match your runtime.hook.ts
  */
+
+${VIRTUAL_MODULE_TYPE_DECLARATIONS}
+
 declare global {
   namespace App {
     /** Request-scoped locals set by runtime hooks */

@@ -30,11 +30,11 @@
             "types": "./dist/runtime/context.d.ts",
             "import": "./dist/runtime/context.js"
         },
-        "./request": {
+        "./runtime/request.js": {
             "types": "./dist/runtime/request.d.ts",
             "import": "./dist/runtime/request.js"
         },
-        "./navigation": {
+        "./runtime/navigation.js": {
             "types": "./dist/runtime/navigation.d.ts",
             "import": "./dist/runtime/navigation.js"
         },
@@ -49,6 +49,10 @@
         "./runtime/generated-worker.js": {
             "types": "./dist/runtime/generated-worker.d.ts",
             "import": "./dist/runtime/generated-worker.js"
+        },
+        "./runtime/environment.js": {
+            "types": "./dist/runtime/environment.d.ts",
+            "import": "./dist/runtime/environment.js"
         },
         "./compiler": {
             "types": "./dist/compiler/index.d.ts",

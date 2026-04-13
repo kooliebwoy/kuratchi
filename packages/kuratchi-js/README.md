@@ -1099,23 +1099,47 @@ import { env } from 'cloudflare:workers';
 const result = await env.DB.prepare('SELECT 1').run();
 ```
 
-## Framework environment
+## Virtual Modules
 
-Kuratchi also exposes a framework build-mode flag:
+Kuratchi provides `kuratchi:*` virtual modules for accessing framework state and utilities. These follow the same pattern as Cloudflare's `cloudflare:workers`.
 
-```html
-<script>
-  import { dev } from '@kuratchi/js/environment';
-  import { env } from 'cloudflare:workers';
+### kuratchi:environment
 
-  const turnstileSiteKey = dev ? '' : (env.TURNSTILE_SITE_KEY || '');
-</script>
+```ts
+import { dev } from 'kuratchi:environment';
+
+if (dev) {
+  // Skip auth checks, enable debug logging, etc.
+}
 ```
 
-- `dev` is `true` for Kuratchi development builds
-- `dev` is `false` for production builds
-- `dev` is compile-time framework state, not a generic process env var
-- `@kuratchi/js/environment` is intended for server route code, not client `$:` scripts
+- `dev` is `true` during `kuratchi dev`, `false` in production
+
+### kuratchi:request
+
+```ts
+import { url, pathname, params, locals, headers, method } from 'kuratchi:request';
+
+// Access current request state
+console.log(url.href);
+console.log(params.slug);
+console.log(locals.userId);
+```
+
+### kuratchi:navigation
+
+```ts
+import { redirect } from 'kuratchi:navigation';
+
+// Server-side redirect (throws RedirectError)
+redirect('/login', 303);
+```
+
+All `kuratchi:*` modules work in:
+- Page route scripts (`page.html`)
+- Runtime hooks (`runtime.hook.ts`)
+- Durable Objects (`.do.ts`)
+- Server modules (`src/server/*.ts`)
 
 ## Security
 

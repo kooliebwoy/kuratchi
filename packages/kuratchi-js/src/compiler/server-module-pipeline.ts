@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { isKuratchiVirtualModule, resolveKuratchiVirtualModule } from './virtual-modules.js';
+
 export interface ServerModuleCompiler {
   toModuleSpecifier(fromFileAbs: string, toFileAbs: string): string;
   transformModule(entryAbsPath: string): string;
@@ -56,10 +58,8 @@ export function createServerModuleCompiler(
   }
 
   function resolveImportTarget(importerAbs: string, spec: string): string | null {
-    // Handle kuratchi:* virtual modules
-    if (spec.startsWith('kuratchi:')) {
-      // These are resolved at bundle time to @kuratchi/js runtime modules
-      // Return null to keep the specifier as-is for later rewriting
+    // Handle kuratchi:* virtual modules — resolved at rewrite time, not here
+    if (isKuratchiVirtualModule(spec)) {
       return null;
     }
 
@@ -101,13 +101,8 @@ export function createServerModuleCompiler(
     const source = fs.readFileSync(resolved, 'utf-8');
     const rewriteSpecifier = (spec: string): string => {
       // Rewrite kuratchi:* virtual modules to @kuratchi/js runtime paths
-      if (spec.startsWith('kuratchi:')) {
-        const moduleName = spec.slice('kuratchi:'.length);
-        const moduleMap: Record<string, string> = {
-          'request': '@kuratchi/js/request',
-          'navigation': '@kuratchi/js/navigation',
-        };
-        return moduleMap[moduleName] ?? spec;
+      if (isKuratchiVirtualModule(spec)) {
+        return resolveKuratchiVirtualModule(spec);
       }
 
       const target = resolveImportTarget(resolved, spec);
@@ -142,13 +137,8 @@ export function createServerModuleCompiler(
 
   function resolveCompiledImportPath(origPath: string, importerDir: string, outFileDir: string): string {
     // Rewrite kuratchi:* virtual modules to @kuratchi/js runtime paths
-    if (origPath.startsWith('kuratchi:')) {
-      const moduleName = origPath.slice('kuratchi:'.length);
-      const moduleMap: Record<string, string> = {
-        'request': '@kuratchi/js/request',
-        'navigation': '@kuratchi/js/navigation',
-      };
-      return moduleMap[moduleName] ?? origPath;
+    if (isKuratchiVirtualModule(origPath)) {
+      return resolveKuratchiVirtualModule(origPath);
     }
 
     const isBareModule = !origPath.startsWith('.') && !origPath.startsWith('/') && !origPath.startsWith('$');

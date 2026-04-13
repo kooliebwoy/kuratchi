@@ -44,6 +44,8 @@ export interface ParsedFile {
   workerEnvAliases: string[];
   /** Local aliases for dev imported from @kuratchi/js/environment */
   devAliases: string[];
+  /** Imports from kuratchi:request - serialized for client */
+  requestImports: Array<{ exportName: string; alias: string }>;
   
   // === New fields for RFC 0002: Client-First Script Model ===
   /** Raw client script content (the entire <script> block body) */
@@ -268,10 +270,17 @@ function extractCloudflareEnvAliases(importLine: string): string[] {
 }
 
 function extractKuratchiEnvironmentDevAliases(importLine: string): string[] {
-  if (!/from\s+['"]@kuratchi\/js\/environment['"]/.test(importLine)) return [];
-  const namedMatch = importLine.match(/import\s*\{([\s\S]*?)\}\s*from\s+['"]@kuratchi\/js\/environment['"]/);
+  // Support both kuratchi:environment (preferred) and legacy @kuratchi/js/environment
+  const isKuratchiEnv = /from\s+['"]kuratchi:environment['"]/.test(importLine);
+  const isLegacyEnv = /from\s+['"]@kuratchi\/js\/environment['"]/.test(importLine);
+  if (!isKuratchiEnv && !isLegacyEnv) return [];
+
+  const pattern = isKuratchiEnv
+    ? /import\s*\{([\s\S]*?)\}\s*from\s+['"]kuratchi:environment['"]/
+    : /import\s*\{([\s\S]*?)\}\s*from\s+['"]@kuratchi\/js\/environment['"]/;
+  const namedMatch = importLine.match(pattern);
   if (!namedMatch) {
-    throw new Error('[kuratchi compiler] @kuratchi/js/environment only supports named imports.');
+    throw new Error('[kuratchi compiler] kuratchi:environment only supports named imports.');
   }
 
   const aliases: string[] = [];
@@ -280,11 +289,55 @@ function extractKuratchiEnvironmentDevAliases(importLine: string): string[] {
     if (!part) continue;
     const devMatch = part.match(/^dev(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
     if (!devMatch) {
-      throw new Error('[kuratchi compiler] @kuratchi/js/environment currently only exports `dev`.');
+      throw new Error('[kuratchi compiler] kuratchi:environment currently only exports `dev`.');
     }
     aliases.push(devMatch[1] || 'dev');
   }
   return aliases;
+}
+
+// Safe exports from kuratchi:request that can be serialized for client
+const KURATCHI_REQUEST_SAFE_EXPORTS = ['url', 'pathname', 'searchParams', 'params', 'slug', 'method'];
+
+interface KuratchiRequestImport {
+  exportName: string;
+  alias: string;
+}
+
+function extractKuratchiRequestImports(importLine: string): KuratchiRequestImport[] {
+  const isKuratchiRequest = /from\s+['"]kuratchi:request['"]/.test(importLine);
+  if (!isKuratchiRequest) return [];
+
+  const pattern = /import\s*\{([\s\S]*?)\}\s*from\s+['"]kuratchi:request['"]/;
+  const namedMatch = importLine.match(pattern);
+  if (!namedMatch) {
+    throw new Error('[kuratchi compiler] kuratchi:request only supports named imports.');
+  }
+
+  const imports: KuratchiRequestImport[] = [];
+  for (const rawPart of splitTopLevel(namedMatch[1], ',')) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    
+    // Match: exportName or exportName as alias
+    const match = part.match(/^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+    if (!match) continue;
+    
+    const exportName = match[1];
+    const alias = match[2] || exportName;
+    
+    // Check if this is a safe export
+    if (!KURATCHI_REQUEST_SAFE_EXPORTS.includes(exportName)) {
+      throw new Error(
+        `[kuratchi compiler] kuratchi:request export '${exportName}' is not available in client scripts.\n` +
+        `Safe exports: ${KURATCHI_REQUEST_SAFE_EXPORTS.join(', ')}\n` +
+        `Use $server/ RPC to access server-only request data like headers or locals.`
+      );
+    }
+    
+    imports.push({ exportName, alias });
+  }
+  return imports;
 }
 
 function extractReturnObjectKeys(body: string): string[] {
@@ -1201,18 +1254,18 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   let clientScript: string | null = null;
   let template = source;
 
-  // Extract the first top-level compile-time <script>...</script> block.
-  // Client blocks (reactive `$:` labels) stay in the template
-  // and are emitted for browser execution.
+  // RFC 0002: ALL <script> blocks are client-side.
+  // Server code is accessed via $server/ RPC imports.
+  // The script body goes to clientScript for client bundling.
+  // We also populate `script` for backward compatibility with server-side template data.
   const scriptMatch = template.match(/^(\s*)<script(\s[^>]*)?\s*>([\s\S]*?)<\/script>/);
   if (scriptMatch) {
     const body = scriptMatch[3].trim();
-    if (!hasReactiveLabel(body)) {
-      script = body;
-      template = template.slice(scriptMatch[0].length).trim();
-    } else {
-      clientScript = body;
-    }
+    // All scripts are client scripts in the new model
+    clientScript = body;
+    // Also set script for backward compat with server template data extraction
+    script = body;
+    template = template.slice(scriptMatch[0].length).trim();
   }
 
   // Extract all imports from script
@@ -1223,6 +1276,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   const componentImports: Record<string, string> = {};
   const workerEnvAliases: string[] = [];
   const devAliases: string[] = [];
+  const requestImports: Array<{ exportName: string; alias: string }> = [];
   if (script) {
     for (const statement of getTopLevelImportStatements(script)) {
       const line = statement.text.trim();
@@ -1240,11 +1294,24 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
         const fileName = pkgMatch[3].replace('.html', ''); // e.g. "badge"
         componentImports[componentName] = `${pkg}:${fileName}`; // e.g. "@kuratchi/ui:badge"
       } else {
+        // Track kuratchi:environment imports - dev flag will be serialized for client
         const devImportAliases = extractKuratchiEnvironmentDevAliases(line);
         if (devImportAliases.length > 0) {
           for (const alias of devImportAliases) {
             if (!devAliases.includes(alias)) devAliases.push(alias);
           }
+          // Don't add to serverImports - this is handled specially
+          continue;
+        }
+        // Track kuratchi:request imports - safe subset will be serialized for client
+        const reqImports = extractKuratchiRequestImports(line);
+        if (reqImports.length > 0) {
+          for (const imp of reqImports) {
+            if (!requestImports.some(r => r.alias === imp.alias)) {
+              requestImports.push(imp);
+            }
+          }
+          // Don't add to serverImports - this is handled specially
           continue;
         }
         // $lib/ imports are isomorphic - they work in both server and client contexts
@@ -1264,11 +1331,23 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     for (const statement of getTopLevelImportStatements(clientScript)) {
       const line = statement.text.trim();
       clientImports.push(line);
-      if (extractKuratchiEnvironmentDevAliases(line).length > 0) {
-        throw new Error(
-          `[kuratchi compiler] ${options.filePath || kind}\nClient <script> blocks cannot import from @kuratchi/js/environment.\nUse route server script code and pass values into the template explicitly.`,
-        );
+      // Track kuratchi:environment imports - dev flag will be serialized for client
+      const devImportAliases = extractKuratchiEnvironmentDevAliases(line);
+      if (devImportAliases.length > 0) {
+        for (const alias of devImportAliases) {
+          if (!devAliases.includes(alias)) devAliases.push(alias);
+        }
       }
+      // Track kuratchi:request imports - safe subset will be serialized for client
+      const reqImports = extractKuratchiRequestImports(line);
+      if (reqImports.length > 0) {
+        for (const imp of reqImports) {
+          if (!requestImports.some(r => r.alias === imp.alias)) {
+            requestImports.push(imp);
+          }
+        }
+      }
+      // cloudflare:workers env is NOT allowed in client scripts - it contains secrets
       if (extractCloudflareEnvAliases(line).length > 0) {
         throw buildEnvAccessError(
           kind,
@@ -1592,6 +1671,7 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     loadReturnVars,
     workerEnvAliases,
     devAliases,
+    requestImports,
     // RFC 0002 fields
     clientScriptRaw,
     serverRpcImports,
