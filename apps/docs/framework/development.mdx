@@ -23,20 +23,21 @@ bun run dev
 
 During development, keep these rules in mind:
 
-- Route files are server-rendered, not client entry files.
+- Pages are server-rendered by default.
 - `src/server` is private server-only code.
-- Browser reactivity uses `$:` inside client-side template scripts.
+- The top-level route `<script>` is browser/client code.
+- Browser reactivity uses `$:` when you want reactive updates.
 - `kuratchi:environment` is compiled for the current mode, so `dev` branches differ between `kuratchi dev` and `kuratchi build`.
 - Wrangler should continue pointing to `.kuratchi/worker.ts`.
 
 ## Execution model
 
-KuratchiJS is server-first:
+KuratchiJS is SSR by default:
 
-- Top-level route `<script>` blocks run on the server.
-- Template expressions render on the server.
+- The page HTML renders on the server.
+- The top-level route `<script>` is browser/client code.
 - Form actions execute on the server.
-- Browser behavior is opt-in through progressive enhancement and `$:` labels.
+- Server logic lives in `$server/*`, actions, and runtime hooks.
 
 That keeps the default mental model closer to Worker request handling than SPA hydration.
 

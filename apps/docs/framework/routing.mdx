@@ -15,13 +15,17 @@ src/routes/blog/[slug]/index.html  -> /blog/:slug
 src/routes/layout.html             -> shared layout
 ```
 
-## Server-first route files
+## Route execution model
 
-Top-level route scripts run on the server:
+Kuratchi pages are SSR by default, but the top-level route `<script>` is your browser/client script.
+
+That means you can use browser code there like DOM access, event handlers, local state, and client-side imports.
+
+For server work, use `$server/` imports, actions, and runtime hooks.
 
 ```html
 <script>
-  import { getItems } from '$database/items';
+  import { getItems } from '$server/items';
   const items = await getItems();
 </script>
 
@@ -32,21 +36,9 @@ Top-level route scripts run on the server:
 </ul>
 ```
 
-Authored top-level statements keep their original execution order. If an awaited expression depends on values declared above it, keep those initializers above the `await`:
+This is especially important for `$server/` imports. When you `await` a `$server/` function at the top level, Kuratchi runs that read during SSR and keeps your code in the same order you wrote it.
 
-```html
-<script>
-  import { getQuarterBreakdown } from '$server/breakdown';
-
-  const selectedQuarter = 'q126';
-  const selectedGroup = 'devplat';
-  const breakdown = await getQuarterBreakdown(selectedQuarter, selectedGroup);
-</script>
-```
-
-This is especially important for `$server/` imports. Kuratchi executes those awaited calls during SSR, but it preserves the authored statement order inside the generated route load function.
-
-Use `src/server` for private modules. Route files are rendered output, not browser modules.
+Use `src/server` for private modules and backend logic.
 
 ## Layouts
 
@@ -154,7 +146,7 @@ Use `$:` inside browser-side template scripts when you need client updates:
 
 Rules:
 
-- `$:` is the browser-side escape hatch.
-- Top-level route scripts are still server-only.
+- The top route `<script>` is browser/client code.
+- `$:` is available when you want reactive browser updates.
 - Proxy-backed array and object mutation works when `$:` is active.
 - You should not need browser guards in normal route code.
