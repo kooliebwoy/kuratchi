@@ -18,24 +18,12 @@
    * - `'full'`    — pill / fully-rounded corners
    */
   radius?: 'default' | 'none' | 'full';
-
-  /**
-   * Optional first-party UI library integration.
-   */
-  library?: 'tailwindcss';
-
-  /**
-   * Optional Tailwind plugins to enable when `library: 'tailwindcss'`.
-   * Common examples: `daisyui`, `forms`, `@tailwindcss/forms`.
-   */
-  plugins?: string[];
 }
 
 export function kuratchiUiConfig(config: kuratchiUiAdapterConfig = {}): kuratchiUiAdapterConfig {
   return {
     theme: 'dark',
     radius: 'default',
-    plugins: [],
     ...config,
   };
 }

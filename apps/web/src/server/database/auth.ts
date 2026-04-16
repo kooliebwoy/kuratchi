@@ -17,6 +17,10 @@ const db = kuratchiORM(() => (env as any).DB);
 
 // -- Get Current User ------------------------------------------------
 
+export function getTurnstileSiteKey(): string {
+  return ((env as any).TURNSTILE_SITE_KEY as string | undefined) || '';
+}
+
 export async function getCurrentUser() {
   const auth = getAuth();
   const sessionCookie = auth.getSessionCookie();

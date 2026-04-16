@@ -1,0 +1,312 @@
+---
+title: Styling
+description: CSS, Tailwind, and CSS frameworks in Kuratchi
+---
+
+Kuratchi gives you full control over styling. Use vanilla CSS, Tailwind, or any CSS framework — the choice is yours.
+
+## Static assets
+
+Place CSS files in `src/assets/`. Kuratchi automatically serves them at `/assets/...`:
+
+```
+src/
+├── assets/
+│   └── styles.css      → /assets/styles.css
+│   └── theme/
+│       └── dark.css    → /assets/theme/dark.css
+└── routes/
+    └── layout.html
+```
+
+Reference your CSS in your layout:
+
+```html
+<!-- src/routes/layout.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <slot></slot>
+</body>
+</html>
+```
+
+<Tip>
+Change the URL prefix with `assetsPrefix` in `kuratchi.config.ts`:
+
+```ts
+export default defineConfig({
+  assetsPrefix: '/static/',  // Now: /static/styles.css
+});
+```
+</Tip>
+
+## Vanilla CSS
+
+For most projects, vanilla CSS is all you need. Just write CSS:
+
+```css
+/* src/assets/styles.css */
+:root {
+  --color-primary: #0ea5e9;
+  --color-bg: #0a0e17;
+  --radius: 8px;
+}
+
+body {
+  background: var(--color-bg);
+  font-family: system-ui, sans-serif;
+}
+
+.btn {
+  background: var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+}
+```
+
+No build step, no configuration. CSS files are served as-is.
+
+## CSS minification
+
+For production optimization, install Lightning CSS:
+
+```bash
+npm install lightningcss
+```
+
+That's it. Kuratchi automatically minifies CSS in production builds when `lightningcss` is installed. No configuration needed.
+
+<Info>
+Minification is skipped in dev mode for easier debugging.
+</Info>
+
+## Tailwind CSS
+
+Kuratchi supports Tailwind CSS v4 with its new CSS-first configuration.
+
+### Setup
+
+Install the required packages:
+
+```bash
+npm install tailwindcss @tailwindcss/postcss postcss
+```
+
+Enable Tailwind in your config:
+
+```ts
+// kuratchi.config.ts
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  css: {
+    tailwind: true,
+  },
+});
+```
+
+Create your CSS file with Tailwind imports:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+```
+
+### Tailwind plugins
+
+Add plugins like DaisyUI or Tailwind Forms:
+
+```bash
+npm install daisyui @tailwindcss/forms
+```
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  css: {
+    tailwind: true,
+    plugins: ['daisyui', '@tailwindcss/forms'],
+  },
+});
+```
+
+Then reference them in your CSS:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+@plugin "daisyui";
+@plugin "@tailwindcss/forms";
+```
+
+### Tailwind configuration
+
+Tailwind v4 uses CSS-first configuration. Customize directly in your CSS file:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0ea5e9;
+  --color-secondary: #64748b;
+  --font-display: "Inter", sans-serif;
+}
+```
+
+## CSS frameworks
+
+Any CSS framework works with Kuratchi. Here are common setups:
+
+### Pico CSS
+
+A minimal, classless CSS framework:
+
+```bash
+npm install @picocss/pico
+```
+
+```html
+<!-- src/routes/layout.html -->
+<head>
+  <link rel="stylesheet" href="/node_modules/@picocss/pico/css/pico.min.css" />
+</head>
+```
+
+Or copy the CSS to your assets:
+
+```bash
+cp node_modules/@picocss/pico/css/pico.min.css src/assets/pico.css
+```
+
+```html
+<link rel="stylesheet" href="/assets/pico.css" />
+```
+
+### Bootstrap 5
+
+```bash
+npm install bootstrap
+```
+
+Copy to assets (recommended for production):
+
+```bash
+cp node_modules/bootstrap/dist/css/bootstrap.min.css src/assets/bootstrap.css
+```
+
+```html
+<!-- src/routes/layout.html -->
+<head>
+  <link rel="stylesheet" href="/assets/bootstrap.css" />
+</head>
+```
+
+For Bootstrap's JavaScript components, add the bundle:
+
+```bash
+cp node_modules/bootstrap/dist/js/bootstrap.bundle.min.js src/assets/bootstrap.js
+```
+
+```html
+<script src="/assets/bootstrap.js"></script>
+```
+
+### Bulma
+
+```bash
+npm install bulma
+```
+
+```bash
+cp node_modules/bulma/css/bulma.min.css src/assets/bulma.css
+```
+
+```html
+<link rel="stylesheet" href="/assets/bulma.css" />
+```
+
+### Open Props
+
+CSS custom properties for design systems:
+
+```bash
+npm install open-props
+```
+
+```css
+/* src/assets/styles.css */
+@import "open-props/style";
+@import "open-props/normalize";
+
+.card {
+  padding: var(--size-4);
+  border-radius: var(--radius-2);
+  box-shadow: var(--shadow-2);
+}
+```
+
+## CDN approach
+
+For quick prototyping, use CDN links directly:
+
+```html
+<!-- src/routes/layout.html -->
+<head>
+  <!-- Pico CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  
+  <!-- Or Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  
+  <!-- Or Tailwind Play CDN (dev only) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+```
+
+<Warning>
+CDN links add external dependencies and network requests. For production, bundle CSS locally in `src/assets/`.
+</Warning>
+
+## CSS configuration reference
+
+```ts
+// kuratchi.config.ts
+export default defineConfig({
+  css: {
+    // Enable Tailwind CSS processing
+    // Requires: npm install tailwindcss @tailwindcss/postcss postcss
+    tailwind: boolean,
+    
+    // Tailwind plugins to load
+    plugins: string[],
+    
+    // Enable/disable minification
+    // Default: true in production, false in dev
+    // Requires: npm install lightningcss
+    minify: boolean,
+  },
+});
+```
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Use CSS custom properties" icon="palette">
+    Define colors, spacing, and typography as CSS variables for easy theming and consistency.
+  </Card>
+  <Card title="Bundle locally" icon="box">
+    Copy framework CSS to `src/assets/` rather than using CDN links in production.
+  </Card>
+  <Card title="Start simple" icon="leaf">
+    Vanilla CSS with custom properties covers most needs. Add Tailwind only if you need it.
+  </Card>
+  <Card title="Scope styles" icon="layer-group">
+    Use component-specific class prefixes or CSS nesting to avoid conflicts.
+  </Card>
+</CardGroup>

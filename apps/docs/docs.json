@@ -24,6 +24,7 @@
             "group": "Core concepts",
             "pages": [
               "framework/routing",
+              "framework/styling",
               "framework/actions",
               "framework/runtime"
             ]

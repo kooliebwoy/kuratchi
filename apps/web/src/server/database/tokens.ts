@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
 import { getLocals, redirect } from '@kuratchi/js';
+import { headers } from 'kuratchi:request';
 import { getCurrentUser } from './auth';
 import { generateDbToken } from './deploy';
 import { logActivity } from './audit';
@@ -32,6 +33,17 @@ function flashNewToken(token: string, redirectPath: string): void {
   locals.__setCookieHeaders.push(
     `__flash_token=${encodeURIComponent(token)}; Path=${redirectPath}; Max-Age=30; HttpOnly; SameSite=Strict`
   );
+}
+
+export function consumeFlashNewToken(): string | null {
+  const cookies = headers.get('cookie') || '';
+  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
+  if (!flashMatch) return null;
+
+  const locals = getLocals() as any;
+  if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
+  locals.__setCookieHeaders.push('__flash_token=; Path=/account/tokens; Max-Age=0; HttpOnly; SameSite=Strict');
+  return decodeURIComponent(flashMatch[1]);
 }
 
 // -- Database-scoped tokens ------------------------------------------

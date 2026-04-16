@@ -36,7 +36,7 @@ export function buildWorkerEntrypointSource(opts: {
   doClassNames: string[];
   workerClassEntries: WorkerClassExportEntry[];
   queueConsumers: QueueConsumerEntry[];
-  hasUserIndex?: boolean;
+  userIndexFile?: string;
   /** Auto-export Sandbox class from @cloudflare/sandbox when wrangler.jsonc has Sandbox container */
   hasSandbox?: boolean;
 }): string {
@@ -76,10 +76,11 @@ export function buildWorkerEntrypointSource(opts: {
   }
 
   // If user has src/index.ts with a default export, merge it with the generated fetch handler
-  if (opts.hasUserIndex) {
+  if (opts.userIndexFile) {
+    const userIndexImportPath = toWorkerImportPath(opts.projectDir, opts.outDir, opts.userIndexFile);
     lines.push(
-      "import __generatedWorker from './routes.ts';",
-      "import __userWorker from '../src/index.ts';",
+      "import __generatedWorker from './routes';",
+      `import __userWorker from '${userIndexImportPath}';`,
       '',
     );
     
@@ -113,7 +114,7 @@ export function buildWorkerEntrypointSource(opts: {
   } else if (queueDispatchCases.length > 0) {
     // No user index but we have queue consumers
     lines.push(
-      "import __generatedWorker from './routes.ts';",
+      "import __generatedWorker from './routes';",
       '',
       'export default {',
       '  fetch: __generatedWorker.fetch,',
@@ -127,17 +128,17 @@ export function buildWorkerEntrypointSource(opts: {
       '};',
     );
   } else {
-    lines.push("export { default } from './routes.ts';");
+    lines.push("export { default } from './routes';");
   }
 
   lines.push(
-    ...opts.doClassNames.map((className) => `export { ${className} } from './routes.ts';`),
+    ...opts.doClassNames.map((className) => `export { ${className} } from './routes';`),
     ...workerClassExports,
   );
 
   // Re-export Sandbox class from routes.ts when wrangler.jsonc has Sandbox container configured
   if (opts.hasSandbox) {
-    lines.push("export { Sandbox } from './routes.ts';");
+    lines.push("export { Sandbox } from './routes';");
   }
 
   lines.push('');

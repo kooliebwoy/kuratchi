@@ -15,25 +15,9 @@ import { defineConfig } from '@kuratchi/js';
 import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
 
 export default defineConfig({
-  ui: kuratchiUiConfig({ theme: 'default' }),
+  ui: kuratchiUiConfig({ theme: 'dark' }),
 });
 ```
-
-Tailwind CSS can be enabled through the same adapter:
-
-```ts
-import { defineConfig } from '@kuratchi/js';
-import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
-
-export default defineConfig({
-  ui: kuratchiUiConfig({
-    library: 'tailwindcss',
-    plugins: ['daisyui', 'forms'],
-  }),
-});
-```
-
-Kuratchi owns the Tailwind CLI build step internally. No Vite or PostCSS setup is required.
 
 ## Component usage
 
@@ -51,3 +35,4 @@ Kuratchi owns the Tailwind CLI build step internally. No Vite or PostCSS setup i
 
 - Components are `.html` templates imported directly into route files.
 - Theme CSS is shipped at `src/styles/theme.css`.
+- For Tailwind CSS, configure it in the core framework via `css: { tailwind: true }` — see `@kuratchi/js` docs.

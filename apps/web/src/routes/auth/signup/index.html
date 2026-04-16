@@ -1,10 +1,9 @@
 <script>
   import { dev } from '@kuratchi/js/environment';
-  import { env } from 'cloudflare:workers';
-  import { signUp } from '$server/database/auth';
+  import { signUp, getTurnstileSiteKey } from '$server/database/auth';
   import AuthCard from '@kuratchi/ui/auth-card.html';
 
-  const turnstileSiteKey = dev ? '' : (env.TURNSTILE_SITE_KEY || '');
+  const turnstileSiteKey = dev ? '' : getTurnstileSiteKey();
 </script>
 
 <AuthCard

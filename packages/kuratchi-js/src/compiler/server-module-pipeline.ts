@@ -62,6 +62,10 @@ function stripKuratchiEnvironmentImports(source: string): string {
   return source.replace(/^\s*import\s*\{[\s\S]*?\}\s*from\s*['"](?:kuratchi:environment|@kuratchi\/js\/environment)['"];?\s*$/gm, '');
 }
 
+function stripSourceExtension(specifier: string): string {
+  return specifier.replace(/\.(ts|js|mjs|cjs)$/i, '');
+}
+
 export function createServerModuleCompiler(
   options: CreateServerModuleCompilerOptions,
 ): ServerModuleCompiler {
@@ -73,7 +77,7 @@ export function createServerModuleCompiler(
   function toModuleSpecifier(fromFileAbs: string, toFileAbs: string): string {
     let rel = path.relative(path.dirname(fromFileAbs), toFileAbs).replace(/\\/g, '/');
     if (!rel.startsWith('.')) rel = './' + rel;
-    return rel;
+    return stripSourceExtension(rel);
   }
 
   function resolveDoProxyTarget(absPath: string): string | null {
@@ -190,7 +194,7 @@ export function createServerModuleCompiler(
 
     let relPath = path.relative(outFileDir, target).replace(/\\/g, '/');
     if (!relPath.startsWith('.')) relPath = './' + relPath;
-    return relPath;
+    return stripSourceExtension(relPath);
   }
 
   return {

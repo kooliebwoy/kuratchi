@@ -17,9 +17,11 @@ src/routes/layout.html             -> shared layout
 
 ## Route execution model
 
-Kuratchi pages are SSR by default, but the top-level route `<script>` is your browser/client script.
+Kuratchi pages are SSR by default.
 
-That means you can use browser code there like DOM access, event handlers, local state, and client-side imports.
+The top-level route `<script>` is client-side by default.
+
+When you import from `$server/*`, Kuratchi treats those functions as the server/RPC escape hatch.
 
 For server work, use `$server/` imports, actions, and runtime hooks.
 
@@ -36,9 +38,27 @@ For server work, use `$server/` imports, actions, and runtime hooks.
 </ul>
 ```
 
-This is especially important for `$server/` imports. When you `await` a `$server/` function at the top level, Kuratchi runs that read during SSR and keeps your code in the same order you wrote it.
+This is especially important for `$server/` imports. When you `await` a `$server/` function at the top level, Kuratchi runs that read during SSR and keeps your code in the same order you wrote it, even though the authored `<script>` stays client-first.
 
 Use `src/server` for private modules and backend logic.
+
+## Browser-only JavaScript
+
+Use plain `<script>` when you want vanilla DOM behavior in the browser:
+
+```html
+<script>
+  import { mountCopyButtons } from '$lib/copy-buttons';
+
+  mountCopyButtons();
+</script>
+
+<button type="button" data-copy="hello">Copy</button>
+```
+
+Kuratchi adds `type="module"` for you when the script contains ES module imports.
+
+Put reusable browser helpers in `src/lib` so they can be imported cleanly from your route markup.
 
 ## Layouts
 
@@ -96,13 +116,14 @@ for (const item of items) {
 ```html
 <script>
   import Card from '$lib/card.html';
-  import Badge from '@kuratchi/ui/badge.html';
 </script>
 
 <Card title="Stack">
-  <Badge variant="success">Live</Badge>
+  <p>Live</p>
 </Card>
 ```
+
+Package components like `@kuratchi/ui/*` are optional. Plain HTML and local `src/lib/*.html` components are first-class.
 
 ### Component Props
 
@@ -130,7 +151,7 @@ Components receive props via a `props` object. Destructure in the component's `<
 
 ## Client reactivity
 
-Use `$:` inside browser-side template scripts when you need client updates:
+Use `$:` inside client-side `<script>` blocks when you need client updates:
 
 ```html
 <script>
@@ -146,7 +167,9 @@ Use `$:` inside browser-side template scripts when you need client updates:
 
 Rules:
 
-- The top route `<script>` is browser/client code.
-- `$:` is available when you want reactive browser updates.
+- The top route `<script>` is client-side.
+- `$server/*` imports are the server/RPC escape hatch.
+- You do not need to author `type="module"` yourself for imported client scripts.
+- `$:` is available when you want reactive browser updates inside client scripts.
 - Proxy-backed array and object mutation works when `$:` is active.
 - You should not need browser guards in normal route code.

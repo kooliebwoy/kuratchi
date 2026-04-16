@@ -26,6 +26,8 @@ my-app/
   package.json
   wrangler.jsonc
   kuratchi.config.ts
+  src/assets/app.css
+  src/lib/counter.ts
   src/routes/layout.html
   src/routes/index.html
 ```
@@ -63,6 +65,7 @@ You do not need a hand-written `src/index.ts`.
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>My App</title>
+  <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
   <header><a href="/">Home</a></header>
@@ -93,7 +96,73 @@ if (items.length > 0) {
 }
 ```
 
-The page is server-rendered, and the top-level `<script>` is your browser-side script.
+The page is server-rendered, but the authored top-level `<script>` is client-side. When you import from `$server/*`, Kuratchi uses that as the server/RPC escape hatch.
+
+## First stylesheet
+
+Put plain CSS in `src/assets`. Kuratchi mirrors it into the generated public assets directory and keeps Wrangler's `assets.directory` in sync for you.
+
+```css
+/* src/assets/app.css */
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.counter {
+  display: inline-flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+```
+
+Then reference it from your layout or page with a normal URL:
+
+```html
+<link rel="stylesheet" href="/assets/app.css" />
+```
+
+## First browser script
+
+For vanilla JS, keep browser helpers in `src/lib` and load them from a normal `<script>` block in the page markup:
+
+```ts
+// src/lib/counter.ts
+export function mountCounter() {
+  const root = document.querySelector('[data-counter]');
+  if (!root) return;
+
+  const output = root.querySelector('[data-count]');
+  const button = root.querySelector('button');
+  let count = 0;
+
+  button?.addEventListener('click', () => {
+    count += 1;
+    if (output) output.textContent = String(count);
+  });
+}
+```
+
+```html
+<div class="counter" data-counter>
+  <strong data-count>0</strong>
+  <button type="button">Increment</button>
+</div>
+
+<script>
+  import { mountCounter } from '$lib/counter';
+
+  mountCounter();
+</script>
+```
+
+Kuratchi adds `type="module"` for you when the script contains ES module imports.
+
+This is the recommended framework path when you want plain HTML, a `.css` file, and a little browser JavaScript without opting into a UI library.
 
 ## Run locally
 

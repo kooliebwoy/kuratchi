@@ -3,12 +3,6 @@
   "version": "0.0.1",
   "description": "KuratchiJS UI component library - server-rendered HTML components with scoped CSS",
   "type": "module",
-  "dependencies": {
-    "@tailwindcss/cli": "^4.1.12",
-    "@tailwindcss/forms": "^0.5.10",
-    "daisyui": "^5.3.7",
-    "tailwindcss": "^4.1.12"
-  },
   "exports": {
     "./adapter": "./adapter.ts",
     "./*": "./src/lib/*"

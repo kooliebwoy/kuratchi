@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { kuratchiORM } from '@kuratchi/orm';
-import { headers } from '@kuratchi/js/request';
+import { headers } from 'kuratchi:request';
 
 const db = kuratchiORM(() => (env as any).DB);
 

@@ -74,6 +74,26 @@
         "esbuild": "^0.25.0",
         "typescript": "^5.8.0"
     },
+    "peerDependencies": {
+        "@tailwindcss/postcss": "^4.0.0",
+        "lightningcss": "^1.0.0",
+        "postcss": "^8.0.0",
+        "tailwindcss": "^4.0.0"
+    },
+    "peerDependenciesMeta": {
+        "@tailwindcss/postcss": {
+            "optional": true
+        },
+        "lightningcss": {
+            "optional": true
+        },
+        "postcss": {
+            "optional": true
+        },
+        "tailwindcss": {
+            "optional": true
+        }
+    },
     "devDependencies": {
         "@cloudflare/workers-types": "^4.20260223.0",
         "@types/node": "^24.4.0"

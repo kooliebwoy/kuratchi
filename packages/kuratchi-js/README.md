@@ -50,16 +50,17 @@ src/routes/layout.html        → shared layout wrapping all routes
 
 ### Execution model
 
-Kuratchi routes are server-first.
+Kuratchi routes are SSR by default, with a client-first authored `<script>` model.
 
 - `src/routes` defines server-rendered route modules.
-- Top-level route `<script>` blocks run on the server.
+- Top-level route `<script>` blocks are client-side by default.
+- `$server/*` imports are the server/RPC escape hatch.
 - Template expressions, `if`, and `for` blocks render on the server.
 - `src/server` is for private server-only modules and reusable backend logic.
 - `src/server/runtime.hook.ts` is the server runtime hook entrypoint for request interception.
-- Reactive `$:` code is the browser-only escape hatch.
+- Reactive `$:` code runs in client scripts.
 
-Route files are not client files. They are server-rendered routes that can opt into small browser-side reactive behavior when needed.
+Route files still render on the server, but the authored script model matches the web: write client code in `<script>`, and use `$server/*` when you need the framework to cross into server execution.
 
 ### Route file structure
 
@@ -80,6 +81,79 @@ Route files are not client files. They are server-rendered routes that can opt i
 
 The `$server/` alias resolves to `src/server/`. Use that as the canonical home for reusable server-only modules.
 Private server logic should live in `src/server/` and be imported into routes explicitly.
+
+### Static assets (`src/assets`)
+
+Put plain CSS, images, and other static files in `src/assets/`.
+
+Kuratchi mirrors that directory into the generated public assets output and keeps Wrangler's `assets.directory` in sync automatically, so you can reference files with `/assets/...` by default.
+
+```html
+<link rel="stylesheet" href="/assets/app.css" />
+```
+
+If you want a different public URL prefix, set `assetsPrefix` in `kuratchi.config.ts`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  assetsPrefix: '/static/',
+});
+```
+
+Then reference the same file at `/static/...`.
+
+### CSS processing
+
+CSS files in `src/assets/` can be processed during build. All CSS tooling is **opt-in** — install only what you need.
+
+#### Minification
+
+To enable CSS minification via [Lightning CSS](https://lightningcss.dev/):
+
+```bash
+npm install lightningcss
+```
+
+Minification is automatic in production builds when `lightningcss` is installed.
+
+#### Tailwind CSS
+
+To enable Tailwind, install the required packages and configure in `kuratchi.config.ts`:
+
+```bash
+npm install tailwindcss @tailwindcss/postcss postcss
+```
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  css: {
+    tailwind: true,
+    plugins: ['daisyui'],  // optional Tailwind plugins
+  },
+});
+```
+
+Then use Tailwind's CSS-first configuration in your CSS file:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+@plugin "daisyui";
+```
+
+#### CSS config options
+
+```ts
+css: {
+  tailwind: boolean;     // Enable Tailwind processing (default: false)
+  plugins: string[];     // Tailwind plugins to load (default: [])
+  minify: boolean;       // Enable minification (default: true in production, requires lightningcss)
+}
+```
 
 ### Layout file
 
@@ -242,8 +316,8 @@ Block form is also supported:
 ```
 
 Notes:
-- Route files are server-rendered by default. `$:` is the only browser-side execution primitive in a route template.
-- This reactivity runs in browser scripts rendered in the template markup, not in the top server route `<script>` block.
+- Route files are server-rendered by default.
+- `$:` runs in client scripts rendered in the template markup.
 - Object/array `let` bindings are proxy-backed automatically when `$:` is used.
 - `$: name = expr` works; when replacing proxy-backed values, the compiler preserves reactivity under the hood.
 - You should not need `if (browser)` style guards in normal Kuratchi route code. If browser checks become necessary outside `$:`, the boundary is likely in the wrong place.
@@ -283,11 +357,11 @@ for (const file of files) {
 **Key behavior:**
 - `$lib/` imports work in server templates (SSR) AND client scripts
 - Use for utilities, formatters, validators, and DOM helpers
-- Client scripts in template body (`<script type="module">`) are bundled with esbuild
+- Client scripts in template body are executed on the client
 
 ### Client-Side DOM Manipulation
 
-For browser-only code, use inline `<script type="module">` blocks in the template body:
+For browser-only code, use normal `<script>` blocks in the template body:
 
 ```html
 <script>
@@ -302,7 +376,7 @@ For browser-only code, use inline `<script type="module">` blocks in the templat
 </div>
 
 <!-- Client-side script - runs in browser -->
-<script type="module">
+<script>
 import { initChatUI } from '$lib/chat-ui';
 
 const chatId = window.location.pathname.split('/').pop();
@@ -311,7 +385,8 @@ initChatUI(chatId);
 ```
 
 Behavior:
-- Inline `<script type="module">` blocks are bundled with esbuild
+- Inline client `<script>` blocks are bundled with esbuild
+- Kuratchi adds `type="module"` for you when the script contains ES module imports
 - `$lib/` imports are resolved and bundled for the browser
 - `$server/` imports in client scripts become RPC stubs (future feature)
 

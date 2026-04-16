@@ -25,8 +25,11 @@ During development, keep these rules in mind:
 
 - Pages are server-rendered by default.
 - `src/server` is private server-only code.
-- The top-level route `<script>` is browser/client code.
-- Browser reactivity uses `$:` when you want reactive updates.
+- The authored top-level route `<script>` is client-side.
+- `$server/*` imports are the server/RPC escape hatch.
+- Browser reactivity uses `$:` inside client scripts when you want reactive updates.
+- You do not need to author `type="module"` yourself for imported client scripts.
+- `src/assets` is mirrored into the generated public assets directory and synced to Wrangler automatically.
 - `kuratchi:environment` is compiled for the current mode, so `dev` branches differ between `kuratchi dev` and `kuratchi build`.
 - Wrangler should continue pointing to `.kuratchi/worker.ts`.
 
@@ -35,7 +38,8 @@ During development, keep these rules in mind:
 KuratchiJS is SSR by default:
 
 - The page HTML renders on the server.
-- The top-level route `<script>` is browser/client code.
+- The authored top-level route `<script>` is client-side.
+- `$server/*` imports let that client-authored code call into the server.
 - Form actions execute on the server.
 - Server logic lives in `$server/*`, actions, and runtime hooks.
 

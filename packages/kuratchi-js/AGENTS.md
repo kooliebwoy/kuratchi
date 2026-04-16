@@ -27,7 +27,7 @@ Developers should not have to wire any of this together manually. The framework 
 ## Package Scope: Apps and Libraries
 KuratchiJS supports two categories of output, both built with the same framework:
 
-**Fullstack Cloudflare Workers apps** â€” server-rendered pages, Durable Objects, D1, auth, forms, routing. Example: `apps/dashboard`, `apps/watchtower`.
+**Fullstack Cloudflare Workers apps** â€” server-rendered pages, Durable Objects, D1, auth, forms, routing. Example: `apps/web`, `apps/site`.
 
 **Library/package targets** â€” framework-built packages that ship reusable UI components or behavior for other KuratchiJS apps. Example: `packages/kuratchi-db-studio` (`@kuratchi/db-studio`) â€” a shared SQL browser component for D1 and Durable Object SQLite databases, built with the framework's HTML-first component model and distributed as `.html` source files.
 
@@ -55,22 +55,22 @@ This means we **dog food everything**: KuratchiJS packages are built with Kuratc
 
 ## Source of Truth
 - Primary framework package: `packages/kuratchi-js`.
-- Primary validation app: `apps/dashboard`.
+- Primary validation app: `apps/web`.
 - Primary library dog food example: `packages/kuratchi-db-studio` (`@kuratchi/db-studio`).
 - Do not assume legacy/sample apps exist unless they are present in this repository.
 
 ## Required Verification Workflow
 For compiler/runtime/CLI changes in this package, run all of the following:
-1. `bun run build:framework`
-2. `bun run bench:framework`
-3. `cd apps/dashboard && bun run build`
+1. `bun run build` in `packages/kuratchi-js`
+2. `bun run check` in `packages/kuratchi-js`
+3. `cd apps/web && bun run build`
 
 If any command fails, treat the task as incomplete.
 
 ## Performance Guardrails
 - Keep dev/prod compiler behavior functionally equivalent (dev readability is allowed).
 - Keep injected client bridge consolidated to a single script.
-- Track benchmark output in `apps/dashboard/.kuratchi/bench/framework-bench.json`.
+- This checkout does not currently provide a dedicated framework benchmark script or benchmark artifact path; do not claim benchmark verification unless one is added to the repository.
 - Avoid shipping changes that significantly increase bridge size or p95 compile time without explicit justification.
 
 ## Documentation Contract

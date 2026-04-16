@@ -11,11 +11,13 @@ import { createComponentCompiler } from './component-pipeline.js';
 import {
   readAssetsPrefix,
   readAuthConfig,
+  readCssConfig,
   readOrmConfig,
   readSecurityConfig,
   readUiConfigValues,
   readUiTheme,
 } from './config-reading.js';
+import { isCssFile, processCss, type CssConfigEntry } from './css-pipeline.js';
 import {
   discoverContainerFiles,
   discoverConventionClassFiles,
@@ -369,17 +371,29 @@ export async function compile(options: CompileOptions): Promise<string> {
   const userIndexFile = path.join(srcDir, 'index.ts');
   const hasUserIndex = fs.existsSync(userIndexFile) && 
     fs.readFileSync(userIndexFile, 'utf-8').includes('export default');
+  const transformedUserIndexFile = hasUserIndex ? serverModuleCompiler.transformModule(userIndexFile) : undefined;
+  const transformedWorkerClassEntries = [...agentConfig, ...containerConfig, ...workflowConfig].map((entry) => ({
+    ...entry,
+    file: serverModuleCompiler.transformModule(path.join(projectDir, entry.file)),
+  }));
+  const transformedQueueConsumers = queueConsumerConfig.map((entry) => ({
+    ...entry,
+    file: serverModuleCompiler.transformModule(path.join(projectDir, entry.file)),
+  }));
   const workerFile = path.join(outDir, 'worker.ts');
   writeIfChanged(workerFile, buildWorkerEntrypointSource({
     projectDir,
     outDir,
     doClassNames: doConfig.map((entry) => entry.className),
-    workerClassEntries: [...agentConfig, ...containerConfig, ...workflowConfig],
-    queueConsumers: queueConsumerConfig,
-    hasUserIndex,
+    workerClassEntries: transformedWorkerClassEntries,
+    queueConsumers: transformedQueueConsumers,
+    userIndexFile: transformedUserIndexFile,
     hasSandbox: hasSandboxContainer(projectDir),
   }));
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
+
+  // Read CSS config for asset processing
+  const cssConfig = readCssConfig(projectDir);
 
   // Auto-sync wrangler.jsonc with workflow/container/DO config from kuratchi.config.ts
   // Also sync the static assets directory when src/assets/ exists, so Cloudflare Workers
@@ -389,10 +403,15 @@ export async function compile(options: CompileOptions): Promise<string> {
   if (fs.existsSync(srcAssetsDir)) {
     // Mirror src/assets/ into .kuratchi/public/<prefix>/ so Cloudflare serves them at the
     // correct URL (e.g. /assets/app.css) — the directory passed to wrangler is the parent.
+    // CSS files are processed through the CSS pipeline (Tailwind, minification).
     const prefixSegment = assetsPrefix.replace(/^\/|\/$/g, ''); // '/assets/' -> 'assets'
     const publicDir = path.join(projectDir, '.kuratchi', 'public');
     const publicAssetsDir = prefixSegment ? path.join(publicDir, prefixSegment) : publicDir;
-    copyDirIfChanged(srcAssetsDir, publicAssetsDir);
+    await copyDirIfChanged(srcAssetsDir, publicAssetsDir, {
+      projectDir,
+      cssConfig,
+      isDev: options.isDev ?? false,
+    });
     syncedAssetsDirectory = path.relative(projectDir, publicDir).replace(/\\/g, '/');
   }
 
@@ -431,23 +450,52 @@ function writeIfChanged(filePath: string, content: string): void {
   fs.writeFileSync(filePath, content, 'utf-8');
 }
 
+interface CopyDirOptions {
+  projectDir: string;
+  cssConfig: CssConfigEntry | null;
+  isDev: boolean;
+}
+
 /**
- * Recursively copy files from src to dest, skipping files whose content is already identical.
+ * Recursively copy files from src to dest, processing CSS files through the CSS pipeline.
  * Used to mirror src/assets/ into .kuratchi/public/ for Cloudflare Workers Static Assets.
  */
-function copyDirIfChanged(src: string, dest: string): void {
+async function copyDirIfChanged(src: string, dest: string, options: CopyDirOptions): Promise<void> {
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
+
     if (entry.isDirectory()) {
-      copyDirIfChanged(srcPath, destPath);
-    } else {
-      const srcBuf = fs.readFileSync(srcPath);
-      const destBuf = fs.existsSync(destPath) ? fs.readFileSync(destPath) : null;
-      if (!destBuf || !srcBuf.equals(destBuf)) {
-        fs.writeFileSync(destPath, srcBuf);
+      await copyDirIfChanged(srcPath, destPath, options);
+      continue;
+    }
+
+    // Process CSS files through the CSS pipeline
+    if (isCssFile(srcPath)) {
+      const srcContent = fs.readFileSync(srcPath, 'utf-8');
+      const result = await processCss({
+        filePath: srcPath,
+        content: srcContent,
+        projectDir: options.projectDir,
+        cssConfig: options.cssConfig,
+        isDev: options.isDev,
+      });
+
+      const destContent = fs.existsSync(destPath) ? fs.readFileSync(destPath, 'utf-8') : null;
+      if (destContent !== result.css) {
+        fs.writeFileSync(destPath, result.css, 'utf-8');
       }
+      continue;
+    }
+
+    // Copy non-CSS files as-is
+    const srcBuf = fs.readFileSync(srcPath);
+    const destBuf = fs.existsSync(destPath) ? fs.readFileSync(destPath) : null;
+    if (!destBuf || !srcBuf.equals(destBuf)) {
+      fs.writeFileSync(destPath, srcBuf);
     }
   }
 }

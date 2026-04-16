@@ -5,16 +5,14 @@ description: "Use kuratchi.config.ts for framework integrations"
 
 ## `kuratchi.config.ts`
 
-The config file is optional. You only need it when wiring framework integrations such as UI, ORM, or auth.
+The config file is optional. You only need it when wiring framework integrations such as ORM, auth, CSS processing, or custom asset settings.
 
 ```ts
 import { defineConfig } from '@kuratchi/js';
-import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
 import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
 import { kuratchiAuthConfig } from '@kuratchi/auth/adapter';
 
 export default defineConfig({
-  ui: kuratchiUiConfig({ library: 'tailwindcss' }),
   orm: kuratchiOrmConfig({
     databases: {
       DB: { schema: appSchema },
@@ -30,85 +28,151 @@ export default defineConfig({
 
 Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
 
-## UI Configuration
+## Static assets
 
-The `ui` config supports Tailwind CSS and plugins like DaisyUI.
+For plain CSS, images, and other static files, put them in `src/assets`.
+
+Kuratchi mirrors `src/assets` into the generated public assets directory and keeps Wrangler's `assets.directory` in sync automatically, so the default public URL is `/assets/...`.
+
+```html
+<link rel="stylesheet" href="/assets/app.css" />
+```
+
+If you want a different public prefix, set `assetsPrefix`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  assetsPrefix: '/static/',
+});
+```
+
+Then reference the same file with the new prefix:
+
+```html
+<link rel="stylesheet" href="/static/app.css" />
+```
+
+## CSS Configuration
+
+CSS processing is opt-in. Install the packages you need and configure in `kuratchi.config.ts`.
+
+### CSS Minification
+
+Install Lightning CSS for production minification:
+
+```bash
+npm install lightningcss
+```
+
+Minification is automatic in production builds — no config needed.
 
 ### Tailwind CSS
 
-Enable Tailwind CSS with the `library` option:
+Install the required packages:
 
-```ts
-ui: kuratchiUiConfig({ 
-  library: 'tailwindcss'
-})
+```bash
+npm install tailwindcss @tailwindcss/postcss postcss
 ```
 
-The framework automatically:
-- Detects `@tailwindcss/cli` in your project
-- Generates the input CSS with `@import "tailwindcss"`
-- Builds and injects the output CSS into your layout
+Enable Tailwind in your config:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+
+export default defineConfig({
+  css: {
+    tailwind: true,
+  },
+});
+```
+
+Create your CSS file with Tailwind imports:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+```
 
 ### Tailwind Plugins (DaisyUI, Forms, etc.)
 
 Add plugins with the `plugins` array:
 
-```ts
-ui: kuratchiUiConfig({ 
-  library: 'tailwindcss',
-  plugins: ['daisyui', 'forms']
-})
+```bash
+npm install daisyui @tailwindcss/forms
 ```
 
-**Supported plugins:**
-- `daisyui` — Component library with themes
-- `forms` — Better form styling (expands to `@tailwindcss/forms`)
-- Any npm package name that's a valid Tailwind plugin
-
-**Example with DaisyUI:**
-
 ```ts
-// kuratchi.config.ts
-import { defineConfig } from '@kuratchi/js';
-import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
-
 export default defineConfig({
-  ui: kuratchiUiConfig({ 
-    library: 'tailwindcss',
-    plugins: ['daisyui']
-  }),
+  css: {
+    tailwind: true,
+    plugins: ['daisyui', '@tailwindcss/forms'],
+  },
 });
 ```
 
-Then use DaisyUI classes in your templates:
+Reference plugins in your CSS:
+
+```css
+/* src/assets/app.css */
+@import "tailwindcss";
+@plugin "daisyui";
+@plugin "@tailwindcss/forms";
+```
+
+Then use the classes in your templates:
 
 ```html
 <button class="btn btn-primary">Click me</button>
 <div class="card bg-base-100 shadow-xl">
   <div class="card-body">
     <h2 class="card-title">Card Title</h2>
-    <p>Card content</p>
   </div>
 </div>
 ```
 
-### @kuratchi/ui Theme Options
+<Info>
+For complete styling documentation including vanilla CSS, CSS frameworks (Bootstrap, Pico, Bulma), and best practices, see the [Styling guide](/framework/styling).
+</Info>
 
-If you're using the `@kuratchi/ui` component library, you can also configure theme options:
+## @kuratchi/ui Component Library
+
+The `@kuratchi/ui` package provides server-rendered HTML components. It's independent of your CSS choice.
 
 ```ts
-ui: kuratchiUiConfig({ 
-  theme: 'dark',    // 'light' | 'dark' | 'system'
-  radius: 'default' // 'none' | 'default' | 'full'
-})
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ 
+    theme: 'dark',    // 'light' | 'dark' | 'system'
+    radius: 'default' // 'none' | 'default' | 'full'
+  }),
+});
+```
+
+Use components in your routes:
+
+```html
+<script>
+  import Card from '@kuratchi/ui/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+</script>
+
+<Card>
+  <Badge variant="success">Active</Badge>
+  <p>Card content</p>
+</Card>
 ```
 
 ## What belongs here
 
 Use the config file for:
 
-- UI adapter setup (Tailwind, plugins, themes)
+- CSS processing (Tailwind, minification)
 - ORM schema bindings
 - Auth configuration
+- UI component theming
 
 Routing, Durable Object discovery, and generated worker output are handled by the compiler.

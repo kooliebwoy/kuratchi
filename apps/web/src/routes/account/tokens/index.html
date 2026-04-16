@@ -1,8 +1,7 @@
 <script>
-  import { headers, locals } from 'kuratchi:request';
   import { handleScopeChange } from '$lib/account/tokens';
   import { getCurrentUser } from '$server/database/auth';
-  import { getAllTokens, createScopedToken, revokeAnyToken } from '$server/database/tokens';
+  import { getAllTokens, createScopedToken, revokeAnyToken, consumeFlashNewToken } from '$server/database/tokens';
   import { getDatabases } from '$server/database/databases';
   import { getKvNamespaces } from '$server/database/kv';
   import { getR2Buckets } from '$server/database/r2';
@@ -18,14 +17,7 @@
   const kvNamespaces = user ? await getKvNamespaces() : [];
   const r2Buckets = user ? await getR2Buckets() : [];
 
-  let newToken = null;
-  const cookies = headers.get('cookie') || '';
-  const flashMatch = cookies.match(/__flash_token=([^;]+)/);
-  if (flashMatch) {
-    newToken = decodeURIComponent(flashMatch[1]);
-    if (!locals.__setCookieHeaders) locals.__setCookieHeaders = [];
-    locals.__setCookieHeaders.push('__flash_token=; Path=/account/tokens; Max-Age=0; HttpOnly; SameSite=Strict');
-  }
+  const newToken = consumeFlashNewToken();
 </script>
 
 if (!user) {

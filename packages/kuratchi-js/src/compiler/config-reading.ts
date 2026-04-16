@@ -1,6 +1,5 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execFileSync } from 'node:child_process';
 
 import {
   type AuthConfigEntry,
@@ -22,6 +21,15 @@ export interface UiConfigEntry {
   radius: string;
   library?: 'tailwindcss';
   plugins: string[];
+}
+
+export interface CssConfigEntry {
+  /** Enable Tailwind CSS processing via @tailwindcss/postcss */
+  tailwind: boolean;
+  /** Tailwind plugins to load (e.g., 'daisyui', '@tailwindcss/forms') */
+  plugins: string[];
+  /** Enable CSS minification via Lightning CSS (default: true in production) */
+  minify: boolean;
 }
 
 function skipWhitespace(source: string, start: number): number {
@@ -110,61 +118,14 @@ function readUiConfig(projectDir: string): UiConfigEntry | null {
   };
 }
 
-function findTailwindCliPath(projectDir: string): string | null {
-  const candidates = [
-    path.join(projectDir, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
-    path.join(projectDir, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
-    path.join(projectDir, '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
-    path.join(projectDir, '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
-    path.join(projectDir, '..', '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
-    path.join(projectDir, '..', '..', 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
-    path.join(path.resolve(projectDir, '../..'), 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs'),
-    path.join(path.resolve(projectDir, '../..'), 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.js'),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function buildTailwindCss(projectDir: string, uiConfig: UiConfigEntry): string | null {
-  const cliPath = findTailwindCliPath(projectDir);
-  if (!cliPath) {
-    console.warn('[kuratchi] ui.library: "tailwindcss" configured but @tailwindcss/cli could not be resolved');
-    return null;
-  }
-
-  const uiDir = path.join(projectDir, '.kuratchi', 'ui');
-  if (!fs.existsSync(uiDir)) fs.mkdirSync(uiDir, { recursive: true });
-
-  const inputPath = path.join(uiDir, 'tailwind.input.css');
-  const outputPath = path.join(uiDir, 'tailwind.output.css');
-  const sourcePath = path.relative(uiDir, path.join(projectDir, 'src')).replace(/\\/g, '/');
-  const configSource = path.relative(uiDir, path.join(projectDir, 'kuratchi.config.ts')).replace(/\\/g, '/');
-  const lines = [
-    '@import "tailwindcss";',
-    `@source "${sourcePath}";`,
-    `@source "${configSource}";`,
-    ...uiConfig.plugins.map((plugin) => `@plugin "${plugin}";`),
-    '',
-  ];
-  fs.writeFileSync(inputPath, lines.join('\n'), 'utf-8');
-
-  execFileSync(process.execPath, [cliPath, '-i', inputPath, '-o', outputPath], {
-    cwd: projectDir,
-    stdio: 'pipe',
-  });
-
-  return fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : null;
-}
-
+/**
+ * Read the @kuratchi/ui theme CSS.
+ * Note: Tailwind CSS is now handled by the CSS pipeline (css-pipeline.ts),
+ * not by the UI adapter. This function only loads the @kuratchi/ui theme.css.
+ */
 export function readUiTheme(projectDir: string): string | null {
   const uiConfig = readUiConfig(projectDir);
   if (!uiConfig) return null;
-
-  if (uiConfig.library === 'tailwindcss') {
-    return buildTailwindCss(projectDir, uiConfig);
-  }
 
   const themeValue = uiConfig.theme ?? 'default';
 
@@ -198,6 +159,49 @@ export function readUiConfigValues(projectDir: string): { theme: string; radius:
   return {
     theme: uiConfig.theme,
     radius: uiConfig.radius,
+  };
+}
+
+/**
+ * Read CSS configuration from kuratchi.config.ts.
+ *
+ * Example config:
+ * ```ts
+ * export default defineConfig({
+ *   css: {
+ *     tailwind: true,
+ *     plugins: ['daisyui'],
+ *     minify: true,
+ *   },
+ * });
+ * ```
+ */
+export function readCssConfig(projectDir: string): CssConfigEntry | null {
+  const configPath = path.join(projectDir, 'kuratchi.config.ts');
+  if (!fs.existsSync(configPath)) return null;
+
+  const source = fs.readFileSync(configPath, 'utf-8');
+  const cssBlock = readConfigBlock(source, 'css');
+  if (!cssBlock) return null;
+
+  const tailwindMatch = cssBlock.body.match(/tailwind\s*:\s*(true|false)/);
+  const minifyMatch = cssBlock.body.match(/minify\s*:\s*(true|false)/);
+  const pluginsMatch = cssBlock.body.match(/plugins\s*:\s*\[([\s\S]*?)\]/);
+
+  const plugins: string[] = [];
+  if (pluginsMatch) {
+    const itemRegex = /['"]([^'"]+)['"]/g;
+    let pluginMatch: RegExpExecArray | null;
+    while ((pluginMatch = itemRegex.exec(pluginsMatch[1])) !== null) {
+      const plugin = normalizeUiPluginName(pluginMatch[1]);
+      if (plugin) plugins.push(plugin);
+    }
+  }
+
+  return {
+    tailwind: tailwindMatch?.[1] === 'true',
+    plugins,
+    minify: minifyMatch?.[1] !== 'false', // default true
   };
 }
 

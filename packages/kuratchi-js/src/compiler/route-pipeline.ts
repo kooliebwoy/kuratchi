@@ -171,11 +171,48 @@ function buildGeneratedLoadPlan(opts: {
   fnToModule: Record<string, string>;
   rpcNameMap?: Map<string, string>;
   ssrAwaitCalls?: SsrAwaitCall[];
+  requestImports?: Array<{ exportName: string; alias: string }>;
 }): RouteLoadPlan {
   const ssrAwaitCalls = opts.ssrAwaitCalls ?? [];
+  const requestImports = opts.requestImports ?? [];
   const loadSections: string[] = [];
 
-  if (opts.scriptBody && opts.scriptUsesAwait) {
+  // Inject kuratchi:request variable declarations at the start
+  // These map the virtual module exports to __routeParams values
+  if (requestImports.length > 0) {
+    const requestDecls: string[] = [];
+    for (const imp of requestImports) {
+      switch (imp.exportName) {
+        case 'params':
+          // __routeParams IS the params object (passed from runtime as match.params)
+          requestDecls.push(`const ${imp.alias} = __routeParams || {};`);
+          break;
+        case 'url':
+          requestDecls.push(`const ${imp.alias} = __routeParams.url;`);
+          break;
+        case 'pathname':
+          requestDecls.push(`const ${imp.alias} = __routeParams.pathname || '';`);
+          break;
+        case 'searchParams':
+          requestDecls.push(`const ${imp.alias} = __routeParams.searchParams || new URLSearchParams();`);
+          break;
+        case 'slug':
+          requestDecls.push(`const ${imp.alias} = __routeParams.slug || '';`);
+          break;
+        case 'method':
+          requestDecls.push(`const ${imp.alias} = __routeParams.method || 'GET';`);
+          break;
+      }
+    }
+    if (requestDecls.length > 0) {
+      loadSections.push(requestDecls.join('\n'));
+    }
+  }
+
+  // Include script body if it uses await OR if we have requestImports
+  // (because the script may reference params/url/etc from kuratchi:request)
+  const hasRequestImports = requestImports.length > 0;
+  if (opts.scriptBody && (opts.scriptUsesAwait || hasRequestImports)) {
     loadSections.push(opts.scriptBody);
   }
   if (opts.queries.length > 0) {
@@ -338,7 +375,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
       returnVars: [...parsed.loadReturnVars],
       scriptUsesAwait: false,
     }
-    : ((scriptBody && scriptUsesAwait) || queryDefs.length > 0 || hasSsrAwaitCalls)
+    : ((scriptBody && scriptUsesAwait) || queryDefs.length > 0 || hasSsrAwaitCalls || (parsed.requestImports && parsed.requestImports.length > 0))
       ? buildGeneratedLoadPlan({
         pattern,
         scriptBody,
@@ -349,6 +386,7 @@ export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
         fnToModule,
         rpcNameMap,
         ssrAwaitCalls,
+        requestImports: parsed.requestImports,
       })
       : {
         mode: 'none' as const,
