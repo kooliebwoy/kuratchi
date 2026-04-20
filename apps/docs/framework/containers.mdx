@@ -1,0 +1,119 @@
+---
+title: "Containers"
+description: "Run stateful container-backed Durable Objects with auto-discovery"
+---
+
+## Containers
+
+KuratchiJS auto-discovers `.container.ts` files in `src/server/`. Each file becomes a [Cloudflare Container](https://developers.cloudflare.com/containers/) — a Durable Object with a Docker image attached — with its wrangler config, binding, and SQLite migration wired up on every build. Containers are lower-level than [sandboxes](/framework/sandbox): you supply the image and the class implementation.
+
+```ts
+// src/server/wordpress.container.ts
+import { Container } from 'cloudflare:workers';
+
+export default class WordPress extends Container<Env> {
+	static image = './docker/wordpress.Dockerfile';
+	static instanceType = 'standard';
+	static maxInstances = 5;
+	static sqlite = true;
+
+	// Your container lifecycle hooks and request handlers go here.
+}
+```
+
+That single file produces every wrangler entry the container needs:
+
+```jsonc
+// wrangler.jsonc — auto-synced, do not edit by hand
+{
+	"containers": [
+		{ "name": "wordpress-container", "class_name": "WordPress", "image": "./docker/wordpress.Dockerfile", "instance_type": "standard", "max_instances": 5 }
+	],
+	"durable_objects": {
+		"bindings": [{ "name": "WORDPRESS_CONTAINER", "class_name": "WordPress" }]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["WordPress"] }
+	]
+}
+```
+
+## Naming convention
+
+The filename maps to the env binding:
+
+| File | Binding | Class (as written) |
+|------|---------|--------------------|
+| `wordpress.container.ts` | `WORDPRESS_CONTAINER` | `WordPress` |
+| `redis.container.ts` | `REDIS_CONTAINER` | `Redis` |
+| `data-pipeline.container.ts` | `DATA_PIPELINE_CONTAINER` | `DataPipeline` |
+
+The framework reads the class name from your exported class (`export default class X` or `export class X`). It does not rename anything.
+
+## Static tuning fields
+
+Kuratchi parses `static` fields on the class at build time. All fields are optional except `image`.
+
+```ts
+export default class WordPress extends Container<Env> {
+	static image = './docker/wordpress.Dockerfile';  // REQUIRED — Dockerfile path or registry reference
+	static instanceType = 'standard';                // 'lite' (default) or 'standard'
+	static maxInstances = 5;                         // concurrent container cap
+	static sqlite = true;                            // opt into new_sqlite_classes migration
+}
+```
+
+### `image` — required
+
+Accepts either a **local Dockerfile path** (build context resolved by wrangler) or a **registry reference** (pre-built image pulled at deploy time). Cloudflare Containers supports both; Kuratchi passes whatever string you declare straight through to the wrangler `containers[].image` field.
+
+```ts
+static image = './docker/wordpress.Dockerfile';        // local build
+static image = 'docker.io/library/redis:7.2-alpine';   // registry pull
+```
+
+**Sibling-file fallback.** If you omit `static image` and a file named `<basename>.Dockerfile` sits next to the `.container.ts`, Kuratchi uses it automatically:
+
+```
+src/server/wordpress.container.ts
+src/server/wordpress.Dockerfile   ← picked up without declaring `static image`
+```
+
+If neither a static field nor a sibling file is present, the build fails with a clear error — containers cannot guess an image.
+
+### `instanceType` — optional
+
+`'lite'` (default) is cheaper and smaller. `'standard'` has more CPU/RAM. Cloudflare may add more tiers; the string passes through to wrangler verbatim.
+
+### `maxInstances` — optional
+
+Concurrent container cap. Tune based on expected load.
+
+### `sqlite` — optional
+
+When `true`, the framework adds the class to `migrations[].new_sqlite_classes` so the DO uses SQLite-backed storage. Leave unset for classic DurableObject storage.
+
+## Lifecycle and runtime
+
+Container runtime, request dispatch, start/stop hooks, and the `Container` base class API all come from Cloudflare's `cloudflare:workers` module — Kuratchi does not wrap or re-export them. See [Cloudflare's Container documentation](https://developers.cloudflare.com/containers/) for the full runtime surface.
+
+## Calling a container from routes
+
+Resolve the container the same way you resolve any Durable Object:
+
+```html
+<script>
+	import { env } from 'cloudflare:workers';
+
+	const stub = env.WORDPRESS_CONTAINER.get(env.WORDPRESS_CONTAINER.idFromName('main'));
+	const response = await stub.fetch(new Request('https://c/health'));
+</script>
+```
+
+For anything beyond a single binding name, split the routing key and share the stub between routes in a small helper in `src/server/`.
+
+## See also
+
+- **[Sandbox](/framework/sandbox)** — specialized `.sandbox.ts` convention built on top of Cloudflare's `@cloudflare/sandbox` SDK
+- **[Durable Objects](/framework/durable-objects)** — lower-level primitive (no container attached)
+- **[Convention-based auto-discovery](/framework/configuration)** — full table of file suffix → binding mappings

@@ -170,8 +170,5 @@ function normalizeRenderOutput(output: PageRenderOutput): PageRenderResult {
   return {
     html: typeof output?.html === 'string' ? output.html : '',
     head: typeof output?.head === 'string' ? output.head : '',
-    fragments: output && typeof output === 'object' && !Array.isArray(output) && typeof (output as { fragments?: unknown }).fragments === 'object'
-      ? ((output as { fragments?: Record<string, string> }).fragments ?? {})
-      : {},
   };
 }

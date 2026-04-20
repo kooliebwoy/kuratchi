@@ -1,0 +1,188 @@
+---
+title: "Getting Started"
+description: "Install and configure @kuratchi/ui in your KuratchiJS application"
+---
+
+## Installation
+
+Install the package from npm:
+
+```bash
+npm install @kuratchi/ui
+```
+
+## Configuration
+
+Add the UI adapter to your `kuratchi.config.ts`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({
+    theme: 'dark',    // 'dark' | 'light' | 'system'
+    radius: 'default' // 'default' | 'none' | 'full'
+  }),
+});
+```
+
+### Configuration options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `theme` | `'dark' \| 'light' \| 'system'` | `'dark'` | Initial color scheme |
+| `radius` | `'default' \| 'none' \| 'full'` | `'default'` | Corner radius style |
+
+## Add theme CSS
+
+Import the theme stylesheet in your root layout (`src/routes/layout.html`):
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My App</title>
+  <link rel="stylesheet" href="/node_modules/@kuratchi/ui/src/styles/theme.css" />
+</head>
+<body>
+  <slot></slot>
+</body>
+</html>
+```
+
+Alternatively, if you're using a bundler or want to copy the CSS to `src/assets/`, you can reference it from there:
+
+```html
+<link rel="stylesheet" href="/assets/theme.css" />
+```
+
+## Initialize theme (optional)
+
+To prevent flash of unstyled content (FOUC) when using theme persistence, add the theme initializer to your layout's `<head>`:
+
+```html
+<script>
+  import ThemeInit from '@kuratchi/ui/theme-init.html';
+</script>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My App</title>
+  <link rel="stylesheet" href="/node_modules/@kuratchi/ui/src/styles/theme.css" />
+  <ThemeInit />
+</head>
+<body>
+  <slot></slot>
+</body>
+</html>
+```
+
+This script runs immediately and applies the saved theme from `localStorage` before the page renders.
+
+## Using components
+
+Import components as `.html` files in your route scripts:
+
+```html
+<script>
+  import Badge from '@kuratchi/ui/badge.html';
+  import Card from '@kuratchi/ui/card.html';
+  import Alert from '@kuratchi/ui/alert.html';
+</script>
+
+<h1>Welcome</h1>
+
+<Alert data_variant="info">
+  This is an informational alert.
+</Alert>
+
+<Card title="Getting Started">
+  <p>Start building with KuratchiJS UI components.</p>
+  <Badge data_variant="success">Active</Badge>
+</Card>
+```
+
+### Component props
+
+Components accept props via the `props` object. Use underscores for data attributes:
+
+```html
+<Badge data_variant="success">Live</Badge>
+<Card title="My Card" data_compact>
+  Content here
+</Card>
+```
+
+Common props:
+- `class` — Add custom CSS classes
+- `data_variant` — Style variant (e.g., `"primary"`, `"danger"`, `"success"`)
+- `data_size` — Size variant (e.g., `"sm"`, `"lg"`)
+- Boolean data attributes (e.g., `data_compact`, `data_dismissible`)
+
+## Semantic HTML defaults
+
+`@kuratchi/ui` styles semantic HTML elements, so you can build UIs without component imports:
+
+```html
+<main>
+  <header>
+    <h1>Dashboard</h1>
+    <p>Overview of your application</p>
+  </header>
+
+  <section>
+    <article>
+      <a href="/settings">
+        <strong>Settings</strong>
+        <small>Manage your account</small>
+      </a>
+    </article>
+    <article>
+      <a href="/profile">
+        <strong>Profile</strong>
+        <small>Update your information</small>
+      </a>
+    </article>
+  </section>
+</main>
+```
+
+Styled elements include:
+- `<main>` — Page container with max-width and padding
+- `<header>` — Sticky app header or page header
+- `<section>` — Card-like container with border
+- `<article>` — Row inside a section
+- `<nav>` — Horizontal navigation links
+- `<button>`, `<input>`, `<select>`, `<textarea>` — Form controls
+
+## Adding a theme toggle
+
+Use the `ThemeToggle` component to let users switch between light and dark modes:
+
+```html
+<script>
+  import ThemeToggle from '@kuratchi/ui/theme-toggle.html';
+</script>
+
+<header>
+  <a href="/">My App</a>
+  <ThemeToggle />
+</header>
+```
+
+The toggle automatically:
+- Switches the `.dark` class on `<html>`
+- Persists the choice to `localStorage` under `"kui-theme"`
+- Updates all toggle instances on the page
+
+## Next steps
+
+- [Theming](/ui/theming) — Customize colors, dark mode, and radii
+- [Components](/ui/components) — Browse the full component reference
+- [Framework Styling](/framework/styling) — Learn about CSS processing in Kuratchi

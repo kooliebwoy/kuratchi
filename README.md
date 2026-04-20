@@ -253,3 +253,38 @@ bun run dev    # Start dev server
 bun run build  # Build for production
 ```
 
+## CLI — `kuratchi dev`
+
+`kuratchi dev` compiles your project, starts a file watcher, and spawns `wrangler dev` in a single command.
+
+### Interactive Wrangler
+
+By default, `kuratchi dev` auto-detects whether it's running in a terminal (TTY). When a TTY is present, Wrangler's stdin is inherited so interactive flows — like Cloudflare Access authentication — work normally. In non-TTY environments (CI, piped scripts), stdin is piped to preserve backward compatibility.
+
+You can override the auto-detection with explicit flags:
+
+| Flag | Behavior |
+|------|----------|
+| *(none)* | Auto-detect: inherit stdin if TTY, pipe otherwise |
+| `--interactive-wrangler` | Force inherit stdin (always interactive) |
+| `--non-interactive-wrangler` | Force pipe stdin (always non-interactive) |
+
+These flags are consumed by Kuratchi and **not** passed through to Wrangler.
+
+```bash
+# Auto (recommended — works in terminal and CI)
+kuratchi dev
+
+# Force interactive (e.g. when auth prompts are needed)
+kuratchi dev --interactive-wrangler
+
+# Force non-interactive (e.g. CI with CLOUDFLARE_API_TOKEN)
+kuratchi dev --non-interactive-wrangler
+```
+
+All other arguments are passed through to `wrangler dev`:
+
+```bash
+kuratchi dev --port 8788 --remote
+```
+

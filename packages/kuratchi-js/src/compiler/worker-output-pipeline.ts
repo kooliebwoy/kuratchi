@@ -10,7 +10,16 @@ export interface WorkerClassExportEntry {
 }
 
 export function resolveRuntimeImportPath(projectDir: string): string | null {
+  // `middleware.ts` is the preferred name (clear, matches the mental
+  // model). `runtime.hook.ts` is the legacy CLI name, still accepted so
+  // existing projects aren't forced to rename.
   const candidates: Array<{ file: string; importPath: string }> = [
+    // Preferred: top-level `src/middleware.ts` (matches Next.js /
+    // SvelteKit conventions, visible at a glance).
+    { file: 'src/middleware.ts', importPath: '../src/middleware' },
+    // Fallback: co-located with server code.
+    { file: 'src/server/middleware.ts', importPath: '../src/server/middleware' },
+    // Legacy CLI-era name.
     { file: 'src/server/runtime.hook.ts', importPath: '../src/server/runtime.hook' },
   ];
 
@@ -37,8 +46,6 @@ export function buildWorkerEntrypointSource(opts: {
   workerClassEntries: WorkerClassExportEntry[];
   queueConsumers: QueueConsumerEntry[];
   userIndexFile?: string;
-  /** Auto-export Sandbox class from @cloudflare/sandbox when wrangler.jsonc has Sandbox container */
-  hasSandbox?: boolean;
 }): string {
   const doClassSet = new Set(opts.doClassNames);
   const workerClassExports = opts.workerClassEntries
@@ -134,14 +141,8 @@ export function buildWorkerEntrypointSource(opts: {
   lines.push(
     ...opts.doClassNames.map((className) => `export { ${className} } from './routes';`),
     ...workerClassExports,
+    '',
   );
-
-  // Re-export Sandbox class from routes.ts when wrangler.jsonc has Sandbox container configured
-  if (opts.hasSandbox) {
-    lines.push("export { Sandbox } from './routes';");
-  }
-
-  lines.push('');
 
   return lines.join('\n');
 }

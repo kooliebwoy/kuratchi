@@ -1,0 +1,291 @@
+---
+title: "Project structure"
+description: "Every special file in a KuratchiJS app and what it's for"
+---
+
+KuratchiJS is convention-driven. Drop a file in the right place with the right name and the compiler wires it into the Worker automatically — no explicit registration.
+
+## Canonical project shape
+
+```text
+my-app/
+├─ package.json
+├─ vite.config.ts              plugin install point
+├─ wrangler.jsonc              Cloudflare deployment config (auto-synced)
+├─ kuratchi.config.ts          optional framework integrations
+├─ tsconfig.json
+└─ src/
+   ├─ worker.ts                one-line re-export of kuratchi:worker
+   ├─ middleware.ts            request/route/response/error hooks
+   ├─ app.kuratchi             document shell (<!DOCTYPE>, <html>, <head>)
+   ├─ app.css                  global stylesheet (optional; auto-linked)
+   ├─ assets/                  static files served verbatim at the URL root
+   ├─ routes/
+   │  ├─ layout.kuratchi       shared fragment wrapping every page
+   │  ├─ index.kuratchi        /
+   │  └─ blog/[slug]/index.kuratchi   /blog/:slug
+   ├─ server/
+   │  ├─ *.ts                  private server-only modules
+   │  ├─ *.do.ts               Durable Object classes
+   │  ├─ *.workflow.ts         Workflow classes
+   │  ├─ *.queue.ts            Queue consumers
+   │  ├─ *.sandbox.ts          Sandbox classes
+   │  ├─ *.container.ts        Container classes
+   │  └─ *.agents.ts           Agent classes
+   ├─ lib/                     pure client utilities (imported via $lib/*)
+   └─ schemas/                 ORM schema modules
+```
+
+Anything generated (the `.kuratchi/` directory, `dist/`) is build output. Never commit edits there.
+
+## Route files
+
+### `src/app.kuratchi` — document shell
+
+The outer HTML document. Owns `<!DOCTYPE html>`, `<html>`, `<head>`, and `<body>`. Exactly one `<slot></slot>` where the layout+page stream renders.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My App</title>
+</head>
+<body>
+  <slot></slot>
+</body>
+</html>
+```
+
+- Optional. When absent, the framework synthesizes a minimal default shell.
+- A top `<script>` is allowed for per-request shell data (e.g. CSP nonces, `<html lang>` selection). Imports from `kuratchi:request` work just like in a route.
+- The app shell should stay thin — app-wide chrome (navigation, headers, footers) belongs in `layout.kuratchi`.
+
+### `src/app.css` — global stylesheet
+
+Optional. When present, Kuratchi registers it as a Vite client entry (so Tailwind, PostCSS, CSS Modules, Lightning CSS, and every other Vite CSS plugin runs on it) and auto-injects `<link rel="stylesheet" href={...}>` into the compiled shell before `</head>`. You never write the `<link>` tag yourself.
+
+```css
+/* src/app.css */
+@import "tailwindcss";
+@plugin "daisyui";
+@source "./routes/**/*.kuratchi";
+
+body {
+  font-family: system-ui, sans-serif;
+}
+```
+
+In dev the file is served through Vite's module graph (live plugin transforms on save). In prod it emits a content-hashed `.css` asset.
+
+See [Styling](/framework/styling) for Tailwind, CSS frameworks, and migration from the legacy `css` config.
+
+### `src/routes/layout.kuratchi` — shared fragment
+
+A fragment that wraps every page. **Not** a document shell — no `<!DOCTYPE>`, `<html>`, or `<body>`. Contains a single `<slot></slot>` where each page renders.
+
+```html
+<script>
+  import { url } from 'kuratchi:request';
+
+  const currentPath = url.pathname;
+  function navClass(href) {
+    return `nav-link${currentPath === href ? ' active' : ''}`;
+  }
+</script>
+
+<header class="top-bar">
+  <a href="/" class={navClass('/')}>Home</a>
+  <a href="/about" class={navClass('/about')}>About</a>
+</header>
+
+<main>
+  <slot></slot>
+</main>
+```
+
+- Fragment, not a document. Think "wrapper component".
+- Works like any other route file: top `<script>` runs server-side (SSR) and the same code is rewritten to client-side stubs for `$server/*` calls.
+- Nested layouts (`src/routes/admin/layout.kuratchi`) wrap pages under that segment only.
+
+### `src/routes/<path>/index.kuratchi` — page
+
+A regular page. Path becomes the URL pattern.
+
+```html
+<script>
+  import { listItems } from '$server/items';
+  const items = await listItems();
+</script>
+
+<h1>Items ({items.length})</h1>
+<ul>
+  for (const item of items) {
+    <li>{item.title}</li>
+  }
+</ul>
+```
+
+- `index.kuratchi` is the default file per segment.
+- Dynamic segments use `[brackets]`: `[slug]` → `:slug`, `[...rest]` → catchall.
+- See [Routing](/framework/routing) for the full template syntax.
+
+### Render chain
+
+When a user hits `/blog/hello`:
+
+```text
+app.render(data,
+  layout.render(data,
+    page.render(data)))
+```
+
+All three files use the same `<script>` + template + `<slot>` shape. Only their role differs.
+
+## Framework entrypoints
+
+### `vite.config.ts`
+
+Installs the Kuratchi Vite plugin. That single plugin owns route discovery, virtual modules, `wrangler.jsonc` auto-sync, and the dev/build pipeline.
+
+```ts
+import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+
+export default defineConfig({
+  plugins: [kuratchiVite()],
+});
+```
+
+### `wrangler.jsonc`
+
+Cloudflare deployment config. Kuratchi auto-maintains the following fields at build time — do not hand-edit them:
+
+- `durable_objects.bindings`
+- `migrations[].new_sqlite_classes`
+- `containers[]`
+- `assets.directory`, `assets.binding`
+- `queues.consumers`
+
+Everything else (secrets, custom bindings, `compatibility_date`, routes) is yours.
+
+### `src/worker.ts`
+
+A one-line re-export. Kuratchi generates the real Worker entry as a virtual module.
+
+```ts
+export { default } from 'kuratchi:worker';
+```
+
+### `src/middleware.ts`
+
+Middleware definition. Each step hooks into the request lifecycle.
+
+```ts
+import { defineRuntime } from '@kuratchi/js';
+
+export default defineRuntime({
+  auth: {
+    async request(ctx, next) {
+      // ...
+      return next();
+    },
+  },
+});
+```
+
+Available phases per step: `request`, `route`, `response`, `error`. See [Runtime](/framework/runtime).
+
+### `kuratchi.config.ts` (optional)
+
+Framework integrations — ORM, auth, UI, CSS processing. Omit the file entirely when you don't need any of them.
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiOrmConfig } from '@kuratchi/orm/adapter';
+
+export default defineConfig({
+  orm: kuratchiOrmConfig({
+    databases: {
+      DB: { schema: appSchema },
+    },
+  }),
+});
+```
+
+See [Configuration](/framework/configuration) for every supported option.
+
+## Special directories
+
+### `src/assets/`
+
+Static files served **verbatim** by Wrangler's ASSETS binding. Vite plugins never touch these — use this directory for finished assets only.
+
+- `src/assets/favicon.ico` → `/favicon.ico`
+- `src/assets/hero.png` → `/hero.png`
+- `src/assets/fonts/inter.woff2` → `/fonts/inter.woff2`
+
+Kuratchi keeps Wrangler's `assets.directory` in sync automatically. Override the URL prefix with `assetsPrefix` in `kuratchi.config.ts`.
+
+<Tip>
+**Processed → `src/app.css`. Verbatim → `src/assets/`.** If Tailwind/PostCSS needs to see it, put it in (or import it from) `src/app.css`. If it's a finished file you want at `/<path>`, drop it in `src/assets/`.
+</Tip>
+
+### `src/server/`
+
+Server-only code. Nothing here is shipped to the browser.
+
+- Route files import server functions via `$server/<name>` (aliased to this directory). In top `<script>` blocks, Kuratchi auto-rewrites those imports to RPC stubs on the client side.
+- Convention-based files are auto-discovered by filename suffix and wired into `wrangler.jsonc`:
+
+| Suffix | Purpose | Binding style |
+| --- | --- | --- |
+| `*.do.ts` | Durable Object handler | One `durable_objects.bindings` entry |
+| `*.workflow.ts` | Cloudflare Workflow class | `workflows[]` |
+| `*.queue.ts` | Queue consumer | `queues.consumers[]` |
+| `*.sandbox.ts` | Sandbox (Durable Object + container) | `durable_objects`, `containers` |
+| `*.container.ts` | Container class | `containers[]` |
+| `*.agents.ts` | Agents SDK class | `durable_objects` |
+
+### `src/lib/`
+
+Pure client utilities. Imported via `$lib/<name>`. Never import `$server/*` from this directory — `$lib/` is strict client-only code.
+
+```ts
+// src/lib/copy-buttons.ts
+export function mountCopyButtons() {
+  /* ... */
+}
+```
+
+```html
+<script>
+  import { mountCopyButtons } from '$lib/copy-buttons';
+  mountCopyButtons();
+</script>
+```
+
+### `src/schemas/`
+
+ORM schema modules. Imported by `kuratchi.config.ts` to define tables per database binding.
+
+### `.kuratchi/` (generated)
+
+Build output — compiled routes, Worker module, DO proxies, transformed server modules, public asset mirror. Add it to `.gitignore`. Never edit.
+
+## Virtual modules
+
+Imported as `'kuratchi:*'`. The Vite plugin synthesizes them at build time — they are not real files.
+
+| Module | What it provides |
+| --- | --- |
+| `kuratchi:request` | `url`, `pathname`, `searchParams`, `params`, `slug`, `method` for the current request |
+| `kuratchi:environment` | `dev` (compiled to a literal boolean) |
+| `kuratchi:workflow` | `workflowStatus()` and typed workflow helpers |
+| `kuratchi:navigation` | `redirect()` and related helpers |
+| `kuratchi:worker` | The full Worker module (`fetch` + `queue` + DO exports) |
+| `kuratchi:middleware` | Resolves your `src/middleware.ts` |
+| `kuratchi:app`, `kuratchi:layout` | Compiled app shell + layout renderers |
+
+You rarely need to import the last two directly — the compiler wires them into every route.

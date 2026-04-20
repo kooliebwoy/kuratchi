@@ -168,6 +168,19 @@ if (todos.success) {
 }
 ```
 
+## Live Workflow Status
+
+For Cloudflare Workflow instance status — which changes over time — use [`workflowStatus`](/framework/workflows#live-status-with-workflowstatus) from `kuratchi:workflow`. It returns the same `AsyncValue` shape and, when `{ poll }` is passed, the framework re-renders the route on each tick.
+
+```html
+<script>
+  import { params } from 'kuratchi:request';
+  import { workflowStatus } from 'kuratchi:workflow';
+
+  const status = await workflowStatus('migration', params.id, { poll: '2s' });
+</script>
+```
+
 ## Runtime Helpers
 
 Import helpers from `@kuratchi/js` for advanced use cases:

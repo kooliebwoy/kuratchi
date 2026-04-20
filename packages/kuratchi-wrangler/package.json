@@ -1,0 +1,60 @@
+{
+    "name": "@kuratchi/wrangler",
+    "version": "0.0.2",
+    "description": "Legacy CLI and Wrangler-native build pipeline for KuratchiJS apps. Prefer @kuratchi/vite for new projects.",
+    "license": "MIT",
+    "type": "module",
+    "main": "./dist/cli.js",
+    "types": "./dist/cli.d.ts",
+    "bin": {
+        "kuratchi": "dist/cli.js"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "check": "tsc -p tsconfig.build.json --noEmit",
+        "prepublishOnly": "npm run build"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/cli.d.ts",
+            "import": "./dist/cli.js"
+        },
+        "./runtime/generated-worker.js": {
+            "types": "./dist/runtime/generated-worker.d.ts",
+            "import": "./dist/runtime/generated-worker.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "dependencies": {
+        "@kuratchi/js": "^0.0.29",
+        "esbuild": "^0.25.0",
+        "typescript": "^5.8.0"
+    },
+    "peerDependencies": {
+        "@tailwindcss/postcss": "^4.0.0",
+        "lightningcss": "^1.0.0",
+        "postcss": "^8.0.0",
+        "tailwindcss": "^4.0.0"
+    },
+    "peerDependenciesMeta": {
+        "@tailwindcss/postcss": { "optional": true },
+        "lightningcss": { "optional": true },
+        "postcss": { "optional": true },
+        "tailwindcss": { "optional": true }
+    },
+    "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260223.0",
+        "@types/node": "^24.4.0"
+    }
+}

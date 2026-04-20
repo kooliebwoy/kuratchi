@@ -5,7 +5,7 @@ import type { GenerateRoutesModuleOptions, RoutesModuleFeatureBlocks } from './r
 
 export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions): RoutesModuleFeatureBlocks {
   const workerImport = `import { env as __env } from 'cloudflare:workers';`;
-  const contextImport = `import { __setRequestContext, __pushRequestContext, __esc, __rawHtml, __sanitizeHtml, __setLocal, __getLocals, __getCsrfToken, __signFragment, buildDefaultBreadcrumbs as __buildDefaultBreadcrumbs } from '${opts.runtimeContextImport}';`;
+  const contextImport = `import { __setRequestContext, __pushRequestContext, __esc, __rawHtml, __sanitizeHtml, __setLocal, __getLocals, buildDefaultBreadcrumbs as __buildDefaultBreadcrumbs } from '${opts.runtimeContextImport}';`;
   const runtimeImport = opts.hasRuntime && opts.runtimeImportPath
     ? `import __kuratchiRuntime from '${opts.runtimeImportPath}';`
     : '';
@@ -15,7 +15,6 @@ export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions
   const { authPluginImports, authPluginInit } = buildAuthPluginBlock(opts);
   const { doImports, doClassCode, doResolverInit } = buildDurableObjectBlock(opts);
   const workflowStatusRpc = buildWorkflowStatusRpc(opts);
-  const sandboxExport = opts.hasSandbox ? `export { Sandbox } from '@cloudflare/sandbox';` : '';
 
   return {
     workerImport,
@@ -25,7 +24,6 @@ export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions
     migrationInit,
     authInit,
     authPluginImports,
-    sandboxExport,
     authPluginInit,
     doImports,
     doClassCode,
@@ -353,7 +351,24 @@ function buildDurableObjectBlock(opts: GenerateRoutesModuleOptions): Pick<Routes
     doClassLines.push(`  static schemas = {};`);
     doClassLines.push(`}`);
 
-    // Apply prototype methods from each class handler (and its contributors) onto the generated class
+    // Apply prototype methods from each class handler (and its contributors) onto the generated class.
+    //
+    // SECURITY BOUNDARY: Only methods the compiler classifies as RPC-callable are copied onto the
+    // generated DO class prototype. Cloudflare Workers RPC exposes every method on the DO class to
+    // any worker bound to the namespace, so TS `private` (erased at runtime) is not a safe gate.
+    // We enforce the boundary at compile time by computing a per-class public allow-list and only
+    // rewiring those names onto the generated prototype. Private methods remain on the original
+    // handler class and are still reachable via `this._foo()` inside the class, but are invisible
+    // to the RPC surface.
+    const lifecycleNames = new Set(['constructor', 'fetch', 'alarm', 'webSocketMessage', 'webSocketClose', 'webSocketError', 'onInit', 'onAlarm', 'onMessage']);
+    const isRpcCallable = (name: string, visibility: string): boolean => {
+      if (!name) return false;
+      if (name.startsWith('_')) return false;
+      if (name.startsWith('__kuratchi')) return false;
+      if (lifecycleNames.has(name)) return false;
+      if (visibility !== 'public') return false;
+      return true;
+    };
     for (const handler of handlers) {
       const handlerVar = `__handler_${toSafeIdentifier(handler.fileName)}`;
       if (handler.mode === 'class') {
@@ -361,12 +376,18 @@ function buildDurableObjectBlock(opts: GenerateRoutesModuleOptions): Pick<Routes
           handlerVar,
           ...(handler.classContributors ?? []).map((c, i) => `__handler_${toSafeIdentifier(`${handler.fileName}__${c.className}_${i}`)}`),
         ];
+        const publicNames = (handler.classMethods ?? [])
+          .filter((m) => isRpcCallable(m.name, m.visibility))
+          .map((m) => m.name);
+        const allowVar = `__doPublic_${toSafeIdentifier(handler.fileName)}`;
+        doClassLines.push(`const ${allowVar} = new Set(${JSON.stringify(publicNames)});`);
         doClassLines.push(`{`);
         doClassLines.push(`  for (const __source of [${classSourceVars.join(', ')}]) {`);
         doClassLines.push(`    const __seen = new Set();`);
         doClassLines.push(`    for (let __p = __source.prototype; __p && __p !== __DO.prototype && __p !== Object.prototype; __p = Object.getPrototypeOf(__p)) {`);
         doClassLines.push(`      for (const __k of Object.getOwnPropertyNames(__p)) {`);
         doClassLines.push(`        if (__k === 'constructor' || __seen.has(__k)) continue;`);
+        doClassLines.push(`        if (!${allowVar}.has(__k)) continue;`);
         doClassLines.push(`        const __desc = Object.getOwnPropertyDescriptor(__p, __k);`);
         doClassLines.push(`        const __fn = __desc?.value;`);
         doClassLines.push(`        if (typeof __fn !== 'function') continue;`);
@@ -383,9 +404,9 @@ function buildDurableObjectBlock(opts: GenerateRoutesModuleOptions): Pick<Routes
         }
         doResolverLines.push(`  __registerDoClassBinding(${handlerVar}, '${doEntry.binding}');`);
       } else {
-        const lifecycle = new Set(['onInit', 'onAlarm', 'onMessage']);
         for (const fn of handler.exportedFunctions) {
-          if (lifecycle.has(fn)) continue;
+          if (lifecycleNames.has(fn)) continue;
+          if (fn.startsWith('_')) continue;
           doClassLines.push(`${doEntry.className}.prototype[${JSON.stringify(fn)}] = function(...__a){ return __invokeDoRpc(this, ${JSON.stringify(fn)}, ${handlerVar}.${fn}, __a); };`);
         }
         doClassLines.push(`Object.assign(${doEntry.className}.schemas, ${handlerVar}.schemas || {});`);
@@ -456,53 +477,24 @@ function buildOrmDoActivityLogLines(binding: string): string[] {
   void binding;
 }
 
+/**
+ * Register all discovered workflows with the runtime workflow module.
+ * The generated code imports __setWorkflowRegistry and calls it at module init,
+ * mapping convention name (filename basename) → env binding.
+ *
+ * Example: `container.workflow.ts` → `{ 'container': { binding: 'CONTAINER_WORKFLOW' } }`
+ */
 function buildWorkflowStatusRpc(opts: GenerateRoutesModuleOptions): string {
   if (opts.workflowConfig.length === 0) return '';
-  const rpcLines: string[] = [];
-  rpcLines.push(`\n// Workflow Status RPCs (auto-generated)`);
-  rpcLines.push(`// AsyncValue helper for workflow status with polling support`);
-  rpcLines.push(`function __createAsyncValue(value, state) {`);
-  rpcLines.push(`  if (value && typeof value === 'object') {`);
-  rpcLines.push(`    value.pending = state.pending;`);
-  rpcLines.push(`    value.error = state.error;`);
-  rpcLines.push(`    value.success = state.success;`);
-  rpcLines.push(`    return value;`);
-  rpcLines.push(`  }`);
-  rpcLines.push(`  return { ...state, value };`);
-  rpcLines.push(`}`);
-  rpcLines.push(``);
-  rpcLines.push(`const __workflowStatusRpc = {`);
-  const rpcNames: string[] = [];
+  const lines: string[] = [];
+  lines.push(`\n// Workflow registry (auto-generated from src/server/*.workflow.ts)`);
+  lines.push(`import { __setWorkflowRegistry as __kuratchiSetWorkflowRegistry } from '@kuratchi/js/runtime/workflow.js';`);
+  lines.push(`__kuratchiSetWorkflowRegistry({`);
   for (const workflow of opts.workflowConfig) {
     const baseName = workflow.file.split('/').pop()?.replace(/\.workflow\.ts$/, '') || '';
-    const camelName = baseName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    const rpcName = `${camelName}WorkflowStatus`;
-    rpcNames.push(rpcName);
-    rpcLines.push(`  '${rpcName}': async (instanceId) => {`);
-    rpcLines.push(`    if (!instanceId) return __createAsyncValue({ status: 'unknown' }, { pending: false, error: 'Missing instanceId', success: false });`);
-    rpcLines.push(`    try {`);
-    rpcLines.push(`      const instance = await __env.${workflow.binding}.get(instanceId);`);
-    rpcLines.push(`      const result = await instance.status();`);
-    rpcLines.push(`      return __createAsyncValue(result, { pending: false, error: null, success: true });`);
-    rpcLines.push(`    } catch (err) {`);
-    rpcLines.push(`      return __createAsyncValue({ status: 'errored' }, { pending: false, error: err?.message || 'Unknown error', success: false });`);
-    rpcLines.push(`    }`);
-    rpcLines.push(`  },`);
+    if (!baseName) continue;
+    lines.push(`  ${JSON.stringify(baseName)}: { binding: ${JSON.stringify(workflow.binding)} },`);
   }
-  rpcLines.push(`};`);
-  rpcLines.push(``);
-  // Export individual functions that support polling options
-  for (const rpcName of rpcNames) {
-    rpcLines.push(`function ${rpcName}(instanceId, options) {`);
-    rpcLines.push(`  const fetchStatus = () => __workflowStatusRpc['${rpcName}'](instanceId);`);
-    rpcLines.push(`  if (options && options.poll) {`);
-    rpcLines.push(`    // Return a polling AsyncValue - the template compiler handles the polling`);
-    rpcLines.push(`    const result = { pending: true, error: null, success: false, __polling: true, __pollInterval: options.poll, __pollUntil: options.until, __fetchFn: fetchStatus };`);
-    rpcLines.push(`    return result;`);
-    rpcLines.push(`  }`);
-    rpcLines.push(`  // Non-polling: return a promise that resolves to AsyncValue`);
-    rpcLines.push(`  return fetchStatus();`);
-    rpcLines.push(`}`);
-  }
-  return rpcLines.join('\n');
+  lines.push(`});`);
+  return lines.join('\n');
 }

@@ -28,9 +28,20 @@ export interface ParsedFile {
   dataVars: string[];
   /** Component imports: import Name from '$lib/file.html' → { Name: 'file' } */
   componentImports: Record<string, string>;
-  /** Poll functions referenced via data-poll={fn(args)} in the template */
+  /**
+   * Server function names referenced from the template (currently: await
+   * template query targets such as `{await getStatus()}`). The compiler uses
+   * this list to import those functions server-side during SSR.
+   *
+   * NOTE: legacy field name — kept for backward compatibility with the rest of
+   * the compiler pipeline. There is no `data-poll` attribute.
+   */
   pollFunctions: string[];
-  /** Query blocks referenced via data-get={fn(args)} data-as="name" */
+  /**
+   * Await template queries (`{await fn(args)}`) that need a hoisted binding in
+   * the rendered output. Legacy field name; `data-get`/`data-as` are no longer
+   * supported authored attributes.
+   */
   dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; rpcId?: string; awaitExpr?: string }>;
   /** Imports found in a top-level client script block */
   clientImports: string[];
@@ -1258,14 +1269,27 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   // Server code is accessed via $server/ RPC imports.
   // The script body goes to clientScript for client bundling.
   // We also populate `script` for backward compatibility with server-side template data.
-  const scriptMatch = template.match(/^(\s*)<script(\s[^>]*)?\s*>([\s\S]*?)<\/script>/);
+  //
+  // The leading block tolerates `<!DOCTYPE ...>` and HTML comments *before*
+  // the top <script>, so document-shell files (like `app.kuratchi`) can
+  // start with `<!DOCTYPE html>` and still declare a top script. Without
+  // this, any file that opens with a DOCTYPE has no way to attach a
+  // top-level script and any helpers inside body <script> blocks are
+  // flagged as client-only leaks when used in server-rendered template
+  // output.
+  const scriptMatch = template.match(/^(\s*(?:<!DOCTYPE[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*)<script(\s[^>]*)?\s*>([\s\S]*?)<\/script>/i);
   if (scriptMatch) {
+    const leadingPrefix = scriptMatch[1] ?? '';
     const body = scriptMatch[3].trim();
     // All scripts are client scripts in the new model
     clientScript = body;
     // Also set script for backward compat with server template data extraction
     script = body;
-    template = template.slice(scriptMatch[0].length).trim();
+    // Preserve any <!DOCTYPE>/HTML comments that appeared *before* the top
+    // <script> so shell files keep their doctype in rendered output.
+    const preservedPrefix = leadingPrefix.trim();
+    const rest = template.slice(scriptMatch[0].length).trim();
+    template = preservedPrefix ? `${preservedPrefix}\n${rest}` : rest;
   }
 
   // Extract all imports from script
@@ -1347,8 +1371,13 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
           }
         }
       }
-      // cloudflare:workers env is NOT allowed in client scripts - it contains secrets
-      if (extractCloudflareEnvAliases(line).length > 0) {
+      // cloudflare:workers env is NOT allowed in client scripts - it contains secrets.
+      // Route <script> blocks are hybrid (server for SSR + client for hydration) so
+      // the check only fires for non-route kinds; routes rely on the dedicated
+      // non-route env-import check further below to reject non-route server scripts,
+      // while the client bundle pipeline strips server-only imports when it lowers
+      // the route for the browser.
+      if (kind !== 'route' && extractCloudflareEnvAliases(line).length > 0) {
         throw buildEnvAccessError(
           kind,
           options.filePath,
@@ -1435,9 +1464,18 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
   const templateWithoutComments = template.replace(/<!--[\s\S]*?-->/g, '');
   const templateTags = tokenizeTemplateTags(templateWithoutComments);
   const actionFunctions: string[] = [];
-  const pollFunctions: string[] = [];
-  const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string; awaitExpr?: string }> = [];
-  let warnedLegacyActionAttrs = false;
+  // `templateServerFunctions` collects server function names referenced by the
+  // template (currently: await template queries). The compiler uses this list
+  // to import those functions server-side when rendering the route.
+  const templateServerFunctions: string[] = [];
+  const awaitTemplateQueries: Array<{
+    fnName: string;
+    argsExpr: string;
+    asName: string;
+    key?: string;
+    rpcId?: string;
+    awaitExpr?: string;
+  }> = [];
 
   for (const tag of templateTags) {
     if (tag.closing) continue;
@@ -1448,47 +1486,19 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     }
 
     for (const [attrName, attrValue] of tag.attrs.entries()) {
-      if (!warnedLegacyActionAttrs && (attrName === 'data-action' || attrName === 'data-args')) {
-        warnedLegacyActionAttrs = true;
-        console.warn(
-          `[kuratchi] ${options.filePath || kind}: authored data-action/data-args are deprecated. ` +
-          `Use data-post={fn(...)} or action={fn} instead.`,
-        );
-      }
       if (/^on[A-Za-z]+$/i.test(attrName)) {
         const actionCall = extractCallExpression(attrValue);
         if (actionCall && !actionFunctions.includes(actionCall.fnName)) actionFunctions.push(actionCall.fnName);
       }
-      if (/^data-(post|put|patch|delete)$/.test(attrName)) {
-        const methodCall = extractCallExpression(attrValue);
-        if (methodCall && !actionFunctions.includes(methodCall.fnName)) actionFunctions.push(methodCall.fnName);
-      }
     }
-
-    const pollCall = extractCallExpression(tag.attrs.get('data-poll'));
-    if (pollCall && !pollFunctions.includes(pollCall.fnName)) {
-      pollFunctions.push(pollCall.fnName);
-    }
-
-    const getCall = extractCallExpression(tag.attrs.get('data-get'));
-    const asName = extractAttributeText(tag.attrs.get('data-as'));
-    if (!getCall || !asName || !/^[A-Za-z_$][\w$]*$/.test(asName)) continue;
-
-    const key = (extractAttributeText(tag.attrs.get('data-key')) || asName).trim();
-
-    if (!pollFunctions.includes(getCall.fnName)) pollFunctions.push(getCall.fnName);
-    if (!dataVars.includes(asName)) dataVars.push(asName);
-
-    const exists = dataGetQueries.some((q) => q.asName === asName);
-    if (!exists) dataGetQueries.push({ fnName: getCall.fnName, argsExpr: getCall.argsExpr, asName, key });
   }
 
   for (const awaitQuery of collectAwaitTemplateQueries(templateWithoutComments)) {
-    if (!pollFunctions.includes(awaitQuery.fnName)) pollFunctions.push(awaitQuery.fnName);
+    if (!templateServerFunctions.includes(awaitQuery.fnName)) templateServerFunctions.push(awaitQuery.fnName);
     if (!dataVars.includes(awaitQuery.asName)) dataVars.push(awaitQuery.asName);
-    const exists = dataGetQueries.some((query) => query.awaitExpr === awaitQuery.awaitExpr);
+    const exists = awaitTemplateQueries.some((query) => query.awaitExpr === awaitQuery.awaitExpr);
     if (!exists) {
-      dataGetQueries.push({
+      awaitTemplateQueries.push({
         fnName: awaitQuery.fnName,
         argsExpr: awaitQuery.argsExpr,
         asName: awaitQuery.asName,
@@ -1524,79 +1534,6 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
       );
     }
   }
-
-  /*
-  // Extract action functions referenced in template: action={fnName}
-  const actionFunctions: string[] = [];
-  const actionRegex = /action=\{(\w+)\}/g;
-  let am;
-  while ((am = actionRegex.exec(templateWithoutComments)) !== null) {
-    if (!actionFunctions.includes(am[1])) {
-      actionFunctions.push(am[1]);
-    }
-  }
-  // Also collect onX={fnName(...)} candidates (e.g. onclick, onClick, onChange)
-  // — the compiler will filter these against actual imports to determine server actions.
-  const eventActionRegex = /on[A-Za-z]+\s*=\{(\w+)\s*\(/g;
-  let em;
-  while ((em = eventActionRegex.exec(templateWithoutComments)) !== null) {
-    if (!actionFunctions.includes(em[1])) {
-      actionFunctions.push(em[1]);
-    }
-  }
-  // Collect method-style action attributes: data-post/data-put/data-patch/data-delete
-  const methodActionRegex = /data-(?:post|put|patch|delete)\s*=\{(\w+)\s*\(/g;
-  let mm;
-  while ((mm = methodActionRegex.exec(templateWithoutComments)) !== null) {
-    if (!actionFunctions.includes(mm[1])) {
-      actionFunctions.push(mm[1]);
-    }
-  }
-
-  // Extract poll functions referenced in template: data-poll={fnName(args)}
-  const pollFunctions: string[] = [];
-  const pollRegex = /data-poll=\{(\w+)\s*\(/g;
-  let pm;
-  while ((pm = pollRegex.exec(templateWithoutComments)) !== null) {
-    if (!pollFunctions.includes(pm[1])) {
-      pollFunctions.push(pm[1]);
-    }
-  }
-
-  // Extract query blocks: tags that include both data-get={fn(args)} and data-as=...
-  const dataGetQueries: Array<{ fnName: string; argsExpr: string; asName: string; key?: string }> = [];
-  const tagRegex = /<[^>]+>/g;
-  let tm;
-  while ((tm = tagRegex.exec(templateWithoutComments)) !== null) {
-    const tag = tm[0];
-    const getMatch = tag.match(/\bdata-get=\{([\s\S]*?)\}/);
-    if (!getMatch) continue;
-    const call = getMatch[1].trim();
-    const callMatch = call.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
-    if (!callMatch) continue;
-    const fnName = callMatch[1];
-    const argsExpr = (callMatch[2] || '').trim();
-
-    const asMatch =
-      tag.match(/\bdata-as="([A-Za-z_$][\w$]*)"/) ||
-      tag.match(/\bdata-as='([A-Za-z_$][\w$]*)'/) ||
-      tag.match(/\bdata-as=\{([A-Za-z_$][\w$]*)\}/);
-    if (!asMatch) continue;
-    const asName = asMatch[1];
-
-    const keyMatch =
-      tag.match(/\bdata-key="([^"]+)"/) ||
-      tag.match(/\bdata-key='([^']+)'/) ||
-      tag.match(/\bdata-key=\{([^}]+)\}/);
-    const key = keyMatch?.[1]?.trim() || asName;
-
-    if (!pollFunctions.includes(fnName)) pollFunctions.push(fnName);
-    if (!dataVars.includes(asName)) dataVars.push(asName);
-
-    const exists = dataGetQueries.some((q) => q.asName === asName);
-    if (!exists) dataGetQueries.push({ fnName, argsExpr, asName, key });
-  }
-  */
 
   // === RFC 0002: Parse client-first script model ===
   // RFC 0002 only applies to CLIENT scripts (those with reactive $: labels).
@@ -1663,8 +1600,8 @@ export function parseFile(source: string, options: ParseFileOptions = {}): Parse
     actionFunctions,
     dataVars,
     componentImports,
-    pollFunctions,
-    dataGetQueries,
+    pollFunctions: templateServerFunctions,
+    dataGetQueries: awaitTemplateQueries,
     clientImports,
     routeClientImports,
     routeClientImportBindings,

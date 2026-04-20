@@ -67,7 +67,11 @@ function parseDefault(tokens: string[], i: number): { def?: Column['default']; n
   if (!/^default$/i.test(tokens[i])) return { next: i };
   const t = tokens[i + 1];
   if (!t) return { next: i + 1 };
-  if (/^now$/i.test(t)) return { def: { kind: 'raw', sql: '(CURRENT_TIMESTAMP)' }, next: i + 2 };
+  // `default now` → ISO 8601 UTC string with explicit `Z` suffix so downstream
+  // `new Date(value)` parses unambiguously across V8/JSC runtimes. The bare
+  // `CURRENT_TIMESTAMP` form emits `YYYY-MM-DD HH:MM:SS` without a timezone
+  // designator, which V8 interprets as *local* time.
+  if (/^now$/i.test(t)) return { def: { kind: 'raw', sql: "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))" }, next: i + 2 };
   if (/^null$/i.test(t)) return { def: { kind: 'value', value: null }, next: i + 2 };
   if (/^\(.*\)$/.test(t)) return { def: { kind: 'raw', sql: t }, next: i + 2 };
   if (/^\d+$/.test(t)) return { def: { kind: 'value', value: Number(t) }, next: i + 2 };

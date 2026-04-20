@@ -1,6 +1,7 @@
 # RFC: Async Template Patterns
 
-**Status:** Draft  
+**Status:** Partially Implemented / Historical — the workflow-status portion of this RFC has shipped under a different API. Workflow polling now lives in the `kuratchi:workflow` virtual module as `workflowStatus(name, id, { poll })` rather than per-workflow auto-generated `*WorkflowStatus` functions, and polling refreshes the whole route instead of individual elements. See `framework/workflows` in the docs for the current behavior. The rest of this document is preserved for historical context.
+
 **Author:** Kuratchi Team  
 **Created:** 2026-03-31  
 **Updated:** 2026-04-01

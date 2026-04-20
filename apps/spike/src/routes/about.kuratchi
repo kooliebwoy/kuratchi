@@ -1,0 +1,18 @@
+<script>
+	const name = 'About';
+	const items = [];
+</script>
+
+<section>
+	<h1>{name}</h1>
+	<p>Second route — exercises the empty-list branch and is wrapped by the root layout:</p>
+	if (items.length === 0) {
+		<p><em>No items on this page.</em></p>
+	} else {
+		<ul>
+			for (const item of items) {
+				<li>{item}</li>
+			}
+		</ul>
+	}
+</section>

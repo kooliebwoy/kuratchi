@@ -10,6 +10,7 @@
  */
 
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 
 export interface CssConfigEntry {
@@ -81,10 +82,10 @@ async function processTailwind(
   _plugins: string[],
 ): Promise<string | null> {
   try {
-    // Dynamic imports - postcss is a dependency, @tailwindcss/postcss is optional
-    const postcss = (await import('postcss')).default;
-    // @ts-expect-error - @tailwindcss/postcss is an optional peer dependency
-    const tailwindPlugin = await import('@tailwindcss/postcss');
+    // Resolve from the project directory so we pick up the user's installed packages
+    const require = createRequire(path.join(projectDir, 'package.json'));
+    const postcss = (await import(require.resolve('postcss'))).default;
+    const tailwindPlugin = await import(require.resolve('@tailwindcss/postcss'));
 
     const plugin = typeof tailwindPlugin.default === 'function'
       ? tailwindPlugin.default()
@@ -112,9 +113,10 @@ async function processTailwind(
  * Minify CSS with Lightning CSS.
  * Returns the minified CSS or the original if Lightning CSS is not available.
  */
-async function minifyCss(content: string, filePath: string): Promise<string> {
+async function minifyCss(content: string, filePath: string, projectDir: string): Promise<string> {
   try {
-    const lightningcss = await import('lightningcss');
+    const require = createRequire(path.join(projectDir, 'package.json'));
+    const lightningcss = await import(require.resolve('lightningcss'));
 
     const result = lightningcss.transform({
       filename: path.basename(filePath),
@@ -167,7 +169,7 @@ export async function processCss(options: CssProcessOptions): Promise<CssProcess
   // Minification via Lightning CSS (optional — only if lightningcss is installed)
   const shouldMinify = cssConfig?.minify ?? !isDev;
   if (shouldMinify) {
-    const minifiedCss = await minifyCss(css, filePath);
+    const minifiedCss = await minifyCss(css, filePath, projectDir);
     if (minifiedCss !== css) {
       css = minifiedCss;
       minified = true;

@@ -1,8 +1,8 @@
-﻿{
+{
   "name": "kuratchi-syntax",
-  "displayName": "KuratchiJS Framework",
-  "description": "Syntax highlighting for KuratchiJS .html templates with expressions, control flow, and components",
-  "version": "0.1.0",
+  "displayName": "KuratchiJS",
+  "description": "Syntax highlighting for KuratchiJS .kuratchi route files: expressions, native JS control flow, attribute binding, and embedded <script>/<style> blocks.",
+  "version": "0.3.0",
   "publisher": "kuratchi",
   "engines": {
     "vscode": "^1.75.0"
@@ -10,36 +10,42 @@
   "categories": [
     "Programming Languages"
   ],
+  "scripts": {
+    "package": "vsce package --no-dependencies"
+  },
   "contributes": {
     "languages": [
       {
-        "id": "kuratchi-html",
+        "id": "kuratchi",
         "aliases": [
-          "kuratchi HTML",
-          "kuratchi-html"
+          "Kuratchi",
+          "kuratchi"
         ],
         "extensions": [
-          ".kuratchi.html"
+          ".kuratchi"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/kuratchi-light.svg",
+          "dark": "./icons/kuratchi-dark.svg"
+        }
       }
     ],
     "grammars": [
       {
-        "language": "kuratchi-html",
+        "language": "kuratchi",
         "scopeName": "text.html.kuratchi",
         "path": "./syntaxes/kuratchi.tmLanguage.json",
         "embeddedLanguages": {
-          "meta.embedded.block.javascript": "javascript"
+          "meta.embedded.block.javascript": "javascript",
+          "meta.embedded.block.typescript": "typescript",
+          "meta.embedded.block.css": "css",
+          "source.js": "javascript",
+          "source.ts": "typescript",
+          "source.css": "css"
         }
       }
-    ],
-    "configurationDefaults": {
-      "files.associations": {
-        "**/src/routes/**/*.html": "kuratchi-html",
-        "**/packages/kuratchi-ui/src/lib/**/*.html": "kuratchi-html"
-      }
-    }
+    ]
   }
 }
 

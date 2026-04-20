@@ -1,5 +1,4 @@
 export { createApp } from './app.js';
-export { createGeneratedWorker } from './generated-worker.js';
 export { defineConfig } from './config.js';
 export { defineRuntime } from './runtime.js';
 export { Router, filePathToPattern } from './router.js';
@@ -32,18 +31,16 @@ export type {
   InferSchema,
 } from './schema.js';
 export {
-  initCsrf,
-  getCsrfToken,
-  validateCsrf,
-  getCsrfCookieHeader,
+  initCspNonce,
+  getCspNonce,
   validateRpcRequest,
   validateActionRequest,
   applySecurityHeaders,
-  signFragmentId,
-  validateSignedFragment,
   validateQueryOverride,
   parseQueryArgs,
-  CSRF_DEFAULTS,
+  isDevMode,
+  sanitizeErrorMessage,
+  sanitizeErrorDetail,
 } from './security.js';
 export type {
   RpcSecurityConfig,
@@ -97,13 +94,32 @@ export {
   createSuccessValue,
   createErrorValue,
   wrapAsyncValue,
-  createPollingValue,
   isAsyncValue,
-  isPollingValue,
   parseInterval,
 } from './async-value.js';
 export type {
   AsyncValue,
   AsyncValueState,
-  PollOptions,
 } from './async-value.js';
+
+export { workflowStatus } from './workflow.js';
+export type {
+  WorkflowStatusValue,
+  WorkflowStatusOptions,
+} from './workflow.js';
+
+// Streaming async-boundary primitives. Underscored identifiers are called
+// from compiler-emitted code; they're exported so the bundler doesn't
+// tree-shake them even when user code doesn't reference them directly.
+export {
+  __registerBoundary,
+  __nextBoundaryId,
+  __takeCollectedBoundaries,
+  __wrapSuccess,
+  __wrapError,
+  boundaryPlaceholder,
+  buildChunk,
+  resolveBoundaryToChunk,
+  BOOTSTRAP_SCRIPT,
+} from './stream.js';
+export type { PendingBoundary, BoundaryCollector } from './stream.js';

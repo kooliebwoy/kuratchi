@@ -1,14 +1,11 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.27",
+    "version": "0.0.29",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
     "license": "MIT",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
-    "bin": {
-        "kuratchi": "dist/cli.js"
-    },
     "files": [
         "dist",
         "README.md",
@@ -46,13 +43,53 @@
             "types": "./dist/runtime/schema.d.ts",
             "import": "./dist/runtime/schema.js"
         },
-        "./runtime/generated-worker.js": {
-            "types": "./dist/runtime/generated-worker.d.ts",
-            "import": "./dist/runtime/generated-worker.js"
+        "./runtime/router.js": {
+            "types": "./dist/runtime/router.d.ts",
+            "import": "./dist/runtime/router.js"
+        },
+        "./runtime/types.js": {
+            "types": "./dist/runtime/types.d.ts",
+            "import": "./dist/runtime/types.js"
         },
         "./runtime/environment.js": {
             "types": "./dist/runtime/environment.d.ts",
             "import": "./dist/runtime/environment.js"
+        },
+        "./runtime/workflow.js": {
+            "types": "./dist/runtime/workflow.d.ts",
+            "import": "./dist/runtime/workflow.js"
+        },
+        "./runtime/stream.js": {
+            "types": "./dist/runtime/stream.d.ts",
+            "import": "./dist/runtime/stream.js"
+        },
+        "./runtime/security.js": {
+            "types": "./dist/runtime/security.d.ts",
+            "import": "./dist/runtime/security.js"
+        },
+        "./request": {
+            "types": "./dist/runtime/request.d.ts",
+            "import": "./dist/runtime/request.js"
+        },
+        "./navigation": {
+            "types": "./dist/runtime/navigation.d.ts",
+            "import": "./dist/runtime/navigation.js"
+        },
+        "./context": {
+            "types": "./dist/runtime/context.d.ts",
+            "import": "./dist/runtime/context.js"
+        },
+        "./schema": {
+            "types": "./dist/runtime/schema.d.ts",
+            "import": "./dist/runtime/schema.js"
+        },
+        "./workflow": {
+            "types": "./dist/runtime/workflow.d.ts",
+            "import": "./dist/runtime/workflow.js"
+        },
+        "./security": {
+            "types": "./dist/runtime/security.d.ts",
+            "import": "./dist/runtime/security.js"
         },
         "./compiler": {
             "types": "./dist/compiler/index.d.ts",

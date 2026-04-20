@@ -415,17 +415,11 @@ class CompilerBackedClientRouteRegistry implements ClientRouteRegistry {
       .sort((a, b) => a.importedName.localeCompare(b.importedName));
 
     const lines: string[] = [
-      `function __kuratchiGetCsrf(){`,
-      `  return (document.cookie.match(/(?:^|;\\s*)__kuratchi_csrf=([^;]*)/) || [])[1] || '';`,
-      `}`,
       `async function __kuratchiCallRemote(rpcId, args){`,
       `  const url = new URL(window.location.pathname, window.location.origin);`,
       `  url.searchParams.set('_rpc', rpcId);`,
       `  if (args.length > 0) url.searchParams.set('_args', JSON.stringify(args));`,
-      `  const headers = { 'x-kuratchi-rpc': '1' };`,
-      `  const csrfToken = __kuratchiGetCsrf();`,
-      `  if (csrfToken) headers['x-kuratchi-csrf'] = csrfToken;`,
-      `  const response = await fetch(url.toString(), { method: 'GET', headers });`,
+      `  const response = await fetch(url.toString(), { method: 'GET', credentials: 'same-origin' });`,
       `  const payload = await response.json().catch(() => ({ ok: false, error: 'Invalid RPC response' }));`,
       `  if (!response.ok || !payload || payload.ok !== true) {`,
       `    throw new Error((payload && payload.error) || ('HTTP ' + response.status));`,
@@ -745,17 +739,11 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
     // Build RPC stub code for $server/ functions
     const rpcStubLines: string[] = [];
     rpcStubLines.push(`// RFC 0002: RPC stubs for $server/ imports`);
-    rpcStubLines.push(`function __kuratchiGetCsrf() {`);
-    rpcStubLines.push(`  return (document.cookie.match(/(?:^|;\\s*)__kuratchi_csrf=([^;]*)/) || [])[1] || '';`);
-    rpcStubLines.push(`}`);
     rpcStubLines.push(`async function __kuratchiCallRpc(rpcId, args) {`);
     rpcStubLines.push(`  const url = new URL(window.location.pathname, window.location.origin);`);
     rpcStubLines.push(`  url.searchParams.set('_rpc', rpcId);`);
     rpcStubLines.push(`  if (args.length > 0) url.searchParams.set('_args', JSON.stringify(args));`);
-    rpcStubLines.push(`  const headers = { 'x-kuratchi-rpc': '1' };`);
-    rpcStubLines.push(`  const csrfToken = __kuratchiGetCsrf();`);
-    rpcStubLines.push(`  if (csrfToken) headers['x-kuratchi-csrf'] = csrfToken;`);
-    rpcStubLines.push(`  const response = await fetch(url.toString(), { method: 'GET', headers });`);
+    rpcStubLines.push(`  const response = await fetch(url.toString(), { method: 'GET', credentials: 'same-origin' });`);
     rpcStubLines.push(`  const payload = await response.json().catch(() => ({ ok: false, error: 'Invalid RPC response' }));`);
     rpcStubLines.push(`  if (!response.ok || !payload || payload.ok !== true) {`);
     rpcStubLines.push(`    throw new Error((payload && payload.error) || ('HTTP ' + response.status));`);
@@ -797,11 +785,33 @@ class CompilerBackedClientModuleCompiler implements ClientModuleCompiler {
       '// kuratchi:request import removed - using serialized value\n'
     );
     
-    // Remove top-level await declarations for SSR vars (they get data from window.__kuratchiData)
+    // Rewrite top-level await declarations for SSR vars. We used to delete the line
+    // entirely, but that left dangling references to the (now-missing) binding in any
+    // subsequent top-level statement — `ReferenceError: X is not defined` — which
+    // aborted the whole module before event listeners could register.
+    //
+    // Instead we preserve the declaration and zero out the RHS to `undefined`. Any
+    // downstream expression that reads the var sees `undefined` (falsy) and — because
+    // authors write server-first code with `ssrVar && ssrVar.foo` patterns — silently
+    // skips the branch that would have required the server value. The server-rendered
+    // HTML is still correct; the client bundle just no-ops around the stripped data.
+    //
+    // TODO: eventually serialize these values into the HTML (body data attribute or
+    // inline script) so the client can actually read them, matching the original
+    // intent of this transform ("data comes from window.__kuratchiData").
     for (const varName of opts.ssrAwaitVars) {
-      // Match: const varName = await fnName(...);
-      const awaitPattern = new RegExp(`const\\s+${varName}\\s*=\\s*await\\s+[^;]+;`, 'g');
-      transformedScript = transformedScript.replace(awaitPattern, `// [RFC 0002] SSR data: ${varName} comes from server`);
+      // Match any of: `const X = await …;`, `let X = await …;`, `var X = await …;`,
+      // with or without a `: Type` annotation. The await must be at the start of the
+      // RHS — if it's buried in a ternary or sub-expression we leave the line alone
+      // and rely on the replaced-to-undefined dependent vars to neuter it at runtime.
+      const awaitPattern = new RegExp(
+        `\\b(const|let|var)\\s+${varName}(\\s*:[^=]+)?\\s*=\\s*await\\s+[^;]+;`,
+        'g',
+      );
+      transformedScript = transformedScript.replace(
+        awaitPattern,
+        `$1 ${varName}$2 = undefined; // [RFC 0002] SSR data: ${varName} resolved on server`,
+      );
     }
     
     // Combine env declarations, RPC stubs, and transformed script

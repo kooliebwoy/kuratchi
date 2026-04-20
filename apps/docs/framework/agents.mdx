@@ -169,7 +169,7 @@ export default runtime;
 
 ## Wrangler Configuration
 
-Agent files are re-exported from `.kuratchi/worker.ts`, but Wrangler needs matching bindings:
+Agent files are re-exported from `src/worker.ts` (via the `kuratchi:worker` virtual module), but Wrangler needs matching bindings:
 
 ```jsonc
 {

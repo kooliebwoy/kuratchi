@@ -54,7 +54,7 @@ ${customErrorFunctions ? '// Custom error page overrides (user-created NNN.html)
 ${customErrorEntries}
 };
 
-${componentBlock}${blocks.migrationInit}${blocks.authInit}${blocks.authPluginInit}${blocks.doResolverInit}${blocks.doClassCode}${blocks.sandboxExport ? '\n' + blocks.sandboxExport + '\n' : ''}
+${componentBlock}${blocks.migrationInit}${blocks.authInit}${blocks.authPluginInit}${blocks.doResolverInit}${blocks.doClassCode}
 // Route definitions
 
 const routes = [
@@ -79,15 +79,9 @@ export default createGeneratedWorker({
   assets: __assets,
   errorPages: __customErrors,
   runtimeDefinition: __runtimeDef,
-  workflowStatusRpc: typeof __workflowStatusRpc !== 'undefined' ? __workflowStatusRpc : {},
   initializeRequest: __initializeRequest,
   preRouteChecks: __preRouteChecks,
   security: {
-    csrfEnabled: ${opts.securityConfig.csrfEnabled},
-    csrfCookieName: ${JSON.stringify(opts.securityConfig.csrfCookieName)},
-    csrfHeaderName: ${JSON.stringify(opts.securityConfig.csrfHeaderName)},
-    rpcRequireAuth: ${opts.securityConfig.rpcRequireAuth},
-    actionRequireAuth: ${opts.securityConfig.actionRequireAuth},
     contentSecurityPolicy: ${JSON.stringify(opts.securityConfig.contentSecurityPolicy)},
     strictTransportSecurity: ${JSON.stringify(opts.securityConfig.strictTransportSecurity)},
     permissionsPolicy: ${JSON.stringify(opts.securityConfig.permissionsPolicy)},

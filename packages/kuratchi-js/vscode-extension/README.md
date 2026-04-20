@@ -1,38 +1,49 @@
-﻿# kuratchi Syntax
+# KuratchiJS Syntax
 
-Syntax highlighting for KuratchiJS `.html` templates in VS Code-compatible editors (including Windsurf).
+Syntax highlighting for KuratchiJS `.kuratchi` route files in VS Code-compatible editors (VS Code, Windsurf, Cursor).
 
 ## What this adds
 
-- kuratchi-specific syntax highlighting (`{expr}`, `{@html expr}`, `{@raw expr}`, `attr={expr}`, `style={prop}`)
-- Control-flow highlighting (`for (...) {}`, `if/else` blocks)
-- Component-tag highlighting (`<my-component ... />`)
-- A real language id: `kuratchi-html`
-- Comment shortcuts (`Ctrl+/`, `Shift+Alt+A`) via language configuration
+- Language id: `kuratchi` (file extension: `.kuratchi`)
+- Expression highlighting: `{expr}`, `{@html expr}`, `{@raw expr}`, `{=html expr}`
+- Attribute binding: `attr={expr}`, `style={prop}`, bare `{ident}`
+- Native JS control flow in template bodies: `for (...) { }`, `if (...) { }`, `} else if (...) { }`, `} else { }`, bare `}` — **multi-line and nested-paren safe** (e.g. `for (const c of xs.filter((x) => x))`)
+- Embedded `<script>` → JavaScript grammar
+- Embedded `<script lang="ts">` → TypeScript grammar
+- Embedded `<style>` → CSS grammar
+- Component tags `<my-component attr={expr} />`
+- Comment shortcuts (`Ctrl+/`, `Shift+Alt+A`)
 
-## Install for local development
+## Install
 
-From `packages/kuratchi-js/vscode-extension`:
+From this directory:
 
-```powershell
-# Option 1: symlink into extensions (recommended for active development)
-New-Item -ItemType Junction -Path "$env:USERPROFILE\.vscode\extensions\kuratchi-syntax" -Target (Resolve-Path .)
+```bash
+# Build the VSIX
+bunx @vscode/vsce package --no-dependencies
 
-# Option 2: build a VSIX and install it
-bunx @vscode/vsce package
-code --install-extension .\kuratchi-syntax-0.1.0.vsix
+# Install it
+code --install-extension ./kuratchi-syntax-0.2.0.vsix
+# or for Windsurf/Cursor/etc.:
+windsurf --install-extension ./kuratchi-syntax-0.2.0.vsix
 ```
 
-Then reload Windsurf/VS Code (`Ctrl+Shift+P` -> `Developer: Reload Window`).
+Then reload the editor (`Ctrl+Shift+P` → `Developer: Reload Window`).
 
-## Language association
+## Development loop
 
-The extension sets default associations so these files open as `kuratchi-html`:
+Symlink this folder into your editor's extensions dir:
 
-- `**/src/routes/**/*.html`
-- `**/packages/kuratchi-ui/src/lib/**/*.html`
+```bash
+# macOS / Linux
+ln -s "$(pwd)" ~/.vscode/extensions/kuratchi-syntax
 
-You can confirm in the status bar that the language mode is `kuratchi HTML`.
+# Windows (PowerShell)
+New-Item -ItemType Junction -Path "$env:USERPROFILE\.vscode\extensions\kuratchi-syntax" -Target (Resolve-Path .)
+```
 
+Edit `syntaxes/kuratchi.tmLanguage.json` → reload window → changes apply.
 
+## Migration from 0.1.x
 
+0.1.x targeted `.kuratchi.html` and injected file-association defaults for route folders. 0.2.0 targets `.kuratchi` directly — no file associations needed. If you previously had `files.associations` entries forcing `kuratchi-html`, remove them.

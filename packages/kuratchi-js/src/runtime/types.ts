@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Core framework types
  */
 
@@ -24,7 +24,6 @@ export interface RouteContext<E extends Env = Env> {
 export interface PageRenderResult {
   html: string;
   head?: string;
-  fragments?: Record<string, string>;
 }
 
 export type PageRenderOutput = string | PageRenderResult;
@@ -74,18 +73,6 @@ export interface AppConfig<E extends Env = Env> {
   layouts?: Record<string, LayoutModule>;
   /** Static file directory (relative to project root) */
   publicDir?: string;
-}
-
-/** Sandbox configuration — Cloudflare Sandbox container for code execution */
-export interface SandboxConfig {
-  /** Env binding name for the Sandbox DO (default: 'SANDBOX') */
-  binding?: string;
-  /** Path to Dockerfile (default: './Dockerfile') */
-  dockerfile?: string;
-  /** Container instance type (default: 'lite') */
-  instanceType?: 'lite' | 'standard';
-  /** Max concurrent container instances (default: 3) */
-  maxInstances?: number;
 }
 
 /** Database schema config — maps a binding name to its schema */
@@ -165,6 +152,15 @@ export interface kuratchiConfig<E extends Env = Env> {
     library?: 'tailwindcss';
     /** Optional plugin list for the selected UI library. */
     plugins?: string[];
+  };
+  /** CSS processing configuration — Tailwind, plugins, minification */
+  css?: {
+    /** Enable Tailwind CSS processing via @tailwindcss/postcss */
+    tailwind?: boolean;
+    /** Tailwind plugins to load (e.g., 'daisyui', '@tailwindcss/forms') */
+    plugins?: string[];
+    /** Enable CSS minification via Lightning CSS (default: true in production) */
+    minify?: boolean;
   };
   /** Auth configuration â€" @kuratchi/auth plugin setup */
   auth?: AuthConfig | Record<string, any>;
@@ -282,23 +278,29 @@ export interface AuthConfig {
     [key: string]: any;
   } | Record<string, any>;
 
-  /** Security configuration â€" CSRF protection, RPC security */
+  /** Security configuration — response headers the framework emits on every response. */
   security?: SecurityConfig;
 }
 
-/** Security configuration for kuratchi.config.ts */
+/**
+ * Security configuration for kuratchi.config.ts.
+ *
+ * Kuratchi enforces origin integrity (strict same-origin on RPC, same-origin on actions)
+ * and visibility boundaries (`_`-prefix private) unconditionally — those are not
+ * configurable because they are the framework's contract with your app. Authentication
+ * and authorization are your responsibility: use an auth library (e.g. `@kuratchi/auth`)
+ * or inline guards inside your RPC/action handlers.
+ *
+ * The fields below are the response-header knobs the framework sets for you.
+ */
 export interface SecurityConfig {
-  /** Enable CSRF protection for actions and RPC (default: true) */
-  csrfEnabled?: boolean;
-  /** CSRF cookie name (default: '__kuratchi_csrf') */
-  csrfCookieName?: string;
-  /** CSRF header name for fetch requests (default: 'x-kuratchi-csrf') */
-  csrfHeaderName?: string;
-  /** Require authentication for RPC calls (default: false) */
-  rpcRequireAuth?: boolean;
-  /** Require authentication for form actions (default: false) */
-  actionRequireAuth?: boolean;
-  /** Content Security Policy directive string */
+  /**
+   * Content Security Policy directive string.
+   * Use the literal placeholder `{NONCE}` to opt into per-request nonces — the framework
+   * will substitute it with a fresh nonce on every response and stamp the same nonce onto
+   * every inline `<script>` it injects. Example:
+   *   `"script-src 'self' 'nonce-{NONCE}'; object-src 'none'"`
+   */
   contentSecurityPolicy?: string;
   /** Strict-Transport-Security header value */
   strictTransportSecurity?: string;

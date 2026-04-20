@@ -9,11 +9,14 @@ In route `<script>` blocks, use the `kuratchi:` virtual modules for request data
 
 ### `kuratchi:request`
 
-Access request-derived values:
+Access safe request-derived values in route `<script>` blocks. The compiler
+enforces that only the safe subset below can be imported — anything else
+(e.g. `locals`, `headers`) is rejected with a build error because those
+values cannot be serialized for the client hydration path.
 
 ```html
 <script>
-  import { url, pathname, searchParams, params, slug, headers, method, locals } from 'kuratchi:request';
+  import { url, pathname, searchParams, params, slug, method } from 'kuratchi:request';
 
   const currentPath = pathname;
   const tab = searchParams.get('tab');
@@ -29,9 +32,12 @@ Access request-derived values:
 | `searchParams` | `URLSearchParams` | Query parameters |
 | `params` | `Record<string, string>` | Route params (e.g. `{ id: '123' }`) |
 | `slug` | `string \| undefined` | First param value or `params.slug` |
-| `headers` | `Headers` | Request headers |
 | `method` | `string` | HTTP method |
-| `locals` | `App.Locals` | Request-scoped data |
+
+Server-only request data (`headers`, `locals`, and anything derived from
+auth state) must be accessed through a `$server/*` module. Call `getLocals()`
+/ `getRequest()` from `@kuratchi/js` inside that module and return precomputed
+values to the template.
 
 ### `kuratchi:navigation`
 
@@ -95,8 +101,8 @@ In route scripts, `dev` is resolved as part of the generated route/runtime outpu
 
 In server modules and runtime hooks, `dev` is compiled to a literal boolean during build:
 
-- `kuratchi dev` -> `const dev = true`
-- `kuratchi build` -> `const dev = false`
+- `vite dev` -> `const dev = true`
+- `vite build` -> `const dev = false`
 
 That makes `dev` safe to use in request gates and hook branches without relying on request-time globals or import ordering.
 

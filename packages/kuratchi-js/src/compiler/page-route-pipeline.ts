@@ -85,7 +85,7 @@ export function compilePageRoute(opts: {
     routeComponentNames,
     actionNames,
     rpcNameMap,
-    { emitCall: '__emit', enableFragmentManifest: true, clientRouteRegistry, awaitQueryBindings, importerDir },
+    { emitCall: '__emit', clientRouteRegistry, awaitQueryBindings, importerDir },
   );
   const renderHeadBody = compileTemplate(
     renderSections.headTemplate,

@@ -6,6 +6,18 @@ export interface WranglerSyncEntry {
   className: string;
 }
 
+/**
+ * Container (or sandbox) sync entry. Carries the full set of fields the wrangler
+ * container block accepts, plus a `sqlite` flag that opts the class into
+ * `migrations[].new_sqlite_classes`. Sandbox classes always have `sqlite: true`.
+ */
+export interface ContainerSyncEntry extends WranglerSyncEntry {
+  image: string;
+  instanceType?: 'lite' | 'standard';
+  maxInstances?: number;
+  sqlite?: boolean;
+}
+
 export interface QueueSyncEntry {
   /** Binding name for env access (e.g., HOST_OPERATIONS) */
   binding: string;
@@ -15,7 +27,7 @@ export interface QueueSyncEntry {
 
 export interface WranglerSyncConfig {
   workflows: WranglerSyncEntry[];
-  containers: WranglerSyncEntry[];
+  containers: ContainerSyncEntry[];
   durableObjects: WranglerSyncEntry[];
   /** Queue consumers discovered from .queue.ts files */
   queues: QueueSyncEntry[];
@@ -99,29 +111,6 @@ function stripJsonComments(content: string): string {
   }
 
   return result;
-}
-
-/**
- * Check if wrangler.jsonc has a Sandbox container configured.
- * Returns true if containers array has a class_name === 'Sandbox'.
- */
-export function hasSandboxContainer(projectDir: string): boolean {
-  const candidates = ['wrangler.jsonc', 'wrangler.json'];
-  const configPath = candidates
-    .map((file) => path.join(projectDir, file))
-    .find((filePath) => fs.existsSync(filePath));
-  if (!configPath) return false;
-
-  try {
-    const rawContent = fs.readFileSync(configPath, 'utf-8');
-    const jsonContent = stripJsonComments(rawContent);
-    const config = JSON.parse(jsonContent);
-    const containers = config.containers;
-    if (!Array.isArray(containers)) return false;
-    return containers.some((c: any) => c.class_name === 'Sandbox');
-  } catch {
-    return false;
-  }
 }
 
 export function syncWranglerConfig(opts: {
@@ -221,20 +210,29 @@ export function syncWranglerConfig(opts: {
 
     for (const container of opts.config.containers) {
       const name = container.binding.toLowerCase().replace(/_/g, '-');
-      const entry = {
+      const desired: Record<string, any> = {
         name,
         class_name: container.className,
+        image: container.image,
       };
+      if (container.instanceType) desired.instance_type = container.instanceType;
+      if (typeof container.maxInstances === 'number') desired.max_instances = container.maxInstances;
 
       const existing = existingByClassName.get(container.className);
       if (!existing) {
-        existingContainers.push(entry);
+        existingContainers.push(desired);
         changed = true;
         console.log(`[kuratchi] Added container "${container.className}" to wrangler config`);
-      } else if (existing.name !== name) {
-        existing.name = name;
-        changed = true;
-        console.log(`[kuratchi] Updated container "${container.className}" name to "${name}"`);
+      } else {
+        // Sync managed fields only. Preserve any extra fields the developer added
+        // manually (CPU tuning, env overrides, etc.) so wrangler-sync stays
+        // non-destructive on hand-curated containers.
+        for (const [key, value] of Object.entries(desired)) {
+          if (existing[key] !== value) {
+            existing[key] = value;
+            changed = true;
+          }
+        }
       }
     }
 

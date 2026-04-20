@@ -1,5 +1,34 @@
 # @kuratchi/js
 
+## Unreleased
+
+### Breaking Changes
+
+- **Workflow status API unified under `kuratchi:workflow`.** The auto-generated
+  `<camel>WorkflowStatus(id, opts)` globals (one per `*.workflow.ts` file) have
+  been removed. Import `workflowStatus` from the new `kuratchi:workflow`
+  virtual module instead and pass the workflow name as the first argument:
+
+  ```ts
+  // Before:
+  const status = migrationWorkflowStatus(params.id, { poll: '2s' });
+
+  // After:
+  import { workflowStatus } from 'kuratchi:workflow';
+  const status = await workflowStatus('migration', params.id, { poll: '2s' });
+  ```
+
+  The first argument is typed as a string-literal union (`WorkflowName`) of
+  your discovered `*.workflow.ts` basenames, so unknown names fail type-check.
+
+- **`{ poll }` polling now refreshes the whole route**, replacing the
+  element-scoped `data-poll={fn()} data-interval="…"` fragment mechanism for
+  live workflow status. The framework injects a small directive script when
+  polling is active, re-fetches the URL on each tick, and swaps `<body>`
+  with the freshly rendered HTML. Stops automatically when `until(status)`
+  returns true. Default `until` treats `'complete'`, `'completed'`,
+  `'errored'`, or `'terminated'` as terminal.
+
 ## 0.0.14
 
 ### Patch Changes

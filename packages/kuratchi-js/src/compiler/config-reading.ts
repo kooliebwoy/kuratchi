@@ -9,7 +9,7 @@ import {
   type WorkerClassConfigEntry,
 } from './compiler-shared.js';
 
-type ConfigBlockKind = 'call-object' | 'call-empty';
+type ConfigBlockKind = 'call-object' | 'call-empty' | 'plain-object';
 
 interface ConfigBlockMatch {
   kind: ConfigBlockKind;
@@ -63,7 +63,9 @@ function readConfigBlock(source: string, key: string): ConfigBlockMatch | null {
   if (valueIdx >= source.length) return null;
 
   if (source[valueIdx] === '{') {
-    throw new Error(`[kuratchi] "${key}" config must use an adapter call (e.g. ${key}: kuratchi${key[0].toUpperCase()}${key.slice(1)}Config({...})).`);
+    const body = extractBalancedBody(source, valueIdx, '{', '}');
+    if (body == null) return null;
+    return { kind: 'plain-object', body };
   }
 
   const callOpen = source.indexOf('(', valueIdx);
@@ -466,11 +468,6 @@ export function readAssetsPrefix(projectDir: string): string {
 
 export function readSecurityConfig(projectDir: string): SecurityConfigEntry {
   const defaults: SecurityConfigEntry = {
-    csrfEnabled: true,
-    csrfCookieName: '__kuratchi_csrf',
-    csrfHeaderName: 'x-kuratchi-csrf',
-    rpcRequireAuth: false,
-    actionRequireAuth: false,
     contentSecurityPolicy: null,
     strictTransportSecurity: null,
     permissionsPolicy: null,
@@ -485,35 +482,6 @@ export function readSecurityConfig(projectDir: string): SecurityConfigEntry {
 
   const body = securityBlock.body;
 
-  // Parse CSRF settings
-  const csrfEnabledMatch = body.match(/csrfEnabled\s*:\s*(true|false)/);
-  if (csrfEnabledMatch) {
-    defaults.csrfEnabled = csrfEnabledMatch[1] === 'true';
-  }
-
-  const csrfCookieMatch = body.match(/csrfCookieName\s*:\s*['"]([^'"]+)['"]/);
-  if (csrfCookieMatch) {
-    defaults.csrfCookieName = csrfCookieMatch[1];
-  }
-
-  const csrfHeaderMatch = body.match(/csrfHeaderName\s*:\s*['"]([^'"]+)['"]/);
-  if (csrfHeaderMatch) {
-    defaults.csrfHeaderName = csrfHeaderMatch[1];
-  }
-
-  // Parse RPC settings
-  const rpcAuthMatch = body.match(/rpcRequireAuth\s*:\s*(true|false)/);
-  if (rpcAuthMatch) {
-    defaults.rpcRequireAuth = rpcAuthMatch[1] === 'true';
-  }
-
-  // Parse action settings
-  const actionAuthMatch = body.match(/actionRequireAuth\s*:\s*(true|false)/);
-  if (actionAuthMatch) {
-    defaults.actionRequireAuth = actionAuthMatch[1] === 'true';
-  }
-
-  // Parse security headers
   const cspMatch = body.match(/contentSecurityPolicy\s*:\s*['"`]([^'"`]+)['"`]/);
   if (cspMatch) {
     defaults.contentSecurityPolicy = cspMatch[1];

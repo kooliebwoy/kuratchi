@@ -22,17 +22,10 @@ export interface AuthConfigEntry {
 }
 
 export interface SecurityConfigEntry {
-  /** Enable CSRF protection for actions and RPC (default: true) */
-  csrfEnabled: boolean;
-  /** CSRF cookie name (default: '__kuratchi_csrf') */
-  csrfCookieName: string;
-  /** CSRF header name for fetch requests (default: 'x-kuratchi-csrf') */
-  csrfHeaderName: string;
-  /** Require authentication for RPC calls (default: false) */
-  rpcRequireAuth: boolean;
-  /** Require authentication for form actions (default: false) */
-  actionRequireAuth: boolean;
-  /** Content Security Policy directive string (default: null - no CSP) */
+  /**
+   * Content Security Policy directive string (default: null). Use the literal `{NONCE}`
+   * placeholder to opt into per-request nonces on framework-injected inline scripts.
+   */
   contentSecurityPolicy: string | null;
   /** Strict-Transport-Security header (default: null - no HSTS) */
   strictTransportSecurity: string | null;
@@ -52,6 +45,32 @@ export interface WorkerClassConfigEntry {
   className: string;
   file: string;
   exportKind: 'named' | 'default';
+}
+
+/**
+ * Tuning declared via `static` fields on a container/sandbox class.
+ * All fields are optional; missing fields fall through to framework defaults
+ * (or raise a compile-time error when no default is possible — e.g. a container
+ * with no `image` declared).
+ */
+export interface ClassStaticTuning {
+  /** Path to a Dockerfile (e.g. './docker/wordpress.Dockerfile') OR a registry image reference (e.g. 'docker.io/cloudflare/sandbox:0.8.11'). */
+  image?: string;
+  /** Cloudflare Containers instance size. */
+  instanceType?: 'lite' | 'standard';
+  /** Concurrent container cap. */
+  maxInstances?: number;
+  /** Opt container into SQLite-backed Durable Object storage (adds `new_sqlite_classes` migration). Sandbox classes are always SQLite-backed. */
+  sqlite?: boolean;
+}
+
+export interface ContainerConfigEntry extends WorkerClassConfigEntry, ClassStaticTuning {
+  /** Discriminator so wrangler-sync can apply primitive-specific defaults. */
+  kind: 'container' | 'sandbox';
+  /** Required once discovery has resolved author-declared field → sibling Dockerfile → per-kind default. */
+  image: string;
+  /** Resolved absolute path to a local Dockerfile if one was detected, else `null`. Used for change-tracking / validation. */
+  resolvedDockerfile?: string | null;
 }
 
 export interface ConventionClassEntry {

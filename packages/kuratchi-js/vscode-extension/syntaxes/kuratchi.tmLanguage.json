@@ -1,21 +1,78 @@
-﻿{
+{
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "kuratchi HTML",
+  "name": "Kuratchi",
   "scopeName": "text.html.kuratchi",
   "patterns": [
+    { "include": "#script-block-ts" },
+    { "include": "#script-block-js" },
+    { "include": "#style-block" },
     { "include": "#sanitized-html-expression" },
     { "include": "#raw-html-expression" },
     { "include": "#style-shorthand" },
     { "include": "#attribute-shorthand" },
     { "include": "#attribute-expression" },
-    { "include": "#inline-expression" },
     { "include": "#js-control-flow" },
+    { "include": "#inline-expression" },
     { "include": "#component-tag" },
     { "include": "text.html.basic" }
   ],
   "repository": {
+    "script-block-ts": {
+      "comment": "<script lang=\"ts\"> ... </script> — embed TypeScript",
+      "begin": "(?i)(<)(script)\\b(?=[^>]*\\blang\\s*=\\s*(\"ts\"|'ts'|\"typescript\"|'typescript'))([^>]*)(>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.script.html" },
+        "4": { "patterns": [{ "include": "text.html.basic#attribute" }] },
+        "5": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "end": "(?i)(</)(script)\\s*(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.script.html" },
+        "3": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "contentName": "meta.embedded.block.typescript",
+      "patterns": [{ "include": "source.ts" }]
+    },
+    "script-block-js": {
+      "comment": "<script> ... </script> — embed JavaScript (default)",
+      "begin": "(?i)(<)(script)\\b([^>]*)(>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.script.html" },
+        "3": { "patterns": [{ "include": "text.html.basic#attribute" }] },
+        "4": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "end": "(?i)(</)(script)\\s*(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.script.html" },
+        "3": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "style-block": {
+      "comment": "<style> ... </style> — embed CSS",
+      "begin": "(?i)(<)(style)\\b([^>]*)(>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.style.html" },
+        "3": { "patterns": [{ "include": "text.html.basic#attribute" }] },
+        "4": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "end": "(?i)(</)(style)\\s*(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.html" },
+        "2": { "name": "entity.name.tag.style.html" },
+        "3": { "name": "punctuation.definition.tag.end.html" }
+      },
+      "contentName": "meta.embedded.block.css",
+      "patterns": [{ "include": "source.css" }]
+    },
     "sanitized-html-expression": {
-      "comment": "{@html expr} - sanitized HTML output",
+      "comment": "{@html expr} — sanitized HTML output",
       "name": "meta.expression.html.kuratchi",
       "begin": "\\{(@html)\\s",
       "beginCaptures": {
@@ -27,12 +84,10 @@
         "0": { "name": "punctuation.section.embedded.end.kuratchi" }
       },
       "contentName": "meta.embedded.block.javascript",
-      "patterns": [
-        { "include": "source.js" }
-      ]
+      "patterns": [{ "include": "source.js" }]
     },
     "raw-html-expression": {
-      "comment": "{@raw expr} / {=html expr} - raw/unescaped HTML output",
+      "comment": "{@raw expr} / {=html expr} — raw/unescaped HTML output",
       "name": "meta.expression.raw.kuratchi",
       "begin": "\\{(@raw|=html)\\s",
       "beginCaptures": {
@@ -44,12 +99,10 @@
         "0": { "name": "punctuation.section.embedded.end.kuratchi" }
       },
       "contentName": "meta.embedded.block.javascript",
-      "patterns": [
-        { "include": "source.js" }
-      ]
+      "patterns": [{ "include": "source.js" }]
     },
     "attribute-expression": {
-      "comment": "attr={expr} - attribute value expressions",
+      "comment": "attr={expr} — attribute value expression",
       "name": "meta.expression.attribute.kuratchi",
       "begin": "(?<==)\\{",
       "beginCaptures": {
@@ -60,14 +113,12 @@
         "0": { "name": "punctuation.section.embedded.end.kuratchi" }
       },
       "contentName": "meta.embedded.block.javascript",
-      "patterns": [
-        { "include": "source.js" }
-      ]
+      "patterns": [{ "include": "source.js" }]
     },
     "inline-expression": {
-      "comment": "{expression} - escaped output interpolation",
+      "comment": "{expr} — escaped output interpolation",
       "name": "meta.expression.interpolation.kuratchi",
-      "begin": "\\{(?!@html\\s)(?!@raw\\s)(?!=html\\s)(?![{/])",
+      "begin": "\\{(?!@html\\s)(?!@raw\\s)(?!=html\\s)(?![{/@])(?=[^}\\n]*\\})",
       "beginCaptures": {
         "0": { "name": "punctuation.section.embedded.begin.kuratchi" }
       },
@@ -76,67 +127,82 @@
         "0": { "name": "punctuation.section.embedded.end.kuratchi" }
       },
       "contentName": "meta.embedded.block.javascript",
-      "patterns": [
-        { "include": "source.js" }
-      ]
+      "patterns": [{ "include": "source.js" }]
     },
     "js-control-flow": {
-      "comment": "Inline JS control flow: for/if/else if/else/closing brace",
+      "comment": "Native JS control flow in template body: for/if/else — supports nested parens and multi-line heads",
       "patterns": [
-        {
-          "comment": "for (...) {",
-          "match": "^\\s*(for)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
-          "captures": {
-            "1": { "name": "keyword.control.loop.kuratchi" },
-            "2": { "name": "punctuation.section.group.begin.kuratchi" },
-            "3": { "name": "meta.embedded.block.javascript" },
-            "4": { "name": "punctuation.section.group.end.kuratchi" },
-            "5": { "name": "punctuation.section.block.begin.kuratchi" }
-          }
-        },
-        {
-          "comment": "if (...) {",
-          "match": "^\\s*(if)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
-          "captures": {
-            "1": { "name": "keyword.control.conditional.kuratchi" },
-            "2": { "name": "punctuation.section.group.begin.kuratchi" },
-            "3": { "name": "meta.embedded.block.javascript" },
-            "4": { "name": "punctuation.section.group.end.kuratchi" },
-            "5": { "name": "punctuation.section.block.begin.kuratchi" }
-          }
-        },
-        {
-          "comment": "} else if (...) {",
-          "match": "^\\s*(\\})\\s*(else\\s+if)\\s*(\\()([^)]*)(\\))\\s*(\\{)\\s*$",
-          "captures": {
-            "1": { "name": "punctuation.section.block.end.kuratchi" },
-            "2": { "name": "keyword.control.conditional.kuratchi" },
-            "3": { "name": "punctuation.section.group.begin.kuratchi" },
-            "4": { "name": "meta.embedded.block.javascript" },
-            "5": { "name": "punctuation.section.group.end.kuratchi" },
-            "6": { "name": "punctuation.section.block.begin.kuratchi" }
-          }
-        },
-        {
-          "comment": "} else {",
-          "match": "^\\s*(\\})\\s*(else)\\s*(\\{)\\s*$",
-          "captures": {
-            "1": { "name": "punctuation.section.block.end.kuratchi" },
-            "2": { "name": "keyword.control.conditional.kuratchi" },
-            "3": { "name": "punctuation.section.block.begin.kuratchi" }
-          }
-        },
-        {
-          "comment": "closing }",
-          "match": "^\\s*(\\})\\s*$",
-          "captures": {
-            "1": { "name": "punctuation.section.block.end.kuratchi" }
-          }
-        }
+        { "include": "#ctl-for" },
+        { "include": "#ctl-if" },
+        { "include": "#ctl-else-if" },
+        { "include": "#ctl-else" },
+        { "include": "#ctl-close" }
       ]
     },
+    "ctl-for": {
+      "comment": "for (...) {  — condition may span lines and contain nested parens",
+      "begin": "^\\s*(for)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.loop.kuratchi" },
+        "2": { "name": "punctuation.section.group.begin.kuratchi" }
+      },
+      "end": "(\\))\\s*(\\{)",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.group.end.kuratchi" },
+        "2": { "name": "punctuation.section.block.begin.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "ctl-if": {
+      "comment": "if (...) {",
+      "begin": "^\\s*(if)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.conditional.kuratchi" },
+        "2": { "name": "punctuation.section.group.begin.kuratchi" }
+      },
+      "end": "(\\))\\s*(\\{)",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.group.end.kuratchi" },
+        "2": { "name": "punctuation.section.block.begin.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "ctl-else-if": {
+      "comment": "} else if (...) {",
+      "begin": "^\\s*(\\})\\s*(else\\s+if)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.block.end.kuratchi" },
+        "2": { "name": "keyword.control.conditional.kuratchi" },
+        "3": { "name": "punctuation.section.group.begin.kuratchi" }
+      },
+      "end": "(\\))\\s*(\\{)",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.group.end.kuratchi" },
+        "2": { "name": "punctuation.section.block.begin.kuratchi" }
+      },
+      "contentName": "meta.embedded.block.javascript",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "ctl-else": {
+      "comment": "} else {",
+      "match": "^\\s*(\\})\\s*(else)\\s*(\\{)\\s*$",
+      "captures": {
+        "1": { "name": "punctuation.section.block.end.kuratchi" },
+        "2": { "name": "keyword.control.conditional.kuratchi" },
+        "3": { "name": "punctuation.section.block.begin.kuratchi" }
+      }
+    },
+    "ctl-close": {
+      "comment": "Lone closing } on its own line — template-level block terminator",
+      "match": "^\\s*(\\})\\s*$",
+      "captures": {
+        "1": { "name": "punctuation.section.block.end.kuratchi" }
+      }
+    },
     "style-shorthand": {
-      "comment": "style={prop} - CSS property shorthand",
+      "comment": "style={prop} — CSS property shorthand (identifier only)",
       "name": "meta.expression.style-shorthand.kuratchi",
       "match": "(style)(=)(\\{)(\\w+)(\\})",
       "captures": {
@@ -148,7 +214,7 @@
       }
     },
     "attribute-shorthand": {
-      "comment": "Bare {ident} in attribute position",
+      "comment": "Bare {ident} used in attribute position (<x {disabled}>)",
       "name": "meta.expression.attribute-shorthand.kuratchi",
       "match": "(?<=\\s)(\\{)(\\w+)(\\})(?=[\\s/>])",
       "captures": {
@@ -158,9 +224,9 @@
       }
     },
     "component-tag": {
-      "comment": "Component tags like <my-component attr={expr} />",
+      "comment": "<my-component attr={expr} /> — hyphenated custom elements",
       "name": "meta.tag.component.kuratchi",
-      "begin": "(<)(\\w[\\w-]*(?=-))(?=[\\s/>])",
+      "begin": "(<)(\\w[\\w-]*-[\\w-]*)(?=[\\s/>])",
       "beginCaptures": {
         "1": { "name": "punctuation.definition.tag.begin.html" },
         "2": { "name": "entity.name.tag.component.kuratchi" }
@@ -181,5 +247,3 @@
     }
   }
 }
-
-

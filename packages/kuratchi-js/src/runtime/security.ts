@@ -1,152 +1,77 @@
 /**
  * KuratchiJS Security Module
  *
- * Provides CSRF protection, request signing, and security utilities
- * for the framework runtime.
+ * Philosophy: Kuratchi enforces ONLY origin integrity and visibility boundaries.
+ * Authentication and authorization are the developer's responsibility — the
+ * framework never auto-blocks based on `locals.user`. Guards (`requireAuth`,
+ * rate limits, audit logs, etc.) belong in user code or opt-in packages.
+ *
+ * What this module owns:
+ *   - Strict same-origin gate for RPC (reject non-browser + cross-origin)
+ *   - Same-origin check for form action POSTs
+ *   - Per-request CSP nonce for inline scripts the framework injects
+ *   - Default response headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
+ *   - Query override allow-list (internal plumbing)
  */
 
 import { __getLocals, __setLocal } from './context.js';
 
-// ── CSRF Token Management ──────────────────────────────────────────
+// ── CSP Nonce ──────────────────────────────────────────────────────
+//
+// The runtime injects a handful of inline <script> tags (workflow poll, client bridge,
+// confirm handlers). When the developer configures a Content-Security-Policy that
+// includes the literal placeholder `{NONCE}`, the framework generates a random nonce
+// per request, stamps it onto every injected <script>, and substitutes it into the CSP
+// header. This lets authors ship a strict `script-src 'self' 'nonce-…'` policy without
+// having to manually propagate the value.
 
-const CSRF_TOKEN_LENGTH = 32;
-const CSRF_COOKIE_NAME = '__kuratchi_csrf';
-const CSRF_HEADER_NAME = 'x-kuratchi-csrf';
-const CSRF_FORM_FIELD = '_csrf';
+const CSP_NONCE_BYTES = 16;
 
-/**
- * Generate a cryptographically secure random token
- */
-function generateToken(length: number = CSRF_TOKEN_LENGTH): string {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 /**
- * Initialize CSRF protection for the current request.
- * Generates a new token if one doesn't exist in cookies.
+ * Generate and store a per-request CSP nonce. Idempotent: subsequent calls return
+ * the same value so every injected inline script shares the same nonce.
  */
-export function initCsrf(request: Request, cookieName: string = CSRF_COOKIE_NAME): string {
-  const cookies = parseCookies(request.headers.get('cookie'));
-  let token = cookies[cookieName];
-
-  if (!token || token.length < CSRF_TOKEN_LENGTH) {
-    token = generateToken();
-    // Mark that we need to set the cookie
-    __setLocal('__csrfTokenNew', true);
-  }
-
-  __setLocal('__csrfToken', token);
-  __setLocal('__csrfCookieName', cookieName);
-  __setLocal('__csrfCookieSecure', shouldUseSecureCookie(request));
-  return token;
-}
-
-/**
- * Get the current CSRF token for the request
- */
-export function getCsrfToken(): string {
-  const token = __getLocals().__csrfToken;
-  if (!token) {
-    throw new Error('[kuratchi] CSRF token not initialized. Ensure security middleware is active.');
-  }
-  return token;
-}
-
-/**
- * Validate CSRF token from request against stored token.
- * Checks both header and form field.
- */
-export function validateCsrf(
-  request: Request,
-  formData?: FormData,
-  headerName: string = CSRF_HEADER_NAME,
-  formField: string = CSRF_FORM_FIELD,
-): { valid: boolean; reason?: string } {
-  const storedToken = __getLocals().__csrfToken;
-  if (!storedToken) {
-    return { valid: false, reason: 'No CSRF token in session' };
-  }
-
-  // Check header first (for fetch requests)
-  const headerToken = request.headers.get(headerName);
-  if (headerToken) {
-    if (timingSafeEqual(headerToken, storedToken)) {
-      return { valid: true };
-    }
-    return { valid: false, reason: 'CSRF header token mismatch' };
-  }
-
-  // Check form field (for traditional form submissions)
-  if (formData) {
-    const formToken = formData.get(formField);
-    if (typeof formToken === 'string' && timingSafeEqual(formToken, storedToken)) {
-      return { valid: true };
-    }
-    return { valid: false, reason: 'CSRF form token mismatch or missing' };
-  }
-
-  return { valid: false, reason: 'No CSRF token provided in request' };
-}
-
-/**
- * Timing-safe string comparison to prevent timing attacks
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
-}
-
-/**
- * Get the Set-Cookie header for CSRF token if needed
- */
-export function getCsrfCookieHeader(): string | null {
+export function initCspNonce(): string {
   const locals = __getLocals();
-  if (!locals.__csrfTokenNew) {
-    return null;
-  }
-  const token = locals.__csrfToken;
-  const cookieName = locals.__csrfCookieName || CSRF_COOKIE_NAME;
-  const secure = locals.__csrfCookieSecure ? '; Secure' : '';
-  // SameSite=Lax allows the cookie to be sent on top-level navigations
-  // HttpOnly=false so client JS can read it for fetch requests
-  return `${cookieName}=${token}; Path=/; SameSite=Lax${secure}`;
+  const existing = locals.__cspNonce as string | undefined;
+  if (existing) return existing;
+  const bytes = new Uint8Array(CSP_NONCE_BYTES);
+  crypto.getRandomValues(bytes);
+  const nonce = toBase64Url(bytes);
+  __setLocal('__cspNonce', nonce);
+  return nonce;
+}
+
+/** Read the CSP nonce for the current request (empty string if not initialized). */
+export function getCspNonce(): string {
+  return (__getLocals().__cspNonce as string | undefined) || '';
 }
 
 // ── RPC Security ───────────────────────────────────────────────────
 
-const RPC_NONCE_LENGTH = 16;
-
 export interface RpcSecurityConfig {
-  requireAuth: boolean;
-  validateCsrf: boolean;
   allowedMethods: ('GET' | 'POST')[];
+  /** Enforce strict same-origin on RPC calls (default true). Blocks non-browser clients. */
+  requireSameOrigin?: boolean;
 }
 
 /**
- * Generate a per-request RPC nonce for additional request signing
- */
-export function generateRpcNonce(): string {
-  return generateToken(RPC_NONCE_LENGTH);
-}
-
-/**
- * Validate an RPC request meets security requirements
+ * Validate an RPC request meets the framework's origin guarantees.
+ * Auth/authorization is the developer's responsibility (in-handler guards).
  */
 export function validateRpcRequest(
   request: Request,
+  url: URL,
   config: RpcSecurityConfig,
 ): { valid: boolean; status: number; reason?: string } {
   const method = request.method as 'GET' | 'POST';
 
-  // Check allowed methods
   if (!config.allowedMethods.includes(method)) {
     return {
       valid: false,
@@ -155,20 +80,15 @@ export function validateRpcRequest(
     };
   }
 
-  // Check CSRF if enabled
-  if (config.validateCsrf) {
-    const csrfResult = validateCsrf(request);
-    if (!csrfResult.valid) {
-      return { valid: false, status: 403, reason: csrfResult.reason };
-    }
-  }
-
-  // Check authentication if required
-  if (config.requireAuth) {
-    const locals = __getLocals();
-    const user = locals.user || locals.session?.user;
-    if (!user) {
-      return { valid: false, status: 401, reason: 'Authentication required for RPC' };
+  // Strict same-origin gate. RPC is browser-only by design: clients must send either
+  // Sec-Fetch-Site: same-origin (all modern browsers) or an Origin header matching the
+  // request URL origin. Non-browser clients (curl, server-to-server scripts) and any
+  // cross-origin browser fetch are rejected outright. Combined with SameSite=Lax on any
+  // session cookie an auth library sets, this closes the classic CSRF attack surface
+  // without the framework minting its own token.
+  if (config.requireSameOrigin !== false) {
+    if (!isBrowserSameOrigin(request, url)) {
+      return { valid: false, status: 403, reason: 'RPC requires same-origin browser request' };
     }
   }
 
@@ -178,32 +98,22 @@ export function validateRpcRequest(
 // ── Action Security ────────────────────────────────────────────────
 
 export interface ActionSecurityConfig {
-  validateCsrf: boolean;
   requireSameOrigin: boolean;
 }
 
 /**
- * Validate an action request meets security requirements
+ * Validate a form action POST. Accepts same-origin browser requests including
+ * top-level form navigations (which may omit `Sec-Fetch-Site` but always include
+ * `Origin` on POST). Cross-origin is rejected.
  */
 export function validateActionRequest(
   request: Request,
   url: URL,
-  formData: FormData,
   config: ActionSecurityConfig,
 ): { valid: boolean; status: number; reason?: string } {
-  // Check same-origin
   if (config.requireSameOrigin && !isSameOrigin(request, url)) {
     return { valid: false, status: 403, reason: 'Cross-origin action requests forbidden' };
   }
-
-  // Check CSRF if enabled
-  if (config.validateCsrf) {
-    const csrfResult = validateCsrf(request, formData);
-    if (!csrfResult.valid) {
-      return { valid: false, status: 403, reason: csrfResult.reason };
-    }
-  }
-
   return { valid: true, status: 200 };
 }
 
@@ -222,7 +132,8 @@ const DEFAULT_SEC_HEADERS: Record<string, string> = {
 };
 
 /**
- * Apply security headers to a response
+ * Apply security headers to a response. If `contentSecurityPolicy` contains the
+ * literal placeholder `{NONCE}`, it is replaced with the per-request nonce.
  */
 export function applySecurityHeaders(
   response: Response,
@@ -235,7 +146,11 @@ export function applySecurityHeaders(
   }
 
   if (config?.contentSecurityPolicy && !response.headers.has('Content-Security-Policy')) {
-    response.headers.set('Content-Security-Policy', config.contentSecurityPolicy);
+    const nonce = getCspNonce();
+    const csp = nonce
+      ? config.contentSecurityPolicy.replace(/\{NONCE\}/g, nonce)
+      : config.contentSecurityPolicy;
+    response.headers.set('Content-Security-Policy', csp);
   }
 
   if (config?.strictTransportSecurity && !response.headers.has('Strict-Transport-Security')) {
@@ -249,31 +164,7 @@ export function applySecurityHeaders(
   return response;
 }
 
-// ── Utility Functions ──────────────────────────────────────────────
-
-function parseCookies(header: string | null): Record<string, string> {
-  const map: Record<string, string> = {};
-  if (!header) return map;
-  for (const pair of header.split(';')) {
-    const eq = pair.indexOf('=');
-    if (eq === -1) continue;
-    map[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
-  }
-  return map;
-}
-
-function shouldUseSecureCookie(request: Request): boolean {
-  const forwardedProto = request.headers.get('x-forwarded-proto');
-  if (forwardedProto) {
-    return forwardedProto.split(',')[0].trim().toLowerCase() === 'https';
-  }
-
-  try {
-    return new URL(request.url).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+// ── Origin helpers ─────────────────────────────────────────────────
 
 function isSameOrigin(request: Request, url: URL): boolean {
   const fetchSite = request.headers.get('sec-fetch-site');
@@ -289,67 +180,24 @@ function isSameOrigin(request: Request, url: URL): boolean {
   }
 }
 
-// ── Fragment Security ───────────────────────────────────────────────
-
 /**
- * Sign a fragment ID with the route path and CSRF token to prevent tampering.
- * Format: fragmentId:signature
+ * Strict same-origin gate for RPC. Unlike isSameOrigin (used for form actions, which
+ * must accept top-level navigations without Origin/Sec-Fetch-Site), RPC is only reachable
+ * from our own client-side code via fetch(), so browsers always attach either
+ * Sec-Fetch-Site or an Origin header. Both missing → not a browser → reject.
  */
-export function signFragmentId(fragmentId: string, routePath: string): string {
-  const token = __getLocals().__csrfToken || '';
-  const payload = `${fragmentId}:${routePath}:${token}`;
-  const signature = simpleHash(payload);
-  return `${fragmentId}:${signature}`;
-}
-
-/**
- * Validate a signed fragment ID against the current route and session.
- * If no CSRF token is present (e.g., in tests), allows unsigned fragments.
- */
-export function validateSignedFragment(
-  signedFragment: string,
-  routePath: string,
-): { valid: boolean; fragmentId: string | null; reason?: string } {
-  const token = __getLocals().__csrfToken || '';
-  
-  // If no CSRF token is set, allow unsigned fragments (backward compat / tests)
-  if (!token) {
-    const colonIdx = signedFragment.lastIndexOf(':');
-    // If it looks signed, extract the fragment ID; otherwise use as-is
-    const fragmentId = colonIdx !== -1 ? signedFragment.slice(0, colonIdx) : signedFragment;
-    return { valid: true, fragmentId };
+function isBrowserSameOrigin(request: Request, url: URL): boolean {
+  const fetchSite = request.headers.get('sec-fetch-site');
+  const origin = request.headers.get('origin');
+  if (fetchSite === 'same-origin') return true;
+  if (origin) {
+    try {
+      return new URL(origin).origin === url.origin;
+    } catch {
+      return false;
+    }
   }
-
-  const colonIdx = signedFragment.lastIndexOf(':');
-  if (colonIdx === -1) {
-    // Unsigned fragment with CSRF enabled - reject for security
-    return { valid: false, fragmentId: null, reason: 'Fragment ID not signed' };
-  }
-
-  const fragmentId = signedFragment.slice(0, colonIdx);
-  const providedSignature = signedFragment.slice(colonIdx + 1);
-
-  const payload = `${fragmentId}:${routePath}:${token}`;
-  const expectedSignature = simpleHash(payload);
-
-  if (!timingSafeEqual(providedSignature, expectedSignature)) {
-    return { valid: false, fragmentId: null, reason: 'Fragment signature invalid' };
-  }
-
-  return { valid: true, fragmentId };
-}
-
-/**
- * Simple hash function for signing (not cryptographic, but sufficient for HMAC-like signing
- * when combined with a secret token). Uses FNV-1a for speed.
- */
-function simpleHash(str: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = (hash * 16777619) >>> 0;
-  }
-  return hash.toString(36);
+  return false;
 }
 
 // ── Query Override Security ────────────────────────────────────────
@@ -363,7 +211,7 @@ export function validateQueryOverride(
   allowedQueries: Set<string> | string[],
 ): { valid: boolean; reason?: string } {
   const allowed = allowedQueries instanceof Set ? allowedQueries : new Set(allowedQueries);
-  
+
   if (!queryFn) {
     return { valid: false, reason: 'No query function specified' };
   }
@@ -395,10 +243,60 @@ export function parseQueryArgs(argsRaw: string): { valid: boolean; args: unknown
   }
 }
 
-// ── Exports for Framework Use ──────────────────────────────────────
+// ── Dev-mode flag ──────────────────────────────────────────────────
+//
+// Error sanitizers read this to decide whether to leak internal messages.
+// The legacy CLI-built worker sets `globalThis.__kuratchi_DEV__` inside the
+// generated entry; the Vite plugin sets the same flag when running under
+// `vite dev` (never in `vite build`). Any host can opt in by assigning
+// `(globalThis as any).__kuratchi_DEV__ = true` BEFORE handling a request.
 
-export const CSRF_DEFAULTS = {
-  cookieName: CSRF_COOKIE_NAME,
-  headerName: CSRF_HEADER_NAME,
-  formField: CSRF_FORM_FIELD,
-} as const;
+export function isDevMode(): boolean {
+  return !!(globalThis as Record<string, any>).__kuratchi_DEV__;
+}
+
+// ── Error sanitization ─────────────────────────────────────────────
+//
+// These two helpers are the single source of truth for how framework-level
+// error messages reach the client. They mirror `__sanitizeErrorMessage` /
+// `__sanitizeErrorDetail` that the legacy CLI generated into every worker,
+// so Vite + CLI builds behave identically.
+//
+// Rules (same in both helpers):
+//   1. `ActionError` / `PageError` messages are ALWAYS surfaced. These are
+//      intentional, user-facing errors authored by the developer.
+//   2. In dev (`isDevMode()`), the raw `err.message` is exposed to make
+//      debugging fast.
+//   3. In prod, the raw message is swallowed:
+//        - `sanitizeErrorMessage` returns the provided `fallback` so RPC /
+//          action JSON responses always carry a stable, non-leaky string.
+//        - `sanitizeErrorDetail` returns `undefined` so HTML error pages
+//          render without the internal detail line at all.
+//
+// Never bypass these for framework-originated errors. If a user-facing error
+// needs a specific message in prod, throw `ActionError` / `PageError`.
+
+export function sanitizeErrorMessage(
+  err: unknown,
+  fallback: string = 'Internal Server Error'
+): string {
+  const e = err as { isActionError?: boolean; isPageError?: boolean; message?: string };
+  if (e?.isActionError || e?.isPageError) {
+    return e.message || fallback;
+  }
+  if (isDevMode() && e?.message) {
+    return e.message;
+  }
+  return fallback;
+}
+
+export function sanitizeErrorDetail(err: unknown): string | undefined {
+  const e = err as { isPageError?: boolean; message?: string };
+  if (e?.isPageError) {
+    return e.message;
+  }
+  if (isDevMode() && e?.message) {
+    return e.message;
+  }
+  return undefined;
+}

@@ -279,6 +279,30 @@ function assertRoutePlanInvariants(opts: {
 export function analyzeRouteBuild(opts: AnalyzeRouteOptions): RouteBuildPlan {
   const { pattern, renderBody, renderHeadBody, isDev, parsed, fnToModule, rpcNameMap, extraRpcBindings, componentStyles, clientModuleHref } = opts;
   const hasFns = Object.keys(fnToModule).length > 0;
+
+  // SECURITY: enforce underscore-prefix-private convention. Any exported server function whose
+  // name starts with '_' is treated as module-internal and MUST NOT be reachable from a route
+  // (i.e. cannot be an action, await-template query, or implicit RPC). Private helpers can
+  // still be imported and called from other server functions — they simply never appear on
+  // the route.rpc / route.actions / route.allowedQueries surface.
+  const privateReferences: string[] = [];
+  for (const name of parsed.actionFunctions) {
+    if (name.startsWith('_')) privateReferences.push(`action "${name}"`);
+  }
+  for (const name of parsed.pollFunctions) {
+    if (name.startsWith('_')) privateReferences.push(`await query "${name}"`);
+  }
+  for (const query of parsed.dataGetQueries) {
+    if (query.fnName.startsWith('_')) privateReferences.push(`data-get "${query.fnName}"`);
+  }
+  if (privateReferences.length > 0) {
+    throw new Error(
+      `[kuratchi compiler] ${pattern}\n` +
+        `Route references private server function(s): ${privateReferences.join(', ')}.\n` +
+        `Exports whose name starts with '_' are module-internal and cannot be called from a template.\n` +
+        `Rename the export, or call it from another (public) $server function.`,
+    );
+  }
   const queryDefs = parsed.dataGetQueries ?? [];
   const queryVars = queryDefs.map((query) => query.asName);
   const scriptSegments = (parsed.scriptSegments ?? []).filter((segment) => !!segment.script);
@@ -501,30 +525,14 @@ export function emitRouteObject(plan: RouteBuildPlan): string {
         return __html;
       })();
       const __rendered = (() => {
-        const __fragments = Object.create(null);
-        const __fragmentStack = [];
         const __parts = [];
         const __emit = (chunk) => {
-          const __value = chunk == null ? '' : String(chunk);
-          __parts.push(__value);
-          for (const __fragmentId of __fragmentStack) {
-            __fragments[__fragmentId] = (__fragments[__fragmentId] || '') + __value;
-          }
-        };
-        const __pushFragment = (id) => {
-          const __key = String(id);
-          if (!Object.prototype.hasOwnProperty.call(__fragments, __key)) {
-            __fragments[__key] = '';
-          }
-          __fragmentStack.push(__key);
-        };
-        const __popFragment = () => {
-          __fragmentStack.pop();
+          __parts.push(chunk == null ? '' : String(chunk));
         };
         ${plan.render.body}
-        return { html: __parts.join(''), fragments: __fragments };
+        return { html: __parts.join('') };
       })();
-      return { html: __rendered.html, head: __head, fragments: __rendered.fragments };
+      return { html: __rendered.html, head: __head };
     }`);
 
   return `  {\n${parts.join(',\n')}\n  }`;

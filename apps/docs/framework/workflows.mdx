@@ -1,11 +1,11 @@
 ---
 title: "Workflows"
-description: "Build durable workflows with auto-generated status functions"
+description: "Build durable workflows with typed live status via kuratchi:workflow"
 ---
 
 ## Workflows
 
-KuratchiJS auto-discovers `.workflow.ts` files in `src/server/`. Each file becomes a Cloudflare Workflow.
+KuratchiJS auto-discovers `.workflow.ts` files in `src/server/`. Each file becomes a Cloudflare Workflow, and the filename basename becomes its live-status name (e.g. `migration.workflow.ts` → `'migration'`).
 
 ```ts
 // src/server/migration.workflow.ts
@@ -32,13 +32,15 @@ export class MigrationWorkflow extends WorkflowEntrypoint {
 
 ## Naming Convention
 
-Workflow binding names are derived from the filename:
+Workflow binding names are derived from the filename, and the `workflowStatus(name, ...)` name is simply the filename basename:
 
-| File | Binding | Status Function |
-|------|---------|-----------------|
-| `migration.workflow.ts` | `MIGRATION_WORKFLOW` | `migrationWorkflowStatus()` |
-| `data-sync.workflow.ts` | `DATA_SYNC_WORKFLOW` | `dataSyncWorkflowStatus()` |
-| `email-campaign.workflow.ts` | `EMAIL_CAMPAIGN_WORKFLOW` | `emailCampaignWorkflowStatus()` |
+| File | Binding (env) | `workflowStatus` name |
+|------|---------------|------------------------|
+| `migration.workflow.ts` | `MIGRATION_WORKFLOW` | `'migration'` |
+| `data-sync.workflow.ts` | `DATA_SYNC_WORKFLOW` | `'data-sync'` |
+| `email-campaign.workflow.ts` | `EMAIL_CAMPAIGN_WORKFLOW` | `'email-campaign'` |
+
+The discovered names are baked into a compile-time string-literal union (`WorkflowName`) so passing an unknown name is a type error. Run `kuratchi types` to regenerate `src/app.d.ts` whenever you add or rename a workflow file.
 
 ## Starting Workflows
 
@@ -46,62 +48,95 @@ Start a workflow from server code:
 
 ```ts
 // In a server action
+import { env } from 'cloudflare:workers';
+
 export async function startMigration(formData: FormData) {
   const instance = await env.MIGRATION_WORKFLOW.create({
     params: { sourceId: formData.get('sourceId') },
   });
-  
+
   redirect(`/migrations/${instance.id}`);
 }
 ```
 
-## Workflow Status (Polling)
+## Live Status with `workflowStatus`
 
-The framework auto-generates `*WorkflowStatus` functions for each workflow. Use them with polling options:
+Import `workflowStatus` from the `kuratchi:workflow` virtual module. The first argument is the workflow name (typed), the second is the instance ID, and the optional third enables live refresh.
 
 ```html
 <script>
-  import { params } from '@kuratchi/js/request';
+  import { params } from 'kuratchi:request';
+  import { workflowStatus } from 'kuratchi:workflow';
+
+  const status = await workflowStatus('migration', params.id, { poll: '2s' });
 </script>
 
-<div>
-const status = migrationWorkflowStatus(params.id, { poll: '2s' });
-
-if (status.pending) {
-  <p>Checking status...</p>
-}
-
-if (status.status === 'running') {
+if (status.error) {
+  <ErrorBanner error={status.error} />
+} else if (status.status === 'running') {
   <ProgressBar progress={status.output?.progress} />
-}
-
-if (status.status === 'complete') {
+} else if (status.status === 'complete') {
   <CompletedBanner result={status.output} />
 }
-
-if (status.status === 'errored') {
-  <ErrorBanner error={status.error} />
-}
-</div>
 ```
 
-### Polling Options
+`status` is an `AsyncValue` with:
+
+- `status` — the current workflow phase (`'queued' | 'running' | 'complete' | 'errored' | ...`)
+- `output` — whatever your workflow `run()` returned
+- `error` — non-null when the status fetch itself failed
+- `pending` / `success` — standard `AsyncValue` flags
+
+### `{ poll }` auto-refresh
+
+When you pass `poll`, the framework:
+
+1. Records the interval on request-scoped state while rendering.
+2. Injects a tiny directive script into the page before sending it.
+3. Uses that directive on the client to re-fetch the URL on each tick and swap `<body>` with the freshly rendered HTML.
+4. Stops polling when `until(status)` returns `true`. The default predicate treats `'complete'`, `'completed'`, `'errored'`, or `'terminated'` as terminal.
 
 ```ts
-interface PollOptions {
-  poll: string;           // interval: '2s', '500ms', '1m'
-  backoff?: boolean;      // exponential backoff (default: true)
-  maxInterval?: string;   // cap for backoff (default: '5m')
-  until?: (value: T) => boolean; // stop polling when true
+interface WorkflowStatusOptions<T> {
+  poll?: string | number;        // e.g. '2s', 500, '1m'
+  until?: (value: T) => boolean; // override the default terminal predicate
 }
 ```
 
-**Stop polling on completion:**
+Because every tick is a full server render, any `{status.*}` reference in your template reflects the newest data with no client-side reactivity to wire up.
+
+### Multiple polls on one page
+
+You can call `workflowStatus(..., { poll })` several times on the same page (e.g. one per active instance). The framework uses the **shortest** interval that was registered and only stops when **every** registered call reports terminal.
+
 ```html
-const status = migrationWorkflowStatus(params.id, { 
+<script>
+  import { workflowStatus } from 'kuratchi:workflow';
+
+  const statuses = Object.fromEntries(await Promise.all(
+    activeMigrations.map(async (m) => [
+      m.id,
+      await workflowStatus('migration', m.id, { poll: '2s' }),
+    ])
+  ));
+</script>
+```
+
+### Custom `until`
+
+```ts
+const status = await workflowStatus('migration', params.id, {
   poll: '2s',
-  until: (s) => s.status === 'complete' || s.status === 'errored'
+  until: (s) => s.status === 'ready-for-review',
 });
+```
+
+### Without polling
+
+Omit `poll` for a one-shot read. The route won't auto-refresh, but you still get the same resolved `AsyncValue`.
+
+```ts
+const status = await workflowStatus('migration', params.id);
 ```
 
 ## Workflow Steps
@@ -191,7 +226,7 @@ The framework auto-syncs workflow bindings to `wrangler.jsonc`:
       "name": "migration-workflow",
       "binding": "MIGRATION_WORKFLOW",
       "class_name": "MigrationWorkflow",
-      "script_name": ".kuratchi/worker.ts"
+      "script_name": "src/worker.ts"
     }
   ]
 }

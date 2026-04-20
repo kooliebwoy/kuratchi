@@ -1,62 +1,110 @@
 ---
 title: "Getting Started"
-description: "Install @kuratchi/js and boot a first KuratchiJS app"
+description: "Install @kuratchi/js, @kuratchi/vite, and boot a first app on Cloudflare Workers"
 ---
 
 ## Install
 
-```bash
-npm install @kuratchi/js
-```
+KuratchiJS is **Vite-first**. Every new project runs through `vite dev` / `vite build` with the Kuratchi plugin.
 
-To scaffold a new app:
+### Scaffold with `create-kuratchi`
 
 ```bash
-npx kuratchi create my-app
+npx create-kuratchi my-app
 cd my-app
+bun install
 bun run dev
 ```
 
-## Minimal project shape
+The scaffolder drops a working Vite project with routes, assets, and a `wrangler.jsonc` pointed at `src/worker.ts`.
 
-KuratchiJS compiles routes from `src/routes` and writes generated worker output into `.kuratchi`.
+### Or install into an existing project
+
+```bash
+npm install @kuratchi/js @kuratchi/vite
+npm install -D vite wrangler @cloudflare/workers-types
+```
+
+Optional packages (install only what you need):
+
+| Package | When |
+| --- | --- |
+| `@kuratchi/orm` | D1 / Durable Object SQLite schema + query builder |
+| `@kuratchi/auth` | Credentials, sessions, OAuth, RBAC, Turnstile |
+| `@kuratchi/ui` | Ready-made HTML component library |
+| `tailwindcss` `@tailwindcss/vite` | Tailwind CSS (plain Vite plugin) |
+| `lightningcss` | CSS transformer (configure via `vite.config.ts`) |
+
+## Minimal project shape
 
 ```text
 my-app/
-  package.json
-  wrangler.jsonc
-  kuratchi.config.ts
-  src/assets/app.css
-  src/lib/counter.ts
-  src/routes/layout.html
-  src/routes/index.html
+├─ package.json
+├─ vite.config.ts
+├─ wrangler.jsonc
+├─ kuratchi.config.ts              optional
+├─ tsconfig.json
+└─ src/
+   ├─ worker.ts                    export { default } from 'kuratchi:worker'
+   ├─ middleware.ts                defineRuntime({ ... })
+   ├─ app.kuratchi                 document shell
+   ├─ app.css                      global stylesheet (optional)
+   ├─ assets/                      static files served verbatim at /
+   └─ routes/
+      ├─ layout.kuratchi           shared fragment
+      └─ index.kuratchi            /
 ```
 
-## Required worker entry
+For a full reference of every special file, see [Project structure](/framework/project-structure).
 
-Your Wrangler entrypoint should point at the generated worker:
+## `vite.config.ts`
 
-```json
+The Kuratchi plugin owns routing, virtual modules, and Wrangler sync. Nothing else to configure for the common case.
+
+```ts
+import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+
+export default defineConfig({
+  plugins: [kuratchiVite()],
+});
+```
+
+## `wrangler.jsonc`
+
+```jsonc
 {
-  "main": ".kuratchi/worker.ts",
-  "compatibility_flags": ["nodejs_compat"]
+  "name": "my-app",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "src/assets" }
 }
 ```
 
-You do not need a hand-written `src/index.ts`.
+The Kuratchi plugin auto-maintains `durable_objects`, `containers`, `queues.consumers`, and `migrations[]` entries based on what it discovers in `src/server/`. Do not hand-edit those fields.
 
-## Minimal scripts
+## `package.json` scripts
 
 ```json
 {
   "scripts": {
-    "dev": "kuratchi dev",
-    "build": "kuratchi build"
+    "dev": "vite",
+    "build": "vite build",
+    "deploy": "vite build && wrangler deploy"
   }
 }
 ```
 
-## First layout
+## `src/worker.ts`
+
+```ts
+export { default } from 'kuratchi:worker';
+```
+
+That's the whole file. The virtual module synthesizes `fetch` + `queue` handlers, Durable Object exports, and any discovered convention classes.
+
+## `src/app.kuratchi` — document shell
 
 ```html
 <!DOCTYPE html>
@@ -65,18 +113,36 @@ You do not need a hand-written `src/index.ts`.
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>My App</title>
-  <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
-  <header><a href="/">Home</a></header>
-  <main><slot></slot></main>
+  <slot></slot>
 </body>
 </html>
 ```
 
-Every app should have a `src/routes/layout.html` containing `<slot></slot>`.
+Optional — the framework provides a minimal default shell when absent. Don't add a `<link>` for your global CSS; Kuratchi injects it (see next section).
 
-## First page
+## `src/routes/layout.kuratchi` — shared fragment
+
+Wraps every page. Not a document — no `<!DOCTYPE>`, no `<html>`.
+
+```html
+<script>
+  import { url } from 'kuratchi:request';
+  const current = url.pathname;
+</script>
+
+<header>
+  <a href="/" class={current === '/' ? 'active' : ''}>Home</a>
+  <a href="/about" class={current === '/about' ? 'active' : ''}>About</a>
+</header>
+
+<main>
+  <slot></slot>
+</main>
+```
+
+## `src/routes/index.kuratchi` — first page
 
 ```html
 <script>
@@ -96,84 +162,54 @@ if (items.length > 0) {
 }
 ```
 
-The page is server-rendered, but the authored top-level `<script>` is client-side. When you import from `$server/*`, Kuratchi uses that as the server/RPC escape hatch.
+The page is server-rendered. The top `<script>` runs during SSR; `$server/*` imports become RPC stubs when the same code runs in the browser.
 
-## First stylesheet
+## First stylesheet — `src/app.css`
 
-Put plain CSS in `src/assets`. Kuratchi mirrors it into the generated public assets directory and keeps Wrangler's `assets.directory` in sync for you.
+Drop a file at `src/app.css`. Kuratchi registers it as a Vite client entry, runs every CSS plugin on it (Tailwind, PostCSS, CSS Modules, Lightning CSS), and auto-injects `<link rel="stylesheet">` into your app shell before `</head>`. You don't write the `<link>` tag.
 
 ```css
-/* src/assets/app.css */
-:root {
-  color-scheme: light;
-}
-
+/* src/app.css */
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
 }
-
-.counter {
-  display: inline-flex;
-  gap: 0.75rem;
-  align-items: center;
-}
 ```
 
-Then reference it from your layout or page with a normal URL:
+That's the full setup. Add Tailwind by installing `@tailwindcss/vite`, dropping it into `vite.config.ts`, and `@import "tailwindcss"` from `src/app.css`. See [Styling](/framework/styling) for Tailwind, CSS frameworks, and static asset conventions.
+
+## First browser-side JavaScript
+
+Drop a second `<script>` in any route for client-only behavior:
 
 ```html
-<link rel="stylesheet" href="/assets/app.css" />
-```
-
-## First browser script
-
-For vanilla JS, keep browser helpers in `src/lib` and load them from a normal `<script>` block in the page markup:
-
-```ts
-// src/lib/counter.ts
-export function mountCounter() {
-  const root = document.querySelector('[data-counter]');
-  if (!root) return;
-
-  const output = root.querySelector('[data-count]');
-  const button = root.querySelector('button');
-  let count = 0;
-
-  button?.addEventListener('click', () => {
-    count += 1;
-    if (output) output.textContent = String(count);
-  });
-}
-```
-
-```html
-<div class="counter" data-counter>
-  <strong data-count>0</strong>
-  <button type="button">Increment</button>
-</div>
+<div data-counter><strong data-count>0</strong><button>+</button></div>
 
 <script>
-  import { mountCounter } from '$lib/counter';
-
-  mountCounter();
+  const root = document.querySelector('[data-counter]');
+  const out = root.querySelector('[data-count]');
+  let n = 0;
+  root.querySelector('button').addEventListener('click', () => {
+    n += 1;
+    out.textContent = String(n);
+  });
 </script>
 ```
 
-Kuratchi adds `type="module"` for you when the script contains ES module imports.
-
-This is the recommended framework path when you want plain HTML, a `.css` file, and a little browser JavaScript without opting into a UI library.
+Kuratchi adds `type="module"` automatically when the script imports from `$lib/*` or any ES module.
 
 ## Run locally
 
 ```bash
 bun install
-bun run build
 bun run dev
 ```
 
+`vite dev` serves the app on `http://localhost:5173` with the Cloudflare Vite plugin providing a Workers-accurate runtime.
+
 ## What to read next
 
-- [Routing](/framework/routing)
-- [Actions](/framework/actions)
-- [Configuration](/framework/configuration)
+- [Project structure](/framework/project-structure) — every special file reference
+- [Routing](/framework/routing) — dynamic segments, template syntax, components
+- [Actions](/framework/actions) — native form POSTs with server functions
+- [Configuration](/framework/configuration) — ORM, auth, CSS, UI

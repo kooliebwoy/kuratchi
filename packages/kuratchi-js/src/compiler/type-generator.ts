@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { VIRTUAL_MODULE_TYPE_DECLARATIONS } from './virtual-modules.js';
+import { buildVirtualModuleTypeDeclarations } from './virtual-modules.js';
+import { discoverFilesWithSuffix } from './convention-discovery.js';
 
 /**
  * Generate TypeScript types from kuratchi schema and runtime definitions.
@@ -127,6 +128,13 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
     const schemaSource = fs.readFileSync(schemaFullPath, 'utf-8');
     tables = parseSchemaFromSource(schemaSource);
   }
+
+  // Discover workflow names for kuratchi:workflow type union
+  const workflowDir = path.join(projectDir, 'src', 'server');
+  const workflowFiles = discoverFilesWithSuffix(workflowDir, '.workflow.ts');
+  const workflowNames = workflowFiles
+    .map((f) => path.basename(f, '.workflow.ts'))
+    .filter((n) => /^[A-Za-z_$][\w$-]*$/.test(n));
   
   const tableTypes = tables.length > 0 ? generateTableTypes(tables) : '';
   
@@ -155,7 +163,7 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
  * Edit the Locals interface below to match your runtime.hook.ts
  */
 
-${VIRTUAL_MODULE_TYPE_DECLARATIONS}
+${buildVirtualModuleTypeDeclarations(workflowNames)}
 
 declare global {
   namespace App {

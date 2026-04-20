@@ -11,17 +11,11 @@ import * as readline from 'node:readline';
 import * as crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 
-const FRAMEWORK_PACKAGE_NAME = getFrameworkPackageName();
-
-function getFrameworkPackageName(): string {
-  try {
-    const raw = fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8');
-    const parsed = JSON.parse(raw) as { name?: string };
-    return parsed.name || '@kuratchi/js';
-  } catch {
-    return '@kuratchi/js';
-  }
-}
+// Fixed: the runtime/framework package is always `@kuratchi/js`. The
+// scaffolder itself ships in `@kuratchi/wrangler`, so we can't read
+// the caller's `package.json` name any more — that would emit
+// `@kuratchi/wrangler` imports into user code, which is wrong.
+const FRAMEWORK_PACKAGE_NAME = '@kuratchi/js';
 
 // â”€â”€ Prompt Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -60,11 +54,22 @@ interface ScaffoldOptions {
   monorepoRoot: string | null;
   /** Absolute path to the project directory */
   projectDir: string;
+  /**
+   * When true, scaffold the legacy Wrangler-CLI template (`kuratchi build`
+   * emits `.kuratchi/worker.ts`). Default is false — the canonical template
+   * is Vite-based (`@kuratchi/vite`) because that's the DX we ship new
+   * apps with. The legacy flow stays supported for existing projects that
+   * prefer `wrangler`-only tooling.
+   */
+  legacy: boolean;
 }
 
 export async function create(projectName?: string, flags: string[] = []) {
   const autoYes = flags.includes('--yes') || flags.includes('-y');
   const forceDO = flags.includes('--do');
+  // `--legacy` opts into the original Wrangler-CLI scaffold. Default is
+  // Vite (`@kuratchi/vite`) — see `scaffoldVite()` below.
+  const legacy = flags.includes('--legacy');
 
   console.log('\nâš¡ Create a new KuratchiJS project\n');
 
@@ -99,6 +104,7 @@ export async function create(projectName?: string, flags: string[] = []) {
 
   console.log();
   console.log(`  Project:  ${name}`);
+  console.log(`  Template: ${legacy ? 'wrangler CLI (legacy)' : 'vite (default)'}`);
   console.log(`  UI:       ${ui ? 'âœ“' : 'â€”'}`);
   console.log(`  D1 ORM:   ${orm ? 'âœ“' : 'â€”'}`);
   console.log(`  DO:       ${enableDO ? 'âœ“' : 'â€”'}`);
@@ -121,8 +127,12 @@ export async function create(projectName?: string, flags: string[] = []) {
   const isMonorepo = !!monorepoRoot;
 
   // Scaffold files
-  const opts: ScaffoldOptions = { name, ui, orm, do: enableDO, auth, monorepo: isMonorepo, monorepoRoot, projectDir: targetDir };
-  scaffold(targetDir, opts);
+  const opts: ScaffoldOptions = { name, ui, orm, do: enableDO, auth, monorepo: isMonorepo, monorepoRoot, projectDir: targetDir, legacy };
+  if (legacy) {
+    scaffoldLegacy(targetDir, opts);
+  } else {
+    scaffoldVite(targetDir, opts);
+  }
 
   // â”€â”€ Post-scaffold setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   console.log();
@@ -158,16 +168,25 @@ export async function create(projectName?: string, flags: string[] = []) {
   }
 
   // 4. Build routes
-  step('Building routes...');
-  if (isMonorepo && monorepoRoot) {
-    const cliPath = path.join(monorepoRoot!, 'packages', 'kuratchi-js', 'src', 'cli.ts');
-    if (fs.existsSync(cliPath)) {
-      run(`bun run --bun ${cliPath} build`, targetDir);
+  if (legacy) {
+    // Legacy CLI: emit `.kuratchi/worker.ts` via `kuratchi build` so the
+    // first `bun run dev` / deploy has a compiled worker entry on disk.
+    step('Building routes...');
+    if (isMonorepo && monorepoRoot) {
+      const cliPath = path.join(monorepoRoot!, 'packages', 'kuratchi-wrangler', 'dist', 'cli.js');
+      if (fs.existsSync(cliPath)) {
+        run(`node ${cliPath} build`, targetDir);
+      } else {
+        run('npx kuratchi build', targetDir);
+      }
     } else {
       run('npx kuratchi build', targetDir);
     }
   } else {
-    run('npx kuratchi build', targetDir);
+    // Vite: no upfront build. `bun run dev` spins up `vite dev`, which
+    // compiles routes on demand. `bun run build` runs `vite build` +
+    // `wrangler deploy`. Skipping a prebuild keeps `create` fast.
+    step('Vite template ready — no prebuild needed.');
   }
 
   console.log();
@@ -216,9 +235,15 @@ function patchWranglerDbId(dir: string, dbId: string) {
   fs.writeFileSync(wranglerPath, content, 'utf-8');
 }
 
-// â”€â”€ Scaffold â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Scaffold (Legacy CLI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function scaffold(dir: string, opts: ScaffoldOptions) {
+/**
+ * Legacy scaffold: writes a project that builds with the `kuratchi` CLI
+ * (no Vite). Wrangler points at the generated `.kuratchi/worker.ts`.
+ * Route files use the legacy `.html` extension because the legacy
+ * compiler only discovers those. Opt in with `--legacy`.
+ */
+function scaffoldLegacy(dir: string, opts: ScaffoldOptions) {
   const { name, ui, orm, auth } = opts;
   const enableDO = opts.do;
 
@@ -537,7 +562,10 @@ if (notes.length === 0) {
     for (const note of notes) {
       <article>
         <span>{note.title}</span>
-        <button data-post={deleteNote(note.id)} data-refresh="" type="button">Remove</button>
+        <form action={deleteNote} method="POST" style="display: inline">
+          <input type="hidden" name="id" value={note.id} />
+          <button type="submit">Remove</button>
+        </form>
       </article>
     }
   </section>
@@ -766,10 +794,14 @@ if (items.length === 0) {
       <article>
         <span style={item.done ? 'text-decoration: line-through; opacity: 0.5' : ''}>{item.title}</span>
         <div>
-          <button data-post={toggleItem(item.id)} data-refresh="" type="button">
-            {item.done ? 'â†©' : 'âœ“'}
-          </button>
-          <button data-post={deleteItem(item.id)} data-refresh="" type="button">âœ•</button>
+          <form action={toggleItem} method="POST" style="display: inline">
+            <input type="hidden" name="id" value={item.id} />
+            <button type="submit">{item.done ? 'â†©' : 'âœ“'}</button>
+          </form>
+          <form action={deleteItem} method="POST" style="display: inline">
+            <input type="hidden" name="id" value={item.id} />
+            <button type="submit">âœ•</button>
+          </form>
         </div>
       </article>
     }
@@ -1096,6 +1128,228 @@ if (!admin.isAuthenticated) {
 `;
 }
 
+// ── Scaffold (Vite — default) ──────────────────────────────────────
+//
+// Vite is the canonical KuratchiJS build pipeline. This scaffolder
+// emits a minimal project wired for `@kuratchi/vite`:
+//
+//   - `vite.config.ts` with the `kuratchiVite()` plugin (auto-syncs
+//     `wrangler.jsonc`, discovers routes / containers / sandboxes /
+//     durable objects, provides `kuratchi:*` virtual modules).
+//   - `src/worker.ts` — one-liner re-export of `kuratchi:worker`.
+//   - `src/middleware.ts` — empty runtime definition the user extends
+//     (auth, logging, feature flags) with full type support.
+//   - `src/routes/*.kuratchi` — route files with the canonical
+//     extension. `.html` files in `src/routes/` are ignored by the
+//     compiler.
+//   - `src/assets/styles.css` — static asset served from the root path
+//     via Wrangler's assets binding + Vite's publicDir (auto-wired).
+//
+// We re-use every `gen*Page` / `gen*CRUD` / `gen*Schema` helper from
+// the legacy scaffolder because their bodies are identical between
+// templates — only the file extension and surrounding project files
+// differ.
+function scaffoldVite(dir: string, opts: ScaffoldOptions) {
+  const { orm, auth } = opts;
+  const enableDO = opts.do;
 
+  const dirs = [
+    '',
+    'src',
+    'src/routes',
+    'src/assets',
+  ];
+  if (orm || enableDO) dirs.push('src/schemas');
+  if (orm || enableDO || auth) dirs.push('src/server');
+  if (enableDO) dirs.push('src/routes/notes');
+  if (auth) dirs.push('src/routes/auth', 'src/routes/auth/login', 'src/routes/auth/signup', 'src/routes/admin');
+  if (orm) dirs.push('src/routes/items');
 
+  for (const d of dirs) {
+    fs.mkdirSync(path.join(dir, d), { recursive: true });
+  }
 
+  write(dir, 'package.json', genVitePackageJson(opts));
+  write(dir, 'vite.config.ts', genViteConfig());
+  write(dir, 'wrangler.jsonc', genViteWrangler(opts));
+  write(dir, 'kuratchi.config.ts', genConfig(opts));
+  write(dir, 'tsconfig.json', genViteTsConfig());
+  write(dir, '.gitignore', genViteGitIgnore());
+  write(dir, 'src/worker.ts', genViteWorker());
+  write(dir, 'src/middleware.ts', genViteMiddleware());
+  write(dir, 'src/assets/styles.css', genViteAssetsCss());
+  write(dir, 'src/routes/layout.kuratchi', genLayout(opts));
+  write(dir, 'src/routes/index.kuratchi', genLandingPage(opts));
+
+  if (orm) {
+    write(dir, 'src/schemas/app.ts', genSchema(opts));
+    write(dir, 'src/server/items.ts', genItemsCrud());
+    write(dir, 'src/routes/items/index.kuratchi', genItemsPage());
+  }
+
+  if (enableDO) {
+    write(dir, 'src/schemas/notes.ts', genNotesSchema());
+    write(dir, 'src/server/notes.do.ts', genNotesDoHandler());
+    write(dir, 'src/server/notes.ts', genNotesDb());
+    write(dir, 'src/routes/notes/index.kuratchi', genNotesPage());
+  }
+
+  if (auth) {
+    write(dir, '.dev.vars', genDevVars());
+    write(dir, 'src/server/auth.ts', genAuthFunctions());
+    write(dir, 'src/server/admin.ts', genAdminLoader());
+    write(dir, 'src/routes/auth/login/index.kuratchi', genLoginPage());
+    write(dir, 'src/routes/auth/signup/index.kuratchi', genSignupPage());
+    write(dir, 'src/routes/admin/index.kuratchi', genAdminPage());
+  }
+}
+
+function genVitePackageJson(opts: ScaffoldOptions): string {
+  const ver = opts.monorepo ? 'workspace:*' : 'latest';
+  const deps: Record<string, string> = {
+    [FRAMEWORK_PACKAGE_NAME]: ver,
+  };
+  if (opts.ui) deps['@kuratchi/ui'] = ver;
+  if (opts.orm) deps['@kuratchi/orm'] = ver;
+  if (opts.auth) deps['@kuratchi/auth'] = ver;
+
+  return JSON.stringify({
+    name: opts.monorepo ? `@kuratchi/${opts.name}` : opts.name,
+    version: '0.0.1',
+    private: true,
+    type: 'module',
+    scripts: {
+      dev: 'vite',
+      build: 'vite build',
+      preview: 'wrangler dev',
+      deploy: 'vite build && wrangler deploy',
+    },
+    dependencies: deps,
+    devDependencies: {
+      '@cloudflare/workers-types': '^4.20250214.0',
+      '@kuratchi/vite': ver,
+      'vite': '^7.0.0',
+      'wrangler': '^4.14.0',
+    },
+  }, null, 2) + '\n';
+}
+
+function genViteConfig(): string {
+  return `import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+
+// The \`kuratchiVite()\` plugin owns:
+//   - Route discovery (\`src/routes/**/*.kuratchi\`)
+//   - Virtual modules (\`kuratchi:worker\`, \`kuratchi:request\`, etc.)
+//   - Auto-sync of \`wrangler.jsonc\` (containers, sandboxes, DOs, queues, assets)
+//   - ORM migrations on first request
+// No extra config is needed for the common case — drop it in and run \`vite dev\`.
+export default defineConfig({
+  plugins: [kuratchiVite()],
+});
+`;
+}
+
+function genViteWrangler(opts: ScaffoldOptions): string {
+  // Vite emits the final worker entry into \`dist/\`, but the
+  // \`kuratchiVite\` plugin rewrites \`main\` if necessary at build time.
+  // We keep the config minimal here and point at the source entry so
+  // \`wrangler dev\` (used for preview of the prod-shaped bundle) works.
+  const config: any = {
+    name: opts.name,
+    main: 'src/worker.ts',
+    compatibility_date: new Date().toISOString().split('T')[0],
+    compatibility_flags: ['nodejs_compat'],
+    assets: { directory: 'src/assets' },
+  };
+
+  if (opts.orm) {
+    config.d1_databases = [
+      { binding: 'DB', database_name: `${opts.name}-db`, database_id: 'local-dev-only' },
+    ];
+  }
+
+  if (opts.do) {
+    config.durable_objects = { bindings: [{ name: 'NOTES_DO', class_name: 'NotesDO' }] };
+    config.migrations = [{ tag: 'v1', new_sqlite_classes: ['NotesDO'] }];
+  }
+
+  return JSON.stringify(config, null, 2) + '\n';
+}
+
+function genViteWorker(): string {
+  // `kuratchi:worker` is the virtual module synthesized by the
+  // `kuratchiVite` plugin. It wires the dispatcher + middleware +
+  // route registry into the Workers `fetch` + `queue` exports, so the
+  // user never has to hand-write them.
+  return `export { default } from 'kuratchi:worker';
+`;
+}
+
+function genViteMiddleware(): string {
+  // Every Vite project gets a middleware file. Empty by default —
+  // the user extends it with auth, logging, etc. Kuratchi's dispatcher
+  // reads this via the `kuratchi:middleware` virtual module.
+  return `import { defineRuntime } from '@kuratchi/js';
+
+/**
+ * Request middleware. Each step can hook into:
+ *   - \`request(ctx, next)\` — before routing
+ *   - \`route(ctx, next)\`   — after routing, before render
+ *   - \`response(ctx, res)\` — after render
+ *   - \`error(ctx, err)\`    — on thrown errors
+ *
+ * Steps run in the order defined here. Mutate \`ctx.locals\` to share
+ * data with \`$server/*\` modules and route actions.
+ */
+export default defineRuntime({
+  // Example:
+  // auth: {
+  //   async request(ctx, next) {
+  //     ctx.locals.user = await getUser(ctx.request);
+  //     return next();
+  //   },
+  // },
+});
+`;
+}
+
+function genViteTsConfig(): string {
+  return JSON.stringify({
+    compilerOptions: {
+      target: 'ESNext',
+      module: 'ESNext',
+      moduleResolution: 'bundler',
+      strict: true,
+      esModuleInterop: true,
+      skipLibCheck: true,
+      forceConsistentCasingInFileNames: true,
+      types: ['./worker-configuration.d.ts'],
+    },
+    include: ['src/**/*.ts', 'kuratchi.config.ts', 'vite.config.ts'],
+    exclude: ['node_modules', 'dist'],
+  }, null, 2) + '\n';
+}
+
+function genViteGitIgnore(): string {
+  return `node_modules/
+.wrangler/
+.dev.vars
+dist/
+worker-configuration.d.ts
+`;
+}
+
+function genViteAssetsCss(): string {
+  // Minimal reset so the landing page doesn't ship naked HTML. Users
+  // are expected to replace this with their own stylesheet or opt
+  // into Tailwind via the \`css.tailwind\` Kuratchi config option.
+  return `:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+body { margin: 0; padding: 2rem; max-width: 48rem; margin-inline: auto; }
+header { margin-bottom: 2rem; }
+nav { display: flex; gap: 1rem; }
+`;
+}

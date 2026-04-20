@@ -1,0 +1,82 @@
+<script>
+	// Leading script: runs SERVER-side at SSR. `$server/*` imports resolve
+	// to real server modules (via Vite's resolve alias). Top-level `await`
+	// of `$server/*` functions pre-computes their values and drops them
+	// into the template scope as data variables.
+	import { getCount, incrementCounter } from '$server/counter';
+	import { listNotes, addNote } from '$server/notes';
+
+	const name = 'world';
+	const items = ['one', 'two', 'three'];
+	const count = await getCount();
+	// D1 + @kuratchi/orm: real SQL against Miniflare's in-memory D1.
+	// Proves the zero-dep ORM package works unchanged in Vite+Worker.
+	const notes = await listNotes();
+</script>
+
+<section>
+	<h1>Hello, {name}!</h1>
+	<p>Template compiled via <code>@kuratchi/js/compiler</code> from a Vite plugin, wrapped by <code>routes/layout.kuratchi</code>.</p>
+	<p>Server counter (SSR-computed): <strong>{count}</strong></p>
+
+	<form action={incrementCounter} method="POST" style="margin-bottom: 1rem;">
+		<button type="submit">Increment server counter (POST → action → redirect)</button>
+	</form>
+
+	<h2>Items ({items.length})</h2>
+	if (items.length === 0) {
+		<p><em>No items yet.</em></p>
+	} else {
+		<ul>
+			for (const item of items) {
+				<li>{item}</li>
+			}
+		</ul>
+	}
+
+	<div style="margin-top: 2rem; padding: 1rem; border: 1px solid #ccc;">
+		<h2>Notes (D1 via @kuratchi/orm)</h2>
+		<form action={addNote} method="POST">
+			<input type="text" name="body" placeholder="New note body" required />
+			<button type="submit">Add note</button>
+		</form>
+		if (notes.length === 0) {
+			<p><em>No notes yet — add one above.</em></p>
+		} else {
+			<ul>
+				for (const note of notes) {
+					<li>#{note.id} — {note.body}</li>
+				}
+			</ul>
+		}
+	</div>
+
+	<div data-counter style="margin-top: 2rem; padding: 1rem; border: 1px solid #ccc;">
+		<p>Client-side counter: <strong data-count>0</strong></p>
+		<button type="button">Increment</button>
+	</div>
+</section>
+
+<script>
+	// Gate 4 + C.4: `$lib/*` + bare npm + `$server/*` all resolve.
+	// The `getCount` import to `$server/counter` is rewritten at client
+	// build time to an RPC stub — the real counter.ts file is never
+	// shipped to the browser. Clicking "Fetch" hits `/__kuratchi/rpc/…`.
+	import { mountCounter } from '$lib/counter';
+	import confetti from 'canvas-confetti';
+	import { getCount } from '$server/counter';
+
+	mountCounter();
+	document.querySelector('[data-counter] button')?.addEventListener('click', () => {
+		confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 } });
+	});
+
+	const fetchBtn = document.createElement('button');
+	fetchBtn.textContent = 'Fetch count via RPC';
+	fetchBtn.style.marginTop = '1rem';
+	fetchBtn.addEventListener('click', async () => {
+		const count = await getCount();
+		alert('Server counter: ' + count);
+	});
+	document.querySelector('[data-counter]')?.appendChild(fetchBtn);
+</script>

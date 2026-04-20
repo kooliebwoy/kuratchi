@@ -1,0 +1,61 @@
+---
+title: "UI Components"
+description: "Server-rendered HTML component library for KuratchiJS"
+---
+
+## What is @kuratchi/ui?
+
+`@kuratchi/ui` is an **optional** server-rendered HTML component library designed specifically for KuratchiJS applications. It provides a collection of pre-built, accessible UI components that work seamlessly with the Kuratchi framework.
+
+## Key features
+
+- **Server-rendered** — Components are `.html` templates that compile to server-side code
+- **Zero JavaScript by default** — Most components work without client-side JS
+- **Dark mode built-in** — Automatic theme switching with localStorage persistence
+- **Customizable theming** — CSS variables for colors, spacing, shadows, and radii
+- **Accessible** — Semantic HTML with ARIA attributes where needed
+- **Framework-native** — Uses Kuratchi's template syntax and component model
+
+## Philosophy
+
+Unlike traditional component libraries that ship heavy JavaScript bundles, `@kuratchi/ui` embraces server-side rendering:
+
+- Components are imported as `.html` files directly into your routes
+- Styling is handled via a single `theme.css` file with CSS variables
+- Interactive components use minimal vanilla JavaScript
+- No build-time CSS processing required (though Tailwind is supported)
+
+## When to use it
+
+`@kuratchi/ui` is ideal when you want:
+
+- A consistent design system without building components from scratch
+- Server-rendered UI with minimal client-side JavaScript
+- Dark mode support out of the box
+- Semantic HTML with sensible defaults
+
+## When not to use it
+
+You might prefer building custom components if:
+
+- You need highly specialized or branded UI components
+- You want complete control over every CSS detail
+- You're already using another UI framework (Tailwind, DaisyUI, etc.)
+
+## Component categories
+
+`@kuratchi/ui` includes components for:
+
+- **Layout** — App shells, sidebars, headers, dashboards
+- **Content** — Cards, alerts, callouts, empty states
+- **Forms** — Inputs, labels, fieldsets (styled via semantic HTML)
+- **Navigation** — Breadcrumbs, tab navigation, dropdowns
+- **Data display** — Badges, status chips, data lists, progress bars
+- **Interactive** — Dialogs, drawers, accordions, theme toggles
+- **Utilities** — Loading states, tooltips, hints
+
+## Next steps
+
+- [Getting Started](/ui/getting-started) — Install and configure `@kuratchi/ui`
+- [Theming](/ui/theming) — Customize colors, dark mode, and radii
+- [Components](/ui/components) — Browse the full component reference

@@ -38,8 +38,6 @@ export interface GenerateRoutesModuleOptions {
   runtimeDoImport: string;
   runtimeSchemaImport: string;
   runtimeWorkerImport: string;
-  /** Auto-detected from wrangler.jsonc containers config */
-  hasSandbox?: boolean;
 }
 
 export interface RoutesModuleFeatureBlocks {
@@ -50,8 +48,6 @@ export interface RoutesModuleFeatureBlocks {
   migrationInit: string;
   authInit: string;
   authPluginImports: string;
-  /** Re-export Sandbox from @cloudflare/sandbox when detected in wrangler.jsonc */
-  sandboxExport: string;
   authPluginInit: string;
   doImports: string;
   doClassCode: string;

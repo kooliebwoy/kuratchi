@@ -1,0 +1,32 @@
+{
+    "name": "create-kuratchi",
+    "version": "0.0.1",
+    "description": "Scaffold a new KuratchiJS project. Invoke via `npm create kuratchi@latest` or `bun create kuratchi`.",
+    "license": "MIT",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "bin": {
+        "create-kuratchi": "dist/index.js"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "check": "tsc -p tsconfig.build.json --noEmit",
+        "prepublishOnly": "npm run build"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "devDependencies": {
+        "@types/node": "^24.4.0",
+        "typescript": "^5.8.0"
+    }
+}

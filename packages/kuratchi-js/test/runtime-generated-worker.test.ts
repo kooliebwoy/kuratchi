@@ -158,44 +158,10 @@ describe('generated worker runtime', () => {
     expect(await response.text()).toContain('<head><title>Structured Head</title></head>');
   });
 
-  test('returns compiled fragment html for fragment refresh requests', async () => {
-    const worker = createGeneratedWorker({
-      routes: [
-        {
-          pattern: '/poll',
-          render: () => ({
-            html: '<section data-poll="stats" data-poll-id="__poll_stats"><strong>42</strong></section>',
-            head: '<title>Polling</title>',
-            fragments: {
-              __poll_stats: '<strong>42</strong>',
-            },
-          }),
-        },
-      ],
-      layout: (content, head = '') => `<html><head>${head}</head><body>${content}</body></html>`,
-      layoutActions: {},
-      assetsPrefix: '/assets/',
-      assets: {},
-      errorPages: {},
-      // Disable CSRF for this test to allow unsigned fragment IDs
-      security: { csrfEnabled: false },
-    });
-
-    const response = await worker.fetch(
-      new Request('https://example.com/poll', {
-        headers: { 'x-kuratchi-fragment': '__poll_stats' },
-      }),
-      {},
-      {} as ExecutionContext,
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    const html = await response.text();
-    expect(html).toBe('<strong>42</strong>');
-  });
-
-  test('omits Secure on CSRF cookies for local http requests', async () => {
+  test('does not emit a framework-owned CSRF cookie on any response', async () => {
+    // Kuratchi no longer mints its own CSRF cookie — origin integrity is provided
+    // by the strict same-origin gate, and session cookies (if any) are set by the
+    // user's auth library, not the framework.
     const worker = createGeneratedWorker({
       routes: [
         {
@@ -210,43 +176,12 @@ describe('generated worker runtime', () => {
       errorPages: {},
     });
 
-    const response = await worker.fetch(
-      new Request('http://127.0.0.1:8787/'),
-      {},
-      {} as ExecutionContext,
-    );
-
-    expect(response.status).toBe(200);
-    const setCookie = response.headers.get('set-cookie') || '';
-    expect(setCookie).toContain('__kuratchi_csrf=');
-    expect(setCookie).not.toContain('Secure');
-  });
-
-  test('keeps Secure on CSRF cookies for https requests', async () => {
-    const worker = createGeneratedWorker({
-      routes: [
-        {
-          pattern: '/',
-          render: () => '<form method="POST"></form>',
-        },
-      ],
-      layout: (content) => content,
-      layoutActions: {},
-      assetsPrefix: '/assets/',
-      assets: {},
-      errorPages: {},
-    });
-
-    const response = await worker.fetch(
-      new Request('https://example.com/'),
-      {},
-      {} as ExecutionContext,
-    );
-
-    expect(response.status).toBe(200);
-    const setCookie = response.headers.get('set-cookie') || '';
-    expect(setCookie).toContain('__kuratchi_csrf=');
-    expect(setCookie).toContain('Secure');
+    for (const url of ['http://127.0.0.1:8787/', 'https://example.com/']) {
+      const response = await worker.fetch(new Request(url), {}, {} as ExecutionContext);
+      expect(response.status).toBe(200);
+      const setCookie = response.headers.get('set-cookie') || '';
+      expect(setCookie).not.toMatch(/__kuratchi_csrf/);
+    }
   });
 
   test('validates route RPC arguments with companion schemas', async () => {
@@ -271,12 +206,11 @@ describe('generated worker runtime', () => {
       assetsPrefix: '/assets/',
       assets: {},
       errorPages: {},
-      security: { csrfEnabled: false },
     });
 
     const ok = await worker.fetch(
       new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%7B%22title%22%3A%22hello%22%2C%22content%22%3A%22world%22%7D%5D', {
-        headers: { 'x-kuratchi-rpc': '1' },
+        headers: { 'sec-fetch-site': 'same-origin' },
       }),
       {},
       {} as ExecutionContext,
@@ -287,7 +221,7 @@ describe('generated worker runtime', () => {
 
     const bad = await worker.fetch(
       new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%7B%22title%22%3A%22%22%2C%22content%22%3A%22world%22%7D%5D', {
-        headers: { 'x-kuratchi-rpc': '1' },
+        headers: { 'sec-fetch-site': 'same-origin' },
       }),
       {},
       {} as ExecutionContext,
@@ -318,12 +252,11 @@ describe('generated worker runtime', () => {
       assetsPrefix: '/assets/',
       assets: {},
       errorPages: {},
-      security: { csrfEnabled: false },
     });
 
     const response = await worker.fetch(
       new Request('https://example.com/rpc?_rpc=saveDraft&_args=%5B%22hello%22%2C%22world%22%5D', {
-        headers: { 'x-kuratchi-rpc': '1' },
+        headers: { 'sec-fetch-site': 'same-origin' },
       }),
       {},
       {} as ExecutionContext,
@@ -349,12 +282,11 @@ describe('generated worker runtime', () => {
       assetsPrefix: '/assets/',
       assets: {},
       errorPages: {},
-      security: { csrfEnabled: false },
     });
 
     const response = await worker.fetch(
       new Request('https://example.com/rpc?_rpc=ping&_args=%7B%22not%22%3A%22an-array%22%7D', {
-        headers: { 'x-kuratchi-rpc': '1' },
+        headers: { 'sec-fetch-site': 'same-origin' },
       }),
       {},
       {} as ExecutionContext,

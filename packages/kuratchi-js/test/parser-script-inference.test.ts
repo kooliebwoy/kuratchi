@@ -15,7 +15,10 @@ const user = await getUser();
     expect(parsed.template).toContain('<main>{user?.email}</main>');
   });
 
-  it('keeps reactive top-level script in template as client script', () => {
+  it('treats all <script> blocks as hybrid client-first scripts', () => {
+    // The framework no longer supports Svelte-style `$:` reactive labels.
+    // All <script> blocks are extracted for the server prepass AND the client
+    // bundle — the label is just a regular JS labeled statement inside the body.
     const source = `<script>
 let count = 0;
 $: count = count + 1;
@@ -23,9 +26,8 @@ $: count = count + 1;
 <main>{count}</main>`;
 
     const parsed = parseFile(source);
-    expect(parsed.script).toBeNull();
-    expect(parsed.hasLoad).toBe(false);
-    expect(parsed.template).toContain('$: count = count + 1;');
+    expect(parsed.script).toContain('$: count = count + 1;');
+    expect(parsed.template).toBe('<main>{count}</main>');
   });
 
   it('extracts explicit load() return vars for template access', () => {

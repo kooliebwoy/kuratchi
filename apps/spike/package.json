@@ -1,0 +1,25 @@
+{
+	"name": "@kuratchi/spike",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"predev": "bun run --cwd ../../packages/kuratchi-vite build",
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"deploy": "vite build && wrangler deploy"
+	},
+	"dependencies": {
+		"@kuratchi/js": "workspace:*",
+		"@kuratchi/orm": "workspace:*",
+		"@kuratchi/vite": "workspace:*",
+		"canvas-confetti": "^1.9.3"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.0.0",
+		"@cloudflare/workers-types": "^4.20250214.0",
+		"vite": "^7.0.0",
+		"wrangler": "^4.77.0"
+	}
+}

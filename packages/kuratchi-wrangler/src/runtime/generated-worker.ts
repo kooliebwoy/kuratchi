@@ -1,24 +1,20 @@
-import { __esc, __getLocals, __setLocal, __setRequestContext, buildDefaultBreadcrumbs } from './context.js';
-import { Router } from './router.js';
+import { __esc, __getLocals, __setLocal, __setRequestContext, buildDefaultBreadcrumbs } from '@kuratchi/js/runtime/context.js';
+import { Router } from '@kuratchi/js/runtime/router.js';
 import {
-  initCsrf,
-  getCsrfCookieHeader,
-  validateCsrf,
+  initCspNonce,
   validateRpcRequest,
   validateActionRequest,
-  validateSignedFragment,
   validateQueryOverride,
   parseQueryArgs,
-  CSRF_DEFAULTS,
   type RpcSecurityConfig,
   type ActionSecurityConfig,
-} from './security.js';
+} from '@kuratchi/js/runtime/security.js';
 import {
   SchemaValidationError,
   parseRpcArgsPayload,
   validateSchemaInput,
-} from './schema.js';
-import type { PageRenderOutput, PageRenderResult, RuntimeContext, RuntimeDefinition } from './types.js';
+} from '@kuratchi/js/runtime/schema.js';
+import type { PageRenderOutput, PageRenderResult, RuntimeContext, RuntimeDefinition } from '@kuratchi/js/runtime/types.js';
 
 export interface GeneratedAssetEntry {
   content: string;
@@ -44,17 +40,11 @@ export interface GeneratedPageRoute {
 }
 
 export interface SecurityOptions {
-  /** Enable CSRF protection (default: true) */
-  csrfEnabled?: boolean;
-  /** CSRF cookie name (default: '__kuratchi_csrf') */
-  csrfCookieName?: string;
-  /** CSRF header name (default: 'x-kuratchi-csrf') */
-  csrfHeaderName?: string;
-  /** Require authentication for RPC (default: false) */
-  rpcRequireAuth?: boolean;
-  /** Require authentication for form actions (default: false) */
-  actionRequireAuth?: boolean;
-  /** Content Security Policy directive string */
+  /**
+   * Content Security Policy directive string.
+   * Use the literal placeholder `{NONCE}` to opt into per-request nonces on the
+   * framework's injected inline scripts, e.g. `script-src 'self' 'nonce-{NONCE}'`.
+   */
   contentSecurityPolicy?: string | null;
   /** Strict-Transport-Security header value */
   strictTransportSecurity?: string | null;
@@ -70,7 +60,6 @@ export interface GeneratedWorkerOptions {
   assets: Record<string, GeneratedAssetEntry>;
   errorPages: Record<number, (detail?: string) => string>;
   runtimeDefinition?: RuntimeDefinition;
-  workflowStatusRpc?: Record<string, (instanceId: string) => Promise<unknown>>;
   initializeRequest?: (ctx: RuntimeContext) => Promise<void> | void;
   preRouteChecks?: (ctx: RuntimeContext) => Promise<Response | null | undefined> | Response | null | undefined;
   /** Security configuration */
@@ -88,15 +77,11 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
 
   // Security configuration with defaults
   const securityConfig: RuntimeSecurityConfig = {
-    csrfEnabled: opts.security?.csrfEnabled ?? true,
-    csrfCookieName: opts.security?.csrfCookieName ?? CSRF_DEFAULTS.cookieName,
-    csrfHeaderName: opts.security?.csrfHeaderName ?? CSRF_DEFAULTS.headerName,
-    rpcRequireAuth: opts.security?.rpcRequireAuth ?? false,
-    actionRequireAuth: opts.security?.actionRequireAuth ?? false,
     contentSecurityPolicy: opts.security?.contentSecurityPolicy ?? null,
     strictTransportSecurity: opts.security?.strictTransportSecurity ?? null,
     permissionsPolicy: opts.security?.permissionsPolicy ?? null,
   };
+  const cspUsesNonce = !!(securityConfig.contentSecurityPolicy && securityConfig.contentSecurityPolicy.includes('{NONCE}'));
 
   // Initialize configurable security headers
   __initSecurityHeaders(securityConfig);
@@ -114,9 +99,10 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
         locals: __getLocals(),
       };
 
-      // Initialize CSRF token for the request
-      if (securityConfig.csrfEnabled) {
-        initCsrf(request, securityConfig.csrfCookieName);
+      // Generate a per-request CSP nonce only when the policy opts in via {NONCE}.
+      // Otherwise skip; most apps don't configure a CSP and we avoid the work.
+      if (cspUsesNonce) {
+        initCspNonce();
       }
 
       if (opts.initializeRequest) {
@@ -125,8 +111,6 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
 
       const coreFetch = async (): Promise<Response> => {
         const { url } = runtimeCtx;
-        const signedFragmentId = request.headers.get('x-kuratchi-fragment');
-        let fragmentId: string | null = null;
 
         const preRoute = opts.preRouteChecks ? await opts.preRouteChecks(runtimeCtx) : null;
         if (preRoute instanceof Response) {
@@ -179,7 +163,6 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
 
         runtimeCtx.params = match.params;
         __setLocal('params', match.params);
-        __setLocal('__currentRoutePath', url.pathname);
 
         const route = opts.routes[match.index];
 
@@ -188,15 +171,6 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
         }
 
         const pageRoute = route as GeneratedPageRoute;
-
-        // Validate fragment ID if present
-        if (signedFragmentId) {
-          const fragmentValidation = validateSignedFragment(signedFragmentId, url.pathname);
-          if (!fragmentValidation.valid) {
-            return __secHeaders(new Response(fragmentValidation.reason || 'Invalid fragment', { status: 403 }));
-          }
-          fragmentId = fragmentValidation.fragmentId;
-        }
 
         // Validate and parse query override if present
         const queryFn = request.headers.get('x-kuratchi-query-fn') || '';
@@ -236,11 +210,11 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
           __setLocal('breadcrumbs', buildDefaultBreadcrumbs(url.pathname, match.params));
         }
 
-        const rpcResponse = await __handleRpc(pageRoute, opts.workflowStatusRpc ?? {}, runtimeCtx, securityConfig);
+        const rpcResponse = await __handleRpc(pageRoute, runtimeCtx, securityConfig);
         if (rpcResponse) return rpcResponse;
 
         if (request.method === 'POST') {
-          const actionResponse = await __handleAction(pageRoute, opts.layoutActions, opts.layout, runtimeCtx, fragmentId, securityConfig);
+          const actionResponse = await __handleAction(pageRoute, opts.layoutActions, opts.layout, runtimeCtx, securityConfig);
           if (actionResponse) return actionResponse;
         }
 
@@ -253,7 +227,7 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
           Object.keys(allActions).forEach((key) => {
             if (!(key in data)) data[key] = { error: undefined, loading: false, success: false };
           });
-          return await __renderPage(opts.layout, pageRoute, data, fragmentId);
+          return await __renderPage(opts.layout, pageRoute, data);
         } catch (err: any) {
           if (err?.isRedirectError) {
             const redirectTo = err.location || url.pathname;
@@ -311,11 +285,6 @@ async function __dispatchApiRoute(route: GeneratedApiRoute, runtimeCtx: RuntimeC
 }
 
 interface RuntimeSecurityConfig {
-  csrfEnabled: boolean;
-  csrfCookieName: string;
-  csrfHeaderName: string;
-  rpcRequireAuth: boolean;
-  actionRequireAuth: boolean;
   contentSecurityPolicy: string | null;
   strictTransportSecurity: string | null;
   permissionsPolicy: string | null;
@@ -323,25 +292,24 @@ interface RuntimeSecurityConfig {
 
 async function __handleRpc(
   route: GeneratedPageRoute,
-  workflowStatusRpc: Record<string, (instanceId: string) => Promise<unknown>>,
   runtimeCtx: RuntimeContext,
   securityConfig: RuntimeSecurityConfig,
 ): Promise<Response | null> {
   const { request, url } = runtimeCtx;
   const rpcName = url.searchParams.get('_rpc');
   const hasRouteRpc = rpcName && route.rpc && Object.hasOwn(route.rpc, rpcName);
-  const hasWorkflowRpc = rpcName && Object.hasOwn(workflowStatusRpc, rpcName);
-  if (!(request.method === 'GET' && rpcName && (hasRouteRpc || hasWorkflowRpc))) {
+  if (!(request.method === 'GET' && rpcName && hasRouteRpc)) {
     return null;
   }
 
-  // Validate RPC request security
+  // Validate RPC request origin. Auth is the developer's responsibility (guard
+  // inside the handler or via an auth-library helper); the framework only
+  // guarantees the request originated from a same-origin browser fetch.
   const rpcSecConfig: RpcSecurityConfig = {
-    requireAuth: securityConfig.rpcRequireAuth,
-    validateCsrf: securityConfig.csrfEnabled,
     allowedMethods: ['GET', 'POST'],
+    requireSameOrigin: true,
   };
-  const rpcValidation = validateRpcRequest(request, rpcSecConfig);
+  const rpcValidation = validateRpcRequest(request, url, rpcSecConfig);
   if (!rpcValidation.valid) {
     return __secHeaders(new Response(JSON.stringify({ ok: false, error: rpcValidation.reason || 'Forbidden' }), {
       status: rpcValidation.status,
@@ -349,19 +317,11 @@ async function __handleRpc(
     }));
   }
 
-  // Legacy header check (still required for backward compatibility)
-  if (request.headers.get('x-kuratchi-rpc') !== '1') {
-    return __secHeaders(new Response(JSON.stringify({ ok: false, error: 'Missing RPC header' }), {
-      status: 403,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    }));
-  }
-
   try {
     const rpcArgs = parseRpcArgsPayload(url.searchParams.get('_args'));
-    const rpcFn = hasRouteRpc ? route.rpc![rpcName!] : workflowStatusRpc[rpcName!];
-    const rpcSchema = hasRouteRpc ? route.rpcSchemas?.[rpcName!] : undefined;
-    const validatedArgs = hasRouteRpc ? validateSchemaInput(rpcSchema, rpcArgs) : rpcArgs;
+    const rpcFn = route.rpc![rpcName!];
+    const rpcSchema = route.rpcSchemas?.[rpcName!];
+    const validatedArgs = validateSchemaInput(rpcSchema, rpcArgs);
     const rpcResult = await rpcFn(...validatedArgs);
     return __attachCookies(new Response(JSON.stringify({ ok: true, data: rpcResult }), {
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -387,33 +347,20 @@ async function __handleAction(
   layoutActions: Record<string, (...args: any[]) => Promise<unknown> | unknown>,
   layout: (content: string, head?: string) => Promise<string> | string,
   runtimeCtx: RuntimeContext,
-  fragmentId: string | null,
   securityConfig: RuntimeSecurityConfig,
 ): Promise<Response | null> {
   const { request, url, params } = runtimeCtx;
   if (request.method !== 'POST') return null;
 
-  const formData = await request.formData();
-
-  // Validate action request security
-  const actionSecConfig: ActionSecurityConfig = {
-    validateCsrf: securityConfig.csrfEnabled,
-    requireSameOrigin: true,
-  };
-  const actionValidation = validateActionRequest(request, url, formData, actionSecConfig);
+  // Validate origin before reading the body. Blocks cross-origin form POSTs; auth
+  // is the developer's responsibility inside the action handler itself.
+  const actionSecConfig: ActionSecurityConfig = { requireSameOrigin: true };
+  const actionValidation = validateActionRequest(request, url, actionSecConfig);
   if (!actionValidation.valid) {
     return __secHeaders(new Response(actionValidation.reason || 'Forbidden', { status: actionValidation.status }));
   }
 
-  // Check authentication if required
-  if (securityConfig.actionRequireAuth) {
-    const locals = __getLocals();
-    const user = locals.user || locals.session?.user;
-    if (!user) {
-      return __secHeaders(new Response('Authentication required', { status: 401 }));
-    }
-  }
-
+  const formData = await request.formData();
   const actionName = formData.get('_action');
   const actionKey = typeof actionName === 'string' ? actionName : null;
   const actionFn = (actionKey && route.actions && Object.hasOwn(route.actions, actionKey) ? route.actions[actionKey] : null)
@@ -461,7 +408,7 @@ async function __handleAction(
     });
     const errMsg = __sanitizeErrorMessage(err, 'Action failed');
     data[actionKey] = { error: errMsg, loading: false, success: false };
-    return await __renderPage(layout, route, data, fragmentId);
+    return await __renderPage(layout, route, data);
   }
 
   if (isFetchAction) {
@@ -480,23 +427,40 @@ async function __renderPage(
   layout: (content: string, head?: string) => Promise<string> | string,
   route: GeneratedPageRoute,
   data: Record<string, any>,
-  fragmentId: string | null,
 ): Promise<Response> {
   const rendered = __normalizeRenderOutput(route.render(data));
 
-  if (fragmentId) {
-    const fragment = rendered.fragments?.[fragmentId];
-    if (typeof fragment !== 'string') {
-      return __secHeaders(new Response('Fragment not found', { status: 404 }));
-    }
-    return __attachCookies(new Response(fragment, {
-      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-    }));
+  // Inject workflow poll metadata if workflowStatus(..., { poll }) was called during render.
+  // The client bridge reads this <script> and re-fetches the page on the interval.
+  const poll = __getLocals().__kuratchiPoll as { interval: string | number; done: boolean } | undefined;
+  let html = rendered.html;
+  const responseHeaders: Record<string, string> = { 'content-type': 'text/html; charset=utf-8' };
+  if (poll && !poll.done) {
+    const payload = JSON.stringify({ interval: poll.interval });
+    html = `${html}\n<script type="application/json" id="__kuratchi_poll">${payload.replace(/</g, '\\u003c')}</script>`;
+  }
+  if (poll?.done) {
+    responseHeaders['x-kuratchi-poll-done'] = '1';
   }
 
-  return __attachCookies(new Response(await layout(rendered.html, rendered.head || ''), {
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  }));
+  let body = await layout(html, rendered.head || '');
+
+  // If the developer configured a CSP with the `{NONCE}` opt-in, stamp the per-request
+  // nonce onto every <script> tag the framework emitted. No-op when nonce is absent.
+  const nonce = (__getLocals().__cspNonce as string | undefined) || '';
+  if (nonce) {
+    body = __stampScriptNonces(body, nonce);
+  }
+
+  return __attachCookies(new Response(body, { headers: responseHeaders }));
+}
+
+/**
+ * Add `nonce="..."` to every `<script` opening tag in the rendered HTML unless the tag
+ * already carries a nonce. Idempotent and safe on strings (no DOM traversal available).
+ */
+function __stampScriptNonces(html: string, nonce: string): string {
+  return html.replace(/<script\b(?![^>]*\bnonce=)([^>]*)>/gi, `<script nonce="${nonce}"$1>`);
 }
 
 function __renderError(errorPages: Record<number, (detail?: string) => string>, status: number, detail?: string): string {
@@ -531,7 +495,13 @@ function __isSameOrigin(request: Request, url: URL): boolean {
 
 function __secHeaders(response: Response): Response {
   for (const [key, value] of Object.entries(__configuredSecHeaders)) {
-    if (!response.headers.has(key)) response.headers.set(key, value);
+    if (response.headers.has(key)) continue;
+    if (key === 'Content-Security-Policy' && value.includes('{NONCE}')) {
+      const nonce = (__getLocals().__cspNonce as string | undefined) || '';
+      response.headers.set(key, nonce ? value.replace(/\{NONCE\}/g, nonce) : value);
+      continue;
+    }
+    response.headers.set(key, value);
   }
   return response;
 }
@@ -539,20 +509,11 @@ function __secHeaders(response: Response): Response {
 function __attachCookies(response: Response): Response {
   const locals = __getLocals();
   const cookies = locals.__setCookieHeaders;
-  const csrfCookie = getCsrfCookieHeader();
-  
-  const hasCookies = (cookies && cookies.length > 0) || csrfCookie;
-  if (hasCookies) {
+  if (cookies && cookies.length > 0) {
     // Clone the response properly to avoid body stream issues with WARP/proxy layers.
-    // Using response.clone() ensures the body stream is properly duplicated.
     const cloned = response.clone();
     const newHeaders = new Headers(cloned.headers);
-    if (cookies) {
-      for (const header of cookies) newHeaders.append('Set-Cookie', header);
-    }
-    if (csrfCookie) {
-      newHeaders.append('Set-Cookie', csrfCookie);
-    }
+    for (const header of cookies) newHeaders.append('Set-Cookie', header);
     const newResponse = new Response(cloned.body, {
       status: cloned.status,
       statusText: cloned.statusText,
@@ -643,7 +604,6 @@ function __normalizeRenderOutput(output: PageRenderOutput): PageRenderResult {
   return {
     html: typeof output?.html === 'string' ? output.html : '',
     head: typeof output?.head === 'string' ? output.head : '',
-    fragments: __isObject(output?.fragments) ? output.fragments as Record<string, string> : {},
   };
 }
 

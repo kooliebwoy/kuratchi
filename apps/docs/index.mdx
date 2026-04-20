@@ -30,7 +30,7 @@ Kuratchi docs now cover the framework and package surface directly inside the mo
     icon="route"
     href="/framework/routing"
   >
-    Build SSR pages with `.html` route files, shared layouts, inline control flow, and browser-friendly top-level scripts.
+    Build SSR pages with `.kuratchi` route files, a document shell, shared layouts, inline control flow, and browser-friendly top-level scripts.
   </Card>
   <Card
     title="Server actions"
@@ -102,19 +102,29 @@ Kuratchi docs now cover the framework and package surface directly inside the mo
 
 ## Framework build model
 
-`kuratchi build` scans `src/routes/` and generates a stable worker entrypoint at `.kuratchi/worker.ts`.
+KuratchiJS is **Vite-first**. The `@kuratchi/vite` plugin owns route discovery, virtual modules, and `wrangler.jsonc` sync — `vite build` produces the Worker bundle that Wrangler deploys.
 
-```json
-{
-  "main": ".kuratchi/worker.ts"
-}
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+
+export default defineConfig({
+  plugins: [kuratchiVite()],
+});
 ```
 
-That lets application code stay focused on routes and server modules while the compiler owns the generated worker plumbing.
+```ts
+// src/worker.ts
+export { default } from 'kuratchi:worker';
+```
+
+That lets application code stay focused on routes and server modules while the plugin owns the generated worker plumbing.
 
 ## Read next
 
 - [Getting Started](/framework/getting-started)
+- [Project structure](/framework/project-structure)
 - [Routing](/framework/routing)
 - [Actions](/framework/actions)
 - [Durable Objects](/framework/durable-objects)

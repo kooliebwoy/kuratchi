@@ -1,0 +1,297 @@
+---
+title: "Theming"
+description: "Customize colors, dark mode, and design tokens in @kuratchi/ui"
+---
+
+## Theme configuration
+
+Configure the initial theme in `kuratchi.config.ts`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({
+    theme: 'dark',    // 'dark' | 'light' | 'system'
+    radius: 'default' // 'default' | 'none' | 'full'
+  }),
+});
+```
+
+## Color schemes
+
+### Dark mode (default)
+
+Dark background with light text. Optimized for low-light environments.
+
+```ts
+ui: kuratchiUiConfig({ theme: 'dark' })
+```
+
+### Light mode
+
+White background with dark text. Traditional light theme.
+
+```ts
+ui: kuratchiUiConfig({ theme: 'light' })
+```
+
+### System preference
+
+Follows the user's OS color scheme via `prefers-color-scheme`.
+
+```ts
+ui: kuratchiUiConfig({ theme: 'system' })
+```
+
+When using `'system'`, add `data-theme="system"` to your `<html>` element in `layout.html`:
+
+```html
+<html lang="en" data-theme="system">
+```
+
+## Runtime theme switching
+
+Use the `ThemeToggle` component to let users switch themes:
+
+```html
+<script>
+  import ThemeToggle from '@kuratchi/ui/theme-toggle.html';
+</script>
+
+<ThemeToggle />
+```
+
+The toggle:
+- Adds/removes the `.dark` class on `<html>`
+- Saves the preference to `localStorage` under `"kui-theme"`
+- Syncs all toggle instances on the page
+
+## Corner radius variants
+
+Control the roundness of UI elements:
+
+### Default
+
+Standard rounded corners (0.375rem - 0.75rem).
+
+```ts
+ui: kuratchiUiConfig({ radius: 'default' })
+```
+
+### None
+
+Square corners (0px radius).
+
+```ts
+ui: kuratchiUiConfig({ radius: 'none' })
+```
+
+### Full
+
+Pill-shaped / fully rounded corners (9999px).
+
+```ts
+ui: kuratchiUiConfig({ radius: 'full' })
+```
+
+## CSS variables
+
+All theme values are exposed as CSS custom properties. Override them in your own stylesheet:
+
+### Color tokens
+
+```css
+:root {
+  /* Backgrounds */
+  --kui-bg: #ffffff;
+  --kui-bg-muted: #f9fafb;
+  --kui-bg-elevated: #ffffff;
+
+  /* Foreground */
+  --kui-fg: #09090b;
+  --kui-fg-muted: #71717a;
+
+  /* Borders & focus */
+  --kui-border: #e4e4e7;
+  --kui-ring: #18181b;
+
+  /* Primary brand color */
+  --kui-primary: #584cd9;
+  --kui-primary-fg: #ffffff;
+  --kui-primary-weak: color-mix(in srgb, #584cd9 12%, transparent);
+  --kui-primary-strong: #4338ca;
+
+  /* Semantic colors */
+  --kui-destructive: #ef4444;
+  --kui-destructive-fg: #ffffff;
+  --kui-success: #22c55e;
+  --kui-success-fg: #ffffff;
+  --kui-warning: #f59e0b;
+  --kui-warning-fg: #ffffff;
+}
+
+.dark {
+  --kui-bg: #09090b;
+  --kui-bg-muted: #18181b;
+  --kui-fg: #fafafa;
+  --kui-fg-muted: #a1a1aa;
+  --kui-border: #27272a;
+  --kui-primary: #818cf8;
+  /* ... */
+}
+```
+
+### Spacing tokens
+
+```css
+:root {
+  --kui-spacing-xs: 0.25rem;
+  --kui-spacing-sm: 0.5rem;
+  --kui-spacing-md: 1rem;
+  --kui-spacing-lg: 1.5rem;
+  --kui-spacing-xl: 2rem;
+}
+```
+
+### Radius tokens
+
+```css
+:root {
+  --kui-radius-sm: 0.375rem;
+  --kui-radius-md: 0.5rem;
+  --kui-radius-lg: 0.75rem;
+}
+```
+
+### Shadow tokens
+
+```css
+:root {
+  --kui-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --kui-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --kui-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --kui-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+```
+
+### Timing tokens
+
+```css
+:root {
+  --kui-duration-fast: 100ms;
+  --kui-duration-base: 150ms;
+}
+```
+
+## Customizing colors
+
+Override CSS variables in your own stylesheet (e.g., `src/assets/custom.css`):
+
+```css
+:root {
+  /* Change primary brand color */
+  --kui-primary: #10b981;
+  --kui-primary-fg: #ffffff;
+  --kui-primary-strong: #059669;
+
+  /* Adjust background */
+  --kui-bg: #fafafa;
+  --kui-bg-muted: #f4f4f5;
+}
+
+.dark {
+  --kui-primary: #34d399;
+  --kui-primary-fg: #09090b;
+}
+```
+
+Then load it after the theme CSS in your layout:
+
+```html
+<link rel="stylesheet" href="/node_modules/@kuratchi/ui/src/styles/theme.css" />
+<link rel="stylesheet" href="/assets/custom.css" />
+```
+
+## Using with Tailwind CSS
+
+`@kuratchi/ui` works alongside Tailwind. Configure Tailwind in `kuratchi.config.ts`:
+
+```ts
+import { defineConfig } from '@kuratchi/js';
+import { kuratchiUiConfig } from '@kuratchi/ui/adapter';
+
+export default defineConfig({
+  ui: kuratchiUiConfig({ theme: 'dark' }),
+  css: {
+    tailwind: true,
+    minify: true,
+  },
+});
+```
+
+Install Tailwind dependencies:
+
+```bash
+npm install tailwindcss @tailwindcss/postcss postcss
+```
+
+You can then use Tailwind utility classes alongside `@kuratchi/ui` components:
+
+```html
+<Card title="Dashboard" class="max-w-2xl mx-auto">
+  <p class="text-sm text-gray-600">Custom Tailwind styling</p>
+</Card>
+```
+
+## Font customization
+
+The default font stack is:
+
+```css
+:root {
+  --kui-font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, 
+                   BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+```
+
+Override it in your custom CSS:
+
+```css
+:root {
+  --kui-font-sans: 'Your Font', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--kui-font-sans);
+}
+```
+
+## Preventing FOUC
+
+To prevent a flash of unstyled content when the page loads, use the `ThemeInit` component in your layout's `<head>`:
+
+```html
+<script>
+  import ThemeInit from '@kuratchi/ui/theme-init.html';
+</script>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <ThemeInit />
+  <link rel="stylesheet" href="/node_modules/@kuratchi/ui/src/styles/theme.css" />
+</head>
+<body>
+  <slot></slot>
+</body>
+</html>
+```
+
+This script runs immediately and applies the saved theme from `localStorage` before rendering.
+
+## Next steps
+
+- [Components](/ui/components) — Browse the full component reference
+- [Framework Styling](/framework/styling) — Learn about CSS processing in Kuratchi

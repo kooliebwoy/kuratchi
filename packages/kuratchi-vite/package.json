@@ -1,0 +1,38 @@
+{
+	"name": "@kuratchi/vite",
+	"version": "0.0.2",
+	"description": "Vite plugin for KuratchiJS — route discovery, virtual modules, Wrangler config auto-sync",
+	"publishConfig": {
+		"access": "public"
+	},
+	"license": "MIT",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": ["dist", "README.md"],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json && bun run copy-runtime",
+		"copy-runtime": "mkdir -p dist/runtime && cp src/runtime/*.js dist/runtime/",
+		"check": "tsc -p tsconfig.build.json --noEmit",
+		"dev": "tsc -p tsconfig.build.json --watch"
+	},
+	"peerDependencies": {
+		"vite": "^6.0.0 || ^7.0.0",
+		"@cloudflare/vite-plugin": "^1.0.0"
+	},
+	"dependencies": {
+		"@kuratchi/js": "^0.0.29",
+		"typescript": "^5.8.0"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.0.0",
+		"@types/node": "^22.0.0",
+		"vite": "^7.0.0"
+	}
+}

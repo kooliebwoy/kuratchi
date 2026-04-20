@@ -67,7 +67,6 @@ function patchHtmlTag(source: string, theme: string, radius: string): string {
 
 const BRIDGE_SOURCE = `(function(){
   function by(sel, root){ return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
-  var __refreshSeq = Object.create(null);
   var __clientHandlers = Object.create(null);
   window.__kuratchiClient = window.__kuratchiClient || {
     register: function(routeId, handlers){
@@ -101,131 +100,6 @@ const BRIDGE_SOURCE = `(function(){
     var any = items.some(function(i){ return !!i.checked; });
     masters.forEach(function(m){ m.checked = all; m.indeterminate = any && !all; });
   }
-  function inferQueryKey(getName, argsRaw){
-    if(!getName) return '';
-    return 'query:' + String(getName) + '|' + (argsRaw || '[]');
-  }
-  function blockKey(el){
-    if(!el || !el.getAttribute) return '';
-    var explicit = el.getAttribute('data-key');
-    if(explicit) return 'key:' + explicit;
-    var inferred = inferQueryKey(el.getAttribute('data-get'), el.getAttribute('data-get-args'));
-    if(inferred) return inferred;
-    var asName = el.getAttribute('data-as');
-    if(asName) return 'as:' + asName;
-    return '';
-  }
-  function escHtml(v){
-    return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-  function setBlocksLoading(blocks){
-    blocks.forEach(function(el){
-      el.setAttribute('aria-busy','true');
-      el.setAttribute('data-kuratchi-loading','1');
-      var text = el.getAttribute('data-loading-text');
-      if(text && !el.hasAttribute('data-as')){ el.innerHTML = '<p>' + escHtml(text) + '</p>'; return; }
-      el.style.opacity = '0.6';
-    });
-  }
-  function clearBlocksLoading(blocks){
-    blocks.forEach(function(el){
-      el.removeAttribute('aria-busy');
-      el.removeAttribute('data-kuratchi-loading');
-      el.style.opacity = '';
-    });
-  }
-  function replaceBlocksWithKey(key){
-    if(!key || typeof DOMParser === 'undefined'){ location.reload(); return Promise.resolve(); }
-    var oldBlocks = by('[data-get]').filter(function(el){ return blockKey(el) === key; });
-    if(!oldBlocks.length){ location.reload(); return Promise.resolve(); }
-    var first = oldBlocks[0];
-    var qFn = first ? (first.getAttribute('data-get') || '') : '';
-    var qArgs = first ? String(first.getAttribute('data-get-args') || '[]') : '[]';
-    var seq = (__refreshSeq[key] || 0) + 1;
-    __refreshSeq[key] = seq;
-    setBlocksLoading(oldBlocks);
-    var headers = { 'x-kuratchi-refresh': '1' };
-    if(qFn){ headers['x-kuratchi-query-fn'] = String(qFn); headers['x-kuratchi-query-args'] = qArgs; }
-    return fetch(location.pathname + location.search, { headers: headers })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function(html){
-        if(__refreshSeq[key] !== seq) return;
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var newBlocks = by('[data-get]', doc).filter(function(el){ return blockKey(el) === key; });
-        if(!oldBlocks.length || !newBlocks.length){ location.reload(); return; }
-        for(var i=0;i<oldBlocks.length;i++){ if(newBlocks[i]) oldBlocks[i].outerHTML = newBlocks[i].outerHTML; }
-        by('[data-select-all]').forEach(function(m){ var g=m.getAttribute('data-select-all'); if(g) syncGroup(g); });
-      })
-      .catch(function(){
-        if(__refreshSeq[key] === seq) clearBlocksLoading(oldBlocks);
-        location.reload();
-      });
-  }
-  function replaceBlocksByDescriptor(fnName, argsRaw){
-    if(!fnName || typeof DOMParser === 'undefined'){ location.reload(); return Promise.resolve(); }
-    var normalizedArgs = String(argsRaw || '[]');
-    var oldBlocks = by('[data-get]').filter(function(el){
-      return (el.getAttribute('data-get') || '') === String(fnName) &&
-        String(el.getAttribute('data-get-args') || '[]') === normalizedArgs;
-    });
-    if(!oldBlocks.length){ location.reload(); return Promise.resolve(); }
-    var key = 'fn:' + String(fnName) + '|' + normalizedArgs;
-    var seq = (__refreshSeq[key] || 0) + 1;
-    __refreshSeq[key] = seq;
-    setBlocksLoading(oldBlocks);
-    return fetch(location.pathname + location.search, {
-      headers: {
-        'x-kuratchi-refresh': '1',
-        'x-kuratchi-query-fn': String(fnName),
-        'x-kuratchi-query-args': normalizedArgs,
-      }
-    })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function(html){
-        if(__refreshSeq[key] !== seq) return;
-        var doc = new DOMParser().parseFromString(html, 'text/html');
-        var newBlocks = by('[data-get]', doc).filter(function(el){
-          return (el.getAttribute('data-get') || '') === String(fnName) &&
-            String(el.getAttribute('data-get-args') || '[]') === normalizedArgs;
-        });
-        if(!newBlocks.length){ location.reload(); return; }
-        for(var i=0;i<oldBlocks.length;i++){ if(newBlocks[i]) oldBlocks[i].outerHTML = newBlocks[i].outerHTML; }
-        by('[data-select-all]').forEach(function(m){ var g=m.getAttribute('data-select-all'); if(g) syncGroup(g); });
-      })
-      .catch(function(){
-        if(__refreshSeq[key] === seq) clearBlocksLoading(oldBlocks);
-        location.reload();
-      });
-  }
-  function refreshByDescriptor(fnName, argsRaw){
-    if(!fnName) { location.reload(); return Promise.resolve(); }
-    return replaceBlocksByDescriptor(fnName, argsRaw || '[]');
-  }
-  function refreshNearest(el){
-    var host = el && el.closest ? el.closest('[data-get]') : null;
-    if(!host){ location.reload(); return Promise.resolve(); }
-    return replaceBlocksWithKey(blockKey(host));
-  }
-  function refreshTargets(raw){
-    if(!raw){ location.reload(); return Promise.resolve(); }
-    var keys = String(raw).split(',').map(function(v){ return v.trim(); }).filter(Boolean);
-    if(!keys.length){ location.reload(); return Promise.resolve(); }
-    return Promise.all(keys.map(function(k){ return replaceBlocksWithKey('key:' + k); })).then(function(){});
-  }
-  function refreshRemoteReads(){
-    var seen = Object.create(null);
-    var tasks = [];
-    by('[data-remote-read][data-get]').forEach(function(el){
-      var fn = el.getAttribute('data-get');
-      if(!fn) return;
-      var args = String(el.getAttribute('data-get-args') || '[]');
-      var key = String(fn) + '|' + args;
-      if(seen[key]) return;
-      seen[key] = true;
-      tasks.push(replaceBlocksByDescriptor(fn, args));
-    });
-    return Promise.all(tasks).then(function(){});
-  }
   function act(e){
     var clientSel = '[data-client-event="' + e.type + '"]';
     var clientEl = e.target && e.target.closest ? e.target.closest(clientSel) : null;
@@ -251,28 +125,6 @@ const BRIDGE_SOURCE = `(function(){
         console.error('[kuratchi] client handler error:', err);
       }
     }
-    if(e.type === 'click'){
-      var g = e.target && e.target.closest ? e.target.closest('[data-get]') : null;
-      if(g && !g.hasAttribute('data-as') && !g.hasAttribute('data-action')){
-        var getUrl = g.getAttribute('data-get');
-        if(getUrl){
-          if(/^[a-z][a-z0-9+\-.]*:/i.test(getUrl) && !/^https?:/i.test(getUrl)) return;
-          e.preventDefault();
-          location.assign(getUrl);
-          return;
-        }
-      }
-      var r = e.target && e.target.closest ? e.target.closest('[data-refresh]') : null;
-      if(r && !r.hasAttribute('data-action')){
-        e.preventDefault();
-        var rf = r.getAttribute('data-refresh');
-        var ra = r.getAttribute('data-refresh-args');
-        if(ra !== null){ refreshByDescriptor(rf, ra || '[]'); return; }
-        if(rf && rf.trim()){ refreshTargets(rf); return; }
-        refreshNearest(r);
-        return;
-      }
-    }
     var sel = '[data-action][data-action-event="' + e.type + '"]';
     var b = e.target && e.target.closest ? e.target.closest(sel) : null;
     if(!b) return;
@@ -282,10 +134,7 @@ const BRIDGE_SOURCE = `(function(){
     fd.append('_args', b.getAttribute('data-args') || '[]');
     var m = b.getAttribute('data-action-method');
     if(m) fd.append('_method', String(m).toUpperCase());
-    var csrfToken = (document.cookie.match(/(?:^|;\\s*)__kuratchi_csrf=([^;]*)/) || [])[1] || '';
-    var fetchHeaders = {};
-    if(csrfToken) fetchHeaders['x-kuratchi-csrf'] = csrfToken;
-    fetch(location.pathname, { method: 'POST', body: fd, headers: fetchHeaders })
+    fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function(r){
         if(!r.ok){
           return r.json().then(function(j){ throw new Error((j && j.error) || ('HTTP ' + r.status)); }).catch(function(){ throw new Error('HTTP ' + r.status); });
@@ -294,36 +143,10 @@ const BRIDGE_SOURCE = `(function(){
       })
       .then(function(j){
         if(j && j.redirectTo){ location.assign(j.redirectTo); return; }
-        if(!b.hasAttribute('data-refresh')) return;
-        var refreshFn = b.getAttribute('data-refresh');
-        var refreshArgs = b.getAttribute('data-refresh-args');
-        if(refreshArgs !== null){ return refreshByDescriptor(refreshFn, refreshArgs || '[]'); }
-        if(refreshFn && refreshFn.trim()){ return refreshTargets(refreshFn); }
-        return refreshNearest(b);
       })
       .catch(function(err){ console.error('[kuratchi] client action error:', err); });
   }
   ['click','change','input','focus','blur','submit'].forEach(function(ev){ document.addEventListener(ev, act, true); });
-  function autoLoadQueries(){
-    var seen = Object.create(null);
-    by('[data-get][data-as]').forEach(function(el){
-      var fn = el.getAttribute('data-get');
-      if(!fn) return;
-      var args = String(el.getAttribute('data-get-args') || '[]');
-      var key = String(fn) + '|' + args;
-      if(seen[key]) return;
-      seen[key] = true;
-      replaceBlocksByDescriptor(fn, args);
-    });
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', autoLoadQueries, { once: true });
-  } else {
-    autoLoadQueries();
-  }
-  window.addEventListener('kuratchi:invalidate-reads', function(){
-    refreshRemoteReads().catch(function(err){ console.error('[kuratchi] remote read refresh error:', err); });
-  });
   document.addEventListener('click', function(e){
     var b = e.target && e.target.closest ? e.target.closest('[command="fill-dialog"]') : null;
     if(!b) return;
@@ -350,10 +173,16 @@ const BRIDGE_SOURCE = `(function(){
     if(rowidInp && data.rowid !== undefined) rowidInp.value = String(data.rowid);
     if(typeof dialog.showModal === 'function') dialog.showModal();
   }, true);
-  (function initPoll(){
-    function parseInterval(str){
-      if(!str) return 30000;
-      var m = str.match(/^(\\d+(?:\\.\\d+)?)(ms|s|m)?$/i);
+  (function initWorkflowPoll(){
+    // Driven by <script type="application/json" id="__kuratchi_poll"> injected by
+    // the server when a route called workflowStatus(..., { poll }). Each tick, we
+    // re-fetch the current URL and swap <body> contents so every { status.* } in
+    // the template re-renders against fresh data. The server sets the
+    // x-kuratchi-poll-done header when the 'until' predicate reports terminal.
+    function parseInterval(v){
+      if(typeof v === 'number') return v > 0 ? v : 30000;
+      if(!v) return 30000;
+      var m = String(v).match(/^(\\d+(?:\\.\\d+)?)(ms|s|m)?$/i);
       if(!m) return 30000;
       var n = parseFloat(m[1]);
       var u = (m[2] || 's').toLowerCase();
@@ -361,50 +190,52 @@ const BRIDGE_SOURCE = `(function(){
       if(u === 'm') return n * 60000;
       return n * 1000;
     }
-    function bindPollEl(el){
-      if(!el || !el.getAttribute) return;
-      if(el.getAttribute('data-kuratchi-poll-bound') === '1') return;
-      var fn = el.getAttribute('data-poll');
-      if(!fn) return;
-      el.setAttribute('data-kuratchi-poll-bound', '1');
-      var pollId = el.getAttribute('data-poll-id');
-      if(!pollId) return;
-      var baseIv = parseInterval(el.getAttribute('data-interval'));
-      var maxIv = Math.min(baseIv * 10, 300000);
-      var backoff = el.getAttribute('data-backoff') !== 'false';
-      var prevHtml = el.innerHTML;
-      var currentIv = baseIv;
-      (function tick(){
-        setTimeout(function(){
-          fetch(location.pathname + location.search, { headers: { 'x-kuratchi-fragment': pollId } })
-            .then(function(r){
-              if(r.status === 404){
-                el.remove();
-                return null;
-              }
-              if(!r.ok) throw new Error('Poll fragment request failed: ' + r.status);
-              return r.text();
-            })
-            .then(function(html){
-              if(html === null) return;
-              if(prevHtml !== html){
-                el.innerHTML = html;
-                prevHtml = html;
-                currentIv = baseIv;
-              } else if(backoff && currentIv < maxIv){
-                currentIv = Math.min(currentIv * 1.5, maxIv);
-              }
-              tick();
-            })
-            .catch(function(){ currentIv = baseIv; tick(); });
-        }, currentIv);
-      })();
+    function readConfig(){
+      var el = document.getElementById('__kuratchi_poll');
+      if(!el) return null;
+      try { return JSON.parse(el.textContent || '{}'); } catch(_e) { return null; }
     }
-    function scan(){
-      by('[data-poll]').forEach(bindPollEl);
+    var timer = null;
+    var stopped = false;
+    function stop(){ stopped = true; if(timer){ clearTimeout(timer); timer = null; } }
+    function tick(interval){
+      if(stopped) return;
+      timer = setTimeout(function(){
+        if(stopped) return;
+        if(document.hidden){ tick(interval); return; }
+        fetch(location.pathname + location.search, {
+          headers: { 'x-kuratchi-poll': '1' },
+          credentials: 'same-origin',
+        })
+          .then(function(r){
+            var done = r.headers.get('x-kuratchi-poll-done') === '1';
+            return r.text().then(function(html){ return { html: html, done: done, ok: r.ok }; });
+          })
+          .then(function(res){
+            if(stopped) return;
+            if(!res.ok){ tick(interval); return; }
+            if(typeof DOMParser === 'undefined'){ location.reload(); return; }
+            var doc = new DOMParser().parseFromString(res.html, 'text/html');
+            if(doc && doc.body){
+              document.body.innerHTML = doc.body.innerHTML;
+            }
+            if(res.done){ stop(); return; }
+            var next = readConfig();
+            tick(next ? parseInterval(next.interval) : interval);
+          })
+          .catch(function(){ if(!stopped) tick(interval); });
+      }, interval);
     }
-    scan();
-    setInterval(scan, 500);
+    function start(){
+      var cfg = readConfig();
+      if(!cfg) return;
+      tick(parseInterval(cfg.interval));
+    }
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+      start();
+    }
   })();
   function confirmClick(e){
     var el = e.target && e.target.closest ? e.target.closest('[confirm]') : null;

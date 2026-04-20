@@ -49,7 +49,11 @@ if (!user) {
     expect(sections.headTemplate).not.toContain('  }');
   });
 
-  it('instruments poll blocks into fragment manifest helpers', () => {
+  it('leaves unknown data- attributes as-is (no fragment instrumentation)', () => {
+    // `data-poll` / `data-interval` were removed along with the fragment manifest
+    // infrastructure. Live workflow status now lives in the `kuratchi:workflow`
+    // virtual module. This test guards against the compiler reintroducing any
+    // implicit data-* attribute handling.
     const compiled = compileTemplate(
       `<section data-poll={getStatus(job.id)}>
   <strong>{job.status}</strong>
@@ -57,13 +61,14 @@ if (!user) {
       undefined,
       undefined,
       new Map([['getStatus', 'rpc_status']]),
-      { emitCall: '__emit', enableFragmentManifest: true },
+      { emitCall: '__emit' },
     );
 
-    expect(compiled).toContain('__pushFragment(');
-    expect(compiled).toContain('__popFragment();');
-    expect(compiled).toContain('__emit(`');
-    // Fragment IDs are now signed at runtime for security
-    expect(compiled).toContain('data-poll-id="${__signFragment(\'__poll_\' + String(job.id).replace(/[^a-zA-Z0-9]/g, \'_\'))}"');
+    expect(compiled).not.toContain('__pushFragment(');
+    expect(compiled).not.toContain('__popFragment(');
+    expect(compiled).not.toContain('__signFragment(');
+    expect(compiled).not.toContain('data-poll-id');
+    // The attribute is passed through to the output unchanged.
+    expect(compiled).toContain('data-poll=');
   });
 });

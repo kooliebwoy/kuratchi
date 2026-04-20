@@ -5,15 +5,28 @@ description: "File-based routing, layouts, template syntax, and client reactivit
 
 ## Route conventions
 
-Place `.html` files inside `src/routes/`. File paths become URL patterns.
+Place `.kuratchi` files inside `src/routes/`. File paths become URL patterns.
 
 ```text
-src/routes/index.html              -> /
-src/routes/about/index.html        -> /about
-src/routes/items/index.html        -> /items
-src/routes/blog/[slug]/index.html  -> /blog/:slug
-src/routes/layout.html             -> shared layout
+src/app.kuratchi                       -> document shell (<!DOCTYPE>, <html>, <head>)
+src/routes/layout.kuratchi             -> shared fragment wrapping every page
+src/routes/index.kuratchi              -> /
+src/routes/about/index.kuratchi        -> /about
+src/routes/items/index.kuratchi        -> /items
+src/routes/blog/[slug]/index.kuratchi  -> /blog/:slug
 ```
+
+Three file roles, one template syntax:
+
+- **`app.kuratchi`** — the document shell. Lives at `src/app.kuratchi` (not inside `routes/`). Optional; the framework provides a default when absent.
+- **`layout.kuratchi`** — a fragment that wraps every page. Nest `<segment>/layout.kuratchi` for section-specific chrome.
+- **`index.kuratchi`** — the page for a segment. Dynamic segments use `[brackets]`.
+
+All three use the same shape: top `<script>` + template + `<slot></slot>` (where applicable). See [Project structure](/framework/project-structure) for the full reference.
+
+<Note>
+**File extension:** Route files MUST end in `.kuratchi`. The compiler discovers routes by scanning for this extension — plain `.html` files are ignored (and should not be used for KuratchiJS pages). The `.kuratchi` extension signals "this is a KuratchiJS template with mixed server / client script regions" so editor tooling, the compiler, and agents can treat it correctly. Use `.html` only for true static HTML served from `src/assets/`.
+</Note>
 
 ## Route execution model
 
@@ -62,7 +75,29 @@ Put reusable browser helpers in `src/lib` so they can be imported cleanly from y
 
 ## Layouts
 
-`src/routes/layout.html` wraps every page. Use `<slot></slot>` where route content should render.
+`src/routes/layout.kuratchi` is a **fragment** that wraps every page. Not a document — no `<!DOCTYPE>`, no `<html>`, no `<body>`. Those live in `app.kuratchi`.
+
+```html
+<script>
+  import { url } from 'kuratchi:request';
+  const current = url.pathname;
+</script>
+
+<header>
+  <a href="/" class={current === '/' ? 'active' : ''}>Home</a>
+  <a href="/items" class={current.startsWith('/items') ? 'active' : ''}>Items</a>
+</header>
+
+<main>
+  <slot></slot>
+</main>
+```
+
+Nested layouts are supported: `src/routes/admin/layout.kuratchi` wraps every page under `/admin/*`, composed inside the root layout.
+
+### App shell
+
+The document shell (doctype, `<html>`, `<head>`, `<body>`) belongs in `src/app.kuratchi` — alongside `worker.ts` and `middleware.ts`, not inside `routes/`:
 
 ```html
 <!DOCTYPE html>
@@ -72,16 +107,14 @@ Put reusable browser helpers in `src/lib` so they can be imported cleanly from y
   <title>My App</title>
 </head>
 <body>
-  <nav>
-    <a href="/">Home</a>
-    <a href="/items">Items</a>
-  </nav>
-  <main>
-    <slot></slot>
-  </main>
+  <slot></slot>
 </body>
 </html>
 ```
+
+Kuratchi auto-injects a `<link rel="stylesheet">` for `src/app.css` here — don't author it yourself. See [Styling](/framework/styling).
+
+Optional. Kuratchi synthesizes a minimal default shell when the file is absent.
 
 ## Template syntax
 

@@ -39,14 +39,16 @@ For the framework's internal compiler/runtime orchestration and tracked implemen
 
 ## Routes
 
-Place `.html` files inside `src/routes/`. The file path becomes the URL pattern.
+Place `.kuratchi` files inside `src/routes/`. The file path becomes the URL pattern.
 
 ```
-src/routes/index.html          → /
-src/routes/items/index.html    → /items
-src/routes/blog/[slug]/index.html → /blog/:slug
-src/routes/layout.html        → shared layout wrapping all routes
+src/routes/index.kuratchi          → /
+src/routes/items/index.kuratchi    → /items
+src/routes/blog/[slug]/index.kuratchi → /blog/:slug
+src/routes/layout.kuratchi        → shared layout wrapping all routes
 ```
+
+> **File extension:** Route files MUST use `.kuratchi` (not `.html`). The compiler only discovers files ending in `.kuratchi`; plain `.html` files in `src/routes/` are ignored. Use `.html` only for static assets served from `src/assets/`, or for UI component files imported via `$lib/*.html` / `@kuratchi/ui/*.html`.
 
 ### Execution model
 
@@ -157,7 +159,7 @@ css: {
 
 ### Layout file
 
-`src/routes/layout.html` wraps every page. Use `<slot></slot>` where page content renders:
+`src/routes/layout.kuratchi` wraps every page. Use `<slot></slot>` where page content renders:
 
 ```html
 <!DOCTYPE html>
@@ -602,34 +604,44 @@ if (todos.pending) {
 </div>
 ```
 
-### Polling (Workflow Status)
+### Live Workflow Status (`kuratchi:workflow`)
 
-For workflow status that updates over time, use the auto-generated `*WorkflowStatus` functions. These are generated for each `.workflow.ts` file:
-
-- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId, options)`
-- `data-sync.workflow.ts` → `dataSyncWorkflowStatus(instanceId, options)`
+Import `workflowStatus` from the `kuratchi:workflow` virtual module to read a Cloudflare Workflow's status. The first argument is a compile-time-typed string-literal union of your discovered `*.workflow.ts` basenames; passing an unknown name is a type error.
 
 ```html
-<div>
-const status = migrationWorkflowStatus(instanceId, { poll: '2s' });
+<script>
+  import { params } from 'kuratchi:request';
+  import { workflowStatus } from 'kuratchi:workflow';
 
-if (status.pending) {
-  <p>Checking status...</p>
-}
+  // Name is typed: only 'migration' | 'data-sync' | ... (whatever *.workflow.ts files exist)
+  const status = await workflowStatus('migration', params.id, { poll: '2s' });
+</script>
 
-if (status.status === 'running') {
+if (status.error) {
+  <ErrorBanner error={status.error} />
+} else if (status.status === 'running') {
   <ProgressBar progress={status.output?.progress} />
+} else if (status.status === 'complete') {
+  <CompletedBanner result={status.output} />
 }
-
-if (status.status === 'complete') {
-  <CompletedBanner />
-}
-</div>
 ```
 
-**Polling options:**
-- `poll` — interval: `'2s'`, `'500ms'`, `'1m'`
-- `until` — stop polling when function returns true: `until: (s) => s.status === 'complete'`
+When you pass `{ poll }`, the framework injects a tiny directive script that re-fetches the URL every `interval` and swaps `<body>` with the freshly rendered HTML. Every `{status.*}` reference re-evaluates server-side on each tick — no client reactivity to wire up.
+
+**Options:**
+
+- `poll` — interval as string (`'2s'`, `'500ms'`, `'1m'`) or number of milliseconds. Omit for a one-shot read.
+- `until(value)` — override the default terminal predicate. Default stops on `'complete'`, `'completed'`, `'errored'`, or `'terminated'`.
+
+**Multiple polls on one page** — call `workflowStatus(..., { poll })` as many times as you like. The shortest interval wins, and polling only stops when every call reports terminal:
+
+```html
+<script>
+  const statuses = Object.fromEntries(await Promise.all(
+    activeJobs.map(async (j) => [j.id, await workflowStatus('migration', j.id, { poll: '2s' })])
+  ));
+</script>
+```
 
 ### Blocking (await)
 
@@ -936,36 +948,35 @@ Examples:
 
 ### Workflow Status Polling
 
-Kuratchi auto-generates status polling RPCs for each discovered workflow. Poll workflow status with zero setup:
+Use `workflowStatus` from the `kuratchi:workflow` virtual module to read a workflow's live status. The first argument is typed as a compile-time union of your discovered `*.workflow.ts` basenames, so unknown names fail type-check.
 
 ```html
-<div data-poll={migrationWorkflowStatus(instanceId)} data-interval="2s">
-  if (workflowStatus.status === 'running') {
-    <div class="spinner">Running...</div>
-  } else if (workflowStatus.status === 'complete') {
-    <div>✓ Complete</div>
-  }
-</div>
-```
+<script>
+  import { params } from 'kuratchi:request';
+  import { workflowStatus } from 'kuratchi:workflow';
 
-The element's innerHTML updates automatically when the workflow status changes — no page reload needed.
+  const status = await workflowStatus('migration', params.id, { poll: '2s' });
+</script>
 
-**Auto-generated RPC naming** (camelCase):
-- `migration.workflow.ts` → `migrationWorkflowStatus(instanceId)`
-- `james-bond.workflow.ts` → `jamesBondWorkflowStatus(instanceId)`
-- `site.workflow.ts` → `siteWorkflowStatus(instanceId)`
-
-**Multiple workflows on one page:** Each `data-poll` element is independent. You can poll multiple workflow instances without collision:
-
-```html
-for (const job of jobs) {
-  <div data-poll={migrationWorkflowStatus(job.instanceId)} data-interval="2s">
-    {job.name}: polling...
-  </div>
+if (status.status === 'running') {
+  <div class="spinner">Running...</div>
+} else if (status.status === 'complete') {
+  <div>✓ Complete</div>
 }
 ```
 
-The status RPC returns the Cloudflare `InstanceStatus` object:
+When you pass `{ poll }`, the framework re-fetches the page on each interval and swaps `<body>` with the fresh server render — no client reactivity code. Polling stops automatically when `until(status)` returns true (default: `status === 'complete' | 'completed' | 'errored' | 'terminated'`).
+
+**Name mapping** (filename basename → `workflowStatus` name):
+
+- `migration.workflow.ts` → `'migration'`
+- `james-bond.workflow.ts` → `'james-bond'`
+- `site.workflow.ts` → `'site'`
+
+**Multiple polls on one page** — call `workflowStatus(..., { poll })` as many times as you need. The shortest interval wins, and polling stops only when every call reports terminal.
+
+`status` is an `AsyncValue<T>` where `T` is the Cloudflare `InstanceStatus`:
+
 ```ts
 {
   status: 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'unknown';
@@ -973,6 +984,8 @@ The status RPC returns the Cloudflare `InstanceStatus` object:
   output?: unknown;
 }
 ```
+
+Plus the standard `AsyncValue` flags: `pending`, `error` (string | null), `success`.
 
 ## Queue Consumers
 
@@ -1008,20 +1021,87 @@ On build, Kuratchi:
 
 ## Containers
 
-Kuratchi auto-discovers `.container.ts` files in `src/server/`. **No config needed.**
+Kuratchi auto-discovers `.container.ts` files in `src/server/`. On every build, the framework writes `containers[]`, `durable_objects.bindings`, and `migrations[].new_sqlite_classes` (when opted-in) into `wrangler.jsonc` — no manual entries required.
 
 ```ts
 // src/server/wordpress.container.ts
 import { Container } from 'cloudflare:workers';
 
-export class WordPressContainer extends Container {
-  // container implementation...
+export default class WordPress extends Container<Env> {
+  static image = './docker/wordpress.Dockerfile';  // REQUIRED — Dockerfile path OR registry reference
+  static instanceType = 'standard';                // 'lite' (default) or 'standard'
+  static maxInstances = 5;
+  static sqlite = true;                            // opt into new_sqlite_classes migration
 }
 ```
 
-On build, Kuratchi derives the binding from the filename:
-- `wordpress.container.ts` → `WORDPRESS_CONTAINER` binding
-- `redis.container.ts` → `REDIS_CONTAINER` binding
+**Image** accepts either a local Dockerfile path (wrangler resolves the build context) or a registry reference (`docker.io/library/redis:7.2-alpine`, etc.). If you omit `static image` and a sibling `<basename>.Dockerfile` exists next to the `.container.ts`, it's picked up automatically. Omitting both triggers a compile-time error.
+
+Binding derivation follows the same rule as every other convention:
+
+- `wordpress.container.ts` → `WORDPRESS_CONTAINER`
+- `redis.container.ts` → `REDIS_CONTAINER`
+
+Full reference: [`apps/docs/framework/containers.mdx`](../../apps/docs/framework/containers.mdx).
+
+## Sandbox
+
+Kuratchi ships first-class support for [Cloudflare Sandbox](https://github.com/cloudflare/sandbox-sdk) — the Durable Object-backed runtime for ad-hoc shells, untrusted code, and code-interpreter agents — via its own `.sandbox.ts` convention. Sandbox is distinct from `.container.ts` because it's a specialized SDK: the class, image, and SQLite-storage requirement are all supplied by the framework.
+
+```bash
+bun add @cloudflare/sandbox
+```
+
+```ts
+// src/server/shell.sandbox.ts
+import { Sandbox } from '@cloudflare/sandbox';
+
+export default class ShellSandbox extends Sandbox<Env> {}
+```
+
+That is the whole file. On build, Kuratchi writes:
+
+```jsonc
+// wrangler.jsonc — auto-synced, do not edit by hand
+{
+  "containers": [
+    { "name": "shell-sandbox", "class_name": "ShellSandbox", "image": "docker.io/cloudflare/sandbox:0.8.11", "instance_type": "lite" }
+  ],
+  "durable_objects": { "bindings": [{ "name": "SHELL_SANDBOX", "class_name": "ShellSandbox" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShellSandbox"] }]
+}
+```
+
+No Dockerfile needed — the default image tag tracks the installed `@cloudflare/sandbox` version so the SDK and the container runtime can never drift. Override with `static image = '...'` for Python variants or custom builds.
+
+### Multiple sandboxes in one project
+
+Because binding + class + migration all derive from the filename, a project can host any number of sandboxes:
+
+```
+src/server/shell.sandbox.ts          → SHELL_SANDBOX       (default image)
+src/server/python.sandbox.ts         → PYTHON_SANDBOX      (static image = '…:0.8.11-python')
+src/server/code-interpreter.sandbox.ts → CODE_INTERPRETER_SANDBOX
+```
+
+### Usage
+
+```ts
+import { env } from 'cloudflare:workers';
+import { getSandbox } from '@cloudflare/sandbox';
+
+export async function runCommand(name: string, command: string) {
+  const sandbox = getSandbox(env.SHELL_SANDBOX, name);
+  const { stdout, stderr, exitCode } = await sandbox.exec(command);
+  return { stdout, stderr, exitCode };
+}
+```
+
+The second argument to `getSandbox()` is a **routing key** (same semantics as `DurableObjectNamespace.idFromName`). Same key → same container; fresh key → fresh container. Treat the filesystem as scratch: `destroy()` wipes it, and Cloudflare may reclaim long-idle sandboxes.
+
+**Healthcheck:** the top-level handle has no `ping()`; use `exec('true')` for a canonical liveness probe.
+
+Full reference: [`apps/docs/framework/sandbox.mdx`](../../apps/docs/framework/sandbox.mdx).
 
 ## Convention-Based Auto-Discovery
 
@@ -1031,6 +1111,7 @@ Kuratchi uses file suffixes to auto-discover and register worker classes. **No c
 |--------|----------|-----------------|---------|
 | `.workflow.ts` | `src/server/**/*.workflow.ts` | `FILENAME_WORKFLOW` | `migration.workflow.ts` → `MIGRATION_WORKFLOW` |
 | `.container.ts` | `src/server/**/*.container.ts` | `FILENAME_CONTAINER` | `wordpress.container.ts` → `WORDPRESS_CONTAINER` |
+| `.sandbox.ts` | `src/server/**/*.sandbox.ts` | `FILENAME_SANDBOX` | `shell.sandbox.ts` → `SHELL_SANDBOX` |
 | `.queue.ts` | `src/server/**/*.queue.ts` | `FILENAME` | `notifications.queue.ts` → `NOTIFICATIONS` |
 | `.agents.ts` | `src/server/**/*.agents.ts` | (manual wrangler config) | `session.agents.ts` |
 | `.do.ts` | `src/server/**/*.do.ts` | (via `durableObjects` config) | `auth.do.ts` |
@@ -1040,8 +1121,10 @@ Kuratchi uses file suffixes to auto-discover and register worker classes. **No c
 Kuratchi automatically syncs `wrangler.jsonc` during every build. This eliminates duplicate configuration for:
 
 - **Workflows** — auto-discovered from `.workflow.ts` files
-- **Containers** — auto-discovered from `.container.ts` files
-- **Durable Objects** — `durableObjects` in kuratchi.config.ts
+- **Containers** — auto-discovered from `.container.ts` files (writes `containers[]`, `durable_objects.bindings`, and opt-in SQLite migrations)
+- **Sandboxes** — auto-discovered from `.sandbox.ts` files (same as containers plus default image resolution from the installed `@cloudflare/sandbox` version)
+- **Queues** — auto-discovered from `.queue.ts` files
+- **Durable Objects** — `durableObjects` in kuratchi.config.ts or `.do.ts` files
 
 The sync is additive and non-destructive:
 - New entries are added automatically
@@ -1061,15 +1144,17 @@ In route `<script>` blocks, use the `kuratchi:` virtual modules:
 
 | Virtual Module | Description |
 |----------------|-------------|
-| `kuratchi:request` | Request state: `url`, `params`, `searchParams`, `headers`, `locals`, etc. |
+| `kuratchi:request` | Safe request state in route `<script>` blocks: `url`, `pathname`, `searchParams`, `params`, `slug`, `method` |
 | `kuratchi:navigation` | Server-side redirect helper |
 
 ### Request helpers
 
-Import pre-parsed request state from `kuratchi:request`:
+Import pre-parsed request state from `kuratchi:request`. The compiler
+enforces the safe subset — importing `locals`, `headers`, or any other
+server-only value fails the build.
 
 ```ts
-import { url, pathname, searchParams, params, slug, locals } from 'kuratchi:request';
+import { url, pathname, searchParams, params, slug, method } from 'kuratchi:request';
 
 const page = pathname;
 const tab = searchParams.get('tab');
@@ -1082,8 +1167,11 @@ const postSlug = slug;
 - `searchParams` is `url.searchParams` for the current request.
 - `params` is the matched route params object, like `{ slug: 'hello-world' }`.
 - `slug` is `params.slug` when the matched route defines a `slug` param.
-- `headers` and `method` are also exported from `kuratchi:request`.
-- `locals` is the request-scoped locals object (typed via `App.Locals` in `app.d.ts`).
+- `method` is the HTTP method.
+
+For `locals`, `headers`, or anything derived from auth state, use a
+`$server/*` module and call `getLocals()` / `getRequest()` from
+`@kuratchi/js` there — then return precomputed values to the template.
 
 ### Server Module Helpers
 
@@ -1192,13 +1280,35 @@ if (dev) {
 
 ### kuratchi:request
 
-```ts
-import { url, pathname, params, locals, headers, method } from 'kuratchi:request';
+In route `<script>` blocks, only the compile-time safe subset is allowed.
+Server-only state (`locals`, `headers`) must be read inside a `$server/*`
+module via `@kuratchi/js` helpers.
 
-// Access current request state
+```ts
+import { url, pathname, searchParams, params, slug, method } from 'kuratchi:request';
+
 console.log(url.href);
 console.log(params.slug);
-console.log(locals.userId);
+console.log(searchParams.get('tab'));
+```
+
+To access `locals` (e.g. `locals.userId`) from a template, wrap it in a
+`$server/*` function:
+
+```ts
+// src/server/user.ts
+import { getLocals } from '@kuratchi/js';
+export function currentUserId(): number {
+  return (getLocals() as { userId: number }).userId;
+}
+```
+
+```html
+<!-- src/routes/settings/index.kuratchi -->
+<script>
+  import { currentUserId } from '$server/user';
+  const userId = await currentUserId();
+</script>
 ```
 
 ### kuratchi:navigation
@@ -1218,7 +1328,9 @@ All `kuratchi:*` modules work in:
 
 ## Security
 
-Kuratchi includes built-in security features that are enabled by default or configurable via `kuratchi.config.ts`.
+**Philosophy.** Kuratchi enforces exactly two things: **origin integrity** (your server only accepts calls from your own browser code) and **visibility boundaries** (`_`-prefixed exports are unreachable from the outside). Everything else — authentication, authorization, rate limiting, audit logging — is your responsibility. A framework that auto-enforces auth creates a false sense of safety; a framework that enforces the origin boundary frees you to focus on the real question of *who* is allowed to do *what*.
+
+There is no `KURATCHI_SECRET` to configure, no CSRF token in your HTML, no framework-level `requireAuth` toggle. The building blocks are the two unconditional guarantees below plus opt-in response headers.
 
 ### Default Security Headers
 
@@ -1228,150 +1340,108 @@ All responses include these headers automatically:
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 
-### CSRF Protection
+### Strict Same-Origin Gate (unconditional)
 
-CSRF protection is **enabled by default** for all form actions and RPC calls.
+Every `?_rpc=…` request is rejected with `403` unless it carries either:
 
-**How it works:**
-1. A cryptographically random token is generated per session and stored in a cookie
-2. The compiler auto-injects a hidden `_csrf` field into forms with `action={fn}`
-3. The client bridge includes the CSRF token header in fetch action requests
-4. Server validates the token using timing-safe comparison
+- `Sec-Fetch-Site: same-origin` (every modern browser sends this on same-origin `fetch()`), **or**
+- `Origin: <same as request URL origin>`
 
-No configuration required — it just works.
+Non-browser clients (curl, server-to-server scripts, cron jobs) and any cross-origin browser request are blocked before your handler runs. Same-origin form POSTs are accepted under a slightly relaxed rule (top-level navigations may omit `Sec-Fetch-Site`) but reject any cross-origin `Origin`.
 
-```html
-<!-- CSRF token is auto-injected -->
-<form action={submitForm}>
-  <input type="text" name="email" />
-  <button type="submit">Submit</button>
-</form>
-```
+Combined with `SameSite=Lax` on any session cookie an auth library sets, this eliminates classic CSRF attacks without the framework having to mint its own token. The gate is always on and cannot be disabled — RPC is designed to be reachable only from your own frontend.
 
-### Authentication Enforcement
+### Public vs. Private Server Functions
 
-Optionally require authentication for all RPC calls or form actions:
+One universal rule for what counts as externally reachable:
 
-```ts
-// kuratchi.config.ts
-export default defineConfig({
-  security: {
-    rpcRequireAuth: true,      // Require auth for all RPC calls (default: false)
-    actionRequireAuth: true,   // Require auth for all form actions (default: false)
-  },
-});
-```
+- **Exports whose name starts with `_` are private.** They cannot be referenced from a route template as an action, await-query, or RPC. They remain importable by other server-side code — `_helper()` called from a public server function still works.
+- **Durable Object methods.** Only `public` methods that do not start with `_` are copied onto the generated DO class prototype. TS `private`/`protected` and `_`-prefixed methods are invisible to the Workers RPC binding at runtime, not just to the compiler proxy.
+- **Lifecycle names** (`constructor`, `fetch`, `alarm`, `webSocketMessage`, `webSocketClose`, `webSocketError`, `onInit`, `onAlarm`, `onMessage`) are never exposed as RPC.
 
-When enabled, unauthenticated requests return `401 Authentication required`. The check looks for `locals.user` or `locals.session.user`, which is populated by `@kuratchi/auth`.
+Referencing a `_` export from a route template is a **compile-time error**.
 
-For per-function control, use guards in individual functions instead:
+### Authentication and Authorization are Your Job
+
+The framework populates `locals.user` and `locals.session` from whatever auth hook/library you plug in (e.g. `@kuratchi/auth`). It never reads those values to decide whether to run your handler. Guard handlers explicitly:
 
 ```ts
 import { requireAuth } from '@kuratchi/auth';
 
-export async function deleteItem(formData: FormData) {
-  await requireAuth(); // Throws 401 if not authenticated
-  // ... action logic
+export async function deleteItem(id: string) {
+  const user = await requireAuth();           // throws ActionError('Unauthorized') if missing
+  if (!user.canDelete(id)) throw new ActionError('Forbidden');
+  return db.items.delete(id);
+}
+
+// Private helper — framework refuses to expose it as RPC even if a template
+// accidentally references it.
+export async function _auditDelete(userId: string, itemId: string) {
+  await db.audit.insert({ userId, itemId, action: 'delete' });
 }
 ```
 
-### Configurable Security Headers
+This keeps the auth model next to the operation it protects, where it belongs.
 
-Add CSP, HSTS, and Permissions-Policy headers:
+### Content Security Policy (with per-request nonces)
+
+Configure any CSP string via `kuratchi.config.ts`. To opt into strict CSP with per-request nonces on the framework-injected inline scripts (workflow poll, client bridge, theme init, etc.), use the literal placeholder `{NONCE}` in your policy — Kuratchi generates a fresh nonce per request, substitutes it into the header, and stamps the same nonce onto every emitted `<script>` tag.
 
 ```ts
 // kuratchi.config.ts
 export default defineConfig({
   security: {
-    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'nonce-{NONCE}'; object-src 'none'",
     strictTransportSecurity: "max-age=31536000; includeSubDomains",
     permissionsPolicy: "camera=(), microphone=(), geolocation=()",
   },
 });
 ```
 
+Without `{NONCE}`, the CSP is emitted verbatim and no nonce work is done.
+
 ### HTML Sanitization
 
-The `{@html}` directive automatically sanitizes output to prevent XSS:
+The `{@html}` directive sanitizes output to prevent XSS:
 
-- Removes dangerous elements: `<script>`, `<iframe>`, `<object>`, `<embed>`, `<style>`, `<template>`, etc.
-- Strips all `on*` event handlers
-- Neutralizes `javascript:` and `vbscript:` URLs
-- Removes `data:` URLs from `src` attributes
+- Removes dangerous elements (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<style>`, `<template>`, …).
+- Strips all `on*` event handlers.
+- Neutralizes `javascript:` and `vbscript:` URLs.
+- Removes `data:` URLs from `src` attributes.
 
-For user-generated HTML, we recommend using DOMPurify on the client side for maximum security.
-
-### Fragment Refresh Security
-
-Fragment IDs used for `data-poll` are automatically signed to prevent attackers from probing for data:
-
-- Fragment IDs are signed at render time with the session's CSRF token
-- Server validates signatures before returning fragment content
-- Invalid or unsigned fragments return 403 when CSRF is enabled
-
-This is automatic — no configuration required.
+For rich user-generated HTML, reach for DOMPurify on top of this.
 
 ### Query Override Protection
 
-Query function calls via `x-kuratchi-query-fn` headers are validated against a whitelist:
-
-- Only query functions registered for the current route can be called
-- Prevents attackers from invoking arbitrary RPC functions
-- Returns 403 for unauthorized query function calls
-
-This is automatic — no configuration required.
+Query function calls via `x-kuratchi-query-fn` headers are validated against a per-route allow-list — only functions registered for the current route can be invoked. Unknown names return `403`. Automatic, no configuration.
 
 ### Client Bridge Security
 
-Client-side handler invocation is protected against injection attacks:
-
-- Route and handler IDs are validated against safe patterns
-- Prototype pollution attempts are blocked (`__proto__`, `constructor`, `prototype`)
-- Uses `hasOwnProperty` checks to prevent prototype chain traversal
-
-This is automatic — no configuration required.
+Client-side handler dispatch validates route and handler IDs against safe patterns, uses `hasOwnProperty` checks to block prototype-chain traversal, and rejects known pollution targets (`__proto__`, `constructor`, `prototype`). Automatic.
 
 ### Error Information Protection
 
-Error messages are sanitized to prevent information leakage in production:
-
-- Generic errors show full details in dev mode only
-- Production uses safe fallback messages ("Internal Server Error", "Action failed")
-- `ActionError` and `PageError` messages are always shown (developer-controlled)
+In production, only developer-controlled `ActionError` / `PageError` messages are surfaced to the client. Generic `Error` details are hidden to prevent leaking implementation information. Dev mode shows the full message for debugging.
 
 ```ts
-// Safe to show - developer-controlled message
-throw new ActionError('Invalid email format');
-
-// In production: "Internal Server Error" (details hidden)
-// In dev mode: Full error message for debugging
-throw new Error('Database connection failed at line 42');
+throw new ActionError('Invalid email format');          // shown to user
+throw new Error('Database connection failed at line 42'); // replaced by "Internal Server Error" in prod
 ```
 
 ### Full Security Configuration
+
+The entire configurable surface is the response headers:
 
 ```ts
 // kuratchi.config.ts
 export default defineConfig({
   security: {
-    // CSRF Protection (enabled by default)
-    csrfEnabled: true,
-    csrfCookieName: '__kuratchi_csrf',
-    csrfHeaderName: 'x-kuratchi-csrf',
-
-    // Authentication Enforcement
-    rpcRequireAuth: false,      // Require auth for RPC calls
-    actionRequireAuth: false,   // Require auth for form actions
-
-    // Security Headers
-    contentSecurityPolicy: "default-src 'self'",
+    contentSecurityPolicy: "script-src 'self' 'nonce-{NONCE}'; object-src 'none'",
     strictTransportSecurity: "max-age=31536000; includeSubDomains",
     permissionsPolicy: "camera=(), microphone=()",
   },
 });
 ```
-
-For a comprehensive security analysis and roadmap, see [SECURITY.md](./SECURITY.md).
 
 ## `kuratchi.config.ts`
 

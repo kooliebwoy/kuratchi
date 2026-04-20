@@ -3,6 +3,18 @@ title: "Configuration"
 description: "Use kuratchi.config.ts for framework integrations"
 ---
 
+## Where config lives
+
+A Vite-first KuratchiJS app has three config files. Each has a distinct job:
+
+| File | Owns | Edited by you |
+| --- | --- | --- |
+| `vite.config.ts` | The Kuratchi plugin install point | Only to add other Vite plugins |
+| `wrangler.jsonc` | Cloudflare deployment (secrets, routes, custom bindings) | Yes, except auto-synced fields (DOs, queues, containers, assets) |
+| `kuratchi.config.ts` | Framework integrations (ORM, auth, UI, CSS) | Yes, when you opt into any of them |
+
+See [Project structure](/framework/project-structure) for the full file reference.
+
 ## `kuratchi.config.ts`
 
 The config file is optional. You only need it when wiring framework integrations such as ORM, auth, CSS processing, or custom asset settings.
@@ -28,113 +40,31 @@ export default defineConfig({
 
 Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
 
-## Static assets
+## CSS and static assets
 
-For plain CSS, images, and other static files, put them in `src/assets`.
+Kuratchi has two CSS paths — one convention-driven, one verbatim. Neither needs `kuratchi.config.ts`.
 
-Kuratchi mirrors `src/assets` into the generated public assets directory and keeps Wrangler's `assets.directory` in sync automatically, so the default public URL is `/assets/...`.
+### `src/app.css` — the global stylesheet
 
-```html
-<link rel="stylesheet" href="/assets/app.css" />
-```
-
-If you want a different public prefix, set `assetsPrefix`:
-
-```ts
-import { defineConfig } from '@kuratchi/js';
-
-export default defineConfig({
-  assetsPrefix: '/static/',
-});
-```
-
-Then reference the same file with the new prefix:
-
-```html
-<link rel="stylesheet" href="/static/app.css" />
-```
-
-## CSS Configuration
-
-CSS processing is opt-in. Install the packages you need and configure in `kuratchi.config.ts`.
-
-### CSS Minification
-
-Install Lightning CSS for production minification:
-
-```bash
-npm install lightningcss
-```
-
-Minification is automatic in production builds — no config needed.
-
-### Tailwind CSS
-
-Install the required packages:
-
-```bash
-npm install tailwindcss @tailwindcss/postcss postcss
-```
-
-Enable Tailwind in your config:
-
-```ts
-import { defineConfig } from '@kuratchi/js';
-
-export default defineConfig({
-  css: {
-    tailwind: true,
-  },
-});
-```
-
-Create your CSS file with Tailwind imports:
+Drop a file at `src/app.css`. Kuratchi auto-registers it as a client Rollup input, runs every Vite CSS plugin on it (Tailwind, PostCSS, CSS Modules, Lightning CSS…), and injects `<link rel="stylesheet">` into the app shell before `</head>`. You don't write the `<link>` tag and you don't configure anything.
 
 ```css
-/* src/assets/app.css */
-@import "tailwindcss";
-```
-
-### Tailwind Plugins (DaisyUI, Forms, etc.)
-
-Add plugins with the `plugins` array:
-
-```bash
-npm install daisyui @tailwindcss/forms
-```
-
-```ts
-export default defineConfig({
-  css: {
-    tailwind: true,
-    plugins: ['daisyui', '@tailwindcss/forms'],
-  },
-});
-```
-
-Reference plugins in your CSS:
-
-```css
-/* src/assets/app.css */
+/* src/app.css */
 @import "tailwindcss";
 @plugin "daisyui";
-@plugin "@tailwindcss/forms";
+@source "./routes/**/*.kuratchi";
 ```
 
-Then use the classes in your templates:
+### `src/assets/` — static files served verbatim
 
-```html
-<button class="btn btn-primary">Click me</button>
-<div class="card bg-base-100 shadow-xl">
-  <div class="card-body">
-    <h2 class="card-title">Card Title</h2>
-  </div>
-</div>
+Files in `src/assets/` are served byte-for-byte by Wrangler's ASSETS binding at the URL root. No plugin transforms them. Use this for favicons, prebuilt CSS, images, fonts, JSON.
+
+```text
+src/assets/favicon.ico  → /favicon.ico
+src/assets/hero.png     → /hero.png
 ```
 
-<Info>
-For complete styling documentation including vanilla CSS, CSS frameworks (Bootstrap, Pico, Bulma), and best practices, see the [Styling guide](/framework/styling).
-</Info>
+Kuratchi keeps Wrangler's `assets.directory` in sync automatically. See [Styling](/framework/styling) for Tailwind setup, CSS frameworks, and migration notes.
 
 ## @kuratchi/ui Component Library
 
@@ -170,9 +100,9 @@ Use components in your routes:
 
 Use the config file for:
 
-- CSS processing (Tailwind, minification)
 - ORM schema bindings
 - Auth configuration
 - UI component theming
+- `assetsPrefix` (if you want `src/assets/` served at a prefix other than `/`)
 
-Routing, Durable Object discovery, and generated worker output are handled by the compiler.
+Routing, Durable Object discovery, generated worker output, and CSS processing are handled outside this file — by the compiler and Vite plugins respectively.

@@ -1,66 +1,73 @@
 ---
 title: "Development"
-description: "Understand the compile pipeline and local development loop"
+description: "The Vite-powered dev loop, build output, and execution model"
 ---
 
-## What `kuratchi build` generates
-
-The compiler scans `src/routes/` and writes generated runtime files into `.kuratchi/`.
-
-| File | Purpose |
-| --- | --- |
-| `.kuratchi/routes.ts` | Compiled routes, render functions, actions, and RPC handlers |
-| `.kuratchi/worker.ts` | Stable Wrangler entrypoint re-exporting the router plus Worker classes |
-| `.kuratchi/do/*.ts` | Generated Durable Object proxy modules |
-
-That build artifact layout is the framework contract. Route files are source code. `.kuratchi` is generated output.
-
-## Local loop
+## Commands
 
 ```bash
-bun run dev
+bun run dev       # vite dev      — local dev server on :5173
+bun run build     # vite build    — emits dist/ for Wrangler
+bun run deploy    # build + wrangler deploy
 ```
 
-During development, keep these rules in mind:
+`vite dev` uses the Cloudflare Vite plugin under the hood, so local requests hit a Workers-accurate runtime with real DO / KV / D1 bindings.
 
-- Pages are server-rendered by default.
-- `src/server` is private server-only code.
-- The authored top-level route `<script>` is client-side.
-- `$server/*` imports are the server/RPC escape hatch.
-- Browser reactivity uses `$:` inside client scripts when you want reactive updates.
-- You do not need to author `type="module"` yourself for imported client scripts.
-- `src/assets` is mirrored into the generated public assets directory and synced to Wrangler automatically.
-- `kuratchi:environment` is compiled for the current mode, so `dev` branches differ between `kuratchi dev` and `kuratchi build`.
-- Wrangler should continue pointing to `.kuratchi/worker.ts`.
+## What the Vite plugin does
+
+The `kuratchiVite()` plugin in `vite.config.ts` is the entire build pipeline. At config time it:
+
+- **Discovers routes** — every `src/routes/**/*.kuratchi` file becomes a URL pattern.
+- **Auto-maintains `wrangler.jsonc`** — fields for Durable Objects, containers, sandboxes, queues, and assets are kept in sync with `src/server/*.do.ts`, `*.workflow.ts`, `*.queue.ts`, `*.sandbox.ts`, `*.container.ts`.
+- **Synthesizes virtual modules** — `kuratchi:worker`, `kuratchi:request`, `kuratchi:layout`, `kuratchi:app`, and friends materialize at build time.
+- **Extracts client fragments** — template-body `<script>` blocks become hashed ES modules so Vite's Rollup build can serve + hash them per route.
+- **Resolves `$server/*` and `$lib/*` aliases** — env-aware: `$server/*` resolves to RPC stubs in the client environment and to real files in the SSR environment.
+
+## Build output
+
+```text
+dist/
+├─ ssr/                       Worker bundle (Wrangler deploys this)
+│  ├─ index.js
+│  └─ wrangler.json           generated from wrangler.jsonc
+└─ client/                    hashed client assets
+   ├─ assets/
+   └─ .vite/manifest.json
+```
+
+`.kuratchi/` is legacy CLI output and is not used in Vite projects.
 
 ## Execution model
 
 KuratchiJS is SSR by default:
 
-- The page HTML renders on the server.
-- The authored top-level route `<script>` is client-side.
-- `$server/*` imports let that client-authored code call into the server.
-- Form actions execute on the server.
-- Server logic lives in `$server/*`, actions, and runtime hooks.
+- Pages render on the server.
+- The authored top `<script>` on a route is **client-first** — the compiler runs it server-side for SSR and produces a browser bundle where `$server/*` imports are rewritten to RPC fetch stubs.
+- Form `action={fn}` POSTs run the server function and return a redirect (POST-Redirect-GET).
+- Server logic lives in `src/server/*.ts` and `src/middleware.ts`.
 
-That keeps the default mental model closer to Worker request handling than SPA hydration.
+See [Routing](/framework/routing) for the full route lifecycle.
 
-## Mode-specific compilation
+## Mode-aware compilation
 
-Kuratchi bakes the current mode into generated output.
+Kuratchi bakes the current Vite mode into generated output:
 
-- In `kuratchi dev`, `import { dev } from 'kuratchi:environment'` compiles to `true` in generated server/runtime code.
-- In `kuratchi build`, the same import compiles to `false`.
+- `vite dev` → `import { dev } from 'kuratchi:environment'` compiles to `true`.
+- `vite build` → the same import compiles to `false`.
 
-That applies to route scripts, `src/server/*.ts`, and `src/server/runtime.hook.ts`.
+Use this for development-only branches such as auth bypasses, fixture loading, or verbose logging.
 
-Use this when you need explicit development-only behavior such as local auth bypasses, extra logging, or test fixtures.
+## Hot reload caveats
 
-## Production check
+- **Route and server file changes** hot-reload normally.
+- **Plugin source changes** (`@kuratchi/vite` itself) require a full `vite dev` restart — Vite loads plugins at config time and does not hot-reload them, even from a `file:` override install.
 
-Before shipping, verify:
+## Production checklist
 
-- `src/routes/layout.html` exists
-- `src/routes/index.html` or another entry route exists
-- `wrangler.jsonc` points at `.kuratchi/worker.ts`
-- `bun run build` succeeds
+Before deploying, verify:
+
+- `src/app.kuratchi` exists (or accept the default shell).
+- `src/routes/index.kuratchi` or another entry route exists.
+- `wrangler.jsonc` `main` is `src/worker.ts`.
+- `bun run build` succeeds.
+- `bun run deploy` pushes the bundled worker.

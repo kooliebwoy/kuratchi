@@ -1,0 +1,152 @@
+---
+title: "Sandbox"
+description: "Run ad-hoc shells, untrusted code, and code-interpreter agents with the @cloudflare/sandbox SDK"
+---
+
+## Sandbox
+
+[Cloudflare Sandbox](https://github.com/cloudflare/sandbox-sdk) is a Durable Object-backed runtime for executing arbitrary code — ad-hoc shells, untrusted snippets, code-interpreter agents. KuratchiJS treats it as a first-class convention: drop a `.sandbox.ts` file in `src/server/` and the framework wires the container, Durable Object binding, and SQLite migration for you.
+
+The convention is distinct from `.container.ts` because Sandbox is a specialized SDK on top of Cloudflare Containers — it ships a concrete `Sandbox` class, a canonical Docker image, and fixed SQLite-backed storage requirements. Those defaults live in the framework so your authored file stays tiny.
+
+```ts
+// src/server/shell.sandbox.ts
+import { Sandbox } from '@cloudflare/sandbox';
+
+export default class ShellSandbox extends Sandbox<Env> {}
+```
+
+That is the whole file. On the next build, Kuratchi adds:
+
+```jsonc
+// wrangler.jsonc — auto-synced
+{
+	"containers": [
+		{
+			"name": "shell-sandbox",
+			"class_name": "ShellSandbox",
+			"image": "docker.io/cloudflare/sandbox:0.8.11",
+			"instance_type": "lite"
+		}
+	],
+	"durable_objects": {
+		"bindings": [{ "name": "SHELL_SANDBOX", "class_name": "ShellSandbox" }]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["ShellSandbox"] }
+	]
+}
+```
+
+No Dockerfile required. The default image tag tracks the version of `@cloudflare/sandbox` installed in `node_modules`, so the container runtime and the SDK stay in lockstep without you juggling a `FROM` line.
+
+## Naming convention
+
+The filename drives the env binding; the exported class name is preserved as written.
+
+| File | Binding | Class |
+|------|---------|-------|
+| `shell.sandbox.ts` | `SHELL_SANDBOX` | `ShellSandbox` |
+| `python.sandbox.ts` | `PYTHON_SANDBOX` | `PythonSandbox` |
+| `code-interpreter.sandbox.ts` | `CODE_INTERPRETER_SANDBOX` | `CodeInterpreterSandbox` |
+
+Running two sandboxes side-by-side — a Python data shell and a Node scratch shell, say — is just two files. Each gets its own binding, its own image, and its own DO class. No special cases, no duplicated plumbing.
+
+## Tuning
+
+Declare `static` fields on the class to override framework defaults:
+
+```ts
+import { Sandbox } from '@cloudflare/sandbox';
+
+export default class PythonSandbox extends Sandbox<Env> {
+	static image = 'docker.io/cloudflare/sandbox:0.8.11-python';
+	static instanceType = 'standard';
+	static maxInstances = 10;
+}
+```
+
+### `image`
+
+Optional. Accepts a Dockerfile path OR a registry reference. Resolution order:
+
+1. `static image = '...'` wins.
+2. Sibling file `<basename>.Dockerfile` next to the `.sandbox.ts` (e.g. `python.Dockerfile` for `python.sandbox.ts`) is used if present.
+3. Default: `docker.io/cloudflare/sandbox:<installed-version>`, read from the `@cloudflare/sandbox` package in `node_modules`.
+
+The Python-flavored image (`:<version>-python`) is the most common reason to override — set it explicitly when you need a non-default variant.
+
+### `instanceType` / `maxInstances`
+
+Standard Cloudflare Container tuning. Sandboxes default to `'lite'` and the Cloudflare-account cap.
+
+## Using it from server code
+
+Import `getSandbox` from `@cloudflare/sandbox` and route by a stable key:
+
+```ts
+// src/server/sandbox.ts
+import { env } from 'cloudflare:workers';
+import { getSandbox } from '@cloudflare/sandbox';
+
+export async function runCommand(name: string, command: string) {
+	const sandbox = getSandbox(env.SHELL_SANDBOX, name);
+	const { stdout, stderr, exitCode } = await sandbox.exec(command);
+	return { stdout, stderr, exitCode };
+}
+
+export async function destroy(name: string) {
+	await getSandbox(env.SHELL_SANDBOX, name).destroy();
+}
+```
+
+The second argument to `getSandbox()` is a routing key with the same semantics as `DurableObjectNamespace.idFromName()`. Same key → same container. Fresh key → fresh container. Keys are the **only** isolation boundary, so treat them like you would any multi-tenant identifier.
+
+## Healthchecks
+
+The top-level `sandbox` handle does not expose `ping()` — that method lives on `sandbox.client.utils.ping()`. The canonical way to probe a container is `exec('true')`:
+
+```ts
+const { exitCode } = await sandbox.exec('true');
+if (exitCode !== 0) throw new Error('Sandbox unreachable');
+```
+
+It forces a full round-trip through the container process and exits zero when everything is warm.
+
+## Lifecycle and limits
+
+- Containers are lazy-started on first call. Budget a few seconds of cold start.
+- `sandbox.destroy()` wipes the filesystem and frees the DO slot.
+- Cloudflare may reclaim long-idle containers; treat the filesystem as scratch.
+- Bill is per instance-minute while active.
+
+For the full API — file I/O, preview URLs, git checkouts, long-running processes, streaming output, xterm terminals — see the [`@cloudflare/sandbox` README](https://github.com/cloudflare/sandbox-sdk).
+
+## Typing the binding
+
+After `bun run build` (which regenerates `wrangler.jsonc`), run `wrangler types` so your `Env` picks up the new DO binding:
+
+```ts
+interface Env {
+	SHELL_SANDBOX: DurableObjectNamespace<ShellSandbox>;
+	// ...other bindings
+}
+```
+
+`env.SHELL_SANDBOX` is now strongly typed without any manual declaration.
+
+## Migration from the old `containers[].class_name: "Sandbox"` pattern
+
+Earlier KuratchiJS versions auto-exported the upstream `Sandbox` class whenever wrangler.jsonc contained a container with `class_name: "Sandbox"`. That pattern was single-instance by construction — only one class named `Sandbox` can exist — and forced you to hand-edit three wrangler blocks. It has been removed.
+
+To migrate:
+
+1. Create `src/server/<name>.sandbox.ts` that subclasses `@cloudflare/sandbox`'s `Sandbox`.
+2. Delete the manual `containers[]`, `durable_objects.bindings`, and `migrations[]` entries for Sandbox from wrangler.jsonc. Kuratchi will rewrite them from the `.sandbox.ts` file on the next build.
+3. Update call sites from `env.Sandbox` to the new binding (`env.SHELL_SANDBOX`, etc.).
+4. Run `wrangler types` to refresh the `Env` type.
+
+## See also
+
+- **[Containers](/framework/containers)** — the lower-level primitive; drop the SDK and bring your own image
+- **[Convention-based auto-discovery](/framework/configuration)** — full suffix → binding table

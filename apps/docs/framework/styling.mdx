@@ -1,312 +1,225 @@
 ---
 title: Styling
-description: CSS, Tailwind, and CSS frameworks in Kuratchi
+description: Global CSS, Tailwind, and static assets in Kuratchi
 ---
 
-Kuratchi gives you full control over styling. Use vanilla CSS, Tailwind, or any CSS framework — the choice is yours.
+KuratchiJS is Vite-first. CSS uses plain Vite plugins — Tailwind, PostCSS, CSS Modules, Lightning CSS — you install them, wire them into `vite.config.ts`, and they run on the global stylesheet end-to-end. No Kuratchi-specific CSS config.
 
-## Static assets
+## The two CSS paths
 
-Place CSS files in `src/assets/`. Kuratchi automatically serves them at `/assets/...`:
+| You want... | Put it here | What happens |
+| --- | --- | --- |
+| A stylesheet Vite should **process** (Tailwind, PostCSS, CSS Modules, imports from `node_modules`…) | `src/app.css` | Kuratchi registers it as a Rollup input. Every Vite CSS plugin runs on it. Emitted as a hashed asset. `<link>` auto-injected into the shell. |
+| A static file Vite should **not touch** (prebuilt CSS, favicons, images, fonts, JSON, PDFs…) | `src/assets/` | Served verbatim by Wrangler's ASSETS binding. Never processed. Reference it with a plain absolute URL. |
 
-```
-src/
-├── assets/
-│   └── styles.css      → /assets/styles.css
-│   └── theme/
-│       └── dark.css    → /assets/theme/dark.css
-└── routes/
-    └── layout.html
-```
+One convention, zero config.
 
-Reference your CSS in your layout:
+## `src/app.css` — global stylesheet
 
-```html
-<!-- src/routes/layout.html -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <link rel="stylesheet" href="/assets/styles.css" />
-</head>
-<body>
-  <slot></slot>
-</body>
-</html>
-```
+Drop a file at `src/app.css`. Kuratchi wires it up automatically:
 
-<Tip>
-Change the URL prefix with `assetsPrefix` in `kuratchi.config.ts`:
+1. Registered as a client Rollup input, so every Vite CSS plugin processes it.
+2. Emitted as a content-hashed asset (e.g. `/assets/kuratchi-global-css-BLFtAlQt.css`) in production.
+3. `<link rel="stylesheet" href={...}>` is injected right before `</head>` in your app shell. You don't write the `<link>` tag.
 
-```ts
-export default defineConfig({
-  assetsPrefix: '/static/',  // Now: /static/styles.css
-});
-```
-</Tip>
-
-## Vanilla CSS
-
-For most projects, vanilla CSS is all you need. Just write CSS:
+In development, the same file is served through Vite's module graph, so plugin transforms (Tailwind, PostCSS, CSS Modules, live reload) run on every edit.
 
 ```css
-/* src/assets/styles.css */
-:root {
-  --color-primary: #0ea5e9;
-  --color-bg: #0a0e17;
-  --radius: 8px;
-}
-
+/* src/app.css */
 body {
-  background: var(--color-bg);
+  margin: 0;
   font-family: system-ui, sans-serif;
-}
-
-.btn {
-  background: var(--color-primary);
-  border-radius: var(--radius);
-  padding: 0.5rem 1rem;
+  background: #0a0e17;
+  color: #e6e9ef;
 }
 ```
 
-No build step, no configuration. CSS files are served as-is.
+That's it. No build step, no Kuratchi config.
 
-## CSS minification
-
-For production optimization, install Lightning CSS:
-
-```bash
-npm install lightningcss
-```
-
-That's it. Kuratchi automatically minifies CSS in production builds when `lightningcss` is installed. No configuration needed.
-
-<Info>
-Minification is skipped in dev mode for easier debugging.
-</Info>
+<Note>
+You can still author `<link rel="stylesheet">` tags in `src/app.kuratchi` for third-party stylesheets (Google Fonts, CDN libraries). Kuratchi only auto-injects the one pointing at `src/app.css`.
+</Note>
 
 ## Tailwind CSS
 
-Kuratchi supports Tailwind CSS v4 with its new CSS-first configuration.
-
-### Setup
-
-Install the required packages:
+Tailwind v4 is a Vite plugin. Install it alongside any companion plugins:
 
 ```bash
-npm install tailwindcss @tailwindcss/postcss postcss
+npm install -D tailwindcss @tailwindcss/vite daisyui @tailwindcss/forms
 ```
 
-Enable Tailwind in your config:
+Wire it into Vite:
 
 ```ts
-// kuratchi.config.ts
-import { defineConfig } from '@kuratchi/js';
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  css: {
-    tailwind: true,
-  },
+  plugins: [kuratchiVite(), tailwindcss()],
 });
 ```
 
-Create your CSS file with Tailwind imports:
+Declare Tailwind + plugins + theme in your global stylesheet:
 
 ```css
-/* src/assets/app.css */
-@import "tailwindcss";
-```
-
-### Tailwind plugins
-
-Add plugins like DaisyUI or Tailwind Forms:
-
-```bash
-npm install daisyui @tailwindcss/forms
-```
-
-```ts
-// kuratchi.config.ts
-export default defineConfig({
-  css: {
-    tailwind: true,
-    plugins: ['daisyui', '@tailwindcss/forms'],
-  },
-});
-```
-
-Then reference them in your CSS:
-
-```css
-/* src/assets/app.css */
+/* src/app.css */
 @import "tailwindcss";
 @plugin "daisyui";
 @plugin "@tailwindcss/forms";
-```
 
-### Tailwind configuration
-
-Tailwind v4 uses CSS-first configuration. Customize directly in your CSS file:
-
-```css
-/* src/assets/app.css */
-@import "tailwindcss";
+/* Tailwind v4 default source detection skips the .kuratchi extension.
+   Tell it explicitly to scan route files for utility usage. */
+@source "./routes/**/*.kuratchi";
 
 @theme {
   --color-primary: #0ea5e9;
-  --color-secondary: #64748b;
-  --font-display: "Inter", sans-serif;
+  --font-display: 'Inter', sans-serif;
 }
 ```
 
-## CSS frameworks
-
-Any CSS framework works with Kuratchi. Here are common setups:
-
-### Pico CSS
-
-A minimal, classless CSS framework:
-
-```bash
-npm install @picocss/pico
-```
+Use utilities in any route:
 
 ```html
-<!-- src/routes/layout.html -->
-<head>
-  <link rel="stylesheet" href="/node_modules/@picocss/pico/css/pico.min.css" />
-</head>
+<button class="btn btn-primary">Click me</button>
 ```
 
-Or copy the CSS to your assets:
+That's the full integration. No `kuratchi.config.ts` entries, no CLI step, no watch process.
+
+<Warning>
+When scanning route files with Tailwind, the `@source "./routes/**/*.kuratchi"` directive is required. Without it Tailwind won't see utility classes used in your templates and will purge them from the output.
+</Warning>
+
+## Static assets — `src/assets/`
+
+Anything in `src/assets/` is served verbatim. It's Wrangler's ASSETS binding in production and Vite's publicDir in dev. No plugin ever transforms these files.
+
+Use this for:
+
+- Prebuilt CSS from a CDN-style library (`bootstrap.min.css`, `pico.min.css`)
+- Favicons and app icons
+- Static images, fonts, JSON, PDFs
+- Anything you want served byte-for-byte
+
+```text
+src/
+├─ app.css                 → processed by Vite
+└─ assets/
+   ├─ favicon.ico          → /favicon.ico
+   ├─ hero.png             → /hero.png
+   ├─ fonts/inter.woff2    → /fonts/inter.woff2
+   └─ bootstrap.min.css    → /bootstrap.min.css  (served as-is)
+```
+
+Reference them with absolute URLs:
+
+```html
+<!-- src/app.kuratchi -->
+<link rel="icon" href="/favicon.ico" />
+<link rel="stylesheet" href="/bootstrap.min.css" />
+```
+
+<Tip>
+Rule of thumb: **processed → `src/app.css`. Verbatim → `src/assets/`.** If Tailwind or PostCSS needs to see it, it goes in `src/app.css` (or is imported from there). If it's a finished file you want at `/<path>`, drop it in `src/assets/`.
+</Tip>
+
+## CSS Modules
+
+Vite supports CSS Modules out of the box. Import them from server-side modules:
+
+```css
+/* src/server/styles/card.module.css */
+.card {
+  padding: 1rem;
+  border-radius: 8px;
+}
+```
+
+```ts
+// src/server/card.ts
+import styles from './styles/card.module.css';
+export { styles };
+```
+
+## PostCSS
+
+PostCSS runs automatically when a `postcss.config.js` exists at the project root:
+
+```js
+// postcss.config.js
+export default {
+  plugins: {
+    autoprefixer: {},
+  },
+};
+```
+
+## Lightning CSS
+
+Vite can use Lightning CSS as its CSS transformer:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { kuratchiVite } from '@kuratchi/vite';
+
+export default defineConfig({
+  plugins: [kuratchiVite()],
+  css: {
+    transformer: 'lightningcss',
+  },
+});
+```
+
+## CSS frameworks (Bootstrap, Pico, Bulma, …)
+
+Two options. Pick one per library.
+
+**Option A — process via `@import` (recommended when installed as a package):**
+
+```css
+/* src/app.css */
+@import "bootstrap/dist/css/bootstrap.min.css";
+
+.my-customizations { /* ... */ }
+```
+
+Vite resolves the import through `node_modules`. The final bundle is a single hashed CSS asset.
+
+**Option B — drop prebuilt CSS in `src/assets/` (recommended when you want a stable URL):**
 
 ```bash
 cp node_modules/@picocss/pico/css/pico.min.css src/assets/pico.css
 ```
 
 ```html
-<link rel="stylesheet" href="/assets/pico.css" />
+<!-- src/app.kuratchi -->
+<link rel="stylesheet" href="/pico.css" />
 ```
 
-### Bootstrap 5
+## Migrating from the old `css` config
 
-```bash
-npm install bootstrap
-```
+Older Kuratchi projects used a `css.tailwind` / `css.plugins` option in `kuratchi.config.ts`. That API is gone. The migration:
 
-Copy to assets (recommended for production):
-
-```bash
-cp node_modules/bootstrap/dist/css/bootstrap.min.css src/assets/bootstrap.css
-```
-
-```html
-<!-- src/routes/layout.html -->
-<head>
-  <link rel="stylesheet" href="/assets/bootstrap.css" />
-</head>
-```
-
-For Bootstrap's JavaScript components, add the bundle:
-
-```bash
-cp node_modules/bootstrap/dist/js/bootstrap.bundle.min.js src/assets/bootstrap.js
-```
-
-```html
-<script src="/assets/bootstrap.js"></script>
-```
-
-### Bulma
-
-```bash
-npm install bulma
-```
-
-```bash
-cp node_modules/bulma/css/bulma.min.css src/assets/bulma.css
-```
-
-```html
-<link rel="stylesheet" href="/assets/bulma.css" />
-```
-
-### Open Props
-
-CSS custom properties for design systems:
-
-```bash
-npm install open-props
-```
-
-```css
-/* src/assets/styles.css */
-@import "open-props/style";
-@import "open-props/normalize";
-
-.card {
-  padding: var(--size-4);
-  border-radius: var(--radius-2);
-  box-shadow: var(--shadow-2);
-}
-```
-
-## CDN approach
-
-For quick prototyping, use CDN links directly:
-
-```html
-<!-- src/routes/layout.html -->
-<head>
-  <!-- Pico CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
-  
-  <!-- Or Bootstrap -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-  
-  <!-- Or Tailwind Play CDN (dev only) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-```
-
-<Warning>
-CDN links add external dependencies and network requests. For production, bundle CSS locally in `src/assets/`.
-</Warning>
-
-## CSS configuration reference
-
-```ts
-// kuratchi.config.ts
-export default defineConfig({
-  css: {
-    // Enable Tailwind CSS processing
-    // Requires: npm install tailwindcss @tailwindcss/postcss postcss
-    tailwind: boolean,
-    
-    // Tailwind plugins to load
-    plugins: string[],
-    
-    // Enable/disable minification
-    // Default: true in production, false in dev
-    // Requires: npm install lightningcss
-    minify: boolean,
-  },
-});
-```
+1. Install `@tailwindcss/vite` and add it to `vite.config.ts`.
+2. Move `src/assets/app.css` → `src/app.css`.
+3. Delete the `css` block from `kuratchi.config.ts`.
+4. Remove `<link rel="stylesheet" href="/assets/app.css" />` from your shell — Kuratchi injects it now.
 
 ## Best practices
 
 <CardGroup cols={2}>
+  <Card title="One global stylesheet" icon="file">
+    `src/app.css` is the single Vite-processed entry. Import everything else from it.
+  </Card>
+  <Card title="Assets stay verbatim" icon="box">
+    `src/assets/` is for finished files served at stable URLs. Never put Vite-processed CSS here.
+  </Card>
   <Card title="Use CSS custom properties" icon="palette">
-    Define colors, spacing, and typography as CSS variables for easy theming and consistency.
+    Define colors, spacing, and typography as variables for theming and consistency.
   </Card>
-  <Card title="Bundle locally" icon="box">
-    Copy framework CSS to `src/assets/` rather than using CDN links in production.
-  </Card>
-  <Card title="Start simple" icon="leaf">
-    Vanilla CSS with custom properties covers most needs. Add Tailwind only if you need it.
-  </Card>
-  <Card title="Scope styles" icon="layer-group">
-    Use component-specific class prefixes or CSS nesting to avoid conflicts.
+  <Card title="Add plugins at Vite layer" icon="plug">
+    Tailwind, PostCSS, Lightning CSS — all plain Vite plugins. No framework config needed.
   </Card>
 </CardGroup>

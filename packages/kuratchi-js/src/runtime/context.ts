@@ -242,24 +242,6 @@ export function __sanitizeHtml(v: any): string {
   return html;
 }
 
-/** Get CSRF token for form injection (used by template compiler) */
-export function __getCsrfToken(): string {
-  return __locals.__csrfToken || '';
-}
-
-/** Sign a fragment ID for secure polling (used by template compiler) */
-export function __signFragment(fragmentId: string): string {
-  const token = __locals.__csrfToken || '';
-  const routePath = __locals.__currentRoutePath || '/';
-  const payload = `${fragmentId}:${routePath}:${token}`;
-  // FNV-1a hash for fast, consistent signing
-  let hash = 2166136261;
-  for (let i = 0; i < payload.length; i++) {
-    hash ^= payload.charCodeAt(i);
-    hash = (hash * 16777619) >>> 0;
-  }
-  return `${fragmentId}:${hash.toString(36)}`;
-}
 
 
 

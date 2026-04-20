@@ -79,16 +79,12 @@ export interface TemplateRenderSections {
 
 export interface CompileTemplateOptions {
   emitCall?: string;
-  enableFragmentManifest?: boolean;
   appendNewline?: boolean;
   clientRouteRegistry?: ClientRouteRegistry;
   awaitQueryBindings?: Map<string, { asName: string; rpcId: string }>;
   /** Directory of the importing file, used for rewriting $lib/ imports */
   importerDir?: string;
 }
-
-const FRAGMENT_OPEN_MARKER = '<!--__KURATCHI_FRAGMENT_OPEN:';
-const FRAGMENT_CLOSE_MARKER = '<!--__KURATCHI_FRAGMENT_CLOSE-->';
 
 export function splitTemplateRenderSections(template: string): TemplateRenderSections {
   const bodyLines: string[] = [];
@@ -217,146 +213,6 @@ function buildAppendStatement(expression: string, emitCall?: string): string {
   return emitCall ? `${emitCall}(${expression});` : `__parts.push(${expression});`;
 }
 
-function buildPollFragmentExpr(inner: string, rpcNameMap?: Map<string, string>, pollIndex = 0): string | null {
-  const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
-  if (!callMatch) return null;
-
-  const fnName = callMatch[1];
-  const rpcName = rpcNameMap?.get(fnName) || fnName;
-  const argsExpr = (callMatch[2] || '').trim();
-  const fragmentPrefix = `__poll_${pollIndex}`;
-  if (!argsExpr) return JSON.stringify(`${fragmentPrefix}_${rpcName}`);
-  return `${JSON.stringify(fragmentPrefix + '_')} + String(${argsExpr}).replace(/[^a-zA-Z0-9]/g, '_')`;
-}
-
-function extractPollFragmentExpr(tagText: string, rpcNameMap?: Map<string, string>, pollIndex = 0): string | null {
-  const pollMatch = tagText.match(/\bdata-poll=\{([\s\S]*?)\}/);
-  if (!pollMatch) return null;
-  const inner = pollMatch[1].trim();
-  return buildPollFragmentExpr(inner, rpcNameMap, pollIndex);
-}
-
-function findTagEnd(template: string, start: number): number {
-  let quote: '"' | "'" | '`' | null = null;
-  let escaped = false;
-  let braceDepth = 0;
-
-  for (let i = start; i < template.length; i++) {
-    const ch = template[i];
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === quote) quote = null;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch as '"' | "'" | '`';
-      continue;
-    }
-
-    if (ch === '{') {
-      braceDepth++;
-      continue;
-    }
-    if (ch === '}') {
-      braceDepth = Math.max(0, braceDepth - 1);
-      continue;
-    }
-    if (ch === '>' && braceDepth === 0) {
-      return i;
-    }
-  }
-
-  return -1;
-}
-
-function instrumentPollFragments(template: string, rpcNameMap?: Map<string, string>): string {
-  const out: string[] = [];
-  const stack: Array<{ tagName: string; fragmentExpr: string | null }> = [];
-  let cursor = 0;
-  let pollIndex = 0;
-
-  while (cursor < template.length) {
-    const lt = template.indexOf('<', cursor);
-    if (lt === -1) {
-      out.push(template.slice(cursor));
-      break;
-    }
-
-    out.push(template.slice(cursor, lt));
-
-    if (template.startsWith('<!--', lt)) {
-      const commentEnd = template.indexOf('-->', lt + 4);
-      if (commentEnd === -1) {
-        out.push(template.slice(lt));
-        break;
-      }
-      out.push(template.slice(lt, commentEnd + 3));
-      cursor = commentEnd + 3;
-      continue;
-    }
-
-    const tagEnd = findTagEnd(template, lt + 1);
-    if (tagEnd === -1) {
-      out.push(template.slice(lt));
-      break;
-    }
-
-    const tagText = template.slice(lt, tagEnd + 1);
-    const closingMatch = tagText.match(/^<\s*\/\s*([A-Za-z][\w:-]*)\s*>$/);
-    if (closingMatch) {
-      const closingTag = closingMatch[1].toLowerCase();
-      const last = stack[stack.length - 1];
-      if (last && last.tagName === closingTag) {
-        if (last.fragmentExpr) out.push(FRAGMENT_CLOSE_MARKER);
-        stack.pop();
-      }
-      out.push(tagText);
-      cursor = tagEnd + 1;
-      continue;
-    }
-
-    const openMatch = tagText.match(/^<\s*([A-Za-z][\w:-]*)\b/);
-    if (!openMatch) {
-      out.push(tagText);
-      cursor = tagEnd + 1;
-      continue;
-    }
-
-    const tagName = openMatch[1].toLowerCase();
-    const isVoidLike = /\/\s*>$/.test(tagText) || /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(tagName);
-    const fragmentExpr = extractPollFragmentExpr(tagText, rpcNameMap, pollIndex);
-    const instrumentedTagText = fragmentExpr
-      ? tagText.replace(/\bdata-poll=\{([\s\S]*?)\}/, (match) => `${match} data-kuratchi-poll-fragment={${fragmentExpr}}`)
-      : tagText;
-
-    out.push(instrumentedTagText);
-
-    if (fragmentExpr) {
-      pollIndex += 1;
-      out.push(`${FRAGMENT_OPEN_MARKER}${encodeURIComponent(fragmentExpr)}-->`);
-      if (isVoidLike) {
-        out.push(FRAGMENT_CLOSE_MARKER);
-      }
-    }
-
-    if (!isVoidLike) {
-      stack.push({ tagName, fragmentExpr });
-    }
-
-    cursor = tagEnd + 1;
-  }
-
-  return out.join('');
-}
-
 /**
  * Compile a template string into a JS render function body.
  *
@@ -371,9 +227,6 @@ export function compileTemplate(
   options: CompileTemplateOptions = {},
 ): string {
   const emitCall = options.emitCall;
-  if (options.enableFragmentManifest) {
-    template = instrumentPollFragments(template, rpcNameMap);
-  }
   // Use array accumulation for O(n) performance instead of O(n²) string concatenation
   const useArrayAccum = !emitCall;
   const out: string[] = useArrayAccum ? ['const __parts = [];'] : ['let __html = "";'];
@@ -1078,38 +931,9 @@ function compileHtmlLineStatements(
   rpcNameMap?: Map<string, string>,
   options: CompileTemplateOptions = {},
 ): string[] {
-  const markerRegex = /<!--__KURATCHI_FRAGMENT_(OPEN:([\s\S]*?)|CLOSE)-->/g;
-  const statements: string[] = [];
-  let cursor = 0;
-  let sawLiteral = false;
-  let match: RegExpExecArray | null;
-
-  while ((match = markerRegex.exec(line)) !== null) {
-    const literal = line.slice(cursor, match.index);
-    if (literal) {
-      statements.push(compileHtmlSegment(literal, actionNames, rpcNameMap, { ...options, appendNewline: false }));
-      sawLiteral = true;
-    }
-
-    if (match[1].startsWith('OPEN:')) {
-      const encodedExpr = match[2] || '';
-      statements.push(`__pushFragment(${decodeURIComponent(encodedExpr)});`);
-    } else {
-      statements.push(`__popFragment();`);
-    }
-
-    cursor = match.index + match[0].length;
-  }
-
-  const tail = line.slice(cursor);
-  if (tail || sawLiteral || options.appendNewline !== false) {
-    const appendNewline = options.appendNewline !== false;
-    if (tail || appendNewline) {
-      statements.push(compileHtmlSegment(tail, actionNames, rpcNameMap, { ...options, appendNewline }));
-    }
-  }
-
-  return statements.filter(Boolean);
+  const appendNewline = options.appendNewline !== false;
+  const segment = compileHtmlSegment(line, actionNames, rpcNameMap, { ...options, appendNewline });
+  return segment ? [segment] : [];
 }
 
 import type { ClientRouteRegistry } from './client-module-pipeline.js';
@@ -1177,82 +1001,6 @@ function compileHtmlSegment(
           result += `"\${__esc(JSON.stringify(${inner}))}"`;
           pos = closeIdx + 1;
           continue;
-        } else if (attrName === 'data-refresh') {
-          // data-refresh={fn(args)} or data-refresh={keyExpr}
-          // - fn(args): emit refresh function + serialized args
-          // - otherwise: emit refresh token string
-          const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
-          result = result.replace(new RegExp(`\\s*${attrName}=$`), '');
-          if (callMatch) {
-            const fnName = callMatch[1];
-            const rpcName = rpcNameMap?.get(fnName) || fnName;
-            const argsExpr = (callMatch[2] || '').trim();
-            result += ` data-refresh="${rpcName}"`;
-            if (argsExpr) {
-              result += ` data-refresh-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-            }
-          } else {
-            result += ` data-refresh="\${__esc(${inner})}"`;
-          }
-          pos = closeIdx + 1;
-          continue;
-        } else if (attrName === 'data-post' || attrName === 'data-put' || attrName === 'data-patch' || attrName === 'data-delete') {
-          // data-post={fn(args)} etc â€” action-style declarative calls
-          const method = attrName.slice('data-'.length).toUpperCase();
-          const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
-          result = result.replace(new RegExp(`\\s*${attrName}=$`), '');
-          if (callMatch && actionNames?.has(callMatch[1])) {
-            const fnName = callMatch[1];
-            const argsExpr = (callMatch[2] || '').trim();
-            result += ` data-action="${fnName}" data-action-event="click" data-action-method="${method}"`;
-            result += ` data-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-          } else {
-            result += ` ${attrName}="${escapeLiteral(inner)}"`;
-          }
-          pos = closeIdx + 1;
-          continue;
-        } else if (attrName === 'data-get' || attrName === 'data-loading' || attrName === 'data-error' || attrName === 'data-empty' || attrName === 'data-success') {
-          // data-get={fn(args)} and companion state attrs
-          // Emit stable metadata attributes instead of evaluating expression in SSR.
-          const callMatch = inner.match(/^([A-Za-z_$][\w$]*)\(([\s\S]*)\)$/);
-          result = result.replace(new RegExp(`\\s*${attrName}=$`), '');
-          if (callMatch) {
-            const fnName = callMatch[1];
-            const rpcName = rpcNameMap?.get(fnName) || fnName;
-            const argsExpr = (callMatch[2] || '').trim();
-            result += ` ${attrName}="${rpcName}"`;
-            if (argsExpr) {
-              result += ` ${attrName}-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-            }
-          } else {
-            // Non-call expression mode (e.g., data-get={someUrl})
-            result += ` ${attrName}="\${__esc(${inner})}"`;
-          }
-          pos = closeIdx + 1;
-          continue;
-        } else if (attrName === 'data-kuratchi-poll-fragment') {
-          result = result.replace(/\s*data-kuratchi-poll-fragment=$/, '');
-          result += ` data-poll-id="\${__signFragment(${inner})}"`;
-          pos = closeIdx + 1;
-          continue;
-        } else if (attrName === 'data-poll') {
-          // data-poll={fn(args)} → data-poll="fnName" data-poll-args="[serialized]"
-          const pollCallMatch = inner.match(/^(\w+)\((.*)\)$/);
-          if (pollCallMatch) {
-            const fnName = pollCallMatch[1];
-            const rpcName = rpcNameMap?.get(fnName) || fnName;
-            const argsExpr = pollCallMatch[2].trim();
-            // Remove the trailing "data-poll=" we already appended
-            result = result.replace(/\s*data-poll=$/, '');
-            // Emit data-poll and data-poll-args. The signed poll fragment ID is emitted
-            // from the synthetic data-kuratchi-poll-fragment attribute injected earlier.
-            result += ` data-poll="${rpcName}"`;
-            if (argsExpr) {
-              result += ` data-poll-args="\${__esc(JSON.stringify([${argsExpr}]))}"`;
-            }
-          }
-          pos = closeIdx + 1;
-          continue;
         } else if (attrName === 'action') {
           // action={fnName} -> server action dispatch via hidden _action field.
           const isSimpleIdentifier = /^[A-Za-z_$][\w$]*$/.test(inner);
@@ -1270,8 +1018,9 @@ function compileHtmlSegment(
           const actionValue = actionNames === undefined
             ? `\${__esc(${inner})}`
             : inner;
-          // Inject both _action and _csrf hidden fields for server action forms
-          pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">\\n<input type="hidden" name="_csrf" value="\${__getCsrfToken()}">`;
+          // Inject only the _action hidden field. Origin enforcement is handled
+          // server-side (strict same-origin gate on the /route POST endpoint).
+          pendingActionHiddenInput = `\\n<input type="hidden" name="_action" value="${actionValue}">`;
           pos = closeIdx + 1;
           continue;
         } else if (/^on[A-Za-z]+$/i.test(attrName)) {
@@ -1324,11 +1073,9 @@ function compileHtmlSegment(
         const awaitCall = extractAwaitTemplateCall(inner);
         const awaitBinding = awaitCall ? options.awaitQueryBindings?.get(awaitCall.awaitExpr) : null;
         if (awaitCall && awaitBinding) {
-          result += `<span data-remote-read="${awaitBinding.rpcId}" data-get="${awaitBinding.rpcId}"`;
-          if (awaitCall.argsExpr) {
-            result += ` data-get-args="\${__esc(JSON.stringify([${awaitCall.argsExpr}]))}"`;
-          }
-          result += `>\${__esc(((${awaitBinding.asName} && ${awaitBinding.asName}.data) ?? ''))}</span>`;
+          // The awaited value is hydrated into scope as `<asName>.data` by the
+          // route pipeline. Emit only the escaped text — no wrapper attributes.
+          result += `\${__esc(((${awaitBinding.asName} && ${awaitBinding.asName}.data) ?? ''))}`;
         } else {
           result += `\${__esc(${inner})}`;
         }
@@ -1398,10 +1145,24 @@ function findClosingBrace(src: string, openPos: number): number {
 /**
  * Generate the full render function source code.
  */
-export function generateRenderFunction(template: string): string {
+/**
+ * Generate a standalone `function render(data) { ... return html; }` string
+ * suitable for use outside the full route pipeline (e.g. by `@kuratchi/vite`).
+ *
+ * @param template  The template body source (pre-parsed out of the route file).
+ * @param dataVars  Optional list of identifier names to destructure from
+ *                  `data` into the render function's scope, matching the
+ *                  `const { name, items } = data;` prelude emitted by the
+ *                  full page-route pipeline.
+ */
+export function generateRenderFunction(template: string, dataVars: string[] = []): string {
   const body = compileTemplate(template);
+  const destructure = dataVars.length
+    ? `  const { ${dataVars.join(', ')} } = data || {};\n`
+    : '';
 
   return `function render(data) {
+${destructure}
   const __rawHtml = (v) => {
     if (v == null) return '';
     return String(v);
@@ -1428,6 +1189,7 @@ export function generateRenderFunction(template: string): string {
       .replace(/'/g, '&#39;');
   };
   ${body}
+  return __html;
 }`;
 }
 

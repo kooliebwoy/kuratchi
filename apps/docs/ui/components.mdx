@@ -1,0 +1,691 @@
+---
+title: "Components"
+description: "Complete reference for all @kuratchi/ui components"
+---
+
+## Layout Components
+
+### AppShell
+
+Container for the entire application layout.
+
+```html
+<script>
+  import AppShell from '@kuratchi/ui/app-shell.html';
+</script>
+
+<AppShell>
+  <!-- Your app content -->
+</AppShell>
+```
+
+### AppHeader
+
+Sticky header bar for application navigation.
+
+```html
+<script>
+  import AppHeader from '@kuratchi/ui/app-header.html';
+</script>
+
+<AppHeader>
+  <a href="/">My App</a>
+  <nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/settings">Settings</a>
+  </nav>
+</AppHeader>
+```
+
+### Sidebar
+
+Collapsible sidebar navigation.
+
+```html
+<script>
+  import Sidebar from '@kuratchi/ui/sidebar.html';
+  import SidebarHeader from '@kuratchi/ui/sidebar-header.html';
+  import SidebarContent from '@kuratchi/ui/sidebar-content.html';
+  import SidebarMenu from '@kuratchi/ui/sidebar-menu.html';
+  import SidebarMenuItem from '@kuratchi/ui/sidebar-menu-item.html';
+</script>
+
+<Sidebar>
+  <SidebarHeader>
+    <h2>Navigation</h2>
+  </SidebarHeader>
+  <SidebarContent>
+    <SidebarMenu>
+      <SidebarMenuItem href="/" icon="🏠">Home</SidebarMenuItem>
+      <SidebarMenuItem href="/settings" icon="⚙️">Settings</SidebarMenuItem>
+    </SidebarMenu>
+  </SidebarContent>
+</Sidebar>
+```
+
+**Props:**
+- `data_side` — `'left'` | `'right'` (default: `'left'`)
+- `data_variant` — `'sidebar'` | `'floating'` | `'inset'`
+- `data_collapsible` — `'offcanvas'` | `'icon'` | `'none'`
+
+### Dashboard
+
+Pre-built dashboard layout with sidebar.
+
+```html
+<script>
+  import Dashboard from '@kuratchi/ui/dashboard.html';
+  import DashboardContent from '@kuratchi/ui/dashboard-content.html';
+</script>
+
+<Dashboard>
+  <DashboardContent>
+    <h1>Dashboard</h1>
+  </DashboardContent>
+</Dashboard>
+```
+
+---
+
+## Content Components
+
+### Card
+
+Bordered container for content sections.
+
+```html
+<script>
+  import Card from '@kuratchi/ui/card.html';
+</script>
+
+<Card title="Card Title">
+  <p>Card content goes here.</p>
+</Card>
+```
+
+**Props:**
+- `title` — Card heading
+- `bodyClass` — Custom class for card body
+- `data_compact` — Reduced padding
+- `data_side` — Horizontal layout with image
+- `data_variant` — `'danger'` | `'warning'` (adds colored left border)
+
+### InfoCard
+
+Card with icon and description.
+
+```html
+<script>
+  import InfoCard from '@kuratchi/ui/info-card.html';
+</script>
+
+<InfoCard title="Total Users" value="1,234" icon="👥" />
+```
+
+**Props:**
+- `title` — Card title
+- `value` — Main value to display
+- `icon` — Icon or emoji
+
+### MetricCard
+
+Card for displaying key metrics.
+
+```html
+<script>
+  import MetricCard from '@kuratchi/ui/metric-card.html';
+</script>
+
+<MetricCard label="Revenue" value="$12,345" subvalue="+12% from last month" />
+```
+
+**Props:**
+- `label` — Metric label
+- `value` — Primary metric value
+- `subvalue` — Secondary description
+
+### StatsCard
+
+Card with icon, value, and trend indicator.
+
+```html
+<script>
+  import StatsCard from '@kuratchi/ui/stats-card.html';
+</script>
+
+<StatsCard 
+  label="Active Users" 
+  value="2,543" 
+  description="Currently online"
+  icon="👤"
+  trend="+12%"
+  trendLabel="vs last week"
+/>
+```
+
+**Props:**
+- `label` — Stat label
+- `value` — Primary value
+- `description` — Additional context
+- `icon` — Icon or emoji
+- `trend` — Trend value (e.g., `"+12%"`)
+- `trendLabel` — Trend description
+
+### Alert
+
+Contextual alert messages.
+
+```html
+<script>
+  import Alert from '@kuratchi/ui/alert.html';
+</script>
+
+<Alert data_variant="info">
+  This is an informational message.
+</Alert>
+
+<Alert data_variant="danger" dismissible>
+  This is a dismissible error alert.
+</Alert>
+```
+
+**Props:**
+- `data_variant` — `'info'` | `'success'` | `'warning'` | `'danger'` | `'destructive'` | `'error'`
+- `dismissible` — Show close button
+
+### Callout
+
+Highlighted content block with optional icon.
+
+```html
+<script>
+  import Callout from '@kuratchi/ui/callout.html';
+</script>
+
+<Callout title="Note" data_variant="info">
+  This is important information.
+</Callout>
+```
+
+**Props:**
+- `title` — Callout heading
+- `data_variant` — `'info'` | `'success'` | `'warning'` | `'danger'`
+
+### EmptyState
+
+Placeholder for empty lists or missing content.
+
+```html
+<script>
+  import EmptyState from '@kuratchi/ui/empty-state.html';
+</script>
+
+<EmptyState 
+  title="No items found" 
+  description="Try adjusting your filters"
+>
+  <button data-variant="primary">Create Item</button>
+</EmptyState>
+```
+
+**Props:**
+- `title` — Empty state title
+- `description` — Additional context
+
+---
+
+## Navigation Components
+
+### Breadcrumb
+
+Hierarchical navigation trail.
+
+```html
+<script>
+  import Breadcrumb from '@kuratchi/ui/breadcrumb.html';
+  import BreadcrumbItem from '@kuratchi/ui/breadcrumb-item.html';
+</script>
+
+<Breadcrumb>
+  <BreadcrumbItem href="/">Home</BreadcrumbItem>
+  <BreadcrumbItem href="/products">Products</BreadcrumbItem>
+  <BreadcrumbItem>Current Page</BreadcrumbItem>
+</Breadcrumb>
+```
+
+### TabNav
+
+Tabbed navigation interface.
+
+```html
+<script>
+  import TabNav from '@kuratchi/ui/tab-nav.html';
+</script>
+
+<TabNav 
+  tabs={[
+    { label: 'Overview', href: '/overview', active: true },
+    { label: 'Settings', href: '/settings' },
+    { label: 'Billing', href: '/billing' }
+  ]}
+/>
+```
+
+**Props:**
+- `tabs` — Array of `{ label, href, active? }` objects
+
+### Dropdown
+
+Dropdown menu with trigger button.
+
+```html
+<script>
+  import Dropdown from '@kuratchi/ui/dropdown.html';
+</script>
+
+<Dropdown label="Actions">
+  <a href="/edit">Edit</a>
+  <a href="/delete">Delete</a>
+</Dropdown>
+```
+
+**Props:**
+- `label` — Dropdown trigger text
+
+---
+
+## Data Display Components
+
+### Badge
+
+Small status or label indicator.
+
+```html
+<script>
+  import Badge from '@kuratchi/ui/badge.html';
+</script>
+
+<Badge>Default</Badge>
+<Badge data_variant="success">Active</Badge>
+<Badge data_variant="danger">Error</Badge>
+<Badge data_variant="warning">Pending</Badge>
+```
+
+**Props:**
+- `data_variant` — `'secondary'` | `'outline'` | `'destructive'` | `'danger'` | `'success'` | `'warning'` | `'info'`
+
+### StatusChip
+
+Status indicator with color-coded variants.
+
+```html
+<script>
+  import StatusChip from '@kuratchi/ui/status-chip.html';
+</script>
+
+<StatusChip status="active">Active</StatusChip>
+<StatusChip status="pending">Pending</StatusChip>
+<StatusChip status="error">Error</StatusChip>
+```
+
+**Props:**
+- `status` — `'active'` | `'pending'` | `'error'` | `'success'` | `'warning'`
+
+### DataList
+
+Vertical list of data items.
+
+```html
+<script>
+  import DataList from '@kuratchi/ui/data-list.html';
+  import DataItem from '@kuratchi/ui/data-item.html';
+</script>
+
+<DataList>
+  <DataItem label="Name" value="John Doe" />
+  <DataItem label="Email" value="john@example.com" />
+  <DataItem label="Role" value="Admin" />
+</DataList>
+```
+
+### Progress
+
+Progress bar indicator.
+
+```html
+<script>
+  import Progress from '@kuratchi/ui/progress.html';
+</script>
+
+<Progress value={75} max={100} />
+```
+
+**Props:**
+- `value` — Current progress value
+- `max` — Maximum value (default: `100`)
+- `data_variant` — `'primary'` | `'success'` | `'warning'` | `'danger'`
+
+---
+
+## Interactive Components
+
+### Dialog
+
+Modal dialog overlay.
+
+```html
+<script>
+  import Dialog from '@kuratchi/ui/dialog.html';
+</script>
+
+<Dialog title="Confirm Action">
+  <p>Are you sure you want to proceed?</p>
+  <div data-card="actions">
+    <button data-variant="ghost">Cancel</button>
+    <button data-variant="primary">Confirm</button>
+  </div>
+</Dialog>
+```
+
+**Props:**
+- `title` — Dialog heading
+
+### Drawer
+
+Slide-out panel.
+
+```html
+<script>
+  import Drawer from '@kuratchi/ui/drawer.html';
+</script>
+
+<Drawer title="Settings" data_side="right">
+  <p>Drawer content</p>
+</Drawer>
+```
+
+**Props:**
+- `title` — Drawer heading
+- `data_side` — `'left'` | `'right'` (default: `'right'`)
+
+### Accordion
+
+Collapsible content sections.
+
+```html
+<script>
+  import Accordion from '@kuratchi/ui/accordion.html';
+  import AccordionItem from '@kuratchi/ui/accordion-item.html';
+</script>
+
+<Accordion>
+  <AccordionItem title="Section 1">
+    Content for section 1
+  </AccordionItem>
+  <AccordionItem title="Section 2">
+    Content for section 2
+  </AccordionItem>
+</Accordion>
+```
+
+### ThemeToggle
+
+Button to switch between light and dark themes.
+
+```html
+<script>
+  import ThemeToggle from '@kuratchi/ui/theme-toggle.html';
+</script>
+
+<ThemeToggle />
+```
+
+Automatically:
+- Toggles `.dark` class on `<html>`
+- Persists choice to `localStorage`
+- Syncs all toggle instances
+
+---
+
+## Utility Components
+
+### Loading
+
+Loading spinner indicator.
+
+```html
+<script>
+  import Loading from '@kuratchi/ui/loading.html';
+</script>
+
+<Loading />
+<Loading data_size="lg" />
+```
+
+**Props:**
+- `data_size` — `'sm'` | `'md'` | `'lg'`
+
+### Tooltip
+
+Hover tooltip (CSS-only).
+
+```html
+<script>
+  import Tooltip from '@kuratchi/ui/tooltip.html';
+</script>
+
+<Tooltip text="Helpful information">
+  <button>Hover me</button>
+</Tooltip>
+```
+
+**Props:**
+- `text` — Tooltip content
+
+### Hint
+
+Inline help text or hint.
+
+```html
+<script>
+  import Hint from '@kuratchi/ui/hint.html';
+</script>
+
+<Hint>This field is required</Hint>
+<Hint data_variant="error">Invalid input</Hint>
+```
+
+**Props:**
+- `data_variant` — `'default'` | `'error'` | `'success'`
+
+### ThemeInit
+
+Script to initialize theme from localStorage (prevents FOUC).
+
+```html
+<script>
+  import ThemeInit from '@kuratchi/ui/theme-init.html';
+</script>
+
+<head>
+  <ThemeInit />
+  <link rel="stylesheet" href="/node_modules/@kuratchi/ui/src/styles/theme.css" />
+</head>
+```
+
+Place in `<head>` before stylesheets.
+
+---
+
+## Form Components
+
+`@kuratchi/ui` styles native HTML form elements via semantic selectors. No component imports needed:
+
+```html
+<form>
+  <label>
+    Email
+    <input type="email" placeholder="you@example.com" />
+  </label>
+
+  <label>
+    Password
+    <input type="password" />
+  </label>
+
+  <button type="submit">Sign In</button>
+</form>
+```
+
+Styled elements:
+- `<input>` — Text, email, password, number, search, tel, url
+- `<textarea>` — Multi-line text input
+- `<select>` — Dropdown select
+- `<button>` — Buttons with variants via `data-variant`
+- `<label>` — Form labels
+
+### Button variants
+
+Use `data-variant` attribute:
+
+```html
+<button data-variant="primary">Primary</button>
+<button data-variant="secondary">Secondary</button>
+<button data-variant="ghost">Ghost</button>
+<button data-variant="outline">Outline</button>
+<button data-variant="link">Link</button>
+<button data-variant="destructive">Destructive</button>
+```
+
+### Button sizes
+
+Use `data-size` attribute:
+
+```html
+<button data-size="sm">Small</button>
+<button>Default</button>
+<button data-size="lg">Large</button>
+<button data-size="icon">🔍</button>
+```
+
+### Full-width button
+
+Use `data-block` attribute:
+
+```html
+<button data-block>Full Width</button>
+```
+
+---
+
+## Semantic HTML Styling
+
+Many HTML elements are styled automatically without component imports:
+
+### Main content area
+
+```html
+<main>
+  <h1>Page Title</h1>
+  <p>Content goes here.</p>
+</main>
+```
+
+Automatically gets max-width, padding, and centering.
+
+### Page header
+
+```html
+<main>
+  <header>
+    <h1>Dashboard</h1>
+    <p>Welcome back</p>
+  </header>
+</main>
+```
+
+Styled with flex layout and spacing.
+
+### Section (card-like container)
+
+```html
+<section>
+  <article>
+    <a href="/item-1">
+      <strong>Item 1</strong>
+      <small>Description</small>
+    </a>
+  </article>
+  <article>
+    <a href="/item-2">
+      <strong>Item 2</strong>
+      <small>Description</small>
+    </a>
+  </article>
+</section>
+```
+
+Sections get borders and rounded corners. Articles are rows with dividers.
+
+### Navigation
+
+```html
+<nav>
+  <a href="/">Home</a>
+  <a href="/about">About</a>
+  <a href="/contact">Contact</a>
+</nav>
+```
+
+Horizontal navigation with hover states.
+
+---
+
+## Component Composition
+
+Components can be nested and combined:
+
+```html
+<script>
+  import Card from '@kuratchi/ui/card.html';
+  import Badge from '@kuratchi/ui/badge.html';
+  import Alert from '@kuratchi/ui/alert.html';
+</script>
+
+<Alert data_variant="info">
+  New features available!
+</Alert>
+
+<Card title="User Profile">
+  <p>John Doe <Badge data_variant="success">Active</Badge></p>
+  <p>Email: john@example.com</p>
+  
+  <div data-card="actions">
+    <button data-variant="ghost">Cancel</button>
+    <button data-variant="primary">Save</button>
+  </div>
+</Card>
+```
+
+---
+
+## Custom Classes
+
+All components accept a `class` prop for custom styling:
+
+```html
+<Card class="max-w-md mx-auto shadow-lg">
+  Custom styled card
+</Card>
+
+<Badge class="uppercase tracking-wide">
+  Custom badge
+</Badge>
+```
+
+---
+
+## Next Steps
+
+- [Theming](/ui/theming) — Customize colors and design tokens
+- [Getting Started](/ui/getting-started) — Installation and setup guide

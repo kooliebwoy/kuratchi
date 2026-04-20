@@ -22,17 +22,6 @@ export interface AsyncValueState {
   success: boolean;
 }
 
-export interface PollOptions {
-  /** Polling interval: '2s', '500ms', '1m' */
-  poll: string;
-  /** Enable exponential backoff (default: true) */
-  backoff?: boolean;
-  /** Maximum interval for backoff (default: '5m') */
-  maxInterval?: string;
-  /** Stop polling when this function returns true */
-  until?: (value: any) => boolean;
-}
-
 /**
  * AsyncValue<T> extends T with async state metadata.
  * The value is directly accessible (no .data wrapper needed).
@@ -105,18 +94,10 @@ export function parseInterval(str: string): number {
 }
 
 /**
- * Server-side async value wrapper for SSR.
- * This is used by the compiler to wrap non-awaited async calls.
- * 
- * On the server:
- * - If the promise is already resolved, returns success state
- * - If pending, returns pending state with fragment ID for client hydration
- * - If errored, returns error state
+ * Server-side async value wrapper for SSR. Resolves the promise and returns
+ * either a success or error `AsyncValue`.
  */
-export async function wrapAsyncValue<T>(
-  promise: Promise<T>,
-  options?: { poll?: string; fragmentId?: string }
-): Promise<AsyncValue<T>> {
+export async function wrapAsyncValue<T>(promise: Promise<T>): Promise<AsyncValue<T>> {
   try {
     const value = await promise;
     return createSuccessValue(value);
@@ -124,22 +105,6 @@ export async function wrapAsyncValue<T>(
     const message = err instanceof Error ? err.message : String(err);
     return createErrorValue<T>(message);
   }
-}
-
-/**
- * Create an async value that polls at a specified interval.
- * Used for workflow status and other polling scenarios.
- */
-export function createPollingValue<T>(
-  fetchFn: () => Promise<T>,
-  options: PollOptions
-): AsyncValue<T> & { __polling: true; __options: PollOptions; __fetchFn: () => Promise<T> } {
-  const base = createPendingValue<T>();
-  return Object.assign(base, {
-    __polling: true as const,
-    __options: options,
-    __fetchFn: fetchFn,
-  });
 }
 
 /**
@@ -153,13 +118,4 @@ export function isAsyncValue<T>(value: unknown): value is AsyncValue<T> {
     'error' in value &&
     'success' in value
   );
-}
-
-/**
- * Type guard to check if an AsyncValue is a polling value
- */
-export function isPollingValue<T>(
-  value: AsyncValue<T>
-): value is AsyncValue<T> & { __polling: true; __options: PollOptions; __fetchFn: () => Promise<T> } {
-  return '__polling' in value && (value as any).__polling === true;
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * CLI entry point — kuratchi build | watch | create
+ * CLI entry point â€” kuratchi build | watch | create
  */
 
-import { compile } from './compiler/index.js';
+import { compile } from '@kuratchi/js/compiler';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -12,9 +12,17 @@ import { spawn, type ChildProcess } from 'node:child_process';
 
 const args = process.argv.slice(2);
 const command = args[0];
+const commandArgs = args.slice(1);
 
 const projectDir = process.cwd();
 let cachedScriptRuntimeExecutable: string | null = null;
+
+type WranglerStdinMode = 'auto' | 'inherit' | 'pipe';
+
+interface DevCommandOptions {
+  passthroughArgs: string[];
+  wranglerStdinMode: WranglerStdinMode;
+}
 
 void main().catch((err: any) => {
   console.error(`[kuratchi] ${err?.message ?? err}`);
@@ -33,36 +41,38 @@ async function main() {
       await runWatch(true);
       return;
     case 'create':
-      await runCreate();
-      return;
+      // Scaffolding moved out of `@kuratchi/wrangler`. Use the standard
+      // npm `create-*` invocation instead so users don't have to install
+      // this legacy CLI just to bootstrap a new (Vite-first) project.
+      console.error(
+        `[kuratchi] \`kuratchi create\` has moved. Use one of:\n\n` +
+        `  npm create kuratchi@latest my-app\n` +
+        `  bun create kuratchi my-app\n` +
+        `  pnpm create kuratchi my-app\n\n` +
+        `(Defaults to the Vite template. Pass \`--legacy\` for the Wrangler-CLI template.)`
+      );
+      process.exit(1);
     case 'types':
       await runTypes();
       return;
     default:
       console.log(`
-KuratchiJS CLI
+KuratchiJS Wrangler CLI (legacy build pipeline)
 
 Usage:
-  kuratchi create [name]  Scaffold a new KuratchiJS project
   kuratchi build          Compile routes once
   kuratchi dev            Compile, watch for changes, and start wrangler dev server
-  kuratchi watch          Compile + watch only (no wrangler — for custom setups)
+  kuratchi watch          Compile + watch only (no wrangler â€” for custom setups)
   kuratchi types          Generate TypeScript types from schema to src/app.d.ts
+
+To create a new project, use: npm create kuratchi@latest (or bun create kuratchi).
 `);
       process.exit(1);
   }
 }
 
-async function runCreate() {
-  const { create } = await import('./create.js');
-  const remaining = args.slice(1);
-  const flags = remaining.filter(a => a.startsWith('-'));
-  const positional = remaining.filter(a => !a.startsWith('-'));
-  await create(positional[0], flags);
-}
-
 async function runTypes() {
-  const { writeAppTypes } = await import('./compiler/type-generator.js');
+  const { writeAppTypes } = await import('@kuratchi/js/compiler');
   writeAppTypes({ projectDir });
 }
 
@@ -83,11 +93,35 @@ async function runWatch(withWrangler = false): Promise<void> {
   console.log('[kuratchi] Watching for changes...');
 
   if (withWrangler) {
-    await startWranglerDev();
+    await startWranglerDev(parseDevCommandOptions(commandArgs));
     return;
   }
 
   await new Promise(() => {});
+}
+
+function parseDevCommandOptions(inputArgs: string[]): DevCommandOptions {
+  const passthroughArgs: string[] = [];
+  let wranglerStdinMode: WranglerStdinMode = 'auto';
+
+  for (const arg of inputArgs) {
+    if (arg === '--interactive-wrangler') {
+      wranglerStdinMode = 'inherit';
+      continue;
+    }
+
+    if (arg === '--non-interactive-wrangler') {
+      wranglerStdinMode = 'pipe';
+      continue;
+    }
+
+    passthroughArgs.push(arg);
+  }
+
+  return {
+    passthroughArgs,
+    wranglerStdinMode,
+  };
 }
 
 function hasPortFlag(inputArgs: string[]): boolean {
@@ -118,17 +152,16 @@ async function findOpenPort(start = 8787, end = 8899): Promise<number> {
   throw new Error(`No open dev port found in range ${start}-${end}`);
 }
 
-async function startWranglerDev(): Promise<void> {
-  const passthroughArgs = args.slice(1);
-  const wranglerArgs = ['dev', ...passthroughArgs];
+async function startWranglerDev(devOptions: DevCommandOptions): Promise<void> {
+  const wranglerArgs = ['dev', ...devOptions.passthroughArgs];
 
-  if (!hasPortFlag(passthroughArgs)) {
+  if (!hasPortFlag(devOptions.passthroughArgs)) {
     const port = await findOpenPort();
     wranglerArgs.push('--port', String(port));
     console.log(`[kuratchi] Starting wrangler dev on port ${port}`);
   }
 
-  const wrangler = spawnWranglerProcess(wranglerArgs);
+  const wrangler = spawnWranglerProcess(wranglerArgs, devOptions.wranglerStdinMode);
 
   const cleanup = () => {
     if (!wrangler.killed) wrangler.kill();
@@ -209,9 +242,9 @@ function startCompilerWatch(): () => void {
   };
 }
 
-function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
+function spawnWranglerProcess(wranglerArgs: string[], stdinMode: WranglerStdinMode): ChildProcess {
   const localWranglerBin = resolveWranglerBin();
-  const stdio: ['pipe', 'inherit', 'inherit'] = ['pipe', 'inherit', 'inherit'];
+  const stdio: ['pipe' | 'inherit', 'inherit', 'inherit'] = [resolveWranglerStdinMode(stdinMode), 'inherit', 'inherit'];
 
   if (localWranglerBin) {
     return spawn(getScriptRuntimeExecutable(), [localWranglerBin, ...wranglerArgs], {
@@ -225,6 +258,12 @@ function spawnWranglerProcess(wranglerArgs: string[]): ChildProcess {
     cwd: projectDir,
     stdio,
   });
+}
+
+function resolveWranglerStdinMode(mode: WranglerStdinMode = 'auto'): 'pipe' | 'inherit' {
+  if (mode === 'inherit') return 'inherit';
+  if (mode === 'pipe') return 'pipe';
+  return process.stdin.isTTY ? 'inherit' : 'pipe';
 }
 
 function findExecutableOnPath(command: string): string | null {

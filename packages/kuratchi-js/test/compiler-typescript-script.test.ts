@@ -322,8 +322,11 @@ export async function getTitle() {
     );
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(rewrittenModule).toContain("from './helpers.ts'");
-    expect(routesCode).toContain("import * as __m0 from './modules/src/server/loaders.ts';");
+    // The server-module pipeline strips source extensions when rewriting relative
+    // imports so the transformed file is portable and the importer can resolve
+    // it via the runtime's own extension probe.
+    expect(rewrittenModule).toContain("from './helpers'");
+    expect(routesCode).toContain("import * as __m0 from './modules/src/server/loaders';");
   });
 
   it('merges nested layout server state into child route compilation', async () => {
@@ -430,13 +433,15 @@ import { submitForm } from '$server/actions';
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
+    // RFC 0002 route client bundle — a single `<routeId>/script.js` asset holds
+    // all of the route's client-side code (including `$lib/` helpers, which are
+    // bundled inline rather than published as separate shared modules).
+    expect(routesCode).toContain('__kuratchi/client/routes/route_0/script.js');
     expect(routesCode).toContain('data-client-route="route_0"');
     expect(routesCode).toContain('data-client-handler="h0"');
     expect(routesCode).toContain('data-client-handler="h1"');
     expect(routesCode).toContain('data-client-event="click"');
     expect(routesCode).toContain('data-client-event="submit"');
-    expect(routesCode).toContain('__kuratchi/client/modules/lib/form.js');
     expect(routesCode).toContain('window.__kuratchiClient?.register(');
   });
 
@@ -548,8 +553,10 @@ import { closeNearestDialog } from '$lib/ui/dialog';
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('__kuratchi/client/modules/lib/ui/dialog.js');
-    expect(routesCode).toContain('__kuratchi/client/routes/route_0.js');
+    // Nested layout `$lib/` handlers are bundled into the route's client asset
+    // and dispatched through the `__kuratchiClient` registry. The inlined handler
+    // gets wired onto the layout's dialog button via `data-client-*` attributes.
+    expect(routesCode).toContain('__kuratchi/client/routes/route_0/script.js');
     expect(routesCode).toContain('data-client-route="route_0"');
     expect(routesCode).toContain('data-client-event="click"');
   });
@@ -595,8 +602,10 @@ import { closeNearestDialog } from '$lib/ui/dialog';
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    expect(routesCode).toContain('__kuratchi/client/modules/lib/ui/dialog.js');
-    expect(routesCode).toContain('__kuratchi/client/routes/layout_root.js');
+    // The root layout's client bundle lives at `layout_root/script.js` and the
+    // `$lib/ui/dialog` helper is inlined into it. The original `import … from
+    // '$lib/…'` statement is rewritten before the runtime ever sees it.
+    expect(routesCode).toContain('__kuratchi/client/routes/layout_root/script.js');
     expect(routesCode).toContain('data-client-route="layout_root"');
     expect(routesCode).toContain('data-client-event="click"');
     expect(routesCode).not.toContain("import { closeNearestDialog } from '$lib/ui/dialog';");
@@ -628,18 +637,18 @@ export async function saveDraft(data: InferSchema<typeof schemas.saveDraft>) {
 import { saveDraft } from '$server/drafts';
 </script>
 
-<div data-poll={saveDraft({ title: 'Hello', content: 'World' })} data-interval="2s">
-  waiting
-</div>`,
+<button type="button" onclick={saveDraft({ title: 'Hello', content: 'World' })}>Save</button>`,
       'utf-8',
     );
 
     await compile({ projectDir, isDev: true });
     const routesCode = fs.readFileSync(path.join(projectDir, '.kuratchi', 'routes.ts'), 'utf-8');
 
-    // RFC 0002: $server/ imports in scripts create both template RPC (rpc_0_0) and client RPC (rpc_0_server_*)
-    expect(routesCode).toContain("'rpc_0_0': __m0.schemas?.[\"saveDraft\"]");
-    expect(routesCode).toContain("'rpc_0_0': __m0.saveDraft");
+    // Imported `$server/` functions referenced from the template register a
+    // client-side RPC binding (`rpc_0_server_<name>`) and its companion schema
+    // is wired into `rpcSchemas` so the runtime can validate incoming calls.
+    expect(routesCode).toContain("'rpc_0_server_saveDraft': __m0.saveDraft");
+    expect(routesCode).toContain("'rpc_0_server_saveDraft': __m0.schemas?.[\"saveDraft\"]");
   });
 
   it('validates durable object rpc methods against static schemas in generated proxies', async () => {

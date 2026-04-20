@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "bun run --cwd ../../packages/kuratchi-js build",
-    "dev": "node ../../packages/kuratchi-js/dist/cli.js dev",
-    "prebuild": "bun run --cwd ../../packages/kuratchi-js build",
-    "build": "node ../../packages/kuratchi-js/dist/cli.js build"
+    "predev": "bun run --cwd ../../packages/kuratchi-js build && bun run --cwd ../../packages/kuratchi-wrangler build",
+    "dev": "node ../../packages/kuratchi-wrangler/dist/cli.js dev",
+    "prebuild": "bun run --cwd ../../packages/kuratchi-js build && bun run --cwd ../../packages/kuratchi-wrangler build",
+    "build": "node ../../packages/kuratchi-wrangler/dist/cli.js build"
   },
   "dependencies": {
-    "@kuratchi/js": "workspace:*"
+    "@kuratchi/js": "workspace:*",
+    "@kuratchi/wrangler": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260223.0",

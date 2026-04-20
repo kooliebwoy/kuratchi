@@ -3,6 +3,7 @@ import {
   VIRTUAL_MODULE_MAP,
   VIRTUAL_MODULE_NAMES,
   VIRTUAL_MODULE_TYPE_DECLARATIONS,
+  buildVirtualModuleTypeDeclarations,
   isKuratchiVirtualModule,
   resolveKuratchiVirtualModule,
   getKuratchiModuleName,
@@ -100,6 +101,48 @@ describe('virtual-modules', () => {
     test('declares kuratchi:navigation module', () => {
       expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain("declare module 'kuratchi:navigation'");
       expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain('export function redirect');
+    });
+
+    test('declares kuratchi:workflow module', () => {
+      expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain("declare module 'kuratchi:workflow'");
+      expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain('export function workflowStatus');
+    });
+  });
+
+  describe('kuratchi:workflow', () => {
+    test('virtual module is registered in the map', () => {
+      expect(VIRTUAL_MODULE_MAP.workflow).toBe('@kuratchi/js/runtime/workflow.js');
+      expect(VIRTUAL_MODULE_NAMES).toContain('workflow');
+    });
+
+    test('resolves kuratchi:workflow to runtime path', () => {
+      expect(resolveKuratchiVirtualModule('kuratchi:workflow')).toBe('@kuratchi/js/runtime/workflow.js');
+    });
+  });
+
+  describe('buildVirtualModuleTypeDeclarations', () => {
+    test('emits never as WorkflowName union when no workflows are discovered', () => {
+      const decls = buildVirtualModuleTypeDeclarations([]);
+      expect(decls).toContain("declare module 'kuratchi:workflow'");
+      expect(decls).toContain('export type WorkflowName = never;');
+    });
+
+    test('emits a literal string union of discovered workflow names', () => {
+      const decls = buildVirtualModuleTypeDeclarations(['container', 'migration', 'host-backup']);
+      expect(decls).toContain("export type WorkflowName = 'container' | 'migration' | 'host-backup';");
+    });
+
+    test('declares WorkflowStatusOptions shape', () => {
+      const decls = buildVirtualModuleTypeDeclarations(['container']);
+      expect(decls).toContain('poll?: string | number;');
+      expect(decls).toContain('until?: (value: T) => boolean;');
+    });
+
+    test('workflowStatus signature binds name to WorkflowName', () => {
+      const decls = buildVirtualModuleTypeDeclarations(['container']);
+      // Collapse whitespace so the assertion is not sensitive to formatting.
+      const flat = decls.replace(/\s+/g, ' ');
+      expect(flat).toContain('name: WorkflowName, instanceId: string, options?: WorkflowStatusOptions<T>, ): Promise<WorkflowAsyncValue<T>>');
     });
   });
 });

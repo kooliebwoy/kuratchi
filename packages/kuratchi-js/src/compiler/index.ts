@@ -21,6 +21,7 @@ import { isCssFile, processCss, type CssConfigEntry } from './css-pipeline.js';
 import {
   discoverContainerFiles,
   discoverConventionClassFiles,
+  discoverSandboxFiles,
   discoverQueueConsumerFiles,
   discoverWorkflowFiles,
 } from './convention-discovery.js';
@@ -39,21 +40,68 @@ import {
   buildWorkerEntrypointSource,
   resolveRuntimeImportPath as resolveRuntimeImportPathPipeline,
 } from './worker-output-pipeline.js';
-import { syncWranglerConfig as syncWranglerConfigPipeline, hasSandboxContainer } from './wrangler-sync.js';
+import { syncWranglerConfig as syncWranglerConfigPipeline } from './wrangler-sync.js';
 import { filePathToPattern } from '../runtime/router.js';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import type { RouteFile } from './route-discovery.js';
 
-export { parseFile } from './parser.js';
-export { compileTemplate, generateRenderFunction } from './template.js';
+// Public compiler primitives — consumed by `@kuratchi/js`'s own CLI and by
+// external orchestrators (e.g. `@kuratchi/vite`) so there is a single
+// source of truth for template parsing and codegen.
+export { parseFile, stripTopLevelImports } from './parser.js';
+export type { ParsedFile } from './parser.js';
+export {
+  compileTemplate,
+  generateRenderFunction,
+  splitTemplateRenderSections,
+} from './template.js';
+export type {
+  TemplateRenderSections,
+  CompileTemplateOptions,
+} from './template.js';
+export {
+  VIRTUAL_MODULE_MAP,
+  VIRTUAL_MODULE_NAMES,
+  isKuratchiVirtualModule,
+  resolveKuratchiVirtualModule,
+  getKuratchiModuleName,
+  buildVirtualModuleTypeDeclarations,
+} from './virtual-modules.js';
+export {
+  rewriteImportedFunctionCalls,
+  rewriteWorkerEnvAliases,
+  buildDevAliasDeclarations,
+  buildSegmentedScriptBody,
+} from './script-transform.js';
+export type { RouteScriptSegment } from './script-transform.js';
+export {
+  discoverContainerFiles,
+  discoverSandboxFiles,
+  discoverQueueConsumerFiles,
+  discoverWorkflowFiles,
+} from './convention-discovery.js';
+export { discoverDurableObjects } from './durable-object-pipeline.js';
+export { syncWranglerConfig } from './wrangler-sync.js';
+export { writeAppTypes, generateAppTypes } from './type-generator.js';
+export type { GenerateTypesOptions } from './type-generator.js';
+export type {
+  WranglerSyncEntry,
+  ContainerSyncEntry,
+  QueueSyncEntry,
+  WranglerSyncConfig,
+} from './wrangler-sync.js';
 
 const FRAMEWORK_PACKAGE_NAME = getFrameworkPackageName();
 const RUNTIME_CONTEXT_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/context.js`;
 const RUNTIME_DO_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/do.js`;
 const RUNTIME_SCHEMA_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/schema.js`;
-const RUNTIME_WORKER_IMPORT = `${FRAMEWORK_PACKAGE_NAME}/runtime/generated-worker.js`;
+// The legacy CLI worker entry template lives in `@kuratchi/wrangler`
+// (the build tool that actually emits `.kuratchi/worker.ts`). The
+// runtime package (`@kuratchi/js`) is import-safe inside a Worker —
+// it deliberately does not ship the generated-worker template.
+const RUNTIME_WORKER_IMPORT = `@kuratchi/wrangler/runtime/generated-worker.js`;
 
 function getFrameworkPackageName(): string {
   try {
@@ -199,9 +247,15 @@ export async function compile(options: CompileOptions): Promise<string> {
   const { config: doConfig, handlers: doHandlers } = discoverDurableObjects(srcDir);
   // Auto-discover convention-based worker class files (no config needed)
   const containerConfig = discoverContainerFiles(projectDir);
+  const sandboxConfig = discoverSandboxFiles(projectDir);
   const workflowConfig = discoverWorkflowFiles(projectDir);
   const queueConsumerConfig = discoverQueueConsumerFiles(projectDir);
   const agentConfig = discoverConventionClassFiles(projectDir, path.join('src', 'server'), '.agents.ts', '.agents');
+  // Containers and sandboxes are Durable Objects under the hood — they need a
+  // `durable_objects.bindings` entry and (for SQLite-backed classes) a
+  // `migrations[].new_sqlite_classes` entry. Collapse them into one list that
+  // feeds both the worker class re-exports and the wrangler-sync DO pipeline.
+  const containerizedClassEntries = [...containerConfig, ...sandboxConfig];
 
   // Generate handler proxy modules in .kuratchi/do/ for auto-discovered .do.ts files
   const doProxyDir = path.join(projectDir, '.kuratchi', 'do');
@@ -325,7 +379,6 @@ export async function compile(options: CompileOptions): Promise<string> {
     runtimeImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedRuntimePath);
   }
   const hasRuntime = !!runtimeImportPath;
-  const hasSandbox = hasSandboxContainer(projectDir);
   const output = generateRoutesModulePipeline({
     projectDir,
     serverImports: allImports,
@@ -350,7 +403,6 @@ export async function compile(options: CompileOptions): Promise<string> {
     runtimeDoImport: RUNTIME_DO_IMPORT,
     runtimeSchemaImport: RUNTIME_SCHEMA_IMPORT,
     runtimeWorkerImport: RUNTIME_WORKER_IMPORT,
-    hasSandbox,
   });
 
   // Write to .kuratchi/routes.ts
@@ -372,7 +424,10 @@ export async function compile(options: CompileOptions): Promise<string> {
   const hasUserIndex = fs.existsSync(userIndexFile) && 
     fs.readFileSync(userIndexFile, 'utf-8').includes('export default');
   const transformedUserIndexFile = hasUserIndex ? serverModuleCompiler.transformModule(userIndexFile) : undefined;
-  const transformedWorkerClassEntries = [...agentConfig, ...containerConfig, ...workflowConfig].map((entry) => ({
+  // Re-export every convention-discovered class from the generated worker so wrangler can
+  // reach each one by `class_name`. Sandboxes flow through the same path as containers —
+  // no `hasSandbox` flag, no `export { Sandbox } from '@cloudflare/sandbox'` special case.
+  const transformedWorkerClassEntries = [...agentConfig, ...containerizedClassEntries, ...workflowConfig].map((entry) => ({
     ...entry,
     file: serverModuleCompiler.transformModule(path.join(projectDir, entry.file)),
   }));
@@ -388,7 +443,6 @@ export async function compile(options: CompileOptions): Promise<string> {
     workerClassEntries: transformedWorkerClassEntries,
     queueConsumers: transformedQueueConsumers,
     userIndexFile: transformedUserIndexFile,
-    hasSandbox: hasSandboxContainer(projectDir),
   }));
   writeIfChanged(path.join(outDir, 'worker.js'), buildCompatEntrypointSource('./worker.ts'));
 
@@ -420,13 +474,27 @@ export async function compile(options: CompileOptions): Promise<string> {
     const binding = entry.className.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
     return { binding, className: entry.className };
   });
+  // Containers and sandboxes are also Durable Objects — feed them into the DO sync
+  // so `durable_objects.bindings` and `migrations[].new_sqlite_classes` are kept current
+  // without any manual wrangler.jsonc edits.
+  const containerDoConfig = containerizedClassEntries.map((entry) => ({
+    binding: entry.binding,
+    className: entry.className,
+  }));
 
   syncWranglerConfigPipeline({
     projectDir,
     config: {
       workflows: workflowConfig,
-      containers: containerConfig,
-      durableObjects: [...doConfig, ...agentDoConfig],
+      containers: containerizedClassEntries.map((entry) => ({
+        binding: entry.binding,
+        className: entry.className,
+        image: entry.image,
+        instanceType: entry.instanceType,
+        maxInstances: entry.maxInstances,
+        sqlite: entry.sqlite,
+      })),
+      durableObjects: [...doConfig, ...agentDoConfig, ...containerDoConfig],
       queues: queueConsumerConfig.map((q) => ({ binding: q.binding, queueName: q.queueName })),
       assetsDirectory: syncedAssetsDirectory,
     },
