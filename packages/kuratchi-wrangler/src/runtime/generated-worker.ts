@@ -14,7 +14,7 @@ import {
   parseRpcArgsPayload,
   validateSchemaInput,
 } from '@kuratchi/js/runtime/schema.js';
-import type { PageRenderOutput, PageRenderResult, RuntimeContext, RuntimeDefinition } from '@kuratchi/js/runtime/types.js';
+import type { MiddlewareContext, MiddlewareDefinition, PageRenderOutput, PageRenderResult, RuntimeDefinition } from '@kuratchi/js/runtime/types.js';
 
 export interface GeneratedAssetEntry {
   content: string;
@@ -59,18 +59,20 @@ export interface GeneratedWorkerOptions {
   assetsPrefix: string;
   assets: Record<string, GeneratedAssetEntry>;
   errorPages: Record<number, (detail?: string) => string>;
+  middlewareDefinition?: MiddlewareDefinition;
+  /** @deprecated Use middlewareDefinition */
   runtimeDefinition?: RuntimeDefinition;
-  initializeRequest?: (ctx: RuntimeContext) => Promise<void> | void;
-  preRouteChecks?: (ctx: RuntimeContext) => Promise<Response | null | undefined> | Response | null | undefined;
+  initializeRequest?: (ctx: MiddlewareContext) => Promise<void> | void;
+  preRouteChecks?: (ctx: MiddlewareContext) => Promise<Response | null | undefined> | Response | null | undefined;
   /** Security configuration */
   security?: SecurityOptions;
 }
 
-type RuntimeEntry = [string, NonNullable<RuntimeDefinition[string]>];
+type MiddlewareEntry = [string, NonNullable<MiddlewareDefinition[string]>];
 
 export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
   const router = new Router();
-  const runtimeEntries = __getRuntimeEntries(opts.runtimeDefinition);
+  const middlewareEntries = __getMiddlewareEntries(opts.middlewareDefinition ?? opts.runtimeDefinition);
   for (let i = 0; i < opts.routes.length; i++) {
     router.add(opts.routes[i].pattern, i);
   }
@@ -90,7 +92,7 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
     async fetch(request: Request, env: Record<string, any>, ctx: ExecutionContext): Promise<Response> {
       __setRequestContext(ctx, request, env);
 
-      const runtimeCtx: RuntimeContext = {
+      const middlewareCtx: MiddlewareContext = {
         request,
         env,
         ctx,
@@ -106,13 +108,13 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
       }
 
       if (opts.initializeRequest) {
-        await opts.initializeRequest(runtimeCtx);
+        await opts.initializeRequest(middlewareCtx);
       }
 
       const coreFetch = async (): Promise<Response> => {
-        const { url } = runtimeCtx;
+        const { url } = middlewareCtx;
 
-        const preRoute = opts.preRouteChecks ? await opts.preRouteChecks(runtimeCtx) : null;
+        const preRoute = opts.preRouteChecks ? await opts.preRouteChecks(middlewareCtx) : null;
         if (preRoute instanceof Response) {
           return __secHeaders(preRoute);
         }
@@ -161,13 +163,13 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
           }));
         }
 
-        runtimeCtx.params = match.params;
+        middlewareCtx.params = match.params;
         __setLocal('params', match.params);
 
         const route = opts.routes[match.index];
 
         if ('__api' in route && route.__api) {
-          return __dispatchApiRoute(route, runtimeCtx);
+          return __dispatchApiRoute(route, middlewareCtx);
         }
 
         const pageRoute = route as GeneratedPageRoute;
@@ -210,11 +212,11 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
           __setLocal('breadcrumbs', buildDefaultBreadcrumbs(url.pathname, match.params));
         }
 
-        const rpcResponse = await __handleRpc(pageRoute, runtimeCtx, securityConfig);
+        const rpcResponse = await __handleRpc(pageRoute, middlewareCtx, securityConfig);
         if (rpcResponse) return rpcResponse;
 
         if (request.method === 'POST') {
-          const actionResponse = await __handleAction(pageRoute, opts.layoutActions, opts.layout, runtimeCtx, securityConfig);
+          const actionResponse = await __handleAction(pageRoute, opts.layoutActions, opts.layout, middlewareCtx, securityConfig);
           if (actionResponse) return actionResponse;
         }
 
@@ -234,7 +236,7 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
             const redirectStatus = Number(err.status) || 303;
             return __attachCookies(new Response(null, { status: redirectStatus, headers: { location: redirectTo } }));
           }
-          const handled = await __runRuntimeError(runtimeEntries, runtimeCtx, err);
+          const handled = await __runMiddlewareError(middlewareEntries, middlewareCtx, err);
           if (handled) return __secHeaders(handled);
           console.error('[kuratchi] Route load/render error:', err);
           const pageErrStatus = err?.isPageError && err.status ? err.status : 500;
@@ -247,12 +249,12 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
       };
 
       try {
-        const requestResponse = await __runRuntimeRequest(runtimeEntries, runtimeCtx, async () => {
-          return __runRuntimeRoute(runtimeEntries, runtimeCtx, coreFetch);
+        const requestResponse = await __runMiddlewareRequest(middlewareEntries, middlewareCtx, async () => {
+          return __runMiddlewareRoute(middlewareEntries, middlewareCtx, coreFetch);
         });
-        return await __runRuntimeResponse(runtimeEntries, runtimeCtx, requestResponse);
+        return await __runMiddlewareResponse(middlewareEntries, middlewareCtx, requestResponse);
       } catch (err) {
-        const handled = await __runRuntimeError(runtimeEntries, runtimeCtx, err);
+        const handled = await __runMiddlewareError(middlewareEntries, middlewareCtx, err);
         if (handled) return __secHeaders(handled);
         throw err;
       }
@@ -260,12 +262,12 @@ export function createGeneratedWorker(opts: GeneratedWorkerOptions) {
   };
 }
 
-async function __dispatchApiRoute(route: GeneratedApiRoute, runtimeCtx: RuntimeContext): Promise<Response> {
-  const { request } = runtimeCtx;
+async function __dispatchApiRoute(route: GeneratedApiRoute, middlewareCtx: MiddlewareContext): Promise<Response> {
+  const { request } = middlewareCtx;
   const method = request.method;
   if (method === 'OPTIONS') {
     const handler = route.OPTIONS;
-    if (typeof handler === 'function') return __secHeaders(await handler(runtimeCtx));
+    if (typeof handler === 'function') return __secHeaders(await handler(middlewareCtx));
     const allowed = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
       .filter((name) => typeof route[name] === 'function')
       .join(', ');
@@ -281,7 +283,7 @@ async function __dispatchApiRoute(route: GeneratedApiRoute, runtimeCtx: RuntimeC
       headers: { 'content-type': 'application/json', Allow: allowed },
     }));
   }
-  return __secHeaders(await handler(runtimeCtx));
+  return __secHeaders(await handler(middlewareCtx));
 }
 
 interface RuntimeSecurityConfig {
@@ -292,10 +294,10 @@ interface RuntimeSecurityConfig {
 
 async function __handleRpc(
   route: GeneratedPageRoute,
-  runtimeCtx: RuntimeContext,
+  middlewareCtx: MiddlewareContext,
   securityConfig: RuntimeSecurityConfig,
 ): Promise<Response | null> {
-  const { request, url } = runtimeCtx;
+  const { request, url } = middlewareCtx;
   const rpcName = url.searchParams.get('_rpc');
   const hasRouteRpc = rpcName && route.rpc && Object.hasOwn(route.rpc, rpcName);
   if (!(request.method === 'GET' && rpcName && hasRouteRpc)) {
@@ -346,10 +348,10 @@ async function __handleAction(
   route: GeneratedPageRoute,
   layoutActions: Record<string, (...args: any[]) => Promise<unknown> | unknown>,
   layout: (content: string, head?: string) => Promise<string> | string,
-  runtimeCtx: RuntimeContext,
+  middlewareCtx: MiddlewareContext,
   securityConfig: RuntimeSecurityConfig,
 ): Promise<Response | null> {
-  const { request, url, params } = runtimeCtx;
+  const { request, url, params } = middlewareCtx;
   if (request.method !== 'POST') return null;
 
   // Validate origin before reading the body. Blocks cross-origin form POSTs; auth
@@ -524,70 +526,70 @@ function __attachCookies(response: Response): Response {
   return __secHeaders(response);
 }
 
-async function __runRuntimeRequest(
-  runtimeEntries: RuntimeEntry[],
-  ctx: RuntimeContext,
+async function __runMiddlewareRequest(
+  middlewareEntries: MiddlewareEntry[],
+  ctx: MiddlewareContext,
   next: () => Promise<Response>,
 ): Promise<Response> {
   let idx = -1;
   async function dispatch(i: number): Promise<Response> {
-    if (i <= idx) throw new Error('[kuratchi runtime] next() called multiple times in request phase');
+    if (i <= idx) throw new Error('[kuratchi middleware] next() called multiple times in request phase');
     idx = i;
-    const entry = runtimeEntries[i];
+    const entry = middlewareEntries[i];
     if (!entry) return next();
     const [, step] = entry;
     if (typeof step.request !== 'function') return dispatch(i + 1);
-    return await step.request(ctx, () => dispatch(i + 1));
+    return step.request(ctx, () => dispatch(i + 1));
   }
   return dispatch(0);
 }
 
-async function __runRuntimeRoute(
-  runtimeEntries: RuntimeEntry[],
-  ctx: RuntimeContext,
+async function __runMiddlewareRoute(
+  middlewareEntries: MiddlewareEntry[],
+  ctx: MiddlewareContext,
   next: () => Promise<Response>,
 ): Promise<Response> {
   let idx = -1;
   async function dispatch(i: number): Promise<Response> {
-    if (i <= idx) throw new Error('[kuratchi runtime] next() called multiple times in route phase');
+    if (i <= idx) throw new Error('[kuratchi middleware] next() called multiple times in route phase');
     idx = i;
-    const entry = runtimeEntries[i];
+    const entry = middlewareEntries[i];
     if (!entry) return next();
     const [, step] = entry;
     if (typeof step.route !== 'function') return dispatch(i + 1);
-    return await step.route(ctx, () => dispatch(i + 1));
+    return step.route(ctx, () => dispatch(i + 1));
   }
   return dispatch(0);
 }
 
-async function __runRuntimeResponse(
-  runtimeEntries: RuntimeEntry[],
-  ctx: RuntimeContext,
+async function __runMiddlewareResponse(
+  middlewareEntries: MiddlewareEntry[],
+  ctx: MiddlewareContext,
   response: Response,
 ): Promise<Response> {
   let out = response;
-  for (const [, step] of runtimeEntries) {
+  for (const [, step] of middlewareEntries) {
     if (typeof step.response !== 'function') continue;
     out = await step.response(ctx, out);
     if (!(out instanceof Response)) {
-      throw new Error('[kuratchi runtime] response handlers must return a Response');
+      throw new Error('[kuratchi] middleware response hook must return a Response');
     }
   }
   return out;
 }
 
-async function __runRuntimeError(
-  runtimeEntries: RuntimeEntry[],
-  ctx: RuntimeContext,
+async function __runMiddlewareError(
+  middlewareEntries: MiddlewareEntry[],
+  ctx: MiddlewareContext,
   error: unknown,
 ): Promise<Response | null> {
-  for (const [name, step] of runtimeEntries) {
+  for (const [name, step] of middlewareEntries) {
     if (typeof step.error !== 'function') continue;
     try {
       const handled = await step.error(ctx, error);
       if (handled instanceof Response) return handled;
     } catch (hookErr) {
-      console.error('[kuratchi runtime] error handler failed in step', name, hookErr);
+      console.error('[kuratchi middleware] error handler failed in step', name, hookErr);
     }
   }
   return null;
@@ -607,9 +609,9 @@ function __normalizeRenderOutput(output: PageRenderOutput): PageRenderResult {
   };
 }
 
-function __getRuntimeEntries(runtimeDefinition: RuntimeDefinition | undefined): RuntimeEntry[] {
-  return Object.entries(runtimeDefinition ?? {}).filter(
-    (entry): entry is RuntimeEntry => !!entry[1] && typeof entry[1] === 'object',
+function __getMiddlewareEntries(middlewareDefinition: MiddlewareDefinition | undefined): MiddlewareEntry[] {
+  return Object.entries(middlewareDefinition ?? {}).filter(
+    (entry): entry is MiddlewareEntry => !!entry[1] && typeof entry[1] === 'object',
   );
 }
 

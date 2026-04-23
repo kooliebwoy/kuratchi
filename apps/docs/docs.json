@@ -25,6 +25,7 @@
             "group": "Core concepts",
             "pages": [
               "framework/routing",
+              "framework/client-interactivity",
               "framework/styling",
               "framework/actions",
               "framework/runtime"

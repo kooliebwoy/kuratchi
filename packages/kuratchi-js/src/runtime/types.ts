@@ -312,8 +312,8 @@ export interface SecurityConfig {
 
 
 
-/** Runtime pipeline context - shared across runtime step handlers */
-export interface RuntimeContext<E extends Env = Env> {
+/** Middleware pipeline context - shared across middleware step handlers */
+export interface MiddlewareContext<E extends Env = Env> {
   request: Request;
   env: E;
   ctx: ExecutionContext;
@@ -322,15 +322,26 @@ export interface RuntimeContext<E extends Env = Env> {
   locals: Record<string, any>;
 }
 
-export type RuntimeNext = () => Promise<Response>;
+export type MiddlewareNext = () => Promise<Response>;
 
-export type RuntimeErrorResult = Response | null | undefined | void;
+export type MiddlewareErrorResult = Response | null | undefined | void;
 
-export interface RuntimeStep<E extends Env = Env> {
-  request?: (ctx: RuntimeContext<E>, next: RuntimeNext) => Promise<Response> | Response;
-  route?: (ctx: RuntimeContext<E>, next: RuntimeNext) => Promise<Response> | Response;
-  response?: (ctx: RuntimeContext<E>, response: Response) => Promise<Response> | Response;
-  error?: (ctx: RuntimeContext<E>, error: unknown) => Promise<RuntimeErrorResult> | RuntimeErrorResult;
+export interface MiddlewareStep<E extends Env = Env> {
+  request?: (ctx: MiddlewareContext<E>, next: MiddlewareNext) => Promise<Response> | Response;
+  route?: (ctx: MiddlewareContext<E>, next: MiddlewareNext) => Promise<Response> | Response;
+  response?: (ctx: MiddlewareContext<E>, response: Response) => Promise<Response> | Response;
+  error?: (ctx: MiddlewareContext<E>, error: unknown) => Promise<MiddlewareErrorResult> | MiddlewareErrorResult;
 }
 
-export type RuntimeDefinition<E extends Env = Env> = Record<string, RuntimeStep<E>>;
+export type MiddlewareDefinition<E extends Env = Env> = Record<string, MiddlewareStep<E>>;
+
+/** @deprecated Use MiddlewareContext */
+export type RuntimeContext<E extends Env = Env> = MiddlewareContext<E>;
+/** @deprecated Use MiddlewareNext */
+export type RuntimeNext = MiddlewareNext;
+/** @deprecated Use MiddlewareErrorResult */
+export type RuntimeErrorResult = MiddlewareErrorResult;
+/** @deprecated Use MiddlewareStep */
+export type RuntimeStep<E extends Env = Env> = MiddlewareStep<E>;
+/** @deprecated Use MiddlewareDefinition */
+export type RuntimeDefinition<E extends Env = Env> = MiddlewareDefinition<E>;

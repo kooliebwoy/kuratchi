@@ -1,0 +1,284 @@
+---
+title: "Client interactivity"
+description: "Single-script routes, SSR data hydration, and the `on<event>={fn(args)}` directive"
+---
+
+KuratchiJS routes render on the server, then the same top `<script>` runs
+in the browser with the SSR-computed data already on the page. There is
+one script to write, one mental model to hold, and one file to edit when
+you want to add browser behavior.
+
+## Single-script routes
+
+A route's top `<script>` block is **isomorphic** — it runs on the server
+at render time and again in the browser at module-eval time. The
+framework serializes the SSR-computed values into the HTML response and
+hydrates them into the browser copy of the script, so references like
+`boardViews` below resolve to the same data in both environments.
+
+```html
+<script>
+  import { listBoardViews, getBoard } from '$server/board';
+  import { searchParams } from 'kuratchi:request';
+
+  const slug = searchParams.get('board') || 'default';
+  const boardViews = await listBoardViews();
+  const board = await getBoard(slug);
+
+  function badgeClass(priority) {
+    return priority === 'high' ? 'badge-red' : 'badge-gray';
+  }
+</script>
+
+<h1>{board.name}</h1>
+<ul>
+  for (const item of board.items) {
+    <li class={badgeClass(item.priority)}>{item.title}</li>
+  }
+</ul>
+<button onclick={openPrompt(board.slug)}>Add item</button>
+
+<script>
+  // In-module function. Visible to the template above because both
+  // `<script>` halves are the same module at runtime.
+  function openPrompt(slug) {
+    const title = window.prompt('Title?');
+    if (title) location.assign(`/board/${slug}/new?title=${encodeURIComponent(title)}`);
+  }
+</script>
+```
+
+<Note>
+You only author **one** `<script>` block per route. The split above is
+illustrative — in practice your functions live in the top script
+alongside the loads. The framework handles server/client duality
+transparently.
+</Note>
+
+## How hydration works
+
+At render time the framework:
+
+1. Runs the top `<script>` on the server. `await $server/*` calls resolve
+   against real modules; `kuratchi:request` / `kuratchi:environment`
+   imports resolve against the live request.
+2. Captures every top-level binding that was populated by an `await`
+   (direct or ternary) and every top-level `let` that was mutated inside
+   an `await`-bearing block.
+3. Serializes those values into an inline `<script type="application/json"
+   id="__kuratchi_data">` element.
+4. Emits a `<script type="module">` for the same top-script code,
+   rewritten so that `const X = await fn()` reads become
+   `const X = __kuratchiReadData("X")`.
+
+In the browser the top script runs a second time. The hydrate reads
+come back with the SSR-computed values — **no extra network round-trips
+for data that was already computed server-side**. Helper functions and
+non-await bindings are evaluated normally on both sides.
+
+```html
+<!-- Rendered HTML, abbreviated -->
+<script type="application/json" id="__kuratchi_data">
+  {"boardViews":[...],"board":{...},"__params":{}}
+</script>
+<script type="module" src="/assets/kuratchi-client-<hash>.js"></script>
+```
+
+The JSON blob is **data**, not code — browsers never parse it as
+JavaScript — so the payload can safely carry arbitrary strings,
+including values that contain `<script>` or `</script>` fragments.
+
+### What gets hydrated
+
+| Pattern | Hydrated? | Notes |
+| --- | --- | --- |
+| `const x = await fn()` | Yes | Direct top-level await. |
+| `const x = cond ? await fn() : other` | Yes | Ternary with an `await` in either branch. |
+| `let x = null;` + `if (...) { x = await fn(); }` | Yes | `let` bindings reassigned inside an `await`-bearing top-level block. |
+| `const x = computeSync()` | No | Pure synchronous code re-runs in the browser. |
+| `function helper() { ... }` | No | Declarations run on both sides. |
+| Anything inside a function body | No | Nested `await` only fires when the function is called. |
+
+### Stripping SSR-only code from the browser bundle
+
+The framework strips every top-level statement whose body contains an
+`await` from the browser bundle — those blocks already ran server-side
+and their mutations are captured in the hydrate payload. Your event
+handlers, helper functions, non-async conditionals, and template
+expressions are preserved.
+
+### Reading additional SSR values
+
+Sometimes you want SSR to compute a value the template doesn't need but
+a client handler does. Use `__kuratchiReadData`, the runtime helper the
+framework injects when hydration is in play:
+
+```html
+<script>
+  import { listUsers } from '$server/users';
+
+  const users = await listUsers();
+  const now = Date.now();
+
+  function greet() {
+    // `users` is hydrated (from `await`). `now` is not — it re-runs
+    // client-side. Read any extra SSR value explicitly by key:
+    const firstName = __kuratchiReadData('users')[0]?.name;
+    alert(`Hi ${firstName}, current time ${now}`);
+  }
+</script>
+
+<button onclick={greet()}>Greet</button>
+```
+
+## Event handler directive
+
+Author DOM handlers declaratively with `on<event>={expr}`:
+
+```html
+<button onclick={archiveItem(item.id)} type="button">Archive</button>
+<input onchange={updateFilter(filter.key)} type="text" />
+<form onsubmit={submitDraft()}>...</form>
+<dialog onkeydown={handleDialogKey()}>...</dialog>
+```
+
+Supported events: `click`, `change`, `input`, `submit`, `keydown`,
+`keyup`, `focus`, `blur`.
+
+The `expr` between `{…}` must be a call expression:
+
+```html
+<!-- ✅ Supported -->
+<button onclick={save()}>Save</button>
+<button onclick={save(item.id)}>Save</button>
+<button onclick={save(item.id, 'x')}>Save</button>
+<button onclick={helpers.save(item.id)}>Save</button>
+
+<!-- ❌ Not supported — arrow bodies, statements, bare identifiers -->
+<button onclick={() => save(item.id)}>Save</button>
+<button onclick={save}>Save</button>
+<button onclick={save(); track()}>Save</button>
+```
+
+### Dispatch rules
+
+The framework picks the dispatch path based on what the callee is:
+
+| Callee shape | Dispatch | What runs |
+| --- | --- | --- |
+| `$server/*` import (e.g. `deleteItem` imported from `$server/items`) | **Server action** — POSTs to the route URL | The route's `actions[fnName]` server function, invoked as `fn(...args, ctx)` where `ctx` is `{ formData, request, url, params }`. See [Actions](/framework/actions) for the full signature. |
+| Function declared in the top `<script>` OR `$lib/*` import | **Client handler** — runs in the browser | The function, with the args evaluated at SSR time. |
+| Anything else (bare expression) | **Native inline** — legacy escape hatch | The literal expression in an inline `onclick=`. Requires CSP `unsafe-inline`. |
+
+The args (`item.id`, `filter.key`, …) are **evaluated at SSR time** — they
+are plain serialized values by the time the browser sees them. To access
+the DOM event, receive it as a trailing parameter in the handler
+function:
+
+```html
+<script>
+  function handleDialogKey(event) {
+    if (event.key === 'Escape') event.currentTarget.close();
+  }
+</script>
+
+<dialog onkeydown={handleDialogKey()}>...</dialog>
+```
+
+The bridge passes `(…args, event, element)` to every handler, so an
+author-declared function with fewer parameters just ignores the
+trailing ones.
+
+### Client handler vs. direct server-action dispatch
+
+Both paths work. Pick based on what the interaction needs:
+
+```html
+<!-- Direct server-action dispatch: one line. Framework POSTs, the
+     browser re-renders on success. Use for fire-and-refresh clicks
+     where you don't need UI between the click and the response. -->
+<button onclick={deleteItem(item.id)}>Delete</button>
+
+<!-- Client handler wrapper: use when you need confirmation, optimistic
+     updates, inline error display, or anything between the click and
+     the network round-trip. `$server/*` imports are real functions in
+     the browser bundle — the framework auto-generates an RPC stub —
+     so calling `await deleteItem(id)` works inside the handler. -->
+<script>
+  import { deleteItem } from '$server/items';
+
+  async function onDelete(id) {
+    if (!confirm('Delete?')) return;
+    await deleteItem(id);
+    location.reload();
+  }
+</script>
+
+<button onclick={onDelete(item.id)}>Delete</button>
+```
+
+The server side is the same function in both cases. See
+[Actions](/framework/actions#button-triggered-actions) for the server
+function signature.
+
+## Client bridge
+
+When a route uses `on<event>={…}`, the framework injects a ~1 kB bridge
+into the route's client bundle. The bridge:
+
+- Registers a single document-level listener per event type.
+- Looks up the ancestor carrying `data-client-*` attributes.
+- Dispatches to the handler registered via
+  `window.__kuratchiClient.register(routeId, {…})` for client handlers.
+- POSTs `_action` / `_args` to the route URL for server-action
+  callees (`$server/*` imports).
+
+Handler expressions are stored in a per-route table keyed by a short
+id (`h0`, `h1`, …) and referenced from the HTML via
+`data-client-handler="h0"`. Handler bodies live in the client bundle —
+`data-client-args="[1]"` only carries the serialized args.
+
+The bridge is idempotent: multiple registrations against the same
+`routeId` merge their handler tables, so HMR and client-side
+navigations that recycle the document don't double-bind.
+
+## Security
+
+- The JSON hydration payload escapes `<` to `\u003c` so an attacker
+  can't close the `<script>` tag early with user-supplied data.
+- Handler ids are validated against a strict identifier regex and
+  prototype-pollution names (`__proto__`, `constructor`, `prototype`)
+  are blocked at both register and invoke time.
+- Server-action POSTs are same-origin and include the action name from
+  a trusted compile-time attribute, not a user-controlled identifier.
+- Native inline `onclick="expr"` (the legacy escape hatch) requires a
+  CSP that allows `unsafe-inline`. The declarative
+  `onclick={expr}` directive does not — the bridge is a normal
+  same-origin module script.
+
+## Escape hatch: a second `<script>` block
+
+When you need browser-only code that references DOM APIs the template
+compiler can't see (e.g. third-party widget boot), add a second
+`<script>` block after the template. It's bundled as a separate
+client-only module and executed on the browser:
+
+```html
+<!-- Top script: isomorphic. -->
+<script>
+  import { getItems } from '$server/items';
+  const items = await getItems();
+</script>
+
+<div data-widget>...</div>
+
+<!-- Second script: browser-only. -->
+<script>
+  import { mountWidget } from '$lib/widget';
+  mountWidget(document.querySelector('[data-widget]'));
+</script>
+```
+
+Prefer the top-script model for anything that needs the SSR data —
+you keep one mental model per route and the browser copy is stripped
+of SSR-only code automatically.

@@ -1,6 +1,6 @@
 export { createApp } from './app.js';
 export { defineConfig } from './config.js';
-export { defineRuntime } from './runtime.js';
+export { defineMiddleware, defineRuntime } from './middleware.js';
 export { Router, filePathToPattern } from './router.js';
 export {
   getCtx,
@@ -77,6 +77,11 @@ export type {
   LayoutModule,
   PageRenderOutput,
   PageRenderResult,
+  MiddlewareContext,
+  MiddlewareDefinition,
+  MiddlewareStep,
+  MiddlewareNext,
+  MiddlewareErrorResult,
   RuntimeContext,
   RuntimeDefinition,
   RuntimeStep,
@@ -107,6 +112,8 @@ export type {
   WorkflowStatusValue,
   WorkflowStatusOptions,
 } from './workflow.js';
+
+export { fetchAsset } from './assets.js';
 
 // Streaming async-boundary primitives. Underscored identifiers are called
 // from compiler-emitted code; they're exported so the bundler doesn't

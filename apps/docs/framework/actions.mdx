@@ -18,16 +18,36 @@ Export a server function from the route `<script>` block and reference it with `
 </form>
 ```
 
-The action receives raw `FormData`.
+The action receives a single **context object** with the form data and
+per-request context. Destructure what you need:
 
 ```ts
 import { ActionError } from '@kuratchi/js';
 
-export async function addItem(formData: FormData): Promise<void> {
+export async function addItem({ formData }: { formData: FormData }): Promise<void> {
   const title = (formData.get('title') as string)?.trim();
   if (!title) throw new ActionError('Title is required');
 }
 ```
+
+The context object carries:
+
+- `formData` — the submitted form fields (always present; empty for
+  button-triggered actions that don't carry a form body).
+- `request` — the underlying `Request` object.
+- `url` — the parsed `URL` of the incoming request.
+- `params` — path params for the matched route.
+
+Environment bindings and request `locals` (e.g. the authenticated user)
+are reached through `getEnv()` / `getLocals()` from `@kuratchi/js` rather
+than being threaded through the action signature — one canonical
+accessor keeps `$server/*` modules portable between render, RPC, and
+action code.
+
+The full action signature is `fn(...args, ctx)`. For `<form>` submissions
+`args` is empty and the context object is the handler's only argument;
+for [button-triggered actions](#button-triggered-actions) `args` carries
+the positional call arguments and `ctx` stays as the trailing parameter.
 
 ## Redirect after write
 
@@ -36,7 +56,7 @@ Use `redirect()` for POST-redirect-get flows:
 ```ts
 import { redirect } from '@kuratchi/js';
 
-export async function createItem(formData: FormData): Promise<void> {
+export async function createItem({ formData }: { formData: FormData }): Promise<void> {
   const id = await db.items.insert({ title: formData.get('title') });
   redirect(`/items/${id}`);
 }
@@ -49,7 +69,7 @@ Throw `ActionError` for user-facing validation failures:
 ```ts
 import { ActionError } from '@kuratchi/js';
 
-export async function signIn(formData: FormData) {
+export async function signIn({ formData }: { formData: FormData }) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   if (!email || !password) throw new ActionError('Email and password are required');
@@ -135,14 +155,109 @@ export async function updateProfile(data: InferSchema<typeof schemas.updateProfi
 
 Kuratchi currently uses the schema as the source of truth for validated RPC input. Automatic type generation for unannotated handler parameters is not documented as part of this API yet, so use `InferSchema<typeof schemas.name>` when you want the handler parameter typed.
 
-## Button Actions
+## Button-triggered actions
 
-Use `onclick={fn(args)}` for button-style server actions:
+Reference any `$server/*` function directly from a button. The framework
+spreads the call arguments into the server handler positionally, with
+the [context object](#form-actions) as the trailing parameter:
 
 ```html
+<script>
+  import { deleteItem, toggleItem } from '$server/items';
+</script>
+
 <button onclick={deleteItem(item.id)} type="button">Delete</button>
 <button onclick={toggleItem(item.id, true)} type="button">Done</button>
 ```
+
+The handler signature mirrors the call site — positional arguments come
+first, then the context object:
+
+```ts
+import { ActionError } from '@kuratchi/js';
+
+export async function deleteItem(id: number, { formData }: { formData: FormData }) {
+  if (!Number.isInteger(id)) throw new ActionError('Invalid id');
+  await db.items.delete(id);
+}
+
+export async function toggleItem(
+  id: number,
+  done: boolean,
+  { formData, request }: { formData: FormData; request: Request }
+) {
+  await db.items.update(id, { done });
+}
+```
+
+Handlers that don't need the context object just drop the parameter:
+
+```ts
+export async function deleteItem(id: number) {
+  await db.items.delete(id);
+}
+```
+
+### Transport
+
+Button-triggered actions share the same transport as `<form action={fn}>`:
+a regular `POST` to the current route with `_action` (the function name)
+and `_args` (a JSON-encoded array of the call arguments). The framework
+emits a client bridge that serializes the click-site arguments and
+submits them as a real form, so button actions retain the same
+progressive-enhancement and POST-Redirect-GET properties as forms. On
+success the framework returns a 303 redirect back to the current URL,
+so the browser re-renders with fresh data. Return a `Response` from your
+action to override that behavior.
+
+### When to wrap in a client handler
+
+Reach for a top-script client handler when you need something beyond a
+fire-and-refresh:
+
+```html
+<script>
+  import { deleteItem } from '$server/items';
+
+  async function onDelete(id) {
+    if (!confirm('Delete this item?')) return;
+    await deleteItem(id);
+    location.reload();
+  }
+</script>
+
+<button onclick={onDelete(item.id)} type="button">Delete</button>
+```
+
+Use a client handler when you want to:
+
+- Prompt for confirmation before sending the request.
+- Show an inline spinner or optimistic UI update.
+- Handle errors inline without a full page re-render.
+
+<Note>
+  When you invoke a server function directly from client JS (e.g.
+  `await deleteItem(id)` inside `onDelete`), Kuratchi dispatches it
+  through the **RPC** path rather than the button-action path. RPC
+  handlers receive their call arguments positionally without a trailing
+  context object:
+
+  ```ts
+  // Called from client JS → RPC path
+  export async function deleteItem(id: number) {
+    await db.items.delete(id);
+  }
+  ```
+
+  The context object is only appended when the framework invokes the
+  handler via the action dispatch path (i.e. for `<form action={fn}>`
+  submissions and `<button onclick={fn(…)} type="button">` clicks that
+  do NOT flow through a client handler).
+</Note>
+
+See [Client interactivity](/framework/client-interactivity) for the full
+event-handler directive, client handler registration, and SSR data
+hydration.
 
 ## Checkbox Groups
 

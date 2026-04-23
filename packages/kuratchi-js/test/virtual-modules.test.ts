@@ -15,6 +15,10 @@ describe('virtual-modules', () => {
       expect(VIRTUAL_MODULE_MAP.environment).toBe('@kuratchi/js/runtime/environment.js');
     });
 
+    test('maps assets to runtime path', () => {
+      expect(VIRTUAL_MODULE_MAP.assets).toBe('@kuratchi/js/runtime/assets.js');
+    });
+
     test('maps request to runtime path', () => {
       expect(VIRTUAL_MODULE_MAP.request).toBe('@kuratchi/js/runtime/request.js');
     });
@@ -32,6 +36,7 @@ describe('virtual-modules', () => {
 
   describe('VIRTUAL_MODULE_NAMES', () => {
     test('includes all module names', () => {
+      expect(VIRTUAL_MODULE_NAMES).toContain('assets');
       expect(VIRTUAL_MODULE_NAMES).toContain('environment');
       expect(VIRTUAL_MODULE_NAMES).toContain('request');
       expect(VIRTUAL_MODULE_NAMES).toContain('navigation');
@@ -40,6 +45,7 @@ describe('virtual-modules', () => {
 
   describe('isKuratchiVirtualModule', () => {
     test('returns true for kuratchi: prefixed modules', () => {
+      expect(isKuratchiVirtualModule('kuratchi:assets')).toBe(true);
       expect(isKuratchiVirtualModule('kuratchi:environment')).toBe(true);
       expect(isKuratchiVirtualModule('kuratchi:request')).toBe(true);
       expect(isKuratchiVirtualModule('kuratchi:navigation')).toBe(true);
@@ -56,6 +62,7 @@ describe('virtual-modules', () => {
 
   describe('resolveKuratchiVirtualModule', () => {
     test('resolves known kuratchi:* modules to runtime paths', () => {
+      expect(resolveKuratchiVirtualModule('kuratchi:assets')).toBe('@kuratchi/js/runtime/assets.js');
       expect(resolveKuratchiVirtualModule('kuratchi:environment')).toBe('@kuratchi/js/runtime/environment.js');
       expect(resolveKuratchiVirtualModule('kuratchi:request')).toBe('@kuratchi/js/runtime/request.js');
       expect(resolveKuratchiVirtualModule('kuratchi:navigation')).toBe('@kuratchi/js/runtime/navigation.js');
@@ -73,6 +80,7 @@ describe('virtual-modules', () => {
 
   describe('getKuratchiModuleName', () => {
     test('extracts module name from kuratchi: specifier', () => {
+      expect(getKuratchiModuleName('kuratchi:assets')).toBe('assets');
       expect(getKuratchiModuleName('kuratchi:environment')).toBe('environment');
       expect(getKuratchiModuleName('kuratchi:request')).toBe('request');
       expect(getKuratchiModuleName('kuratchi:navigation')).toBe('navigation');
@@ -85,6 +93,11 @@ describe('virtual-modules', () => {
   });
 
   describe('VIRTUAL_MODULE_TYPE_DECLARATIONS', () => {
+    test('declares kuratchi:assets module', () => {
+      expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain("declare module 'kuratchi:assets'");
+      expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain('export function fetchAsset');
+    });
+
     test('declares kuratchi:environment module', () => {
       expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain("declare module 'kuratchi:environment'");
       expect(VIRTUAL_MODULE_TYPE_DECLARATIONS).toContain('export const dev: boolean');

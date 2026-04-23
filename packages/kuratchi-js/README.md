@@ -59,7 +59,7 @@ Kuratchi routes are SSR by default, with a client-first authored `<script>` mode
 - `$server/*` imports are the server/RPC escape hatch.
 - Template expressions, `if`, and `for` blocks render on the server.
 - `src/server` is for private server-only modules and reusable backend logic.
-- `src/server/runtime.hook.ts` is the server runtime hook entrypoint for request interception.
+- `src/middleware.ts` is the request middleware entrypoint for interception and guards.
 - Reactive `$:` code runs in client scripts.
 
 Route files still render on the server, but the authored script model matches the web: write client code in `<script>`, and use `$server/*` when you need the framework to cross into server execution.
@@ -105,6 +105,31 @@ export default defineConfig({
 ```
 
 Then reference the same file at `/static/...`.
+
+### Server-side asset access
+
+Use the `kuratchi:assets` virtual module when server code needs to read a static asset through the app's configured `ASSETS` binding.
+
+```ts
+import { fetchAsset } from 'kuratchi:assets';
+
+const response = await fetchAsset('/reports/q126_breakdown_by_product_devplat.csv');
+if (!response.ok) return null;
+const csv = await response.text();
+```
+
+Pass the same public URL path you would use in markup, not the source file path. For example, if the asset is reachable in the browser at `/reports/data.csv`, pass `/reports/data.csv`.
+
+Behavior:
+
+- Uses the current request origin in dev so asset fetches behave the same way as the running app.
+- Falls back to an internal asset hostname when there is no active request context.
+- Returns the raw `Response` so your code controls parsing (`text()`, `json()`, `arrayBuffer()`, headers, status handling).
+
+Failure behavior:
+
+- Throws if the app does not have an `ASSETS` binding configured.
+- Does not coerce missing assets into `null`; check `response.ok` yourself and handle 404/403/other statuses explicitly.
 
 ### CSS processing
 
@@ -1204,16 +1229,16 @@ redirect('/login', 302);
 
 `redirect()` works in route scripts, `$server/` modules, and form actions. It throws a `RedirectError` that the framework catches and converts to a proper HTTP redirect response (default 303 for POST-Redirect-GET).
 
-## Runtime Hook
+## Middleware
 
-Optional server runtime hook file. Export a `RuntimeDefinition` from `src/server/runtime.hook.ts`
-to intercept requests before they reach the framework router. Use it for agent routing,
-pre-route auth, or custom response/error handling.
+Optional request middleware file. Export a `MiddlewareDefinition` from
+`src/middleware.ts` to intercept requests before they reach the framework router.
+Use it for agent routing, pre-route auth, or custom response/error handling.
 
 ```ts
-import type { RuntimeDefinition } from '@kuratchi/js';
+import { defineMiddleware, type MiddlewareDefinition } from '@kuratchi/js';
 
-const runtime: RuntimeDefinition = {
+const middleware: MiddlewareDefinition = {
   agents: {
     async request(ctx, next) {
       if (!ctx.url.pathname.startsWith('/agents/')) {
@@ -1225,7 +1250,7 @@ const runtime: RuntimeDefinition = {
   },
 };
 
-export default runtime;
+export default defineMiddleware(middleware);
 ```
 
 `ctx` includes:
@@ -1322,7 +1347,7 @@ redirect('/login', 303);
 
 All `kuratchi:*` modules work in:
 - Page route scripts (`page.html`)
-- Runtime hooks (`runtime.hook.ts`)
+- Middleware (`src/middleware.ts`)
 - Durable Objects (`.do.ts`)
 - Server modules (`src/server/*.ts`)
 

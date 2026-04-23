@@ -29,7 +29,7 @@ my-app/
   vite.config.ts          kuratchiVite() plugin
   wrangler.jsonc          assets + D1/DO bindings (opt-in)
   src/worker.ts           re-exports kuratchi:worker
-  src/middleware.ts       defineRuntime({ ... })
+  src/middleware.ts       defineMiddleware({ ... })
   src/routes/*.kuratchi   file-based routes
   src/assets/styles.css
 ```

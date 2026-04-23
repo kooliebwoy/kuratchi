@@ -6,8 +6,8 @@ import type { GenerateRoutesModuleOptions, RoutesModuleFeatureBlocks } from './r
 export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions): RoutesModuleFeatureBlocks {
   const workerImport = `import { env as __env } from 'cloudflare:workers';`;
   const contextImport = `import { __setRequestContext, __pushRequestContext, __esc, __rawHtml, __sanitizeHtml, __setLocal, __getLocals, buildDefaultBreadcrumbs as __buildDefaultBreadcrumbs } from '${opts.runtimeContextImport}';`;
-  const runtimeImport = opts.hasRuntime && opts.runtimeImportPath
-    ? `import __kuratchiRuntime from '${opts.runtimeImportPath}';`
+  const middlewareImport = opts.hasMiddleware && opts.middlewareImportPath
+    ? `import __kuratchiMiddleware from '${opts.middlewareImportPath}';`
     : '';
 
   const authInit = buildAuthSessionInit(opts);
@@ -19,7 +19,7 @@ export function buildRoutesModuleFeatureBlocks(opts: GenerateRoutesModuleOptions
   return {
     workerImport,
     contextImport,
-    runtimeImport,
+    middlewareImport,
     migrationImports,
     migrationInit,
     authInit,

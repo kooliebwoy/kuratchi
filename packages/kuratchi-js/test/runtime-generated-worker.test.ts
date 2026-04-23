@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createGeneratedWorker } from '../src/runtime/generated-worker.ts';
+import { getLocals } from '@kuratchi/js/runtime/context.js';
+import { createGeneratedWorker } from '../../kuratchi-wrangler/src/runtime/generated-worker.ts';
 import { schema } from '../src/runtime/schema.ts';
 
 describe('generated worker runtime', () => {
@@ -60,9 +61,9 @@ describe('generated worker runtime', () => {
     expect(second.status).toBe(304);
   });
 
-  test('runs runtime hooks in order and lets error hooks handle failures', async () => {
+  test('runs middleware in order and lets error middleware handle failures', async () => {
     const calls: string[] = [];
-    const runtimeDefinition = {
+    const middlewareDefinition = {
       trace: {
         request: async (_ctx: any, next: () => Promise<Response>) => {
           calls.push('request');
@@ -105,7 +106,7 @@ describe('generated worker runtime', () => {
       assetsPrefix: '/assets/',
       assets: {},
       errorPages: {},
-      runtimeDefinition,
+      middlewareDefinition,
     });
 
     const ok = await worker.fetch(
@@ -127,6 +128,209 @@ describe('generated worker runtime', () => {
     expect(boom.status).toBe(418);
     expect(await boom.text()).toBe('handled:boom');
     expect(calls).toEqual(['request', 'route', 'error', 'response']);
+  });
+
+  test('runs middleware consistently for page, api, rpc, and action routes', async () => {
+    const calls: string[] = [];
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/page/:slug',
+          load: (params) => {
+            const locals = getLocals<any>();
+            return {
+              slug: params.slug,
+              userId: locals.userId,
+              requestPath: locals.requestPath,
+              trace: Array.isArray(locals.trace) ? locals.trace.join('>') : '',
+            };
+          },
+          render: (data) => `<p>${data.userId}:${data.requestPath}:${data.slug}:${data.trace}</p>`,
+        },
+        {
+          pattern: '/api',
+          __api: true,
+          GET: async (ctx: any) => new Response(JSON.stringify({
+            userId: ctx.locals.userId,
+            requestPath: ctx.locals.requestPath,
+            trace: ctx.locals.trace,
+          }), {
+            headers: { 'content-type': 'application/json' },
+          }),
+        },
+        {
+          pattern: '/rpc',
+          rpc: {
+            whoami: async () => {
+              const locals = getLocals<any>();
+              return {
+                userId: locals.userId,
+                requestPath: locals.requestPath,
+                trace: locals.trace,
+              };
+            },
+          },
+          render: () => '<p>rpc</p>',
+        },
+        {
+          pattern: '/action',
+          actions: {
+            save: async () => {
+              const locals = getLocals<any>();
+              locals.__redirectTo = `/done/${locals.userId}`;
+            },
+          },
+          render: () => '<form method="POST"></form>',
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+      middlewareDefinition: {
+        trace: {
+          request: async (ctx: any, next: () => Promise<Response>) => {
+            calls.push(`request:${ctx.url.pathname}`);
+            ctx.locals.userId = 123;
+            ctx.locals.requestPath = ctx.url.pathname;
+            ctx.locals.trace = [`request:${ctx.url.pathname}`];
+            return next();
+          },
+          route: async (ctx: any, next: () => Promise<Response>) => {
+            calls.push(`route:${ctx.url.pathname}`);
+            ctx.locals.trace.push(`route:${ctx.url.pathname}`);
+            return next();
+          },
+          response: async (ctx: any, response: Response) => {
+            calls.push(`response:${ctx.url.pathname}`);
+            const out = new Response(response.body, response);
+            out.headers.set('x-middleware-path', ctx.locals.requestPath);
+            return out;
+          },
+        },
+      },
+    });
+
+    const page = await worker.fetch(
+      new Request('https://example.com/page/hello'),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(page.status).toBe(200);
+    expect(page.headers.get('x-middleware-path')).toBe('/page/hello');
+    expect(await page.text()).toContain('123:/page/hello:hello:request:/page/hello>route:/page/hello');
+
+    const api = await worker.fetch(
+      new Request('https://example.com/api'),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(api.status).toBe(200);
+    expect(api.headers.get('x-middleware-path')).toBe('/api');
+    expect(await api.json()).toEqual({
+      userId: 123,
+      requestPath: '/api',
+      trace: ['request:/api', 'route:/api'],
+    });
+
+    const rpc = await worker.fetch(
+      new Request('https://example.com/rpc?_rpc=whoami', {
+        headers: { 'sec-fetch-site': 'same-origin' },
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(rpc.status).toBe(200);
+    expect(rpc.headers.get('x-middleware-path')).toBe('/rpc');
+    expect(await rpc.json()).toEqual({
+      ok: true,
+      data: {
+        userId: 123,
+        requestPath: '/rpc',
+        trace: ['request:/rpc', 'route:/rpc'],
+      },
+    });
+
+    const actionBody = new FormData();
+    actionBody.append('_action', 'save');
+    const action = await worker.fetch(
+      new Request('https://example.com/action', {
+        method: 'POST',
+        headers: { origin: 'https://example.com' },
+        body: actionBody,
+      }),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(action.status).toBe(303);
+    expect(action.headers.get('location')).toBe('/done/123');
+    expect(action.headers.get('x-middleware-path')).toBe('/action');
+
+    expect(calls).toEqual([
+      'request:/page/hello',
+      'route:/page/hello',
+      'response:/page/hello',
+      'request:/api',
+      'route:/api',
+      'response:/api',
+      'request:/rpc',
+      'route:/rpc',
+      'response:/rpc',
+      'request:/action',
+      'route:/action',
+      'response:/action',
+    ]);
+  });
+
+  test('resets middleware locals between requests so state does not leak', async () => {
+    let requestId = 0;
+    const leakedAtRequestStart: boolean[] = [];
+    const worker = createGeneratedWorker({
+      routes: [
+        {
+          pattern: '/state',
+          load: () => {
+            const locals = getLocals<any>();
+            const leakedValue = locals.routeMutation ?? 'none';
+            locals.routeMutation = `set-${locals.requestId}`;
+            return { requestId: locals.requestId, leakedValue };
+          },
+          render: (data) => `<p>${data.requestId}:${data.leakedValue}</p>`,
+        },
+      ],
+      layout: (content) => content,
+      layoutActions: {},
+      assetsPrefix: '/assets/',
+      assets: {},
+      errorPages: {},
+      middlewareDefinition: {
+        isolate: {
+          request: async (ctx: any, next: () => Promise<Response>) => {
+            leakedAtRequestStart.push('routeMutation' in ctx.locals);
+            ctx.locals.requestId = ++requestId;
+            return next();
+          },
+        },
+      },
+    });
+
+    const first = await worker.fetch(
+      new Request('https://example.com/state'),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(first.status).toBe(200);
+    expect(await first.text()).toContain('1:none');
+
+    const second = await worker.fetch(
+      new Request('https://example.com/state'),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(second.status).toBe(200);
+    expect(await second.text()).toContain('2:none');
+    expect(leakedAtRequestStart).toEqual([false, false]);
   });
 
   test('passes structured head content into the layout', async () => {

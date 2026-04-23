@@ -51,14 +51,20 @@ import {
 	resolveBoundaryToChunk,
 } from '@kuratchi/js/runtime/stream.js';
 
+// Action-handler calling convention (`fn(...args, ctx)`). Lives in its
+// own module because it's the only piece of the dispatcher that can be
+// exercised in isolation — the rest of this file transitively imports
+// Worker-only virtual modules that Bun can't resolve at test time.
+import { invokeAction } from './invoke-action.js';
+
 /**
- * The middleware `runtime` is a RuntimeDefinition — a map of step names
+ * The middleware definition is a map of step names
  * to `{ request, route, response, error }` handlers. We precompute the
  * sorted entry list once per worker boot; per-request, each phase walks
  * the list in order with a `next()` chain so steps can wrap downstream
  * work (auth → logging → feature flags, etc.).
  */
-const runtimeEntries = Object.entries(middlewareRuntime || {}).filter(
+const middlewareEntries = Object.entries(middlewareRuntime || {}).filter(
 	([, step]) => step && typeof step === 'object',
 );
 
@@ -67,7 +73,7 @@ async function runRequestPhase(ctx, next) {
 	async function dispatch(i) {
 		if (i <= idx) throw new Error('[kuratchi] next() called twice in request phase');
 		idx = i;
-		const entry = runtimeEntries[i];
+		const entry = middlewareEntries[i];
 		if (!entry) return next();
 		const [, step] = entry;
 		if (typeof step.request !== 'function') return dispatch(i + 1);
@@ -81,7 +87,7 @@ async function runRoutePhase(ctx, next) {
 	async function dispatch(i) {
 		if (i <= idx) throw new Error('[kuratchi] next() called twice in route phase');
 		idx = i;
-		const entry = runtimeEntries[i];
+		const entry = middlewareEntries[i];
 		if (!entry) return next();
 		const [, step] = entry;
 		if (typeof step.route !== 'function') return dispatch(i + 1);
@@ -96,7 +102,7 @@ async function runResponsePhase(ctx, response) {
 	// (set cookies, custom observability headers), so we rebuild into a
 	// mutable Response before handing to steps. Cheap for our scale.
 	let current = toMutableResponse(response);
-	for (const [, step] of runtimeEntries) {
+	for (const [, step] of middlewareEntries) {
 		if (typeof step.response === 'function') {
 			current = (await step.response(ctx, current)) || current;
 		}
@@ -116,7 +122,7 @@ function toMutableResponse(response) {
 }
 
 async function runErrorPhase(ctx, error) {
-	for (const [, step] of runtimeEntries) {
+	for (const [, step] of middlewareEntries) {
 		if (typeof step.error !== 'function') continue;
 		const result = await step.error(ctx, error);
 		if (result && result.response instanceof Response) return result.response;
@@ -577,12 +583,28 @@ async function handleAction(request, match, params, url) {
 	const contentType = request.headers.get('content-type') || '';
 	let actionName = '';
 	let formData = null;
+	let spreadArgs = [];
 	if (
 		contentType.includes('application/x-www-form-urlencoded') ||
 		contentType.includes('multipart/form-data')
 	) {
 		formData = await request.formData();
 		actionName = String(formData.get('_action') || '');
+		// Button-triggered actions post `_args` as a JSON-encoded
+		// array alongside `_action`. Parse it here so handlers receive
+		// positional arguments and never have to deserialize by hand.
+		// Authored `<form action={fn}>` submissions have no `_args`
+		// field, so the array stays empty.
+		const argsRaw = formData.get('_args');
+		if (argsRaw !== null) {
+			try {
+				const parsed = JSON.parse(String(argsRaw));
+				if (Array.isArray(parsed)) spreadArgs = parsed;
+			} catch {
+				// Malformed `_args` is a client bug — reject loudly.
+				return new Response('Invalid _args JSON', { status: 400 });
+			}
+		}
 	} else {
 		actionName = url.searchParams.get('_action') || '';
 	}
@@ -590,17 +612,8 @@ async function handleAction(request, match, params, url) {
 	if (!fn) {
 		return new Response('Unknown action: ' + actionName, { status: 400 });
 	}
-	// Contract: `fn({ formData, request, url, params })`.
-	//
-	// One object — destructure what you need. `formData` is always
-	// present for HTML form actions; `request`/`url`/`params` are the
-	// per-request context. Env / locals are reached through `getEnv()` /
-	// `getLocals()` from `@kuratchi/js`, which read the module-scope
-	// context `handle()` seeded per-request. We do NOT re-pass them
-	// here — having one canonical accessor keeps `$server/*` modules
-	// portable between render, RPC, and actions.
 	try {
-		const result = await fn({ formData, request, url, params });
+		const result = await invokeAction(fn, { spreadArgs, formData, request, url, params });
 		// If the action returned a Response, honor it directly. Otherwise
 		// do a 303 See Other back to the requested path for POST-Redirect-GET.
 		if (result instanceof Response) return result;

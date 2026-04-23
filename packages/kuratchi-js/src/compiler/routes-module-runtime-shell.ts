@@ -33,7 +33,7 @@ ${opts.isDev ? '\nglobalThis.__kuratchi_DEV__ = true;\n' : ''}
 ${blocks.workerImport}
 import { createGeneratedWorker } from '${opts.runtimeWorkerImport}';
 ${blocks.contextImport}
-${blocks.runtimeImport ? blocks.runtimeImport + '\n' : ''}${blocks.migrationImports ? blocks.migrationImports + '\n' : ''}${blocks.authPluginImports ? blocks.authPluginImports + '\n' : ''}${blocks.doImports ? blocks.doImports + '\n' : ''}${opts.serverImports.join('\n')}
+${blocks.middlewareImport ? blocks.middlewareImport + '\n' : ''}${blocks.migrationImports ? blocks.migrationImports + '\n' : ''}${blocks.authPluginImports ? blocks.authPluginImports + '\n' : ''}${blocks.doImports ? blocks.doImports + '\n' : ''}${opts.serverImports.join('\n')}
 ${blocks.workflowStatusRpc}
 
 // Assets
@@ -61,7 +61,7 @@ const routes = [
 ${opts.compiledRoutes.join(',\n')}
 ];
 
-const __runtimeDef = (typeof __kuratchiRuntime !== 'undefined' && __kuratchiRuntime && typeof __kuratchiRuntime === 'object') ? __kuratchiRuntime : {};
+const __middlewareDef = (typeof __kuratchiMiddleware !== 'undefined' && __kuratchiMiddleware && typeof __kuratchiMiddleware === 'object') ? __kuratchiMiddleware : {};
 
 async function __initializeRequest(ctx) {
 ${initializeRequestBody || '    return;'}
@@ -78,7 +78,7 @@ export default createGeneratedWorker({
   assetsPrefix: ${JSON.stringify(opts.assetsPrefix)},
   assets: __assets,
   errorPages: __customErrors,
-  runtimeDefinition: __runtimeDef,
+  middlewareDefinition: __middlewareDef,
   initializeRequest: __initializeRequest,
   preRouteChecks: __preRouteChecks,
   security: {

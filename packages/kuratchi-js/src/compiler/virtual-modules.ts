@@ -16,6 +16,7 @@
  */
 export const VIRTUAL_MODULE_MAP: Record<string, string> = {
   environment: '@kuratchi/js/runtime/environment.js',
+  assets: '@kuratchi/js/runtime/assets.js',
   request: '@kuratchi/js/runtime/request.js',
   navigation: '@kuratchi/js/runtime/navigation.js',
   workflow: '@kuratchi/js/runtime/workflow.js',
@@ -67,6 +68,15 @@ export function buildVirtualModuleTypeDeclarations(workflowNames: string[] = [])
 declare module 'kuratchi:environment' {
   /** True in development mode (kuratchi dev), false in production */
   export const dev: boolean;
+}
+
+/** Virtual module: kuratchi:assets */
+declare module 'kuratchi:assets' {
+  /**
+   * Fetch a static asset from the app's configured assets directory.
+   * Pass the same public URL path you would use in markup (for example, '/reports/data.csv').
+   */
+  export function fetchAsset(input: Request | URL | string): Promise<Response>;
 }
 
 /** Virtual module: kuratchi:request */

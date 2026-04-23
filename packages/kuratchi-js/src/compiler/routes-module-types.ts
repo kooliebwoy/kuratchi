@@ -31,8 +31,8 @@ export interface GenerateRoutesModuleOptions {
   workflowConfig: WorkerClassConfigEntry[];
   isLayoutAsync: boolean;
   compiledLayoutActions: string | null;
-  hasRuntime: boolean;
-  runtimeImportPath?: string;
+  hasMiddleware: boolean;
+  middlewareImportPath?: string;
   assetsPrefix: string;
   runtimeContextImport: string;
   runtimeDoImport: string;
@@ -43,7 +43,7 @@ export interface GenerateRoutesModuleOptions {
 export interface RoutesModuleFeatureBlocks {
   workerImport: string;
   contextImport: string;
-  runtimeImport: string;
+  middlewareImport: string;
   migrationImports: string;
   migrationInit: string;
   authInit: string;

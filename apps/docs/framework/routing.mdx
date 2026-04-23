@@ -30,13 +30,57 @@ All three use the same shape: top `<script>` + template + `<slot></slot>` (where
 
 ## Route execution model
 
-Kuratchi pages are SSR by default.
+Kuratchi pages are **server-rendered by default** and the top `<script>`
+block is **isomorphic** — it runs once on the server during SSR and
+again in the browser after the page loads. Author one script per route;
+the framework handles the dual execution, SSR data hydration, and
+dead-code stripping for you.
 
-The top-level route `<script>` is client-side by default.
+```html
+<script>
+  import { getItems } from '$server/items';
+  const items = await getItems();
 
-When you import from `$server/*`, Kuratchi treats those functions as the server/RPC escape hatch.
+  function onDelete(id) {
+    // Runs in the browser when a button is clicked.
+  }
+</script>
 
-For server work, use `$server/` imports, actions, and runtime hooks.
+<ul>
+  for (const item of items) {
+    <li>
+      {item.title}
+      <button onclick={onDelete(item.id)}>Delete</button>
+    </li>
+  }
+</ul>
+```
+
+What runs where:
+
+- `await $server/*` functions execute on the server at render time. The
+  resolved values are serialized into the HTML response and hydrated
+  into the browser copy of the script — no second round-trip for SSR
+  data.
+- Helper functions (`function onDelete(id)`) and non-`await` top-level
+  code run in both environments. The framework wraps DOM listeners
+  automatically via the [`on<event>={fn(args)}` directive](/framework/client-interactivity#event-handler-directive).
+- Top-level statements whose bodies contain `await` are stripped from
+  the browser bundle — they already ran server-side.
+
+Use `src/server/*` for private modules and backend logic. `$server/*`
+functions called from the browser become RPC stubs that POST to a
+framework-managed endpoint.
+
+For the full hydration model, dispatch rules, and `__kuratchiReadData`
+escape hatch, see [Client interactivity](/framework/client-interactivity).
+
+## Second `<script>` for browser-only code
+
+When you need browser-only code that shouldn't run on the server —
+third-party widget boot, direct DOM inspection, a library that reads
+`window` — add a second `<script>` block after the template. It's
+bundled as a client-only module.
 
 ```html
 <script>
@@ -46,32 +90,19 @@ For server work, use `$server/` imports, actions, and runtime hooks.
 
 <ul>
   for (const item of items) {
-    <li>{item.title}</li>
+    <li data-copy={item.secret}>{item.title}</li>
   }
 </ul>
-```
 
-This is especially important for `$server/` imports. When you `await` a `$server/` function at the top level, Kuratchi runs that read during SSR and keeps your code in the same order you wrote it, even though the authored `<script>` stays client-first.
-
-Use `src/server` for private modules and backend logic.
-
-## Browser-only JavaScript
-
-Use plain `<script>` when you want vanilla DOM behavior in the browser:
-
-```html
 <script>
   import { mountCopyButtons } from '$lib/copy-buttons';
-
   mountCopyButtons();
 </script>
-
-<button type="button" data-copy="hello">Copy</button>
 ```
 
-Kuratchi adds `type="module"` for you when the script contains ES module imports.
-
-Put reusable browser helpers in `src/lib` so they can be imported cleanly from your route markup.
+Prefer the single-script model for everything that references SSR data.
+The second `<script>` is an escape hatch for code that has no server
+counterpart.
 
 ## Layouts
 
@@ -93,7 +124,43 @@ Put reusable browser helpers in `src/lib` so they can be imported cleanly from y
 </main>
 ```
 
-Nested layouts are supported: `src/routes/admin/layout.kuratchi` wraps every page under `/admin/*`, composed inside the root layout.
+### Nested layouts
+
+Drop a `layout.kuratchi` at any directory depth. It wraps every
+route under that directory, composed with the root layout outside
+and the page inside.
+
+```text
+src/routes/
+├─ layout.kuratchi             ← wraps every page
+├─ index.kuratchi              ← /
+└─ admin/
+   ├─ layout.kuratchi          ← wraps /admin/*
+   ├─ users/
+   │  └─ index.kuratchi        ← /admin/users (root + admin layouts)
+   └─ settings/
+      ├─ layout.kuratchi       ← wraps /admin/settings/*
+      └─ index.kuratchi        ← /admin/settings (root + admin + settings)
+```
+
+Composition at render time goes **innermost first**: the route's HTML
+is wrapped by its nearest layout, the result is wrapped by the next
+layout up, and so on until the root layout hands its output to the
+app shell. That means an author writing `<slot></slot>` in a nested
+layout receives the already-wrapped child markup — the inner layout
+is closer to the content it's decorating than the outer one.
+
+Each layout is a self-contained fragment: its top `<script>` runs
+independently, it has its own SSR data, and it can import its own
+`$server/*` modules. Two layouts in the same chain can import
+`kuratchi:request` and read the same `searchParams` / `params` /
+`pathname`; the framework plumbs request state into every layout and
+page uniformly.
+
+Use nested layouts for chrome that's scoped to a section — a
+sidebar in `/admin`, a ticket-drawer overlay on `/board/*`, tab
+navigation in `/settings` — without duplicating it across every
+page underneath.
 
 ### App shell
 
@@ -184,7 +251,8 @@ Components receive props via a `props` object. Destructure in the component's `<
 
 ## Client reactivity
 
-Use `$:` inside client-side `<script>` blocks when you need client updates:
+Use `$:` inside a second, browser-only `<script>` block when you need
+reactive updates driven by client-side state:
 
 ```html
 <script>
@@ -200,9 +268,17 @@ Use `$:` inside client-side `<script>` blocks when you need client updates:
 
 Rules:
 
-- The top route `<script>` is client-side.
-- `$server/*` imports are the server/RPC escape hatch.
-- You do not need to author `type="module"` yourself for imported client scripts.
-- `$:` is available when you want reactive browser updates inside client scripts.
+- The top `<script>` is **isomorphic** — it runs on the server AND in
+  the browser, with SSR-resolved data hydrated via
+  [`__kuratchi_data`](/framework/client-interactivity#how-hydration-works).
+- `$server/*` imports are the server/RPC escape hatch. Awaited on the
+  server, RPC-stubbed in the browser.
+- You do not need to author `type="module"` yourself — the framework
+  adds it when the script has ES module imports.
+- `$:` is available in browser-only scripts (the second `<script>`
+  block) for reactive updates driven by mutation.
 - Proxy-backed array and object mutation works when `$:` is active.
-- You should not need browser guards in normal route code.
+- You should not need `typeof document !== 'undefined'` guards in
+  normal route code — the compiler strips SSR-only blocks from the
+  browser bundle and helper functions run unconditionally on both
+  sides.

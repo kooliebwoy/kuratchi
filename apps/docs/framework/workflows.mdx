@@ -50,7 +50,7 @@ Start a workflow from server code:
 // In a server action
 import { env } from 'cloudflare:workers';
 
-export async function startMigration(formData: FormData) {
+export async function startMigration({ formData }: { formData: FormData }) {
   const instance = await env.MIGRATION_WORKFLOW.create({
     params: { sourceId: formData.get('sourceId') },
   });

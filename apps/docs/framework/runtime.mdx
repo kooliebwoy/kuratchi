@@ -1,7 +1,11 @@
 ---
-title: "Runtime APIs"
-description: "Request context, redirects, environment helpers, and runtime hooks"
+title: "Request APIs and middleware"
+description: "Request context, redirects, environment helpers, and request lifecycle middleware"
 ---
+
+Kuratchi uses `src/middleware.ts` as the canonical request-lifecycle entrypoint.
+Middleware runs around routing and rendering with four phases: `request`,
+`route`, `response`, and `error`.
 
 ## Virtual Modules
 
@@ -95,11 +99,11 @@ Use `kuratchi:environment` anywhere Kuratchi compiles code for you:
 
 - Route `<script>` blocks
 - `src/server/*.ts` modules
-- `src/server/runtime.hook.ts`
+- `src/middleware.ts`
 
 In route scripts, `dev` is resolved as part of the generated route/runtime output.
 
-In server modules and runtime hooks, `dev` is compiled to a literal boolean during build:
+In server modules and middleware, `dev` is compiled to a literal boolean during build:
 
 - `vite dev` -> `const dev = true`
 - `vite build` -> `const dev = false`
@@ -116,35 +120,48 @@ const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '';
 
 Keep binding access in server code. Templates and client scripts should receive precomputed values instead.
 
-## Runtime Hooks
+## Middleware
 
-Runtime hooks let you intercept requests at different stages of the request lifecycle. Use `src/server/runtime.hook.ts` for request-time interception like agent routing, middleware-style gates, or pre-route auth checks.
+Middleware lets you intercept requests at different stages of the request lifecycle.
+Use `src/middleware.ts` for request-time interception like auth gates, logging,
+agent routing, pre-route checks, and response/error shaping.
+
+```ts
+// src/middleware.ts
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
+  auth: {
+    async request(ctx, next) {
+      return next();
+    },
+  },
+});
+```
 
 ### File Structure
 
 ```ts
-// src/server/runtime.hook.ts
-import type { RuntimeDefinition } from '@kuratchi/js';
+// src/middleware.ts
+import { defineMiddleware } from '@kuratchi/js';
 
-const runtime: RuntimeDefinition = {
-  // Named runtime steps
+export default defineMiddleware({
+  // Named middleware steps
   myStep: {
     request: async (ctx, next) => { /* ... */ },
     route: async (ctx, next) => { /* ... */ },
     response: async (ctx, response) => { /* ... */ },
     error: async (ctx, error) => { /* ... */ },
   },
-};
-
-export default runtime;
+});
 ```
 
-### RuntimeContext
+### Middleware context
 
-Every hook receives a `RuntimeContext` with:
+Every middleware hook receives a `MiddlewareContext` with:
 
 ```ts
-interface RuntimeContext {
+interface MiddlewareContext {
   request: Request;      // The incoming request
   env: Env;              // Worker bindings (D1, KV, DO, etc.)
   ctx: ExecutionContext; // Cloudflare execution context
@@ -169,8 +186,9 @@ Intercept requests before routing. Call `next()` to continue or return a `Respon
 
 ```ts
 import { dev } from 'kuratchi:environment';
+import { defineMiddleware } from '@kuratchi/js';
 
-const runtime: RuntimeDefinition = {
+export default defineMiddleware({
   auth: {
     async request(ctx, next) {
       if (dev) {
@@ -188,7 +206,7 @@ const runtime: RuntimeDefinition = {
       return next();
     },
   },
-};
+});
 ```
 
 Use this pattern for local-only bypasses like development auth gates. For secrets, bindings, and request data, continue to read from `ctx.env`, `ctx.request`, or the `@kuratchi/js` server helpers.
@@ -198,7 +216,9 @@ Use this pattern for local-only bypasses like development auth gates. For secret
 Run after routing but before rendering:
 
 ```ts
-const runtime: RuntimeDefinition = {
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
   logging: {
     async route(ctx, next) {
       const start = Date.now();
@@ -207,7 +227,7 @@ const runtime: RuntimeDefinition = {
       return response;
     },
   },
-};
+});
 ```
 
 ### Response Hook
@@ -215,7 +235,9 @@ const runtime: RuntimeDefinition = {
 Modify the response after rendering:
 
 ```ts
-const runtime: RuntimeDefinition = {
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
   headers: {
     async response(ctx, response) {
       // Add custom headers
@@ -224,7 +246,7 @@ const runtime: RuntimeDefinition = {
       return newResponse;
     },
   },
-};
+});
 ```
 
 ### Error Hook
@@ -232,7 +254,9 @@ const runtime: RuntimeDefinition = {
 Handle errors globally:
 
 ```ts
-const runtime: RuntimeDefinition = {
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
   errors: {
     async error(ctx, error) {
       console.error('Request failed:', error);
@@ -240,7 +264,7 @@ const runtime: RuntimeDefinition = {
       return new Response('Something went wrong', { status: 500 });
     },
   },
-};
+});
 ```
 
 ### Agent Routing Example
@@ -248,7 +272,9 @@ const runtime: RuntimeDefinition = {
 Route requests to Cloudflare Agents:
 
 ```ts
-const runtime: RuntimeDefinition = {
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
   agents: {
     async request(ctx, next) {
       if (!ctx.url.pathname.startsWith('/agents/')) {
@@ -265,9 +291,7 @@ const runtime: RuntimeDefinition = {
       return stub.fetch(ctx.request);
     },
   },
-};
-
-export default runtime;
+});
 ```
 
 ### Multiple Steps
@@ -275,7 +299,9 @@ export default runtime;
 Define multiple named steps — they run in definition order:
 
 ```ts
-const runtime: RuntimeDefinition = {
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
   logging: {
     async request(ctx, next) {
       console.log(`→ ${ctx.request.method} ${ctx.url.pathname}`);
@@ -288,14 +314,17 @@ const runtime: RuntimeDefinition = {
       return next();
     },
   },
-};
+});
 ```
 
-### Config vs Runtime Hook
+### Middleware vs config
+
+`kuratchi.config.ts` is for static framework integrations. `src/middleware.ts`
+is for per-request logic.
 
 | Use case | Where |
 |----------|-------|
 | Static integrations (ORM, auth, UI) | `kuratchi.config.ts` |
-| Request-time interception | `src/server/runtime.hook.ts` |
-| Route guards, middleware | `src/server/runtime.hook.ts` |
-| Agent routing | `src/server/runtime.hook.ts` |
+| Request-time interception | `src/middleware.ts` |
+| Route guards, middleware | `src/middleware.ts` |
+| Agent routing | `src/middleware.ts` |

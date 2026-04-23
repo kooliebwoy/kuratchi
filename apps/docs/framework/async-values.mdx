@@ -5,115 +5,167 @@ description: "Handle async data with loading, error, and success states"
 
 ## Async Values
 
-Kuratchi provides a native JS pattern for handling async data with loading, error, and success states.
+KuratchiJS lets you write async data-dependent templates without
+blocking SSR. Call an async function without `await` and the binding
+becomes an `AsyncValue<T>` — an object exposing `pending`, `error`,
+and `success` state alongside the eventual value. The initial page
+responds immediately with the pending branch of your template; when
+the promise settles, the resolved branch streams in and the browser
+swaps it into place.
 
-## Two Patterns
+## Two patterns
 
 | Pattern | Returns | Use case |
-|---------|---------|----------|
-| `const x = fn()` | `AsyncValue<T>` | Need loading/error states |
-| `const x = await fn()` | `T` | Just need the value (blocks) |
+| --- | --- | --- |
+| `const x = fn()` | `AsyncValue<T>` | Need loading / error states; SSR stays non-blocking. |
+| `const x = await fn()` | `T` | Just need the value — SSR blocks until it resolves. |
 
 ## AsyncValue API
 
-When you call an async function without `await`, it returns an `AsyncValue<T>` with metadata:
+When you call an async function without `await`, the binding exposes
+three observable flags:
 
 ```ts
 interface AsyncValue<T> extends T {
-  pending: boolean;   // true while loading
-  error: string | null; // error message if failed
-  success: boolean;   // true when resolved
+  pending: boolean;      // true while loading
+  error: string | null;  // error message if rejected, null otherwise
+  success: boolean;      // true when resolved
 }
 ```
 
-The `AsyncValue` **is** the value — you access properties and iterate directly. No `.data` wrapper needed.
+The `AsyncValue` **is** the value — properties and iteration work
+directly. No `.data` wrapper.
 
-## Basic Usage
-
-```html
-<div>
-const todos = getTodos();
-
-if (todos.pending) {
-  <div class="skeleton">Loading...</div>
-}
-
-if (todos.error) {
-  <p class="error">Failed: {todos.error}</p>
-}
-
-for (const todo of todos) {
-  <TodoItem todo={todo} />
-}
-</div>
-```
-
-## With if/else
-
-```html
-<div>
-const todos = getTodos();
-
-if (todos.pending) {
-  <Skeleton />
-} else if (todos.error) {
-  <p>Failed: {todos.error}</p>
-} else if (todos.length > 0) {
-  for (const todo of todos) {
-    <TodoItem todo={todo} />
-  }
-} else {
-  <p>No todos yet.</p>
-}
-</div>
-```
-
-## With switch
-
-```html
-<div>
-const todos = getTodos();
-
-switch (true) {
-  case todos.pending:
-    <Skeleton />
-    break;
-  case !!todos.error:
-    <p>Failed: {todos.error}</p>
-    break;
-  case todos.length === 0:
-    <p>No todos yet.</p>
-    break;
-  default:
-    for (const todo of todos) {
-      <TodoItem todo={todo} />
-    }
-}
-</div>
-```
-
-## Multiple Async Values
-
-```html
-<div>
-const user = getUser();
-const notifications = getNotifications();
-
-if (user.pending || notifications.pending) {
-  <DashboardSkeleton />
-}
-
-<Dashboard user={user} notifications={notifications} />
-</div>
-```
-
-## Blocking (await)
-
-When you don't need loading states, use `await`:
+## Basic usage
 
 ```html
 <script>
-const todos = await getTodos(); // blocks until resolved
+  import { getTodos } from '$server/todos';
+
+  const todos = getTodos();   // no await → AsyncValue<Todo[]>
+</script>
+
+if (todos.pending) {
+  <div class="skeleton">Loading…</div>
+} else if (todos.error) {
+  <p class="error">Failed: {todos.error}</p>
+} else if (todos.success) {
+  for (const todo of todos) {
+    <TodoItem todo={todo} />
+  }
+}
+```
+
+That's the whole thing. No `<Boundary>` tag, no lifecycle hook, no
+custom component — plain template control flow. The framework spots
+the `.pending` access on `todos`, compiles the if/else-if/else chain
+into a streaming boundary automatically, and sends the initial HTML
+(with the pending branch rendered) while the real call runs in the
+background.
+
+<Note>
+**`.pending` is the signal.** The framework detects async bindings by
+looking for `X.pending` in the template. Any top-level `<script>`
+binding referenced that way becomes an AsyncValue; the surrounding
+if-chain becomes a stream boundary. Server-action state
+(`fn.error | fn.loading | fn.success`) uses `.loading` instead of
+`.pending`, so there's no ambiguity — actions and async values never
+collide.
+</Note>
+
+## Region inference
+
+The framework streams the **smallest contiguous if/else-if/else
+chain** whose head condition references an async binding. Everything
+else on the page renders synchronously on the first response.
+
+```html
+<script>
+  const issue = await getIssue(id);  // awaited — blocks SSR
+  const ai = analyze(issue.key);     // non-awaited — streamed
+</script>
+
+<h1>{issue.title}</h1>         <!-- rendered on first response -->
+<p>{issue.description}</p>     <!-- rendered on first response -->
+
+if (ai.pending) {              <!-- this chain is the boundary -->
+  <Skeleton />
+} else if (ai.error) {
+  <p>{ai.error}</p>
+} else if (ai.success) {
+  <p>{ai.summary}</p>
+}
+
+<footer>©{year}</footer>       <!-- rendered on first response -->
+```
+
+Only the if-chain is a boundary — the heading, the description, and
+the footer are in the initial HTML. When `analyze(...)` resolves, the
+framework streams the chain's resolved markup and swaps it in place of
+the `<Skeleton />`.
+
+## Multiple async values in one chain
+
+When a chain's condition references more than one async binding, the
+framework combines their promises with `Promise.all` and re-renders
+the chain once all bindings have settled:
+
+```html
+<script>
+  const user = getUser();
+  const notifications = getNotifications();
+</script>
+
+if (user.pending || notifications.pending) {
+  <DashboardSkeleton />
+} else if (user.error || notifications.error) {
+  <p>Failed to load: {user.error || notifications.error}</p>
+} else if (user.success && notifications.success) {
+  <Dashboard user={user} notifications={notifications} />
+}
+```
+
+Both `user` and `notifications` receive the same AsyncValue state
+(pending → success or error). If either promise rejects, the chain
+takes the error branch; the error message is whichever rejection
+won the race.
+
+## Combining into one Promise
+
+If you want several async sources to land atomically as a single
+value, combine them with `Promise.all` at the binding site:
+
+```html
+<script>
+  import { suggestCategory, listPaths } from '$server/taxonomy';
+
+  const panel = Promise.all([
+    suggestCategory(key),
+    listPaths(),
+  ]).then(([suggestion, paths]) => ({ suggestion, paths }));
+</script>
+
+if (panel.pending) {
+  <Skeleton />
+} else if (panel.error) {
+  <p>{panel.error}</p>
+} else if (panel.success) {
+  <h3>{panel.suggestion.bestPath}</h3>
+  <small>{panel.paths.length} paths considered</small>
+}
+```
+
+This shape gives you a single AsyncValue whose success branch can
+destructure the combined result.
+
+## Blocking (`await`)
+
+When a page doesn't make sense without the data — title, authentication,
+the matching record — use `await`:
+
+```html
+<script>
+  const todos = await getTodos(); // blocks SSR until resolved
 </script>
 
 for (const todo of todos) {
@@ -121,33 +173,31 @@ for (const todo of todos) {
 }
 ```
 
-## Success Guard
+A good rule of thumb: `await` what the user would leave the page over
+if it were missing. Non-awaited AsyncValues are for the rest.
 
-Use `.success` when you want to ensure the value is fully resolved:
+## Success guard
+
+Use `else if (x.success)` in place of a naked `else` when the template
+body needs data from the resolved value. The pending AsyncValue is an
+empty object — accessing `.data` or iterating it during pending
+renders nothing, which is rarely what you want.
 
 ```html
-<div>
-const todos = getTodos();
-
 if (todos.pending) {
   <Skeleton />
-}
-
-if (todos.error) {
+} else if (todos.error) {
   <p>Failed: {todos.error}</p>
-}
-
-if (todos.success) {
+} else if (todos.success) {
   for (const todo of todos) {
     <TodoItem todo={todo} />
   }
 }
-</div>
 ```
 
-## Type Safety
+## Type safety
 
-The `AsyncValue<T>` type extends `T`, so you get full type inference:
+`AsyncValue<T>` extends `T`, so type inference flows through:
 
 ```ts
 interface Todo {
@@ -156,10 +206,9 @@ interface Todo {
   done: boolean;
 }
 
-// getTodos returns AsyncValue<Todo[]>
+// getTodos returns Promise<Todo[]>; bound without await: AsyncValue<Todo[]>
 const todos = getTodos();
 
-// Type-safe access
 if (todos.success) {
   for (const todo of todos) {
     console.log(todo.title); // string
@@ -168,9 +217,13 @@ if (todos.success) {
 }
 ```
 
-## Live Workflow Status
+## Live workflow status
 
-For Cloudflare Workflow instance status — which changes over time — use [`workflowStatus`](/framework/workflows#live-status-with-workflowstatus) from `kuratchi:workflow`. It returns the same `AsyncValue` shape and, when `{ poll }` is passed, the framework re-renders the route on each tick.
+For Cloudflare Workflow instance status — which changes over time —
+use [`workflowStatus`](/framework/workflows#live-status-with-workflowstatus)
+from `kuratchi:workflow`. It returns the same `AsyncValue` shape and,
+when `{ poll }` is passed, the framework re-renders the whole route on
+each tick.
 
 ```html
 <script>
@@ -181,9 +234,10 @@ For Cloudflare Workflow instance status — which changes over time — use [`wo
 </script>
 ```
 
-## Runtime Helpers
+## Runtime helpers
 
-Import helpers from `@kuratchi/js` for advanced use cases:
+Import from `@kuratchi/js` for AsyncValue construction and type
+guarding outside of streamed boundaries:
 
 ```ts
 import {
@@ -191,15 +245,13 @@ import {
   createSuccessValue,
   createErrorValue,
   isAsyncValue,
+  type AsyncValue,
 } from '@kuratchi/js';
-
-// Create values manually
-const pending = createPendingValue<Todo[]>();
-const success = createSuccessValue(todos);
-const error = createErrorValue<Todo[]>('Failed to fetch');
-
-// Type guard
-if (isAsyncValue(value)) {
-  console.log(value.pending, value.error, value.success);
-}
 ```
+
+| Helper | Purpose |
+| --- | --- |
+| `createPendingValue<T>()` | Returns an empty AsyncValue with `pending=true`. |
+| `createSuccessValue<T>(v)` | Wraps a resolved value with `success=true`. |
+| `createErrorValue<T>(msg)` | Returns an AsyncValue with `error=msg`. |
+| `isAsyncValue(v)` | Type guard for inspecting unknown values. |

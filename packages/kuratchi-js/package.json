@@ -1,6 +1,6 @@
 {
     "name": "@kuratchi/js",
-    "version": "0.0.29",
+    "version": "0.0.30",
     "description": "A thin, Cloudflare Workers-native web framework with Svelte-inspired syntax",
     "license": "MIT",
     "type": "module",
@@ -54,6 +54,10 @@
         "./runtime/environment.js": {
             "types": "./dist/runtime/environment.d.ts",
             "import": "./dist/runtime/environment.js"
+        },
+        "./runtime/assets.js": {
+            "types": "./dist/runtime/assets.d.ts",
+            "import": "./dist/runtime/assets.js"
         },
         "./runtime/workflow.js": {
             "types": "./dist/runtime/workflow.d.ts",

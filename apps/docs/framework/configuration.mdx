@@ -5,15 +5,21 @@ description: "Use kuratchi.config.ts for framework integrations"
 
 ## Where config lives
 
-A Vite-first KuratchiJS app has three config files. Each has a distinct job:
+A Vite-first KuratchiJS app has three config files and one request-lifecycle
+entrypoint. Each has a distinct job:
 
 | File | Owns | Edited by you |
 | --- | --- | --- |
 | `vite.config.ts` | The Kuratchi plugin install point | Only to add other Vite plugins |
 | `wrangler.jsonc` | Cloudflare deployment (secrets, routes, custom bindings) | Yes, except auto-synced fields (DOs, queues, containers, assets) |
 | `kuratchi.config.ts` | Framework integrations (ORM, auth, UI, CSS) | Yes, when you opt into any of them |
+| `src/middleware.ts` | Per-request logic (`request` / `route` / `response` / `error`) | Yes |
 
 See [Project structure](/framework/project-structure) for the full file reference.
+
+`kuratchi.config.ts` is **not** where request interception lives. If you want
+to gate routes, log requests, attach `ctx.locals`, route to agents, or shape
+responses, use `src/middleware.ts`.
 
 ## `kuratchi.config.ts`
 
@@ -39,6 +45,33 @@ export default defineConfig({
 ```
 
 Without `kuratchi.config.ts`, the compiler falls back to framework defaults.
+
+## `src/middleware.ts`
+
+Middleware is separate from config. It runs per request and owns request-lifecycle
+behavior.
+
+```ts
+import { defineMiddleware } from '@kuratchi/js';
+
+export default defineMiddleware({
+  auth: {
+    async request(ctx, next) {
+      return next();
+    },
+  },
+});
+```
+
+Use middleware for:
+
+- Auth gates and redirects
+- Request logging
+- Setting `ctx.locals`
+- Agent routing
+- Response/header shaping
+
+See [Runtime](/framework/runtime) for the full middleware lifecycle.
 
 ## CSS and static assets
 
@@ -105,4 +138,14 @@ Use the config file for:
 - UI component theming
 - `assetsPrefix` (if you want `src/assets/` served at a prefix other than `/`)
 
-Routing, Durable Object discovery, generated worker output, and CSS processing are handled outside this file — by the compiler and Vite plugins respectively.
+## What does not belong here
+
+Do not use `kuratchi.config.ts` for:
+
+- Request middleware
+- Route guards
+- Response hooks
+- Agent routing
+- Per-request `locals` setup
+
+Routing, Durable Object discovery, generated worker output, and CSS processing are handled outside this file — by the compiler and Vite plugins respectively. Request lifecycle behavior lives in `src/middleware.ts`.

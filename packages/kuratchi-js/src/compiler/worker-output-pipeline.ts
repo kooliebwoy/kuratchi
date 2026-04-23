@@ -9,18 +9,14 @@ export interface WorkerClassExportEntry {
   file: string;
 }
 
-export function resolveRuntimeImportPath(projectDir: string): string | null {
-  // `middleware.ts` is the preferred name (clear, matches the mental
-  // model). `runtime.hook.ts` is the legacy CLI name, still accepted so
-  // existing projects aren't forced to rename.
+export function resolveMiddlewareImportPath(projectDir: string): string | null {
+  // Canonical request-lifecycle entrypoint.
   const candidates: Array<{ file: string; importPath: string }> = [
     // Preferred: top-level `src/middleware.ts` (matches Next.js /
     // SvelteKit conventions, visible at a glance).
     { file: 'src/middleware.ts', importPath: '../src/middleware' },
     // Fallback: co-located with server code.
     { file: 'src/server/middleware.ts', importPath: '../src/server/middleware' },
-    // Legacy CLI-era name.
-    { file: 'src/server/runtime.hook.ts', importPath: '../src/server/runtime.hook' },
   ];
 
   for (const candidate of candidates) {

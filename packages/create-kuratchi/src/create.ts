@@ -1290,7 +1290,7 @@ function genViteMiddleware(): string {
   // Every Vite project gets a middleware file. Empty by default —
   // the user extends it with auth, logging, etc. Kuratchi's dispatcher
   // reads this via the `kuratchi:middleware` virtual module.
-  return `import { defineRuntime } from '@kuratchi/js';
+  return `import { defineMiddleware } from '@kuratchi/js';
 
 /**
  * Request middleware. Each step can hook into:
@@ -1302,7 +1302,7 @@ function genViteMiddleware(): string {
  * Steps run in the order defined here. Mutate \`ctx.locals\` to share
  * data with \`$server/*\` modules and route actions.
  */
-export default defineRuntime({
+export default defineMiddleware({
   // Example:
   // auth: {
   //   async request(ctx, next) {

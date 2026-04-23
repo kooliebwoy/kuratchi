@@ -160,14 +160,14 @@ export function generateAppTypes(options: GenerateTypesOptions): string {
  * Type declarations for kuratchi app.
  * 
  * DB types are auto-generated from schema.ts - regenerate with: kuratchi types
- * Edit the Locals interface below to match your runtime.hook.ts
+ * Edit the Locals interface below to match your src/middleware.ts
  */
 
 ${buildVirtualModuleTypeDeclarations(workflowNames)}
 
 declare global {
   namespace App {
-    /** Request-scoped locals set by runtime hooks */
+    /** Request-scoped locals set by middleware */
 // USER LOCALS START
 ${localsBlock}
 // USER LOCALS END

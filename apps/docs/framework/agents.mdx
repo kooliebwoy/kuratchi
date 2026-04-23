@@ -139,13 +139,13 @@ export class AssistantAgent extends Agent {
 
 ## Routing to Agents
 
-Use a runtime hook to route requests to agents:
+Use middleware to route requests to agents:
 
 ```ts
-// src/server/runtime.hook.ts
-import type { RuntimeDefinition } from '@kuratchi/js';
+// src/middleware.ts
+import { defineMiddleware } from '@kuratchi/js';
 
-const runtime: RuntimeDefinition = {
+export default defineMiddleware({
   agents: {
     async request(ctx, next) {
       if (!ctx.url.pathname.startsWith('/agents/')) {
@@ -162,9 +162,7 @@ const runtime: RuntimeDefinition = {
       return stub.fetch(ctx.request);
     },
   },
-};
-
-export default runtime;
+});
 ```
 
 ## Wrangler Configuration

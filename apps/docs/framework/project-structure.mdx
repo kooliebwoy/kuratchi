@@ -183,9 +183,9 @@ export { default } from 'kuratchi:worker';
 Middleware definition. Each step hooks into the request lifecycle.
 
 ```ts
-import { defineRuntime } from '@kuratchi/js';
+import { defineMiddleware } from '@kuratchi/js';
 
-export default defineRuntime({
+export default defineMiddleware({
   auth: {
     async request(ctx, next) {
       // ...

@@ -1,6 +1,6 @@
 {
 	"name": "@kuratchi/vite",
-	"version": "0.0.2",
+	"version": "0.0.4",
 	"description": "Vite plugin for KuratchiJS — route discovery, virtual modules, Wrangler config auto-sync",
 	"publishConfig": {
 		"access": "public"
@@ -20,7 +20,9 @@
 		"build": "tsc -p tsconfig.build.json && bun run copy-runtime",
 		"copy-runtime": "mkdir -p dist/runtime && cp src/runtime/*.js dist/runtime/",
 		"check": "tsc -p tsconfig.build.json --noEmit",
-		"dev": "tsc -p tsconfig.build.json --watch"
+		"dev": "tsc -p tsconfig.build.json --watch",
+		"test": "bun test",
+		"test:watch": "bun test --watch"
 	},
 	"peerDependencies": {
 		"vite": "^6.0.0 || ^7.0.0",

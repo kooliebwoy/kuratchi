@@ -38,7 +38,7 @@ import { compileTemplate } from './template.js';
 import {
   buildCompatEntrypointSource,
   buildWorkerEntrypointSource,
-  resolveRuntimeImportPath as resolveRuntimeImportPathPipeline,
+  resolveMiddlewareImportPath as resolveMiddlewareImportPathPipeline,
 } from './worker-output-pipeline.js';
 import { syncWranglerConfig as syncWranglerConfigPipeline } from './wrangler-sync.js';
 import { filePathToPattern } from '../runtime/router.js';
@@ -368,17 +368,17 @@ export async function compile(options: CompileOptions): Promise<string> {
   const compiledComponents = componentCompiler.getCompiledComponents();
 
   // Generate the routes module
-  const rawRuntimeImportPath = resolveRuntimeImportPathPipeline(projectDir);
-  let runtimeImportPath: string | undefined;
-  if (rawRuntimeImportPath) {
-    // Resolve the runtime file's absolute path and pass it through the server module compiler
+  const rawMiddlewareImportPath = resolveMiddlewareImportPathPipeline(projectDir);
+  let middlewareImportPath: string | undefined;
+  if (rawMiddlewareImportPath) {
+    // Resolve the middleware file's absolute path and pass it through the server module compiler
     // so that $durable-objects/* and other project imports get rewritten to their proxies.
-    const runtimeAbs = path.resolve(path.join(projectDir, '.kuratchi'), rawRuntimeImportPath);
-    const transformedRuntimePath = serverModuleCompiler.transformModule(runtimeAbs);
+    const middlewareAbs = path.resolve(path.join(projectDir, '.kuratchi'), rawMiddlewareImportPath);
+    const transformedMiddlewarePath = serverModuleCompiler.transformModule(middlewareAbs);
     const outFile = options.outFile ?? path.join(projectDir, '.kuratchi', 'routes.ts');
-    runtimeImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedRuntimePath);
+    middlewareImportPath = serverModuleCompiler.toModuleSpecifier(outFile, transformedMiddlewarePath);
   }
-  const hasRuntime = !!runtimeImportPath;
+  const hasMiddleware = !!middlewareImportPath;
   const output = generateRoutesModulePipeline({
     projectDir,
     serverImports: allImports,
@@ -396,8 +396,8 @@ export async function compile(options: CompileOptions): Promise<string> {
     isDev: options.isDev ?? false,
     isLayoutAsync,
     compiledLayoutActions,
-    hasRuntime,
-    runtimeImportPath,
+    hasMiddleware,
+    middlewareImportPath,
     assetsPrefix,
     runtimeContextImport: RUNTIME_CONTEXT_IMPORT,
     runtimeDoImport: RUNTIME_DO_IMPORT,

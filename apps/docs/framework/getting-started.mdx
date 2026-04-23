@@ -46,7 +46,7 @@ my-app/
 ├─ tsconfig.json
 └─ src/
    ├─ worker.ts                    export { default } from 'kuratchi:worker'
-   ├─ middleware.ts                defineRuntime({ ... })
+   ├─ middleware.ts                defineMiddleware({ ... })
    ├─ app.kuratchi                 document shell
    ├─ app.css                      global stylesheet (optional)
    ├─ assets/                      static files served verbatim at /
@@ -180,23 +180,37 @@ That's the full setup. Add Tailwind by installing `@tailwindcss/vite`, dropping 
 
 ## First browser-side JavaScript
 
-Drop a second `<script>` in any route for client-only behavior:
+Kuratchi routes have one script block. Declare a handler in the top
+`<script>` and bind it with `onclick={fn(args)}`:
 
 ```html
-<div data-counter><strong data-count>0</strong><button>+</button></div>
-
 <script>
-  const root = document.querySelector('[data-counter]');
-  const out = root.querySelector('[data-count]');
-  let n = 0;
-  root.querySelector('button').addEventListener('click', () => {
-    n += 1;
-    out.textContent = String(n);
-  });
+  import { deleteItem } from '$server/items';
+
+  async function confirmDelete(id) {
+    if (!confirm('Delete?')) return;
+    await deleteItem(id);
+    location.reload();
+  }
 </script>
+
+<ul>
+  for (const item of items) {
+    <li>
+      {item.title}
+      <button onclick={confirmDelete(item.id)} type="button">Delete</button>
+    </li>
+  }
+</ul>
 ```
 
-Kuratchi adds `type="module"` automatically when the script imports from `$lib/*` or any ES module.
+The same script runs on the server (resolving the `await`) and in the
+browser (wiring up `confirmDelete`). No `addEventListener`, no
+`document.querySelector`, no `typeof document` guards.
+
+See [Client interactivity](/framework/client-interactivity) for the
+event-handler reference, SSR data hydration, and when to reach for a
+second (browser-only) `<script>` block.
 
 ## Run locally
 

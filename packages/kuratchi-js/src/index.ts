@@ -7,7 +7,7 @@
 // Runtime
 export { createApp } from './runtime/app.js';
 export { defineConfig } from './runtime/config.js';
-export { defineRuntime } from './runtime/runtime.js';
+export { defineMiddleware, defineRuntime } from './runtime/middleware.js';
 export {  getCtx,
   getEnv,
   getRequest,
@@ -58,6 +58,11 @@ export type {
   DesktopRemoteBindingConfig,
   DesktopWindowConfig,
   AuthConfig,
+  MiddlewareContext,
+  MiddlewareDefinition,
+  MiddlewareStep,
+  MiddlewareNext,
+  MiddlewareErrorResult,
   RouteContext,
   RouteModule,
   RuntimeContext,
