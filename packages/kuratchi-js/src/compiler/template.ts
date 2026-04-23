@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Template compiler â€” native JS flow control in HTML.
  *
  * Syntax:
@@ -371,10 +371,28 @@ export function compileTemplate(
       }
     }
 
-    // HTML line â†’ compile {expr} interpolations
-    // Handle multi-line expressions: if a line has unclosed {, join continuation lines
+    // HTML line â†’ compile {expr} interpolations.
+    //
+    // Two kinds of line-joining happen before we hand the buffer off to
+    // `compileHtmlLineStatements`:
+    //
+    //   1. Unclosed `{` — a templated expression spans multiple lines
+    //      (e.g. an `aria-label={`foo ${x}\n${y}`}` template literal).
+    //      Join until all braces close.
+    //
+    //   2. Unclosed open tag — an `<element attr=...>` with attributes
+    //      wrapping to the next line. Without joining, `action={fn}` on
+    //      the first chunk stores `pendingActionHiddenInput` inside
+    //      `compileHtmlSegment` but the `>` it needs to splice into
+    //      arrives on a later chunk, so the hidden `<input name="_action">`
+    //      is silently dropped and the dispatcher later sees a blank
+    //      `_action`, returning `Unknown action:`. We only join when the
+    //      tag state is mid-open (`inTag && !quote`) AND we didn't start
+    //      this line inside a quoted attr value — that pre-existing case
+    //      (`startedInsideQuotedAttr`) is handled above as literal emit.
     let htmlLine = line;
     let extraLines = 0;
+
     if (hasUnclosedBrace(htmlLine)) {
       let j = i + 1;
       while (j < lines.length && hasUnclosedBrace(htmlLine)) {
@@ -382,8 +400,31 @@ export function compileTemplate(
         extraLines++;
         j++;
       }
+    }
+
+    if (
+      nextHtmlState.inTag &&
+      !nextHtmlState.quote &&
+      !startedInsideQuotedAttr
+    ) {
+      let j = i + extraLines + 1;
+      let joinState: { inTag: boolean; quote: '"' | "'" | null } = nextHtmlState;
+      while (j < lines.length && joinState.inTag) {
+        htmlLine += '\n' + lines[j];
+        extraLines++;
+        joinState = advanceHtmlTagState(lines[j], joinState.inTag, joinState.quote);
+        j++;
+      }
+      // Re-sync outer tag-state bookkeeping so subsequent lines (now
+      // past the closed `>`) don't think they're still mid-tag.
+      inHtmlTag = joinState.inTag;
+      htmlAttrQuote = joinState.quote;
+    }
+
+    if (extraLines > 0) {
       i += extraLines;
     }
+
     out.push(...compileHtmlLineStatements(htmlLine, actionNames, rpcNameMap, options));
   }
   // For non-emit mode, add final join to produce __html

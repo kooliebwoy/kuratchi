@@ -54,7 +54,7 @@ export async function getDbTokens(databaseId: string) {
   return (result.data ?? []) as any[];
 }
 
-export async function createDbToken(formData: FormData): Promise<void> {
+export async function createDbToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const databaseId = formData.get('databaseId') as string;
   const name = (formData.get('name') as string)?.trim();
@@ -75,7 +75,7 @@ export async function createDbToken(formData: FormData): Promise<void> {
   redirect('/account/tokens');
 }
 
-export async function revokeDbToken(formData: FormData): Promise<void> {
+export async function revokeDbToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const tokenId = formData.get('tokenId') as string;
   const databaseId = formData.get('databaseId') as string;
@@ -99,7 +99,7 @@ export async function getKvTokens(kvNamespaceId: string) {
   return (result.data ?? []) as any[];
 }
 
-export async function createKvToken(formData: FormData): Promise<void> {
+export async function createKvToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const kvNamespaceId = formData.get('kvNamespaceId') as string;
   const name = (formData.get('name') as string)?.trim();
@@ -120,7 +120,7 @@ export async function createKvToken(formData: FormData): Promise<void> {
   redirect('/account/tokens');
 }
 
-export async function revokeKvToken(formData: FormData): Promise<void> {
+export async function revokeKvToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const tokenId = formData.get('tokenId') as string;
   const kvNamespaceId = formData.get('kvNamespaceId') as string;
@@ -143,7 +143,7 @@ export async function getR2Tokens(r2BucketId: string) {
   return (result.data ?? []) as any[];
 }
 
-export async function createR2Token(formData: FormData): Promise<void> {
+export async function createR2Token({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const r2BucketId = formData.get('r2BucketId') as string;
   const name = (formData.get('name') as string)?.trim();
@@ -164,7 +164,7 @@ export async function createR2Token(formData: FormData): Promise<void> {
   redirect('/account/tokens');
 }
 
-export async function revokeR2Token(formData: FormData): Promise<void> {
+export async function revokeR2Token({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const tokenId = formData.get('tokenId') as string;
   const r2BucketId = formData.get('r2BucketId') as string;
@@ -187,7 +187,7 @@ export async function getPlatformTokens() {
   return (result.data ?? []) as any[];
 }
 
-export async function createPlatformToken(formData: FormData): Promise<void> {
+export async function createPlatformToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const name = (formData.get('name') as string)?.trim();
   if (!name) throw new Error('Token name is required');
@@ -203,7 +203,7 @@ export async function createPlatformToken(formData: FormData): Promise<void> {
   redirect('/account/tokens');
 }
 
-export async function revokePlatformToken(formData: FormData): Promise<void> {
+export async function revokePlatformToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const tokenId = formData.get('tokenId') as string;
   if (!tokenId) throw new Error('Token ID is required');
@@ -264,7 +264,7 @@ export async function getAllTokens() {
 
 // -- Create token with scope selector -----------------------------------
 
-export async function createScopedToken(formData: FormData): Promise<void> {
+export async function createScopedToken({ formData }: FormData): Promise<void> {
   const scope = formData.get('scope') as string;
   const resourceId = formData.get('resourceId') as string;
   const name = (formData.get('name') as string)?.trim();
@@ -302,7 +302,7 @@ export async function createScopedToken(formData: FormData): Promise<void> {
 
 // -- Revoke any token by scope -----------------------------------------
 
-export async function revokeAnyToken(formData: FormData): Promise<void> {
+export async function revokeAnyToken({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
   const tokenId = formData.get('tokenId') as string;
   const scope = formData.get('scope') as string;

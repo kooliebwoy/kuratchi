@@ -405,7 +405,7 @@ export async function proxyR2ObjectDownload(bucketId: string, key: string): Prom
 
 // -- Actions ---------------------------------------------------------
 
-export async function uploadR2Object(formData: FormData): Promise<void> {
+export async function uploadR2Object({ formData }: FormData): Promise<void> {
   const { bucket, id } = await requireAuthAndBucket();
   const prefix = normalizePrefix(formData.get('prefix') as string);
   const requestedKey = formData.get('objectKey') as string;
@@ -433,7 +433,7 @@ export async function uploadR2Object(formData: FormData): Promise<void> {
   redirect(buildExplorerHref(id, { prefix, selected: targetKey }));
 }
 
-export async function saveR2TextObject(formData: FormData): Promise<void> {
+export async function saveR2TextObject({ formData }: FormData): Promise<void> {
   const { bucket, id } = await requireAuthAndBucket();
   const prefix = normalizePrefix(formData.get('prefix') as string);
   const objectKey = formData.get('objectKey') as string;
@@ -460,7 +460,7 @@ export async function saveR2TextObject(formData: FormData): Promise<void> {
   redirect(buildExplorerHref(id, { prefix, selected: targetKey }));
 }
 
-export async function deleteR2Object(formData: FormData): Promise<void> {
+export async function deleteR2Object({ formData }: FormData): Promise<void> {
   const { bucket, id } = await requireAuthAndBucket();
   const key = normalizeObjectKey(formData.get('key') as string);
   const prefix = normalizePrefix(formData.get('prefix') as string);
@@ -482,7 +482,7 @@ export async function deleteR2Object(formData: FormData): Promise<void> {
 
 // -- Create R2 bucket + deploy worker --------------------------------
 
-export async function createR2Bucket(formData: FormData): Promise<void> {
+export async function createR2Bucket({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const name = (formData.get('name') as string)?.trim().toLowerCase();
@@ -570,7 +570,7 @@ export async function createR2Bucket(formData: FormData): Promise<void> {
 
 // -- Delete R2 bucket ------------------------------------------------
 
-export async function deleteR2Bucket(formData: FormData): Promise<void> {
+export async function deleteR2Bucket({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;

@@ -524,7 +524,7 @@ export async function getNotes(): Promise<Note[]> {
   return getStub().getNotes();
 }
 
-export async function addNote(formData: FormData): Promise<void> {
+export async function addNote({ formData }: FormData): Promise<void> {
   const title = String(formData.get('title') || '').trim();
   if (!title) throw new Error('Note is required');
   await getStub().addNote(title);
@@ -746,7 +746,7 @@ export async function getItems() {
   return (result.data ?? []) as Item[];
 }
 
-export async function addItem(formData: FormData): Promise<void> {
+export async function addItem({ formData }: FormData): Promise<void> {
   const title = (formData.get('title') as string)?.trim();
   if (!title) throw new Error('Title is required');
   await db.items.insert({ title });
@@ -836,7 +836,7 @@ const db = kuratchiORM(() => (env as any).DB);
 
 // â”€â”€ Sign Up â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export async function signUp(formData: FormData): Promise<void> {
+export async function signUp({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
   const name = (formData.get('name') as string)?.trim() || null;
@@ -875,7 +875,7 @@ export async function signUp(formData: FormData): Promise<void> {
 
 // â”€â”€ Sign In â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export async function signIn(formData: FormData): Promise<void> {
+export async function signIn({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
 
@@ -939,7 +939,7 @@ export async function signIn(formData: FormData): Promise<void> {
 
 // â”€â”€ Sign Out â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export async function signOut(formData: FormData): Promise<void> {
+export async function signOut({ formData }: FormData): Promise<void> {
   const auth = getAuth();
   const sessionCookie = auth.getSessionCookie();
 

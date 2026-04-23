@@ -207,7 +207,7 @@ export async function getMessages(chatId: string) {
   });
 }
 
-export async function sendMessage(formData: FormData) {
+export async function sendMessage({ formData }: FormData) {
   const chatId = formData.get('chatId') as string;
   const content = formData.get('content') as string;
   await db.insert(messages).values({ chatId, content });

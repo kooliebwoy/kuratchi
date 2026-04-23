@@ -136,7 +136,7 @@ export async function getDatabaseStudioData(): Promise<{
   };
 }
 
-export async function runSqlQuery(formData: FormData): Promise<void> {
+export async function runSqlQuery({ formData }: FormData): Promise<void> {
   const { id } = await requireAuthAndDb();
 
   const sql = ((formData.get('sql') as string) ?? '').trim();
@@ -148,7 +148,7 @@ export async function runSqlQuery(formData: FormData): Promise<void> {
   redirect(`/databases/${id}/studio?${qs.toString()}`);
 }
 
-export async function insertTableRow(formData: FormData): Promise<void> {
+export async function insertTableRow({ formData }: FormData): Promise<void> {
   const { id } = await requireAuthAndDb();
 
   const table = ((formData.get('table') as string) ?? '').trim();
@@ -182,7 +182,7 @@ export async function insertTableRow(formData: FormData): Promise<void> {
   redirect(`/databases/${id}/studio?table=${encodeURIComponent(table)}`);
 }
 
-export async function deleteTableRow(formData: FormData): Promise<void> {
+export async function deleteTableRow({ formData }: FormData): Promise<void> {
   const { id } = await requireAuthAndDb();
 
   const table = ((formData.get('table') as string) ?? '').trim();
@@ -196,7 +196,7 @@ export async function deleteTableRow(formData: FormData): Promise<void> {
   redirect(`/databases/${id}/studio?table=${encodeURIComponent(table)}&page=${page}`);
 }
 
-export async function updateTableRow(formData: FormData): Promise<void> {
+export async function updateTableRow({ formData }: FormData): Promise<void> {
   const { id } = await requireAuthAndDb();
 
   const table = ((formData.get('table') as string) ?? '').trim();

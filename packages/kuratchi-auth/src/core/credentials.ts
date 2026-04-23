@@ -18,7 +18,7 @@
  * ```ts
  * import { signUp, signIn, signOut, getCurrentUser } from '@kuratchi/auth';
  *
- * export async function signUpAction(formData: FormData) {
+ * export async function signUpAction({ formData }: FormData) {
  *   await signUp(formData);
  * }
  * ```
@@ -211,7 +211,7 @@ export function configureCredentials(config: CredentialsConfig): void {
  * Org mode: creates org + mapping in admin D1, creates user
  *           in org DO via RPC, auto-creates session, redirects.
  */
-export async function signUp(formData: FormData): Promise<void> {
+export async function signUp({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
   const name = (formData.get('name') as string)?.trim() || null;
@@ -314,7 +314,7 @@ export async function signUp(formData: FormData): Promise<void> {
  * Org mode: resolves emailâ†’org in D1, then verifies + creates session
  *           in the org's DO via RPC.
  */
-export async function signIn(formData: FormData): Promise<void> {
+export async function signIn({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
   try {
@@ -471,7 +471,7 @@ const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
  * The response is always identical regardless of whether the email exists to
  * prevent user enumeration.
  */
-export async function requestPasswordReset(formData: FormData): Promise<void> {
+export async function requestPasswordReset({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
 
   if (!email) throw new Error('Email is required');
@@ -521,7 +521,7 @@ export async function requestPasswordReset(formData: FormData): Promise<void> {
  * Validates the token, updates the password hash, invalidates all sessions,
  * and deletes the used token. Redirects to login on success.
  */
-export async function resetPassword(formData: FormData): Promise<void> {
+export async function resetPassword({ formData }: FormData): Promise<void> {
   const token = (formData.get('token') as string)?.trim();
   const password = formData.get('password') as string;
   const confirmPassword = formData.get('confirmPassword') as string;

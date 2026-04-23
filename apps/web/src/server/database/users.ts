@@ -48,7 +48,7 @@ async function requireOrgMember(userId: string, organizationId: string): Promise
   if (!orgUserResult.data) throw new Error('User not found in your organization');
 }
 
-export async function inviteUser(formData: FormData): Promise<void> {
+export async function inviteUser({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const email = (formData.get('email') as string)?.trim().toLowerCase();
@@ -102,7 +102,7 @@ export async function inviteUser(formData: FormData): Promise<void> {
   redirect('/account/users');
 }
 
-export async function suspendUser(formData: FormData): Promise<void> {
+export async function suspendUser({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;
@@ -115,7 +115,7 @@ export async function suspendUser(formData: FormData): Promise<void> {
     .update({ status: false, updated_at: new Date().toISOString() });
 }
 
-export async function activateUser(formData: FormData): Promise<void> {
+export async function activateUser({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;
@@ -128,7 +128,7 @@ export async function activateUser(formData: FormData): Promise<void> {
     .update({ status: true, updated_at: new Date().toISOString() });
 }
 
-export async function deleteUser(formData: FormData): Promise<void> {
+export async function deleteUser({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;

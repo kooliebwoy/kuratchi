@@ -49,7 +49,7 @@ export async function getDatabase(id: string) {
 
 // -- Create database: D1 + dispatch namespace worker + token --------
 
-export async function createDatabase(formData: FormData): Promise<void> {
+export async function createDatabase({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const name = (formData.get('name') as string)?.trim().toLowerCase();
@@ -134,7 +134,7 @@ export async function createDatabase(formData: FormData): Promise<void> {
 
 // -- Delete database: D1 + dispatch worker + tokens + record ---------
 
-export async function deleteDatabase(formData: FormData): Promise<void> {
+export async function deleteDatabase({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;

@@ -418,7 +418,7 @@ export async function listNotes() {
   return result.data ?? [];
 }
 
-export async function addNote(formData: FormData) {
+export async function addNote({ formData }: FormData) {
   const title = String(formData.get('title') ?? '').trim();
   await this.db.notes.insert({ title });
 }

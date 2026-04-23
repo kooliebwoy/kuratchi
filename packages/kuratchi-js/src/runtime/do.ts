@@ -85,7 +85,7 @@ export async function __getDoStub(binding: string): Promise<any> {
  * ```ts
  * const remote = Sites.rpc();
  *
- * export async function createSite(formData: FormData) {
+ * export async function createSite({ formData }: FormData) {
  *   await remote.createSiteRecord({ name, slug, userId });
  * }
  * ```

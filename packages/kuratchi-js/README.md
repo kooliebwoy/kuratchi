@@ -465,7 +465,7 @@ The action function receives the raw `FormData`. Throw `ActionError` to surface 
 // src/server/items.ts
 import { ActionError } from '@kuratchi/js';
 
-export async function addItem(formData: FormData): Promise<void> {
+export async function addItem({ formData }: FormData): Promise<void> {
   const title = (formData.get('title') as string)?.trim();
   if (!title) throw new ActionError('Title is required');
   // write to DB...
@@ -479,7 +479,7 @@ Call `redirect()` inside an action or `load()` to immediately exit and send the 
 ```ts
 import { redirect } from '@kuratchi/js';
 
-export async function createItem(formData: FormData): Promise<void> {
+export async function createItem({ formData }: FormData): Promise<void> {
   const id = await db.items.insert({ title: formData.get('title') });
   redirect(`/items/${id}`);
 }
@@ -494,7 +494,7 @@ Throw `ActionError` from a form action to surface a user-facing message in the t
 ```ts
 import { ActionError } from '@kuratchi/js';
 
-export async function signIn(formData: FormData) {
+export async function signIn({ formData }: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
 

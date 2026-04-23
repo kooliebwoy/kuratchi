@@ -58,7 +58,7 @@ export async function getCurrentUser() {
 
 // -- Sign Up --------------------------------------------------------
 
-export async function signUp(formData: FormData): Promise<void> {
+export async function signUp({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
   const name = (formData.get('name') as string)?.trim() || null;
@@ -145,7 +145,7 @@ export async function signUp(formData: FormData): Promise<void> {
 
 // -- Sign In --------------------------------------------------------
 
-export async function signIn(formData: FormData): Promise<void> {
+export async function signIn({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
   const password = formData.get('password') as string;
 
@@ -204,7 +204,7 @@ export async function signIn(formData: FormData): Promise<void> {
 
 // -- Sign Out -------------------------------------------------------
 
-export async function signOut(formData: FormData): Promise<void> {
+export async function signOut({ formData }: FormData): Promise<void> {
   const auth = getAuth();
   const sessionCookie = auth.getSessionCookie();
 
@@ -261,7 +261,7 @@ export async function verifyEmail(token: string): Promise<{ success: boolean; er
 
 // -- Resend Verification Email --------------------------------------
 
-export async function resendVerification(formData: FormData): Promise<void> {
+export async function resendVerification({ formData }: FormData): Promise<void> {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
 
   if (!email) throw new Error('Email is required');
@@ -295,7 +295,7 @@ export async function resendVerification(formData: FormData): Promise<void> {
 
 // -- Accept Invite --------------------------------------------------
 
-export async function acceptInvite(formData: FormData): Promise<void> {
+export async function acceptInvite({ formData }: FormData): Promise<void> {
   const token = formData.get('token') as string;
   const password = formData.get('password') as string;
   const name = (formData.get('name') as string)?.trim();

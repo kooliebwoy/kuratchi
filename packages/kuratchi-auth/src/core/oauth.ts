@@ -199,7 +199,7 @@ export async function getOAuthData() {
  * Start an OAuth flow for a given provider.
  * Reads provider name from FormData or defaults to 'github'.
  */
-export async function startOAuth(formData: FormData): Promise<void> {
+export async function startOAuth({ formData }: FormData): Promise<void> {
   const providerName = (formData.get('provider') as string) || 'github';
   if (!_config) throw new Error('[kuratchi/auth] OAuth not configured. Call configureOAuth() first.');
 

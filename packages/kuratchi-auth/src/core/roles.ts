@@ -145,7 +145,7 @@ function _getDb(): any {
  * Assign a role to a user. Reads userId and role from FormData.
  * Callable by users who can manage users via `users.*` permission.
  */
-export async function assignRole(formData: FormData): Promise<void> {
+export async function assignRole({ formData }: FormData): Promise<void> {
   // Import getCurrentUser at call time to avoid circular deps
   const { getCurrentUser } = await import('./credentials.js');
   const currentUser = await getCurrentUser();

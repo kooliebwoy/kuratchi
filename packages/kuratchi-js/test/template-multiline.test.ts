@@ -50,6 +50,39 @@ describe('template compiler multi-line expressions', () => {
     expect(result).toContain("isRunning ? 'yes' : 'no'");
   });
 
+  it('injects _action hidden input when <form action={fn}> wraps onto a new line', () => {
+    // Regression: the `pendingActionHiddenInput` injection at the end
+    // of compileHtmlSegment only spliced into chunks containing `>`.
+    // When a `<form>` open tag wrapped its attributes onto a second
+    // line, the first chunk had the action={…} but no `>`, so the
+    // hidden `<input name="_action">` was silently dropped. The
+    // dispatcher then saw a blank `_action` on POST and responded
+    // with "Unknown action:".
+    const template = `<form action={deleteItem} method="POST" style="display: inline;"
+  onsubmit="return confirm('Really delete?')">
+  <input type="hidden" name="id" value="1" />
+  <button type="submit">Delete</button>
+</form>`;
+    const result = compileTemplate(template, undefined, new Set(['deleteItem']));
+    expect(result).toContain('name="_action" value="deleteItem"');
+    // And the raw `action=` attribute must be stripped from the output.
+    expect(result).not.toContain('action=deleteItem');
+    expect(result).not.toContain('action={deleteItem}');
+  });
+
+  it('keeps multi-line attribute VALUES as literal (no hidden-action injection)', () => {
+    // Multi-line *attribute values* (a string that spans newlines)
+    // must continue to pass through as literal text — that's a
+    // different case from a multi-line open tag. Compilers should
+    // never try to interpret the line break inside a quoted string
+    // as an attribute boundary.
+    const template = `<div title="line one
+line two">Hello</div>`;
+    const result = compileTemplate(template);
+    expect(result).toContain('line one');
+    expect(result).toContain('line two');
+  });
+
   it('handles complex nested ternary with multi-line HTML content', () => {
     const template = `{isRunning ? (
 						<svg class="spinner" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

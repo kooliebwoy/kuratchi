@@ -960,32 +960,32 @@ export async function getSiteCustomDomains(siteId: string) {
   return getSiteDomainRecords(siteId);
 }
 
-export async function createSite(formData: FormData): Promise<void> {
+export async function createSite({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   const site = await createSiteRecord(String(formData.get('name') || ''), actor);
   redirect(`/sites/${site.id}`);
 }
 
-export async function uploadSiteFiles(formData: FormData): Promise<void> {
+export async function uploadSiteFiles({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   await uploadSiteFilesForActor(formData, actor);
   redirect(`/sites/${String(formData.get('siteId') || '').trim()}`);
 }
 
-export async function deleteSiteFiles(formData: FormData): Promise<void> {
+export async function deleteSiteFiles({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   await deleteSiteFilesForActor(formData, actor);
   redirect(`/sites/${String(formData.get('siteId') || '').trim()}`);
 }
 
-export async function deleteSite(formData: FormData): Promise<void> {
+export async function deleteSite({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   const siteId = String(formData.get('id') || '').trim();
   await deleteSiteForActor(siteId, actor);
   redirect('/sites');
 }
 
-export async function addSiteCustomDomain(formData: FormData): Promise<void> {
+export async function addSiteCustomDomain({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   const siteId = String(formData.get('siteId') || '').trim();
   const hostname = String(formData.get('hostname') || '').trim();
@@ -993,7 +993,7 @@ export async function addSiteCustomDomain(formData: FormData): Promise<void> {
   redirect(`/sites/${siteId}`);
 }
 
-export async function refreshSiteCustomDomain(formData: FormData): Promise<void> {
+export async function refreshSiteCustomDomain({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   const siteId = String(formData.get('siteId') || '').trim();
   const domainId = String(formData.get('domainId') || '').trim();
@@ -1001,7 +1001,7 @@ export async function refreshSiteCustomDomain(formData: FormData): Promise<void>
   redirect(`/sites/${siteId}`);
 }
 
-export async function deleteSiteCustomDomain(formData: FormData): Promise<void> {
+export async function deleteSiteCustomDomain({ formData }: FormData): Promise<void> {
   const actor = await requireInteractiveActor();
   const siteId = String(formData.get('siteId') || '').trim();
   const domainId = String(formData.get('domainId') || '').trim();

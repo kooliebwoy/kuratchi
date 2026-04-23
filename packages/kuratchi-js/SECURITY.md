@@ -508,7 +508,7 @@ throw new ActionError('Invalid email format'); // Always shown
 
 ```typescript
 // Always verify authentication in sensitive actions
-export async function deleteAccount(formData: FormData) {
+export async function deleteAccount({ formData }: FormData) {
   const user = await getCurrentUser();
   if (!user) throw new ActionError('Not authenticated');
   
@@ -524,7 +524,7 @@ export async function deleteAccount(formData: FormData) {
 
 ```typescript
 // Validate and sanitize all inputs
-export async function updateProfile(formData: FormData) {
+export async function updateProfile({ formData }: FormData) {
   const name = String(formData.get('name') || '').trim();
   const email = String(formData.get('email') || '').trim().toLowerCase();
   

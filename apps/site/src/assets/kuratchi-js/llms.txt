@@ -204,7 +204,7 @@ The action function receives raw FormData:
 
 import { ActionError } from '@kuratchi/js';
 
-export async function addItem(formData: FormData): Promise<void> {
+export async function addItem({ formData }: FormData): Promise<void> {
   const title = (formData.get('title') as string)?.trim();
   if (!title) throw new ActionError('Title is required');
   // write to DB...
@@ -214,7 +214,7 @@ export async function addItem(formData: FormData): Promise<void> {
 
 import { redirect } from '@kuratchi/js';
 
-export async function createItem(formData: FormData): Promise<void> {
+export async function createItem({ formData }: FormData): Promise<void> {
   const id = await db.items.insert({ title: formData.get('title') });
   redirect(`/items/${id}`);
 }
@@ -227,7 +227,7 @@ Throw ActionError for user-facing validation messages:
 
 import { ActionError } from '@kuratchi/js';
 
-export async function signIn(formData: FormData) {
+export async function signIn({ formData }: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
   if (!email || !password) throw new ActionError('Email and password are required');

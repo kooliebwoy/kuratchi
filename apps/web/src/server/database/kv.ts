@@ -106,7 +106,7 @@ export async function getKvNamespace(id: string) {
 
 // -- Create KV namespace + deploy worker -----------------------------
 
-export async function createKvNamespace(formData: FormData): Promise<void> {
+export async function createKvNamespace({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const name = (formData.get('name') as string)?.trim().toLowerCase();
@@ -198,7 +198,7 @@ export async function createKvNamespace(formData: FormData): Promise<void> {
 
 // -- Delete KV namespace ---------------------------------------------
 
-export async function deleteKvNamespace(formData: FormData): Promise<void> {
+export async function deleteKvNamespace({ formData }: FormData): Promise<void> {
   const user = await requireAuth();
 
   const id = formData.get('id') as string;
